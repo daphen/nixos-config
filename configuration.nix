@@ -67,7 +67,7 @@
     stow  # Keep for reference, but won't use in Nix
 
     # Development
-    base-devel  # Note: Not a package in Nix, will add build tools individually
+    # base-devel  # Note: Not a package in Nix, using individual build tools below instead
     gcc
     gnumake
     automake
