@@ -188,7 +188,7 @@
     openssh
     dnsmasq
     iwd
-    wireless-tools
+    wirelesstools  # Note: Changed from wireless-tools (correct package name)
     wpa_supplicant
     
     # System Monitoring
