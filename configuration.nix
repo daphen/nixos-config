@@ -46,7 +46,7 @@
       "video"
       "audio"
     ];
-    shell = pkgs.fish;
+    shell = pkgs.bash;  # Temporarily use bash instead of fish (fish was freezing)
   };
 
   # Enable Fish shell system-wide
