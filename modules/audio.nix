@@ -7,10 +7,7 @@
   # Disable PulseAudio (PipeWire replaces it)
   hardware.pulseaudio.enable = false;
   
-  # Enable ALSA support
-  sound.enable = true;
-  
-  # Enable PipeWire
+  # Enable PipeWire (ALSA support is configured below)
   services.pipewire = {
     enable = true;
     
