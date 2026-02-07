@@ -107,10 +107,11 @@
 
   # Copy Fish functions from dotfiles
   # These will be your custom functions from ~/dotfiles/fish/.config/fish/functions/
-  xdg.configFile = {
-    "fish/functions" = {
-      source = ../../dotfiles-source/fish/functions;
-      recursive = true;
-    };
-  };
+  # COMMENTED OUT: Requires dotfiles-source
+  # xdg.configFile = {
+  #   "fish/functions" = {
+  #     source = ../../dotfiles-source/fish/functions;
+  #     recursive = true;
+  #   };
+  # };
 }
