@@ -1,0 +1,32 @@
+# Nix build results
+result
+result-*
+
+# Flake lock might be committed, but can be regenerated
+# Uncomment if you don't want to commit it:
+# flake.lock
+
+# Dotfiles source (this is a symlink to your actual dotfiles)
+dotfiles-source/
+
+# Hardware config (machine-specific, should be generated per-machine)
+# Comment this out if you want to commit your hardware-configuration.nix
+# hardware-configuration.nix
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+
+# Local testing
+test-vm/
