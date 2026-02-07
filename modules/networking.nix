@@ -28,8 +28,8 @@
   };
 
   # Additional network tools
-  environment.systemPackages = with pkgs; [
-    networkmanager
-    networkmanager-dmenu  # Dmenu for NetworkManager
-  ];
+  # NetworkManager is already included by enabling the service
+  # environment.systemPackages = with pkgs; [
+  #   # networkmanager-dmenu  # TODO: Find correct package name
+  # ];
 }
