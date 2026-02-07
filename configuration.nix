@@ -211,7 +211,7 @@
     
     # System Tools
     efibootmgr
-    iptables-nft
+    iptables  # Note: Changed from iptables-nft (nixpkgs uses 'iptables')
     
     # Development Languages/Tools
     nodejs
