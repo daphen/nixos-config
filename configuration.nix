@@ -85,7 +85,7 @@
     
     # File Management
     yazi
-    dragon-drop
+    # dragon-drop  # TODO: Check correct package name in nixpkgs (might be 'dragon' or 'xdragon')
     
     # Version Control
     git
