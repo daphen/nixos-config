@@ -28,7 +28,7 @@
   # NOTE: Dotfile-dependent imports commented out for initial testing
   imports = [
     ./programs/git.nix
-    # ./programs/fish.nix          # Temporarily disabled - was freezing on startup
+    ./programs/fish.nix          # Re-enabled - works perfectly in QEMU!
     # ./programs/neovim.nix        # Requires dotfiles-source
     # ./programs/terminals.nix     # Requires dotfiles-source
     # ./programs/niri-scripts.nix  # Requires dotfiles-source

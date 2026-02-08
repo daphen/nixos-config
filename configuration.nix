@@ -46,7 +46,7 @@
       "video"
       "audio"
     ];
-    shell = pkgs.bash;  # Temporarily use bash instead of fish (fish was freezing)
+    shell = pkgs.fish;  # Fish works perfectly in QEMU!
   };
 
   # Enable Fish shell system-wide
