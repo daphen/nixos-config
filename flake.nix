@@ -79,6 +79,9 @@
                 useGlobalPkgs = true;
                 useUserPackages = true;
                 
+                # Backup existing files that conflict
+                backupFileExtension = "backup";
+                
                 # Main user configuration
                 users.daphen = import ./home/home.nix;
                 
