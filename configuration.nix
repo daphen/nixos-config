@@ -227,7 +227,7 @@
     noto-fonts-cjk-sans  # Renamed from noto-fonts-cjk
     noto-fonts-emoji
     font-awesome
-    nerdfonts
+    # nerdfonts  # Temporarily disabled - download failing
     # Add custom fonts here
   ];
 
