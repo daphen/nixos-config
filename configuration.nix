@@ -52,6 +52,9 @@
   # Enable Fish shell system-wide
   programs.fish.enable = true;
 
+  # Allow wheel group to use sudo without password
+  security.sudo.wheelNeedsPassword = false;
+
   # System Packages
   # ===============
   environment.systemPackages = with pkgs; [
