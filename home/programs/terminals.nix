@@ -4,10 +4,10 @@
   # Terminal Emulators Configuration
   # =================================
 
-  # Ghostty (primary terminal)
-  xdg.configFile."ghostty/config" = {
-    source = ../../dotfiles/ghostty/.config/ghostty/config;
-  };
+  # Ghostty (primary terminal) - config not in dotfiles yet
+  # xdg.configFile."ghostty/config" = {
+  #   source = ../../dotfiles/ghostty/.config/ghostty/config;
+  # };
 
   # WezTerm
   programs.wezterm = {
