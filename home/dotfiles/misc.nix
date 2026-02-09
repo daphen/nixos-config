@@ -35,7 +35,7 @@
   
   # Claude Code hooks and commands
   xdg.configFile."claude" = {
-    source = ../../dotfiles/claude/.config/claude;
+    source = ../../dotfiles/claude/.claude;
     recursive = true;
   };
   
