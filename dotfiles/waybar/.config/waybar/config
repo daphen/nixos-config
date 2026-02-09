@@ -1,0 +1,87 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 40,
+  "spacing": 8,
+
+  "modules-left": ["clock#date", "custom/weather"],
+  "modules-center": ["custom/niri-minimap"],
+  "modules-right": ["network", "pulseaudio", "battery", "clock"],
+
+  "clock#date": {
+    "format": "󰃭 {:%a %b %d}",
+    "tooltip": false
+  },
+
+  "clock": {
+    "format": "󰥔 {:%H:%M}",
+    "format-alt": "󰥔 {:%Y-%m-%d %H:%M}",
+    "tooltip-format": "<tt>{calendar}</tt>",
+    "calendar": {
+      "mode": "month",
+      "format": {
+        "months": "<span color='#ffead3'><b>{}</b></span>",
+        "days": "<span color='#ecc6d9'><b>{}</b></span>",
+        "weekdays": "<span color='#a6e3a1'><b>{}</b></span>",
+        "today": "<span color='#f38ba8'><b><u>{}</u></b></span>"
+      }
+    }
+  },
+
+  "battery": {
+    "states": {
+      "warning": 30,
+      "critical": 15
+    },
+    "format": "{icon} {capacity}%",
+    "format-charging": "󰂄 {capacity}%",
+    "format-plugged": "󰚥 {capacity}%",
+    "format-alt": "{icon} {capacity}% {time}",
+    "format-icons": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
+  },
+
+  "custom/weather": {
+    "format": "󰖙 {}",
+    "interval": 1800,
+    "exec": "curl -s 'wttr.in/Stockholm?format=%t'",
+    "return-type": ""
+  },
+
+  "network": {
+    "format-wifi": "⚡ {essid}",
+    "format-ethernet": "⚡ {ifname}",
+    "format-disconnected": "⚡ Disconnected",
+    "tooltip-format": "{ifname}: {ipaddr}/{cidr}",
+    "tooltip-format-wifi": "󰖨 {essid} ({signalStrength}%)\n{ifname}: {ipaddr}/{cidr}",
+    "tooltip-format-ethernet": "󰈀 {ifname}: {ipaddr}/{cidr}",
+    "tooltip-format-disconnected": "Disconnected",
+    "on-click": "networkmanager_dmenu"
+  },
+
+  "pulseaudio": {
+    "format": "{icon} {volume}%",
+    "format-bluetooth": "󰂯 {volume}%",
+    "format-muted": "󰝟 {volume}%",
+    "format-icons": {
+      "headphone": "󰋋",
+      "hands-free": "󰋎",
+      "headset": "󰋎",
+      "phone": "󰏲",
+      "portable": "󰦢",
+      "car": "󰄋",
+      "default": ["󰕿", "󰖀", "󰕾"]
+    },
+    "scroll-step": 5,
+    "on-click": "~/.config/waybar/scripts/audio-menu.sh",
+    "on-click-middle": "pavucontrol",
+    "on-click-right": "pactl set-sink-mute @DEFAULT_SINK@ toggle"
+  },
+
+  "custom/niri-minimap": {
+    "exec": "~/.config/waybar/scripts/niri-minimap.sh",
+    "return-type": "json",
+    "interval": 1,
+    "format": "{}",
+    "tooltip": true
+  },
+}

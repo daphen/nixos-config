@@ -1,0 +1,36 @@
+#!/bin/bash
+# Spawn a new terminal at the same directory as the focused window and run claude
+
+# Get the PID of the currently focused window
+FOCUSED_PID=$(niri msg --json windows | python3 -c "
+import sys, json
+windows = json.load(sys.stdin)
+for w in windows:
+    if w.get('is_focused', False):
+        print(w.get('pid', ''))
+        break
+")
+
+# If we found a focused window with a PID, try to get its working directory
+if [ -n "$FOCUSED_PID" ] && [ "$FOCUSED_PID" != "None" ]; then
+    # Try to find a shell process under this PID and get its cwd
+    # Sort by PID in reverse order (highest/newest first) to get the most recent shell
+    SHELL_PID=$(pgrep -P "$FOCUSED_PID" | sort -rn | while read pid; do
+        comm=$(cat /proc/$pid/comm 2>/dev/null)
+        if [[ "$comm" =~ ^(fish|bash|zsh)$ ]]; then
+            echo $pid
+            break
+        fi
+    done | head -n1)
+
+    # If we found a shell, get its cwd
+    if [ -n "$SHELL_PID" ]; then
+        CWD=$(readlink -f /proc/$SHELL_PID/cwd 2>/dev/null)
+    fi
+fi
+
+# Fallback to home directory if we couldn't determine the cwd
+CWD="${CWD:-$HOME}"
+
+# Spawn kitty at the determined directory and run claude
+kitty --directory "$CWD" fish -c "claude"

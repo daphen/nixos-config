@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Toggle floating notes terminal
+
+NOTES_CLASS="notes-scratchpad"
+NOTES_DIR="$HOME/personal/notes/storage"
+
+# Check if notes window exists
+if niri msg windows | grep -q "$NOTES_CLASS"; then
+    # Window exists - toggle focus or minimize
+    FOCUSED=$(niri msg focused-window 2>/dev/null | grep -o "app-id: \"$NOTES_CLASS\"")
+
+    if [[ -n "$FOCUSED" ]]; then
+        # Notes is focused - close it
+        niri msg action close-window
+    else
+        # Notes exists but not focused - focus it
+        niri msg action focus-window --app-id "$NOTES_CLASS"
+    fi
+else
+    # Spawn new notes terminal
+    mkdir -p "$NOTES_DIR"
+    # Pull latest notes before opening
+    kitty --class "$NOTES_CLASS" --directory "$NOTES_DIR" fish -c "notes pull && notes edit || nvim ."
+fi

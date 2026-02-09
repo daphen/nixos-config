@@ -1,0 +1,115 @@
+#!/bin/bash
+# Jump to a window if it exists, otherwise launch the app
+# Jumps to most recently active window, then cycles through others
+# Usage: niri-jump-or-exec <app-id-or-title-pattern> <command>
+# If app-id starts with "title:" it matches against window title instead
+
+APP_ID="$1"
+COMMAND="$2"
+TRACKER_STATE="/tmp/niri-focus-tracker/app-${APP_ID}"
+CYCLE_STATE="/tmp/niri-cycle-${APP_ID}"
+
+if [ -z "$APP_ID" ] || [ -z "$COMMAND" ]; then
+    echo "Usage: niri-jump-or-exec <app-id-or-title-pattern> <command>"
+    exit 1
+fi
+
+# Check if matching by title
+MATCH_BY_TITLE=false
+PATTERN="$APP_ID"
+if [[ "$APP_ID" == title:* ]]; then
+    MATCH_BY_TITLE=true
+    PATTERN="${APP_ID#title:}"
+fi
+
+# Get currently focused window ID
+CURRENT_FOCUSED=$(niri msg --json windows | python3 -c "
+import sys, json
+windows = json.load(sys.stdin)
+for w in windows:
+    if w.get('is_focused', False):
+        print(w['id'])
+        break
+")
+
+# Get all window IDs and determine which to focus
+RESULT=$(niri msg --json windows | python3 -c "
+import sys, json
+import re
+try:
+    windows = json.load(sys.stdin)
+    match_by_title = '$MATCH_BY_TITLE' == 'true'
+    pattern = '$PATTERN'
+
+    if match_by_title:
+        # Match by title using regex
+        matching_windows = [w for w in windows if re.search(pattern, w.get('title', ''), re.IGNORECASE)]
+    else:
+        # Match by app_id
+        matching_windows = [w for w in windows if w.get('app_id') == pattern]
+
+    if not matching_windows:
+        # No windows found
+        print('NONE')
+        sys.exit(0)
+
+    # Check if we're currently on a window of this app
+    current_focused_id = '$CURRENT_FOCUSED'
+    focused_idx = -1
+    for idx, w in enumerate(matching_windows):
+        if str(w['id']) == current_focused_id:
+            focused_idx = idx
+            break
+
+    if focused_idx >= 0:
+        # If a window of this app is focused, cycle to the next one
+        next_idx = (focused_idx + 1) % len(matching_windows)
+        print(matching_windows[next_idx]['id'])
+    else:
+        # Not currently on this app - use focus tracker to find last active window
+        last_active_id = None
+        try:
+            with open('$TRACKER_STATE', 'r') as f:
+                last_active_id = f.read().strip()
+        except: pass
+
+        # If we have a tracked window that still exists, use it
+        if last_active_id:
+            for w in matching_windows:
+                if str(w['id']) == last_active_id:
+                    print(w['id'])
+                    sys.exit(0)
+
+        # Fallback: check cycle state to see if we cycled recently
+        last_cycled = None
+        try:
+            with open('$CYCLE_STATE', 'r') as f:
+                last_cycled = f.read().strip()
+        except: pass
+
+        # If we cycled to a window that still exists, use it
+        if last_cycled:
+            for w in matching_windows:
+                if str(w['id']) == last_cycled:
+                    print(w['id'])
+                    sys.exit(0)
+
+        # Otherwise pick the first window
+        print(matching_windows[0]['id'])
+
+except Exception as e:
+    print('ERROR')
+    sys.exit(1)
+")
+
+if [ "$RESULT" = "NONE" ]; then
+    # No window exists, launch the app
+    $COMMAND &
+elif [ "$RESULT" = "ERROR" ]; then
+    exit 1
+else
+    # Window exists, focus it
+    niri msg action focus-window --id "$RESULT"
+    # Save this window as our last cycled position
+    echo "$RESULT" > "$CYCLE_STATE"
+fi

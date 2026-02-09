@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pacman -Q:*)",
+      "Bash(systemctl:*)",
+      "Bash(journalctl:*)",
+      "Bash(pacman -Qi:*)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /home/daphen/.claude/hooks/ai-tracker.js"
+          }
+        ]
+      }
+    ]
+  }
+}

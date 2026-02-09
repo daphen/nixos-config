@@ -1,0 +1,95 @@
+;; Kanata configuration - ported from Piantor Vial layout
+;; Layer triggers: space=symbols, n=media
+
+(defcfg
+  process-unmapped-keys yes
+  log-layer-changes no
+  rapid-event-delay 30
+  concurrent-tap-hold yes
+  chords-v2-min-idle 25
+  linux-x11-repeat-delay-rate 400,50
+  danger-enable-cmd yes
+  linux-dev-names-exclude (
+    "beekeeb Piantor Pro Keyboard"
+    "beekeeb Piantor Pro Consumer Control"
+    "beekeeb Piantor Pro System Control"
+    "beekeeb Piantor Pro"
+    "ZMK Project Toucan Keyboard"
+    "ZMK Project Toucan Mouse"
+    "MatchuLab keyball 44 V2"
+    "MatchuLab keyball 44 V2 Keyboard"
+    "MatchuLab keyball 44 V2 System Control"
+    "MatchuLab keyball 44 V2 Consumer Control"
+  )
+)
+
+;; Swedish character architecture:
+;; - Physical [;' → Kanata sends slck/pause/home keycodes
+;; - XKB remaps these → å/ö/ä characters
+
+(defsrc
+  esc  f1   f2   f3   f4   f5   f6   f7   f8   f9   f10  f11  f12
+  grv  1    2    3    4    5    6    7    8    9    0    -    =    bspc
+  tab  q    w    e    r    t    y    u    i    o    p    [    ]    \
+  caps a    s    d    f    g    h    j    k    l    ;    '    ret
+  lsft z    x    c    v    b    n    m    ,    .    /    rsft
+  lctl lmet lalt           spc            ralt rmet cmp  rctl
+)
+
+(defalias
+  ;; Space: tap for space, hold for symbols layer
+  spc_sym (tap-hold-release 200 200 spc (layer-while-held symbols))
+
+  ;; Media layer on n
+  n_med (tap-hold-release 200 200 n (layer-while-held media))
+
+  ;; Caps lock as escape when tapped, control when held
+  esc_ctl (tap-hold-press 200 200 esc lctl)
+
+  ;; Right shift that produces colon when combined with ö key
+  rsft_colon (multi rsft (layer-while-held rsft-layer))
+)
+
+(deflayer base
+  esc  f1   f2   f3   f4   f5   f6   f7   f8   f9   _    _    _
+  grv  1    2    3    4    5    6    7    8    9    0    -    =    bspc
+  tab  q    w    e    r    t    y    u    i    o    p    home ]    \
+  @esc_ctl a    s    d    f    g    h    j    k    l    slck pause ret
+  lsft z    x    c    v    b    @n_med m    ,    .    /    @rsft_colon
+  lctl lalt lmet           @spc_sym       ralt rmet cmp  rctl
+)
+
+;; Symbols layer (hold space) - unified from Piantor Vial
+;; Left: ` ! @ ( ) ; on qwert, # [ { } ] on asdfg, ^ < > % on xcvb
+;; Right: : ' " * bksp on yuiop, arrows on hjkl, + = * | on m,./
+(deflayer symbols
+  _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  grv  S-1  S-2  S-9  S-0  ;    S-;  '    S-'  C-6  S-8  bspc _    _
+  lalt S-3  [    S-[  S-]  ]    left down up   rght _    _    _
+  _    _    S-6  S-,  S-.  S-5  _    S-=  =    S-8  S-\  _
+  _    _    _              _              _    _    _    _
+)
+
+;; Media layer (hold n)
+;; q/w=screen brightness, a/s=volume, k/l=keyboard brightness
+(deflayer media
+  _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    brdn brup _    _    _    _    _    _    _    _    _    _    _
+  _    vold volu _    _    _    _    _    bldn blup _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _              _              _    _    _    _
+)
+
+;; Right shift layer (ö becomes colon when right shift is held)
+(deflayer rsft-layer
+  _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _    _    _    _    _    _    _    _    S-;  _    _
+  _    _    _    _    _    _    _    _    _    _    _    _
+  _    _    _              _              _    _    _    _
+)
+
+

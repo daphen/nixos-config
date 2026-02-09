@@ -1,0 +1,32 @@
+#!/bin/bash
+# Screenshot selection to clipboard with timestamp
+
+# Create temporary directory for screenshots
+SCREENSHOT_DIR="/tmp"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+SCREENSHOT_FILE="$SCREENSHOT_DIR/screenshot-$TIMESTAMP.png"
+LATEST_LINK="$SCREENSHOT_DIR/latest-screenshot.png"
+
+# Get selection area (exit if cancelled)
+SELECTION=$(slurp 2>/dev/null)
+if [ -z "$SELECTION" ]; then
+    exit 0  # User cancelled selection
+fi
+
+# Take screenshot of selected area
+if grim -g "$SELECTION" "$SCREENSHOT_FILE"; then
+    # Copy to clipboard
+    wl-copy < "$SCREENSHOT_FILE"
+
+    # Create/update symlink to latest screenshot
+    ln -sf "$SCREENSHOT_FILE" "$LATEST_LINK"
+
+    # Notify user
+    notify-send "Screenshot" "Copied to clipboard"
+
+    # Clean up old screenshots (keep last 10)
+    ls -t "$SCREENSHOT_DIR"/screenshot-*.png 2>/dev/null | tail -n +11 | xargs -r rm
+else
+    # Screenshot failed
+    notify-send "Screenshot" "Failed to capture screenshot" --urgency=critical
+fi

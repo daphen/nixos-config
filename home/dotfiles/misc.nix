@@ -11,50 +11,39 @@
   };
   
   xdg.configFile."yazi" = {
-    source = ../../dotfiles-source/yazi;
+    source = ../../dotfiles/yazi/.config/yazi;
     recursive = true;
   };
   
   # Qutebrowser
   xdg.configFile."qutebrowser" = {
-    source = ../../dotfiles-source/qutebrowser;
+    source = ../../dotfiles/qutebrowser/.config/qutebrowser;
     recursive = true;
   };
   
   # Eww (widgets)
   xdg.configFile."eww" = {
-    source = ../../dotfiles-source/eww;
+    source = ../../dotfiles/eww/.config/eww;
     recursive = true;
   };
   
   # Kanata (keyboard remapping)
   xdg.configFile."kanata" = {
-    source = ../../dotfiles-source/kanata;
+    source = ../../dotfiles/kanata/.config/kanata;
     recursive = true;
   };
   
   # Claude Code hooks and commands
   xdg.configFile."claude" = {
-    source = ../../dotfiles-source/claude;
+    source = ../../dotfiles/claude/.config/claude;
     recursive = true;
-  };
-  
-  # Swaylock
-  xdg.configFile."swaylock" = {
-    source = ../../dotfiles-source/swaylock;
-    recursive = true;
-  };
-  
-  # Additional config files that don't have dedicated programs
-  # XCompose for custom character compositions
-  home.file.".XCompose" = {
-    source = ../../dotfiles-source/misc/XCompose;
   };
   
   # Systemd user services
-  # These will be copied from ~/dotfiles/systemd/.config/systemd/user/
   xdg.configFile."systemd/user" = {
-    source = ../../dotfiles-source/systemd/user;
+    source = ../../dotfiles/systemd/.config/systemd/user;
     recursive = true;
   };
+  
+  # Edit files in ~/nixos/dotfiles and changes take effect immediately!
 }

@@ -1,0 +1,135 @@
+# Yazi flavor matching your system colors
+
+[mgr]
+cwd = { fg = "#FF570D" }
+
+# Hovered
+hovered         = { fg = "#181818", bg = "#FF570D" }
+preview_hovered = { underline = true }
+
+# Find
+find_keyword  = { fg = "#ff8a31", italic = true }
+find_position = { fg = "#8A92A7", bg = "reset", italic = true }
+
+# Marker
+marker_copied   = { fg = "#97B5A6", bg = "#97B5A6" }
+marker_cut      = { fg = "#FF7B72", bg = "#FF7B72" }
+marker_marked   = { fg = "#5E7270", bg = "#5E7270" }
+marker_selected = { fg = "#5E7270", bg = "#5E7270" }
+
+# Count
+count_copied   = { fg = "#EDEDED", bg = "#5E7270" }
+count_cut      = { fg = "#EDEDED", bg = "#FF7B72" }
+count_selected = { fg = "#EDEDED", bg = "#5E7270" }
+
+# Border
+border_symbol = "│"
+border_style  = { fg = "#707B84" }
+
+[tabs]
+active   = { fg = "#EDEDED", bg = "#5E7270", bold = true }
+inactive = { fg = "#C3C8C6", bg = "#282F38" }
+
+[mode]
+# Normal mode - trying reset for background
+normal_main = { fg = "#97B5A6", bg = "reset", bold = true }
+normal_alt  = { fg = "#707B84", bg = "reset" }
+
+# Select mode
+select_main = { fg = "#FF570D", bg = "reset", bold = true }
+select_alt  = { fg = "#ff8a31", bg = "reset" }
+
+# Unset mode
+unset_main  = { fg = "#8A92A7", bg = "reset", bold = true }
+unset_alt   = { fg = "#707B84", bg = "reset" }
+
+[status]
+# Overall status bar style
+overall = {}
+sep_left  = { open = "", close = "" }
+sep_right = { open = "", close = "" }
+
+# Permissions
+perm_sep   = { fg = "#707B84" }
+perm_type  = { fg = "#97B5A6" }
+perm_read  = { fg = "#ff8a31" }
+perm_write = { fg = "#FF7B72" }
+perm_exec  = { fg = "#97B5A6" }
+
+# Progress
+progress_label  = { fg = "#EDEDED", bold = true }
+progress_normal = { fg = "#EDEDED", bg = "#5E7270" }
+progress_error  = { fg = "#FF7B72", bg = "#1B1B1B" }
+
+[pick]
+border   = { fg = "#97B5A6" }
+active   = { fg = "#8A92A7", bold = true }
+inactive = {}
+
+[input]
+border   = { fg = "#97B5A6" }
+title    = {}
+value    = {}
+selected = { reversed = true }
+
+[completion]
+border = { fg = "#97B5A6" }
+
+[tasks]
+border  = { fg = "#97B5A6" }
+title   = {}
+hovered = { underline = true }
+
+[which]
+mask            = { bg = "#292826" }
+cand            = { fg = "#8A9AA6" }
+rest            = { fg = "#707B84" }
+desc            = { fg = "#8A92A7" }
+separator       = "  "
+separator_style = { fg = "#707B84" }
+
+[help]
+on      = { fg = "#8A92A7" }
+exec    = { fg = "#8A9AA6" }
+desc    = { fg = "#707B84" }
+hovered = { bg = "#282F38", bold = true }
+footer  = { fg = "#EDEDED", bg = "#5E7270" }
+
+[spotter]
+border = { fg = "#97B5A6" }
+
+[notification]
+info  = { fg = "#EDEDED", bg = "#5E7270" }
+warn  = { fg = "#181818", bg = "#ff8a31" }
+error = { fg = "#EDEDED", bg = "#FF7B72" }
+
+[filetype]
+rules = [
+	# Images
+	{ mime = "image/*", fg = "#8A9AA6" },
+
+	# Videos
+	{ mime = "video/*", fg = "#ff8a31" },
+
+	# Audio
+	{ mime = "audio/*", fg = "#ff8a31" },
+
+	# Archives
+	{ mime = "application/zip",             fg = "#8A92A7" },
+	{ mime = "application/gzip",            fg = "#8A92A7" },
+	{ mime = "application/x-tar",           fg = "#8A92A7" },
+	{ mime = "application/x-bzip",          fg = "#8A92A7" },
+	{ mime = "application/x-bzip2",         fg = "#8A92A7" },
+	{ mime = "application/x-7z-compressed", fg = "#8A92A7" },
+	{ mime = "application/x-rar",           fg = "#8A92A7" },
+
+	# Documents
+	{ mime = "application/doc",   fg = "#97B5A6" },
+	{ mime = "application/pdf",   fg = "#97B5A6" },
+	{ mime = "application/rtf",   fg = "#97B5A6" },
+	{ mime = "application/vnd.*", fg = "#97B5A6" },
+
+	# Fallback
+	{ name = "*", fg = "#EDEDED" },
+	{ name = "*/", fg = "#97B5A6" }
+]

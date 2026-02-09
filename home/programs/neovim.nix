@@ -49,7 +49,7 @@
   # Copy entire Neovim config from dotfiles
   # This preserves your lazy.nvim setup and all custom configurations
   xdg.configFile."nvim" = {
-    source = ../../dotfiles-source/nvim;
+    source = ../../dotfiles/nvim/.config/nvim;
     recursive = true;
   };
 
@@ -61,4 +61,6 @@
   # - lua/plugins/
   # - lua/utils.lua
   # - etc.
+  # 
+  # Edit the files in ~/dotfiles and changes take effect immediately!
 }

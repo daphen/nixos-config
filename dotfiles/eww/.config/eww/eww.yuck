@@ -1,0 +1,382 @@
+; Main bar window
+(defwindow bar
+  :monitor 0
+  :geometry (geometry :x "0%"
+                      :y "0px"
+                      :width "100%"
+                      :height "33px"
+                      :anchor "top center")
+  :stacking "fg"
+  :exclusive true
+  :layer "top"
+  (bar-content :minimap-data window-minimap-0))
+
+; Left corner - positioned at intersection of bar and left frame
+(defwindow corner-left
+  :monitor 0
+  :geometry (geometry :x "0px"
+                      :y "-1px"
+                      :width "30px"
+                      :height "14px"
+                      :anchor "top left")
+  :stacking "fg"
+  :exclusive false
+  :focusable false
+  :layer "top"
+  (box :class "corner-left"))
+
+; Right corner - positioned at intersection of bar and right frame
+(defwindow corner-right
+  :monitor 0
+  :geometry (geometry :x "0px"
+                      :y "-1px"
+                      :width "24px"
+                      :height "14px"
+                      :anchor "top right")
+  :stacking "fg"
+  :exclusive false
+  :focusable false
+  :layer "top"
+  (box :class "corner-right"))
+
+; Frame - left edge with workspace minimap
+(defwindow frame-left
+  :monitor 0
+  :geometry (geometry :x "0px"
+                      :y "0px"
+                      :width "16px"
+                      :height "100%"
+                      :anchor "top left")
+  :stacking "fg"
+  :exclusive false
+  :layer "top"
+  (frame-left-content :minimap-data workspace-minimap-0))
+
+; Frame - right edge
+(defwindow frame-right
+  :monitor 0
+  :geometry (geometry :x "0px"
+                      :y "0px"
+                      :width "10px"
+                      :height "100%"
+                      :anchor "top right")
+  :stacking "fg"
+  :exclusive false
+  :layer "top"
+  (box :class "frame frame-right"))
+
+; Frame - bottom edge
+(defwindow frame-bottom
+  :monitor 0
+  :geometry (geometry :x "0px"
+                      :y "0px"
+                      :width "100%"
+                      :height "10px"
+                      :anchor "bottom center")
+  :stacking "fg"
+  :exclusive false
+  :layer "top"
+  (box :class "frame frame-bottom"))
+
+; Bottom-left corner - at intersection of bottom frame and left frame
+(defwindow corner-bottom-left
+  :monitor 0
+  :geometry (geometry :x "1px"
+                      :y "0px"
+                      :width "28px"
+                      :height "22px"
+                      :anchor "bottom left")
+  :stacking "fg"
+  :exclusive false
+  :focusable false
+  :layer "top"
+  (box :class "corner-bottom-left"))
+
+; Bottom-right corner - at intersection of bottom frame and right frame
+(defwindow corner-bottom-right
+  :monitor 0
+  :geometry (geometry :x "0px"
+                      :y "0px"
+                      :width "22px"
+                      :height "22px"
+                      :anchor "bottom right")
+  :stacking "fg"
+  :exclusive false
+  :focusable false
+  :layer "top"
+  (box :class "corner-bottom-right"))
+
+; ============================================
+; Monitor 1 (external display) windows
+; ============================================
+
+(defwindow bar-1
+  :monitor 1
+  :geometry (geometry :x "0%"
+                      :y "0px"
+                      :width "100%"
+                      :height "33px"
+                      :anchor "top center")
+  :stacking "fg"
+  :exclusive true
+  :layer "top"
+  (bar-content :minimap-data window-minimap-1))
+
+(defwindow corner-left-1
+  :monitor 1
+  :geometry (geometry :x "0px"
+                      :y "-1px"
+                      :width "30px"
+                      :height "14px"
+                      :anchor "top left")
+  :stacking "fg"
+  :exclusive false
+  :focusable false
+  :layer "top"
+  (box :class "corner-left"))
+
+(defwindow corner-right-1
+  :monitor 1
+  :geometry (geometry :x "0px"
+                      :y "-1px"
+                      :width "24px"
+                      :height "14px"
+                      :anchor "top right")
+  :stacking "fg"
+  :exclusive false
+  :focusable false
+  :layer "top"
+  (box :class "corner-right"))
+
+(defwindow frame-left-1
+  :monitor 1
+  :geometry (geometry :x "0px"
+                      :y "0px"
+                      :width "16px"
+                      :height "100%"
+                      :anchor "top left")
+  :stacking "fg"
+  :exclusive false
+  :layer "top"
+  (frame-left-content :minimap-data workspace-minimap-1))
+
+(defwindow frame-right-1
+  :monitor 1
+  :geometry (geometry :x "0px"
+                      :y "0px"
+                      :width "10px"
+                      :height "100%"
+                      :anchor "top right")
+  :stacking "fg"
+  :exclusive false
+  :layer "top"
+  (box :class "frame frame-right"))
+
+(defwindow frame-bottom-1
+  :monitor 1
+  :geometry (geometry :x "0px"
+                      :y "0px"
+                      :width "100%"
+                      :height "10px"
+                      :anchor "bottom center")
+  :stacking "fg"
+  :exclusive false
+  :layer "top"
+  (box :class "frame frame-bottom"))
+
+(defwindow corner-bottom-left-1
+  :monitor 1
+  :geometry (geometry :x "1px"
+                      :y "0px"
+                      :width "28px"
+                      :height "22px"
+                      :anchor "bottom left")
+  :stacking "fg"
+  :exclusive false
+  :focusable false
+  :layer "top"
+  (box :class "corner-bottom-left"))
+
+(defwindow corner-bottom-right-1
+  :monitor 1
+  :geometry (geometry :x "0px"
+                      :y "0px"
+                      :width "22px"
+                      :height "22px"
+                      :anchor "bottom right")
+  :stacking "fg"
+  :exclusive false
+  :focusable false
+  :layer "top"
+  (box :class "corner-bottom-right"))
+
+; Main bar content
+(defwidget bar-content [minimap-data]
+  (centerbox :class "bar"
+    (left-modules)
+    (center-modules :minimap-data minimap-data)
+    (right-modules)))
+
+; Left side modules
+(defwidget left-modules []
+  (box :class "modules-left"
+       :space-evenly false
+       :halign "start"
+    (date-widget)
+    (weather-widget)
+    (cpu-widget)))
+
+; Center modules
+(defwidget center-modules [minimap-data]
+  (box :class "modules-center"
+       :space-evenly false
+       :halign "center"
+    (minimap-widget :data minimap-data)))
+
+; Right side modules
+(defwidget right-modules []
+  (box :class "modules-right"
+       :space-evenly false
+       :halign "end"
+    (network-widget)
+    (volume-widget)
+    (battery-widget)
+    (clock-widget)))
+
+; CPU widget
+(defwidget cpu-widget []
+  (box :class "cpu"
+    (label :text "${cpu-icon} ${cpu}%")))
+
+; Date widget
+(defwidget date-widget []
+  (box :class "date"
+    (label :text "󰃭 ${date}")))
+
+; Weather widget
+(defwidget weather-widget []
+  (box :class "weather"
+    (label :text "󰖙 ${weather}")))
+
+; Minimap widget (niri windows - horizontal)
+(defwidget minimap-widget [data]
+  (box :class "minimap"
+       :orientation "h"
+       :space-evenly false
+       :halign "center"
+       :valign "center"
+    (for entry in data
+      (box :class "dot-h ${entry.active ? 'active' : 'inactive'}"
+           :valign "center"))))
+
+; Network widget
+(defwidget network-widget []
+  (box :class "network"
+    (label :text "󰤨 ${network}")))
+
+; Volume widget
+(defwidget volume-widget []
+  (eventbox :onclick "~/.config/waybar/scripts/audio-menu.sh"
+            :onrightclick "pactl set-sink-mute @DEFAULT_SINK@ toggle"
+    (box :class "volume ${volume-muted}"
+      (label :text "${volume-icon} ${volume}%"))))
+
+; Battery widget
+(defwidget battery-widget []
+  (box :class "battery ${battery-status}"
+    (label :text "${battery-icon} ${battery}%")))
+
+; Clock widget
+(defwidget clock-widget []
+  (box :class "clock"
+    (label :text "󰥔 ${time}")))
+
+; Frame left content with workspace minimap (takes monitor-specific minimap data)
+(defwidget frame-left-content [minimap-data]
+  (box :class "frame frame-left-content"
+       :orientation "v"
+       :space-evenly false
+       :valign "fill"
+       :vexpand true
+       :halign "center"
+       :hexpand true
+    (box :valign "center" :vexpand true
+      (workspace-minimap-widget :data minimap-data))))
+
+; Workspace minimap widget (vertical)
+(defwidget workspace-minimap-widget [data]
+  (box :class "workspace-minimap"
+       :orientation "v"
+       :space-evenly false
+       :valign "center"
+       :halign "center"
+    (for entry in data
+      (box :class "dot-v ${entry.active ? 'active' : 'inactive'}"
+           :halign "center"))))
+
+; Polling variables
+(defpoll date :interval "60s"
+  :initial "..."
+  "date '+%a %b %d'")
+
+(defpoll time :interval "1s"
+  :initial "..."
+  "date '+%H:%M'")
+
+(defpoll weather :interval "1800s"
+  :initial "..."
+  "~/.config/eww/scripts/weather.sh")
+
+; Per-monitor window minimaps
+(defpoll window-minimap-0 :interval "500ms"
+  :initial "[]"
+  "~/.config/eww/scripts/window-minimap.sh 'eDP-1'")
+
+(defpoll window-minimap-1 :interval "500ms"
+  :initial "[]"
+  "~/.config/eww/scripts/window-minimap.sh 'external'")
+
+(defpoll network :interval "5s"
+  :initial "..."
+  "nmcli -t -f active,ssid dev wifi | grep '^yes' | cut -d: -f2 || echo 'Disconnected'")
+
+(defpoll volume :interval "1s"
+  :initial "0"
+  "pactl get-sink-volume @DEFAULT_SINK@ | grep -oP '\\d+%' | head -1 | tr -d '%'")
+
+(defpoll volume-muted :interval "1s"
+  :initial ""
+  "pactl get-sink-mute @DEFAULT_SINK@ | grep -q 'yes' && echo 'muted' || echo ''")
+
+(defpoll volume-icon :interval "1s"
+  :initial "󰕾"
+  "sink=$(pactl get-default-sink); muted=$(pactl get-sink-mute @DEFAULT_SINK@ | grep -q 'yes' && echo 'yes'); if [ \"$muted\" = 'yes' ]; then echo '󰝟'; elif echo \"$sink\" | grep -q 'bluez'; then echo '󰂯'; elif echo \"$sink\" | grep -qi 'headphone\\|headset'; then echo '󰋋'; else vol=$(pactl get-sink-volume @DEFAULT_SINK@ | grep -oP '\\d+%' | head -1 | tr -d '%'); if [ $vol -lt 33 ]; then echo '󰕿'; elif [ $vol -lt 66 ]; then echo '󰖀'; else echo '󰕾'; fi; fi")
+
+(defpoll battery :interval "10s"
+  :initial "100"
+  "cap=$(cat /sys/class/power_supply/BAT*/capacity 2>/dev/null | head -1 || echo '100'); [ $cap -gt 100 ] && echo '100' || echo $cap")
+
+(defpoll battery-status :interval "10s"
+  :initial "full"
+  "cat /sys/class/power_supply/BAT*/status 2>/dev/null | head -1 | tr '[:upper:]' '[:lower:]' || echo 'full'")
+
+(defpoll battery-icon :interval "10s"
+  :initial "󰁹"
+  "status=$(cat /sys/class/power_supply/BAT*/status 2>/dev/null | head -1); if [ \"$status\" = 'Charging' ]; then echo '󱐋'; elif [ \"$status\" = 'Full' ]; then echo '󰁹'; else cap=$(cat /sys/class/power_supply/BAT*/capacity 2>/dev/null | head -1 || echo '100'); if [ $cap -lt 10 ]; then echo '󰁺'; elif [ $cap -lt 20 ]; then echo '󰁻'; elif [ $cap -lt 30 ]; then echo '󰁼'; elif [ $cap -lt 40 ]; then echo '󰁽'; elif [ $cap -lt 50 ]; then echo '󰁾'; elif [ $cap -lt 60 ]; then echo '󰁿'; elif [ $cap -lt 70 ]; then echo '󰂀'; elif [ $cap -lt 80 ]; then echo '󰂁'; elif [ $cap -lt 90 ]; then echo '󰂂'; else echo '󰁹'; fi; fi")
+
+; Per-monitor workspace minimaps
+(defpoll workspace-minimap-0 :interval "500ms"
+  :initial "[]"
+  "~/.config/eww/scripts/workspace-minimap.sh 'eDP-1'")
+
+(defpoll workspace-minimap-1 :interval "500ms"
+  :initial "[]"
+  "~/.config/eww/scripts/workspace-minimap.sh 'external'")
+
+(defpoll cpu :interval "2s"
+  :initial "0"
+  "top -bn1 | grep 'Cpu(s)' | awk '{print int($2)}'")
+
+(defpoll cpu-icon :interval "2s"
+  :initial "󰾆"
+  "cpu=$(top -bn1 | grep 'Cpu(s)' | awk '{print int($2)}'); if [ $cpu -lt 25 ]; then echo '󰾆'; elif [ $cpu -lt 50 ]; then echo '󰾅'; elif [ $cpu -lt 75 ]; then echo '󰾄'; else echo '󰓅'; fi")

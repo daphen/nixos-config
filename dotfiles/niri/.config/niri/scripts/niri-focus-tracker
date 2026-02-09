@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+import json, subprocess, sys, time, re
+from pathlib import Path
+
+STATE_DIR = Path("/tmp/niri-focus-tracker")
+STATE_DIR.mkdir(exist_ok=True)
+
+# Limit the number of windows we track to prevent memory leaks
+WINDOW_LIMIT = 15
+
+last_active = {}
+window_to_app = {}
+
+def cleanup_old_windows():
+    """Remove oldest windows when we exceed the limit"""
+    if len(last_active) > WINDOW_LIMIT:
+        # Sort by last active time and remove oldest
+        sorted_windows = sorted(last_active.items(), key=lambda x: x[1])
+        num_to_remove = len(last_active) - WINDOW_LIMIT
+
+        for window_id, _ in sorted_windows[:num_to_remove]:
+            if window_id in last_active:
+                del last_active[window_id]
+            if window_id in window_to_app:
+                del window_to_app[window_id]
+
+def remove_window(window_id):
+    """Remove a window from tracking when it's closed"""
+    if window_id in last_active:
+        del last_active[window_id]
+    if window_id in window_to_app:
+        app_id = window_to_app[window_id]
+        del window_to_app[window_id]
+        # Update the state file if this was the last active window for the app
+        state_file = STATE_DIR / f"app-{app_id}"
+        if state_file.exists() and state_file.read_text().strip() == str(window_id):
+            # Find another window for this app if one exists
+            for wid, aid in window_to_app.items():
+                if aid == app_id:
+                    state_file.write_text(str(wid))
+                    break
+            else:
+                # No other windows for this app, remove the state file
+                state_file.unlink(missing_ok=True)
+
+def update_focus(window_id, app_id):
+    last_active[window_id] = time.time()
+    window_to_app[window_id] = app_id
+    (STATE_DIR / f"app-{app_id}").write_text(str(window_id))
+    cleanup_old_windows()
+
+def get_initial_state():
+    result = subprocess.run(['niri', 'msg', '--json', 'windows'], capture_output=True, text=True)
+    for w in json.loads(result.stdout):
+        if w.get('id') and w.get('app_id'):
+            window_to_app[w['id']] = w['app_id']
+            last_active[w['id']] = time.time()
+            if w.get('is_focused'):
+                update_focus(w['id'], w['app_id'])
+
+get_initial_state()
+process = subprocess.Popen(['niri', 'msg', 'event-stream'], stdout=subprocess.PIPE, text=True, bufsize=1)
+
+for line in process.stdout:
+    # Handle window focus events
+    m = re.search(r'Window focus changed:\s*Some\((\d+)\)', line)
+    if m:
+        wid = int(m.group(1))
+        app_id = window_to_app.get(wid)
+        if app_id:
+            update_focus(wid, app_id)
+        else:
+            get_initial_state()
+            if wid in window_to_app:
+                update_focus(wid, window_to_app[wid])
+
+    # Handle window close events
+    m = re.search(r'Window closed:\s*(\d+)', line)
+    if m:
+        wid = int(m.group(1))
+        remove_window(wid)

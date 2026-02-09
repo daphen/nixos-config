@@ -1,0 +1,19 @@
+#!/bin/bash
+# Toggle webcam on/off by binding/unbinding the USB device
+# For ASUS Zenbook S 16 with Shinetech ASUS FHD webcam (ID 3277:0059)
+
+WEBCAM_USB="1-1"
+STATE_FILE="/tmp/webcam-state"
+
+# Check if webcam is currently bound
+if [ -d "/sys/bus/usb/devices/$WEBCAM_USB/driver" ]; then
+    # Webcam is on, turn it off
+    echo "$WEBCAM_USB" | sudo tee /sys/bus/usb/drivers/usb/unbind > /dev/null 2>&1
+    echo "off" > "$STATE_FILE"
+    notify-send -t 2000 -i camera-off "Camera" "Camera disabled"
+else
+    # Webcam is off, turn it on
+    echo "$WEBCAM_USB" | sudo tee /sys/bus/usb/drivers/usb/bind > /dev/null 2>&1
+    echo "on" > "$STATE_FILE"
+    notify-send -t 2000 -i camera-on "Camera" "Camera enabled"
+fi

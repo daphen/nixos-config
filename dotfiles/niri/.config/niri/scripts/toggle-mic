@@ -1,0 +1,11 @@
+#!/bin/bash
+# Toggle microphone mute and sync the keyboard LED
+
+# Toggle mute via wpctl
+wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+
+# Get current mute state
+MUTED=$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -c MUTED)
+
+# Sync the LED (1 = muted/LED on, 0 = unmuted/LED off)
+echo "$MUTED" | sudo tee /sys/class/leds/platform::micmute/brightness > /dev/null 2>&1

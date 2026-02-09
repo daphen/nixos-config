@@ -6,7 +6,7 @@
 
   # Ghostty (primary terminal)
   xdg.configFile."ghostty/config" = {
-    source = ../../dotfiles-source/ghostty/config;
+    source = ../../dotfiles/ghostty/.config/ghostty/config;
   };
 
   # WezTerm
@@ -16,7 +16,7 @@
   };
   
   xdg.configFile."wezterm" = {
-    source = ../../dotfiles-source/wezterm;
+    source = ../../dotfiles/wezterm/.config/wezterm;
     recursive = true;
   };
 

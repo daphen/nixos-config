@@ -6,13 +6,12 @@
   
   programs.waybar = {
     enable = true;
-    # systemd integration
     systemd.enable = true;
   };
   
   # Copy Waybar configuration and styles from dotfiles
   xdg.configFile."waybar" = {
-    source = ../../dotfiles-source/waybar;
+    source = ../../dotfiles/waybar/.config/waybar;
     recursive = true;
   };
   
@@ -20,7 +19,8 @@
   # - config: Main waybar configuration
   # - style.css: Waybar styling
   # - scripts/: Custom scripts for waybar modules
-  #   - wifi menu
   #   - audio menu
   #   - niri workspace minimap
+  # 
+  # Edit files in ~/nixos/dotfiles/waybar and changes take effect immediately!
 }

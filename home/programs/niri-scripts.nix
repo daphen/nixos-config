@@ -6,7 +6,7 @@ let
   
   niri-scripts = pkgs.stdenv.mkDerivation {
     name = "niri-scripts";
-    src = ../../dotfiles-source/niri/scripts;
+    src = ../../dotfiles/niri/.config/niri/scripts;
     
     buildInputs = with pkgs; [
       bash
@@ -41,7 +41,7 @@ in {
   
   # Copy Niri configuration
   xdg.configFile."niri/config.kdl" = {
-    source = ../../dotfiles-source/niri/config.kdl;
+    source = ../../dotfiles/niri/.config/niri/config.kdl;
   };
   
   # Individual script descriptions:
