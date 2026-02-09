@@ -25,17 +25,18 @@
   ];
 
   # Import modular configurations
-  # NOTE: Dotfile-dependent imports commented out for initial testing
+  # All dotfiles are now in ~/nixos/dotfiles/ (same repo!)
+  # Edit dotfiles directly - changes take effect immediately (no rebuild needed)
   imports = [
     ./programs/git.nix
-    ./programs/fish.nix          # Re-enabled - works perfectly in QEMU!
-    # ./programs/neovim.nix        # Requires dotfiles-source
-    # ./programs/terminals.nix     # Requires dotfiles-source
-    # ./programs/niri-scripts.nix  # Requires dotfiles-source
-    # ./dotfiles/theme-system.nix  # Requires dotfiles-source
-    # ./dotfiles/waybar.nix        # Requires dotfiles-source
-    # ./dotfiles/mako.nix          # Requires dotfiles-source
-    # ./dotfiles/misc.nix          # Requires dotfiles-source
+    ./programs/fish.nix
+    ./programs/neovim.nix
+    ./programs/terminals.nix
+    ./programs/niri-scripts.nix
+    ./dotfiles/theme-system.nix
+    ./dotfiles/waybar.nix
+    ./dotfiles/mako.nix
+    ./dotfiles/misc.nix
   ];
 
   # Environment variables
