@@ -44,7 +44,7 @@
     EDITOR = "nvim";
     VISUAL = "nvim";
     BROWSER = "zen-browser";
-    TERMINAL = "ghostty";
+    TERMINAL = "kitty";
   };
 
   # XDG directories

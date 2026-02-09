@@ -4,10 +4,14 @@
   # Terminal Emulators Configuration
   # =================================
 
-  # Ghostty (primary terminal) - config not in dotfiles yet
-  # xdg.configFile."ghostty/config" = {
-  #   source = ../../dotfiles/ghostty/.config/ghostty/config;
-  # };
+  # Kitty (primary terminal)
+  programs.kitty = {
+    enable = true;
+    font = {
+      name = "BerkeleyMono Nerd Font";
+      size = 13;
+    };
+  };
 
   # WezTerm
   programs.wezterm = {
@@ -20,15 +24,7 @@
     recursive = true;
   };
 
-  # Kitty
-  programs.kitty = {
-    enable = true;
-    # Basic Kitty settings, can be expanded
-    font = {
-      name = "BerkeleyMono Nerd Font";
-      size = 13;
-    };
-  };
+
 
   # Alacritty
   programs.alacritty = {
