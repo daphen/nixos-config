@@ -21,7 +21,7 @@ in {
   
   # Copy theme system files
   xdg.configFile."themes" = {
-    source = ../../dotfiles/themes/.config/themes;
+    source = ../../dotfiles/themes;
     recursive = true;
   };
   

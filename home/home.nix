@@ -33,7 +33,7 @@
     ./programs/neovim.nix
     ./programs/terminals.nix
     ./programs/niri-scripts.nix
-    # ./dotfiles/theme-system.nix  # Themes not in dotfiles yet
+    ./dotfiles/theme-system.nix
     ./dotfiles/waybar.nix
     ./dotfiles/mako.nix
     ./dotfiles/misc.nix
