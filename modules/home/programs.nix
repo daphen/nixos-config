@@ -52,7 +52,6 @@
   programs.kitty.enable = true;
   programs.wezterm.enable = true;
   programs.alacritty.enable = true;
-  programs.tmux.enable = true;
 
   # File manager
   programs.yazi = {

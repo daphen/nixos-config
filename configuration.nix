@@ -208,7 +208,6 @@
     libva-utils
     
     # Misc Tools
-    tmux
     bun
     # opencode  # Claude Code CLI
     

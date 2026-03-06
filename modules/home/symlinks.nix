@@ -14,7 +14,6 @@ in {
     "fish/conf.d".source = link "${dotfiles}/fish/.config/fish/conf.d";
     "kitty".source = link "${dotfiles}/kitty/.config/kitty";
     "wezterm".source = link "${dotfiles}/wezterm/.config/wezterm";
-    "tmux".source = link "${dotfiles}/tmux/.config/tmux";
     "git/personal".source = link "${dotfiles}/git/.config/git/personal";
     "git/work".source = link "${dotfiles}/git/.config/git/work";
     "git/ignore".source = link "${dotfiles}/git/.config/git/ignore";
@@ -26,7 +25,7 @@ in {
     "kanata".source = link "${dotfiles}/kanata/.config/kanata";
     "niri/config.kdl".source = link "${dotfiles}/niri/.config/niri/config.kdl";
     "systemd/user".source = link "${dotfiles}/systemd/.config/systemd/user";
-    "themes".source = link "${dotfiles}/themes";
+    "themes".source = link "${dotfiles}/themes/.config/themes";
   };
 
   # Files in $HOME (outside ~/.config)
