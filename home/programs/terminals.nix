@@ -1,59 +1,32 @@
 { config, pkgs, ... }:
 
 {
-  # Terminal Emulators Configuration
-  # =================================
+  # Terminal Emulators - install packages, configs live in dotfiles
 
   # Kitty (primary terminal)
-  programs.kitty = {
-    enable = true;
-    font = {
-      name = "BerkeleyMono Nerd Font";
-      size = 13;
-    };
-  };
+  programs.kitty.enable = true;
 
-  # WezTerm
-  programs.wezterm = {
-    enable = true;
-    # Copy WezTerm config from dotfiles
-  };
-  
-  xdg.configFile."wezterm" = {
-    source = ../../dotfiles/wezterm/.config/wezterm;
+  xdg.configFile."kitty" = {
+    source = ../../dotfiles-source/kitty/.config/kitty;
     recursive = true;
   };
 
+  # WezTerm
+  programs.wezterm.enable = true;
 
-
-  # Alacritty
-  programs.alacritty = {
-    enable = true;
-    settings = {
-      font = {
-        normal = {
-          family = "BerkeleyMono Nerd Font";
-          style = "Regular";
-        };
-        size = 13;
-      };
-    };
+  xdg.configFile."wezterm" = {
+    source = ../../dotfiles-source/wezterm/.config/wezterm;
+    recursive = true;
   };
 
+  # Alacritty (no config in dotfiles yet - will use defaults)
+  programs.alacritty.enable = true;
+
   # Tmux
-  programs.tmux = {
-    enable = true;
-    terminal = "tmux-256color";
-    keyMode = "vi";
-    customPaneNavigationAndResize = true;
-    
-    extraConfig = ''
-      # Copy your tmux.conf settings here
-      # Or source from dotfiles
-      
-      # Example: Rose Pine theme colors
-      set -g status-bg "#121212"
-      set -g status-fg "#ededed"
-    '';
+  programs.tmux.enable = true;
+
+  xdg.configFile."tmux" = {
+    source = ../../dotfiles-source/tmux/.config/tmux;
+    recursive = true;
   };
 }

@@ -1,49 +1,8 @@
 { config, pkgs, ... }:
 
 {
-  # Git Configuration
-  # =================
-  
-  programs.git = {
-    enable = true;
-    
-    userName = "daphen";
-    userEmail = "your-email@example.com";  # TODO: Update with your email
-    
-    extraConfig = {
-      init.defaultBranch = "main";
-      pull.rebase = false;
-      core.editor = "nvim";
-      
-      # Additional git settings
-      push.autoSetupRemote = true;
-      rerere.enabled = true;
-    };
-    
-    # Git aliases
-    aliases = {
-      st = "status";
-      co = "checkout";
-      br = "branch";
-      ci = "commit";
-      unstage = "reset HEAD --";
-      last = "log -1 HEAD";
-      visual = "log --graph --oneline --all";
-    };
-    
-    # Git ignore globally
-    ignores = [
-      ".DS_Store"
-      "*.swp"
-      "*.swo"
-      "*~"
-      ".direnv"
-      "node_modules"
-      ".env"
-      ".vscode"
-      ".idea"
-    ];
-  };
+  # Git - install packages, config lives in dotfiles
+  programs.git.enable = true;
 
   # GitHub CLI
   programs.gh = {
@@ -55,16 +14,28 @@
   };
 
   # Lazygit
-  programs.lazygit = {
-    enable = true;
-    settings = {
-      gui = {
-        theme = {
-          activeBorderColor = [ "#a9b9ef" "bold" ];
-          inactiveBorderColor = [ "#767676" ];
-          selectedLineBgColor = [ "#121e42" ];
-        };
-      };
+  programs.lazygit.enable = true;
+
+  # Git config files from the shared dotfiles repo
+  # .gitconfig and .gitignore_global live in $HOME (not .config)
+  home.file = {
+    ".gitconfig" = {
+      source = ../../dotfiles-source/git/.gitconfig;
+    };
+    ".gitignore_global" = {
+      source = ../../dotfiles-source/git/.gitignore_global;
+    };
+  };
+
+  xdg.configFile = {
+    "git/personal" = {
+      source = ../../dotfiles-source/git/.config/git/personal;
+    };
+    "git/work" = {
+      source = ../../dotfiles-source/git/.config/git/work;
+    };
+    "git/ignore" = {
+      source = ../../dotfiles-source/git/.config/git/ignore;
     };
   };
 }

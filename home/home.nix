@@ -16,16 +16,13 @@
   programs.home-manager.enable = true;
 
   # User packages (in addition to system packages)
+  # Note: Most packages are installed via programs.<app>.enable in their
+  # respective modules. Add any extra user-specific packages here.
   home.packages = with pkgs; [
-    # Additional user-specific packages
-    tmux
-    
-    # Note: Most packages are in system configuration
-    # Add user-specific packages here
   ];
 
   # Import modular configurations
-  # All dotfiles are now in ~/nixos/dotfiles/ (same repo!)
+  # All dotfiles are symlinked from ~/dotfiles/ (shared with Arch via GNU Stow)
   # Edit dotfiles directly - changes take effect immediately (no rebuild needed)
   imports = [
     ./programs/git.nix
