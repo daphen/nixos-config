@@ -1,4 +1,0 @@
-#!/bin/bash
-# Spawn the Go TUI in quick create mode
-
-kitty /home/daphen/personal/notes/cli/notes-cli -create

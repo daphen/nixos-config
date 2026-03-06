@@ -83,7 +83,7 @@
                 backupFileExtension = "backup";
                 
                 # Main user configuration
-                users.daphen = import ./home/home.nix;
+                users.daphen = import ./modules/home;
                 
                 # Pass extra arguments to home-manager
                 extraSpecialArgs = { 
@@ -102,7 +102,7 @@
           inherit pkgs;
           
           modules = [
-            ./home/home.nix
+            ./modules/home
           ];
           
           extraSpecialArgs = {
