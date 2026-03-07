@@ -171,7 +171,7 @@
     
     # Media
     spotify
-    # spotify-player  # Check if available
+    spotify-player
     
     # Office
     libreoffice-fresh
