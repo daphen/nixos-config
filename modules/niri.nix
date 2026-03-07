@@ -8,7 +8,7 @@
   # programs.niri options, dbus config, polkit, portals, etc.
   
   programs.niri.enable = true;
-  program.niri.package = inputs.niri-flake.packages.x86_64-linux.niri-stable;
+  programs.niri.package = inputs.niri-flake.packages.x86_64-linux.niri-stable;
   
   # Use console autologin instead
   services.getty.autologinUser = "daphen";
