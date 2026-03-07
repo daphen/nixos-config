@@ -171,10 +171,10 @@
     # Office
     libreoffice-fresh
     
-    # Virtualization
-    qemu_full
-    libvirt
-    virt-manager
+    # Virtualization - disabled, broken python deps on unstable
+    # qemu_full
+    # libvirt
+    # virt-manager
     
     # Container Tools
     docker
@@ -250,8 +250,8 @@
   # Enable Docker
   virtualisation.docker.enable = true;
   
-  # Enable libvirt
-  virtualisation.libvirtd.enable = true;
+  # Enable libvirt - disabled, broken python deps on unstable
+  # virtualisation.libvirtd.enable = true;
   
   # Enable VirtualBox (if needed)
   # virtualisation.virtualbox.host.enable = true;
