@@ -15,7 +15,7 @@
   hardware.graphics.package = pkgs.unstable.mesa;
   hardware.graphics.extraPackages = with pkgs.unstable; [
     intel-media-driver
-    vaapiIntel
+    intel-vaapi-driver
   ];
 
   # Hostname
