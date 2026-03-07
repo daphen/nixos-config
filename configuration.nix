@@ -185,7 +185,7 @@
     mkcert
     
     # Keyboard Tools
-    # kanata  # Available in nixpkgs
+    kanata
     # keyd
     
     # Text Expansion
