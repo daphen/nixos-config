@@ -24,6 +24,7 @@ in {
     "eww".source = link "${dotfiles}/eww/.config/eww";
     "kanata".source = link "${dotfiles}/kanata/.config/kanata";
     "niri/config.kdl".source = link "${dotfiles}/niri/.config/niri/config.kdl";
+    "niri/scripts".source = link "${dotfiles}/niri/.config/niri/scripts";
     "themes".source = link "${dotfiles}/themes/.config/themes";
   };
 
