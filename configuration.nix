@@ -106,7 +106,7 @@
     # Terminal Emulators
     alacritty
     kitty
-    unstable.ghostty  # Latest version from unstable
+    ghostty
     wezterm
     
     # Browsers

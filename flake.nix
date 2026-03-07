@@ -2,15 +2,12 @@
   description = "NixOS configuration - migrated from Arch Linux";
 
   inputs = {
-    # Use latest stable NixOS
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
-    
-    # Use unstable for cutting-edge packages
-    nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
+    # Use unstable nixpkgs for latest kernel/mesa (needed for new Intel GPU)
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
-    # Home Manager for user configuration
+    # Home Manager - use master branch for unstable nixpkgs compatibility
     home-manager = {
-      url = "github:nix-community/home-manager/release-24.11";
+      url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -18,36 +15,23 @@
     niri-flake.url = "github:sodiboo/niri-flake";
 
     # Override niri-stable to v25.11 (matches Arch machine)
-    # This makes niri-flake build v25.11 instead of its default v25.08
     niri-flake.inputs.niri-stable.url = "github:YaLTeR/niri/v25.11";
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, home-manager, niri-flake, ... }@inputs:
+  outputs = { self, nixpkgs, home-manager, niri-flake, ... }@inputs:
     let
       system = "x86_64-linux";
       
-      # Create a pkgs instance with unstable overlay
       pkgs = import nixpkgs {
         inherit system;
         config = {
           allowUnfree = true;
           allowUnfreePredicate = (_: true);
         };
-        overlays = [
-          # Overlay to access unstable packages
-          (final: prev: {
-            unstable = import nixpkgs-unstable {
-              inherit system;
-              config.allowUnfree = true;
-            };
-          })
-        ];
       };
 
     in {
       nixosConfigurations = {
-        # Main system configuration
-        # Change "nixos" to your desired hostname
         nixos = nixpkgs.lib.nixosSystem {
           inherit system;
           
@@ -93,21 +77,6 @@
               };
             }
           ];
-        };
-      };
-
-      # Standalone home-manager configuration (optional, for non-NixOS systems)
-      homeConfigurations = {
-        daphen = home-manager.lib.homeManagerConfiguration {
-          inherit pkgs;
-          
-          modules = [
-            ./modules/home
-          ];
-          
-          extraSpecialArgs = {
-            inherit inputs;
-          };
         };
       };
 
