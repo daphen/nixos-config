@@ -7,15 +7,13 @@
   # Bootloader
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
-  boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
+  boot.kernelPackages = pkgs.linuxPackages_latest;
   boot.kernelParams = [ "i915.enable_psr=0" "i915.enable_dc=0" "i915.enable_guc=0" ];
   hardware.enableRedistributableFirmware = true;
   hardware.enableAllFirmware = true;
   hardware.graphics.enable = true;
-  hardware.graphics.package = pkgs.unstable.mesa;
-  hardware.graphics.extraPackages = with pkgs.unstable; [
+  hardware.graphics.extraPackages = with pkgs; [
     intel-media-driver
-    intel-vaapi-driver
   ];
 
   # Hostname
