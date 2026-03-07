@@ -49,8 +49,7 @@
     extraGroups = [ 
       "networkmanager" 
       "wheel" 
-      "docker" 
-      "libvirtd"
+      "docker"
       "video"
       "audio"
     ];
@@ -171,10 +170,7 @@
     # Office
     libreoffice-fresh
     
-    # Virtualization - disabled, broken python deps on unstable
-    # qemu_full
-    # libvirt
-    # virt-manager
+
     
     # Container Tools
     docker
@@ -249,13 +245,6 @@
 
   # Enable Docker
   virtualisation.docker.enable = true;
-  
-  # Enable libvirt - disabled, broken python deps on unstable
-  # virtualisation.libvirtd.enable = true;
-  
-  # Enable VirtualBox (if needed)
-  # virtualisation.virtualbox.host.enable = true;
-  # users.extraGroups.vboxusers.members = [ "daphen" ];
 
   # XDG Desktop Portal for Wayland
   # Note: niri-flake module already sets up xdg.portal with xdg-desktop-portal-gnome
