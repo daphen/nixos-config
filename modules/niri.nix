@@ -1,20 +1,15 @@
-{ config, pkgs, ... }:
+{ config, pkgs, inputs, ... }:
 
 {
   # Niri Window Manager Configuration
   # ==================================
+  # Uses niri-stable from niri-flake (overridden to v25.11 in flake.nix)
+  # The niri-flake nixosModule is imported in flake.nix and provides
+  # programs.niri options, dbus config, polkit, portals, etc.
   
-  programs.niri = {
-    enable = true;
-    package = pkgs.niri.overrideAttrs (old: {
-      src = pkgs.fetchFromGitHub {
-        owner = "YaLTeR";
-        repo = "niri";
-        rev = "b35bcae";
-        hash = "sha256-FC9eYtSmplgxllCX4/3hJq5JJ3sXWKLSc7at8ZUxycVw==";
-      };
-    });
-  };
+  programs.niri.enable = true;
+  # niri-stable is the default package from niri-flake
+  # We've overridden the niri-stable input to v25.11 in flake.nix
 
   # Disable greetd - causes VM freezes
   # TODO: Re-enable once VM graphics issues are resolved

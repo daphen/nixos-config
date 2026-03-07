@@ -259,12 +259,12 @@
   # users.extraGroups.vboxusers.members = [ "daphen" ];
 
   # XDG Desktop Portal for Wayland
+  # Note: niri-flake module already sets up xdg.portal with xdg-desktop-portal-gnome
+  # Only add extra portals here if needed
   xdg.portal = {
     enable = true;
-    wlr.enable = true;
     extraPortals = with pkgs; [
       xdg-desktop-portal-gtk
-      xdg-desktop-portal-wlr
     ];
   };
 

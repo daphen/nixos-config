@@ -4,11 +4,6 @@
   inputs = {
     # Use latest stable NixOS
     nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
-
-    niri-flake = {
-      url = "github:sodiboo/niri-flake";
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
-    };
     
     # Use unstable for cutting-edge packages
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
@@ -18,6 +13,16 @@
       url = "github:nix-community/home-manager/release-24.11";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Niri flake - provides proper niri build with all dependencies
+    niri-flake = {
+      url = "github:sodiboo/niri-flake";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
+    };
+
+    # Override niri-stable to v25.11 (matches Arch machine)
+    # This makes niri-flake build v25.11 instead of its default v25.08
+    niri-flake.inputs.niri-stable.url = "github:YaLTeR/niri/v25.11";
   };
 
   outputs = { self, nixpkgs, nixpkgs-unstable, home-manager, niri-flake, ... }@inputs:
@@ -61,6 +66,9 @@
             # Hardware configuration (auto-generated)
             ./hardware-configuration.nix
             
+            # Niri flake module (sets up dbus, portals, polkit, etc.)
+            niri-flake.nixosModules.niri
+
             # System modules
             ./modules/niri.nix
             ./modules/audio.nix
