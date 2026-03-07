@@ -12,6 +12,8 @@ in {
     "fish/config.fish".source = link "${dotfiles}/fish/.config/fish/config.fish";
     "fish/functions".source = link "${dotfiles}/fish/.config/fish/functions";
     "fish/conf.d".source = link "${dotfiles}/fish/.config/fish/conf.d";
+    "fish/fish_variables".source = link "${dotfiles}/fish/.config/fish/fish_variables";
+    "fish/completions".source = link "${dotfiles}/fish/.config/fish/completions";
     "kitty".source = link "${dotfiles}/kitty/.config/kitty";
     "wezterm".source = link "${dotfiles}/wezterm/.config/wezterm";
     "git/personal".source = link "${dotfiles}/git/.config/git/personal";
