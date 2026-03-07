@@ -218,6 +218,7 @@
     # System Tools
     efibootmgr
     iptables  # Note: Changed from iptables-nft (nixpkgs uses 'iptables')
+    xorg.xset  # Needed by kanata for key repeat rate
     
     # Development Languages/Tools
     nodejs
