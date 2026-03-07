@@ -15,10 +15,7 @@
     };
 
     # Niri flake - provides proper niri build with all dependencies
-    niri-flake = {
-      url = "github:sodiboo/niri-flake";
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
-    };
+    niri-flake.url = "github:sodiboo/niri-flake";
 
     # Override niri-stable to v25.11 (matches Arch machine)
     # This makes niri-flake build v25.11 instead of its default v25.08

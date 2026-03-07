@@ -8,20 +8,7 @@
   # programs.niri options, dbus config, polkit, portals, etc.
   
   programs.niri.enable = true;
-  # niri-stable is the default package from niri-flake
-  # We've overridden the niri-stable input to v25.11 in flake.nix
-
-  # Disable greetd - causes VM freezes
-  # TODO: Re-enable once VM graphics issues are resolved
-  # services.greetd = {
-  #   enable = true;
-  #   settings = {
-  #     default_session = {
-  #       command = "${pkgs.greetd.tuigreet}/bin/tuigreet --cmd niri-session";
-  #       user = "greeter";
-  #     };
-  #   };
-  # };
+  program.niri.package = inputs.niri-flake.packages.x86_64-linux.niri-stable;
   
   # Use console autologin instead
   services.getty.autologinUser = "daphen";
