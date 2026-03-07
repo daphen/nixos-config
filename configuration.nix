@@ -181,7 +181,7 @@
     docker-compose
     
     # Cloud Tools
-    azure-cli
+    # azure-cli  # TODO: broken on unstable, re-enable later
     
     # Security
     # 1password  # Needs special handling
