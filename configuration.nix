@@ -59,6 +59,12 @@
   # Enable Fish shell system-wide
   programs.fish.enable = true;
 
+  # Make /bin/bash available (NixOS doesn't have it by default, needed by scripts)
+  environment.binsh = "${pkgs.bash}/bin/bash";
+  system.activationScripts.binbash = ''
+    ln -sf ${pkgs.bash}/bin/bash /bin/bash
+  '';
+
   # Allow wheel group to use sudo without password
   security.sudo.wheelNeedsPassword = false;
 
