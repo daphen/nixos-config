@@ -12,7 +12,8 @@ in {
     "fish/config.fish".source = link "${dotfiles}/fish/.config/fish/config.fish";
     "fish/functions".source = link "${dotfiles}/fish/.config/fish/functions";
     "fish/conf.d".source = link "${dotfiles}/fish/.config/fish/conf.d";
-    "fish/fish_variables".source = link "${dotfiles}/fish/.config/fish/fish_variables";
+    # Note: fish_variables is NOT symlinked because fish rewrites it constantly.
+    # Copy it manually on new installs: cp ~/dotfiles/fish/.config/fish/fish_variables ~/.config/fish/
     "fish/fish_plugins".source = link "${dotfiles}/fish/.config/fish/fish_plugins";
     "fish/completions".source = link "${dotfiles}/fish/.config/fish/completions";
     "kitty".source = link "${dotfiles}/kitty/.config/kitty";
