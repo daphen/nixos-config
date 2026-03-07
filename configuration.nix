@@ -156,7 +156,7 @@
     waypaper
     
     # Fonts
-    noto-fonts-emoji
+    noto-fonts-color-emoji
     # Need to add custom fonts like BerkeleyMono
     
     # Communication
@@ -235,7 +235,7 @@
   fonts.packages = with pkgs; [
     noto-fonts
     noto-fonts-cjk-sans  # Renamed from noto-fonts-cjk
-    noto-fonts-emoji
+    noto-fonts-color-emoji
     font-awesome
     # nerdfonts  # Temporarily disabled - download failing
     # Add custom fonts here
