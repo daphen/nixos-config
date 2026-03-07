@@ -4,6 +4,11 @@
   inputs = {
     # Use latest stable NixOS
     nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+
+    niri-flake = {
+      url = "github:sodiboo/niri-flake";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
+    };
     
     # Use unstable for cutting-edge packages
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
@@ -12,13 +17,6 @@
     home-manager = {
       url = "github:nix-community/home-manager/release-24.11";
       inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    # Niri window manager (Wayland scrollable tiling compositor)
-    # Using unstable or a specific niri flake if needed
-    niri-flake = {
-      url = "github:sodiboo/niri-flake";
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
   };
 
@@ -68,9 +66,6 @@
             ./modules/audio.nix
             ./modules/bluetooth.nix
             ./modules/networking.nix
-            
-            # Niri flake module
-            niri-flake.nixosModules.niri
             
             # Home Manager integration
             home-manager.nixosModules.home-manager

@@ -10,7 +10,6 @@
   imports = [
     ./symlinks.nix
     ./programs.nix
-    ./niri-scripts.nix
     ./theme-system.nix
   ];
 

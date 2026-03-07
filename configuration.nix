@@ -7,6 +7,15 @@
   # Bootloader
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
+  boot.kernelPackages = pkgs.linuxPackages_latest;
+  boot.kernelParams = [ "i915.enable_psr=0" "i915.enable_dc=0" ];
+  hardware.enableRedistributableFirmware = true;
+  hardware.enableAllFirmware = true;
+  hardware.graphics.enable = true;
+  hardware.graphics.extraPackages = with pkgs; [
+    intel-media-driver
+    vaapiIntel
+  ];
 
   # Hostname
   networking.hostName = "nixos";
@@ -15,7 +24,7 @@
   networking.networkmanager.enable = true;
 
   # Time zone
-  time.timeZone = "America/New_York";  # Adjust to your timezone
+  time.timeZone = "Europe/Stockholm";  # Adjust to your timezone
 
   # Internationalisation
   i18n.defaultLocale = "en_US.UTF-8";

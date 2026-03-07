@@ -3,7 +3,6 @@
 { pkgs, ... }:
 {
   # Shell
-  programs.fish.enable = true;
   programs.fzf = {
     enable = true;
     enableFishIntegration = true;
@@ -47,24 +46,4 @@
     };
   };
   programs.lazygit.enable = true;
-
-  # Terminals
-  programs.kitty.enable = true;
-  programs.wezterm.enable = true;
-  programs.alacritty.enable = true;
-
-  # File manager
-  programs.yazi = {
-    enable = true;
-    enableFishIntegration = true;
-  };
-
-  # Notifications
-  services.mako.enable = true;
-
-  # Waybar
-  programs.waybar = {
-    enable = true;
-    systemd.enable = true;
-  };
 }

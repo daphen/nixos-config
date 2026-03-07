@@ -6,7 +6,14 @@
   
   programs.niri = {
     enable = true;
-    package = pkgs.unstable.niri;
+    package = pkgs.niri.overrideAttrs (old: {
+      src = pkgs.fetchFromGitHub {
+        owner = "YaLTeR";
+        repo = "niri";
+        rev = "b35bcae";
+        hash = "sha256-FC9eYtSmplgxllCX4/3hJq5JJ3sXWKLSc7at8ZUxycVw==";
+      };
+    });
   };
 
   # Disable greetd - causes VM freezes
