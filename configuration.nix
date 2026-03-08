@@ -157,6 +157,10 @@
     rofimoji
     eww
     
+    # GTK / System Theme
+    dconf-editor
+    adwaita-icon-theme
+    
     # Display Management
     waypaper
     
@@ -267,6 +271,9 @@
       xdg-desktop-portal-gtk
     ];
   };
+
+  # dconf (needed for gsettings / GTK dark mode preference)
+  programs.dconf.enable = true;
 
   # OpenSSH
   services.openssh.enable = true;
