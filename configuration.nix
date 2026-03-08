@@ -186,8 +186,8 @@
     # azure-cli  # TODO: broken on unstable, re-enable later
     
     # Security
-    # 1password  # Needs special handling
-    # 1password-cli
+    _1password-gui
+    _1password-cli
     mkcert
     
     # Keyboard Tools
