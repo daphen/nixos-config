@@ -32,6 +32,8 @@ in {
     "rofi".source = link "${dotfiles}/rofi/.config/rofi";
     "opencode/tui.json".source = link "${dotfiles}/opencode/.config/opencode/tui.json";
     "opencode/themes".source = link "${dotfiles}/opencode/.config/opencode/themes";
+    "fastfetch".source = link "${dotfiles}/fastfetch/.config/fastfetch";
+    "waypaper".source = link "${dotfiles}/waypaper/.config/waypaper";
     "themes".source = link "${dotfiles}/themes/.config/themes";
   };
 
@@ -39,6 +41,8 @@ in {
   home.file = {
     ".gitconfig".source = link "${dotfiles}/git/.gitconfig";
     ".gitignore_global".source = link "${dotfiles}/git/.gitignore_global";
+    "Pictures/Wallpapers".source = link "${dotfiles}/wallpapers/Pictures/Wallpapers";
+    "Pictures/fastfetch".source = link "${dotfiles}/fastfetch/Pictures/fastfetch";
   };
 
   # Claude Code config lives at ~/.claude (not ~/.config)
