@@ -30,6 +30,8 @@ in {
     "niri/config.kdl".source = link "${dotfiles}/niri/.config/niri/config.kdl";
     "niri/scripts".source = link "${dotfiles}/niri/.config/niri/scripts";
     "rofi".source = link "${dotfiles}/rofi/.config/rofi";
+    "opencode/tui.json".source = link "${dotfiles}/opencode/.config/opencode/tui.json";
+    "opencode/themes".source = link "${dotfiles}/opencode/.config/opencode/themes";
     "themes".source = link "${dotfiles}/themes/.config/themes";
   };
 
