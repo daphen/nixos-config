@@ -101,7 +101,6 @@
     
     # File Management
     yazi
-    # dragon-drop  # TODO: Check correct package name in nixpkgs (might be 'dragon' or 'xdragon')
     
     # Version Control
     git
@@ -134,11 +133,12 @@
     
     # Clipboard Managers
     copyq
-    # clipse # May need to find in nixpkgs or package
+    clipse
     
     # Audio/Video
     pavucontrol
     brightnessctl
+    playerctl
     
     # Image Tools
     imagemagick
@@ -153,8 +153,8 @@
     
     # Launchers & Menus
     rofi
-    # rofi-bluetooth  # Need to find equivalent
-    # rofimoji
+    rofi-bluetooth
+    rofimoji
     eww
     
     # Display Management
@@ -195,7 +195,7 @@
     # keyd
     
     # Text Expansion
-    # espanso  # Check availability
+    espanso
     
     # Network Tools
     openssh
@@ -219,7 +219,8 @@
     
     # Misc Tools
     bun
-    # opencode  # Claude Code CLI
+    opencode
+    claude-code
     
     # System Tools
     efibootmgr
@@ -240,8 +241,10 @@
     noto-fonts-cjk-sans  # Renamed from noto-fonts-cjk
     noto-fonts-color-emoji
     font-awesome
-    # nerdfonts  # Temporarily disabled - download failing
-    # Add custom fonts here
+    nerd-fonts.jetbrains-mono
+    nerd-fonts.fira-code
+    nerd-fonts.symbols-only
+    # Add custom fonts here (e.g. BerkeleyMono)
   ];
 
   # Enable sound with pipewire

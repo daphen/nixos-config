@@ -29,6 +29,7 @@ in {
     "kanata".source = link "${dotfiles}/kanata/.config/kanata";
     "niri/config.kdl".source = link "${dotfiles}/niri/.config/niri/config.kdl";
     "niri/scripts".source = link "${dotfiles}/niri/.config/niri/scripts";
+    "rofi".source = link "${dotfiles}/rofi/.config/rofi";
     "themes".source = link "${dotfiles}/themes/.config/themes";
   };
 
