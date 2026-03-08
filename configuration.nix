@@ -242,6 +242,7 @@
     noto-fonts-cjk-sans  # Renamed from noto-fonts-cjk
     noto-fonts-color-emoji
     font-awesome
+    nerd-fonts.geist-mono
     nerd-fonts.jetbrains-mono
     nerd-fonts.fira-code
     nerd-fonts.symbols-only
