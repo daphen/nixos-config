@@ -233,6 +233,7 @@
     python3Packages.pip
     cargo
     rustc
+    go
   ];
 
   # Fonts
