@@ -98,6 +98,7 @@
     ripgrep
     fd
     jq
+    direnv
     
     # File Management
     yazi
