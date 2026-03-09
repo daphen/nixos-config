@@ -68,6 +68,9 @@
   # Allow wheel group to use sudo without password
   security.sudo.wheelNeedsPassword = false;
 
+  # Enable swaylock PAM authentication (for screen locking)
+  security.pam.services.swaylock = {};
+
   # System Packages
   # ===============
   environment.systemPackages = with pkgs; [
