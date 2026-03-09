@@ -288,6 +288,11 @@
   # Enable firmware updates
   services.fwupd.enable = true;
 
+  # Enable multiple virtual consoles for emergency access
+  # Ctrl+Alt+F1-F6 to switch between TTYs (F1 is your main session)
+  systemd.services."getty@tty2".enable = true;
+  systemd.services."getty@tty3".enable = true;
+
   # Nix settings
   nix = {
     settings = {
