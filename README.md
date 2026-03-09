@@ -247,25 +247,12 @@ sudo nixos-generate-config
 2. Check home-manager: `home-manager packages | grep -i config`
 3. Rebuild: `sudo nixos-rebuild switch --flake .#nixos`
 
-### Swaylock locked me out!
+### Emergency Access
 
-If swaylock locks your screen and you can't unlock:
-
-1. **Try TTY2 emergency access:**
-   - Press `Ctrl+Alt+F2` (may not work in Wayland)
-   - If it works, you'll be auto-logged in to TTY2
-   - Run: `pkill swaylock`
-   - Press `Ctrl+Alt+F1` to return to your session
-
-2. **If keyboard switching doesn't work:**
-   - Force reboot (hold power button)
-   - At boot menu, select a previous generation
-   - **Avoid Generation 27** (has Sway enabled, known broken)
-
-3. **Make sure you have a password set:**
-   - swaylock uses your user password to unlock
-   - Set password: `sudo passwd daphen`
-   - Note: sudo remains passwordless even after setting a user password
+If you need to recover your system:
+- Press `Ctrl+Alt+F2` to access TTY2 (may not work in Wayland)
+- Force reboot and select a previous generation from boot menu
+- **Avoid Generation 27** (has Sway enabled, known broken)
 
 ## Screen Locking
 
