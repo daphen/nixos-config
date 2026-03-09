@@ -37,7 +37,6 @@
           
           specialArgs = { 
             inherit inputs;
-            inherit pkgs;
           };
           
           modules = [
@@ -72,7 +71,6 @@
                 # Pass extra arguments to home-manager
                 extraSpecialArgs = { 
                   inherit inputs;
-                  inherit pkgs;
                 };
               };
             }
