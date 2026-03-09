@@ -288,10 +288,9 @@
   # Enable firmware updates
   services.fwupd.enable = true;
 
-  # Enable multiple virtual consoles for emergency access
-  # Ctrl+Alt+F1-F6 to switch between TTYs (F1 is your main session)
+  # Enable TTY2 for emergency access (if swaylock locks you out)
+  # Try Ctrl+Alt+F2 to switch (may not work in Wayland, use hard reboot if needed)
   systemd.services."getty@tty2".enable = true;
-  systemd.services."getty@tty3".enable = true;
 
   # Nix settings
   nix = {
