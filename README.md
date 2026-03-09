@@ -188,6 +188,27 @@ cd ~/.config/themes
 
 ## Troubleshooting
 
+### ⚠️ IMPORTANT: Always use the flake!
+
+**NEVER run `sudo nixos-rebuild switch` without `--flake`!**
+
+This system uses a flake-based configuration in `/home/daphen/nixos/`. The file `/etc/nixos/configuration.nix` is NOT used and should be ignored.
+
+**Always use:**
+```bash
+sudo nixos-rebuild switch --flake /home/daphen/nixos#nixos
+```
+
+Or use the fish abbreviation:
+```bash
+rebuild  # Expands to the full flake command
+```
+
+**Why this matters:**
+- Running `nixos-rebuild switch` without `--flake` will use `/etc/nixos/configuration.nix` instead of your flake
+- This can break your system by enabling conflicting services (like Sway vs Niri)
+- Always rebuild from the flake to ensure consistency
+
 ### Build errors
 
 ```bash

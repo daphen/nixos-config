@@ -35,6 +35,10 @@ in {
     "fastfetch".source = link "${dotfiles}/fastfetch/.config/fastfetch";
     "waypaper".source = link "${dotfiles}/waypaper/.config/waypaper";
     "themes".source = link "${dotfiles}/themes/.config/themes";
+    "clipse/custom_theme.json".source = link "${dotfiles}/clipse/.config/clipse/custom_theme.json";
+    "spotify-player/theme.toml".source = link "${dotfiles}/spotify-player/.config/spotify-player/theme.toml";
+    "reference/commands-reference.md".source = link "${dotfiles}/reference/.config/commands-reference.md";
+    "systemd/user".source = link "${dotfiles}/systemd/.config/systemd/user";
   };
 
   # Files in $HOME (outside ~/.config)
