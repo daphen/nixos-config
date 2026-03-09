@@ -28,6 +28,7 @@ in {
     "niri/config.kdl".source = link "${dotfiles}/niri/.config/niri/config.kdl";
     "niri/scripts".source = link "${dotfiles}/niri/.config/niri/scripts";
     "rofi".source = link "${dotfiles}/rofi/.config/rofi";
+    "opencode/opencode.json".source = link "${dotfiles}/opencode/.config/opencode/opencode.json";
     "opencode/tui.json".source = link "${dotfiles}/opencode/.config/opencode/tui.json";
     "opencode/themes".source = link "${dotfiles}/opencode/.config/opencode/themes";
     "fastfetch".source = link "${dotfiles}/fastfetch/.config/fastfetch";
