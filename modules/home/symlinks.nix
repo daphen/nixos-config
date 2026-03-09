@@ -17,7 +17,6 @@ in {
     "fish/fish_plugins".source = link "${dotfiles}/fish/.config/fish/fish_plugins";
     "fish/completions".source = link "${dotfiles}/fish/.config/fish/completions";
     "kitty".source = link "${dotfiles}/kitty/.config/kitty";
-    "wezterm".source = link "${dotfiles}/wezterm/.config/wezterm";
     "git/personal".source = link "${dotfiles}/git/.config/git/personal";
     "git/work".source = link "${dotfiles}/git/.config/git/work";
     "git/ignore".source = link "${dotfiles}/git/.config/git/ignore";
@@ -25,7 +24,6 @@ in {
     "waybar".source = link "${dotfiles}/waybar/.config/waybar";
     "yazi".source = link "${dotfiles}/yazi/.config/yazi";
     "qutebrowser".source = link "${dotfiles}/qutebrowser/.config/qutebrowser";
-    "eww".source = link "${dotfiles}/eww/.config/eww";
     "kanata".source = link "${dotfiles}/kanata/.config/kanata";
     "niri/config.kdl".source = link "${dotfiles}/niri/.config/niri/config.kdl";
     "niri/scripts".source = link "${dotfiles}/niri/.config/niri/scripts";
