@@ -247,6 +247,50 @@ sudo nixos-generate-config
 2. Check home-manager: `home-manager packages | grep -i config`
 3. Rebuild: `sudo nixos-rebuild switch --flake .#nixos`
 
+### Swaylock locked me out!
+
+If swaylock locks your screen and you can't unlock:
+
+1. **Try TTY2 emergency access:**
+   - Press `Ctrl+Alt+F2` (may not work in Wayland)
+   - If it works, you'll be auto-logged in to TTY2
+   - Run: `pkill swaylock`
+   - Press `Ctrl+Alt+F1` to return to your session
+
+2. **If keyboard switching doesn't work:**
+   - Force reboot (hold power button)
+   - At boot menu, select a previous generation
+   - **Avoid Generation 27** (has Sway enabled, known broken)
+
+3. **Make sure you have a password set:**
+   - swaylock uses your user password to unlock
+   - Set password: `sudo passwd daphen`
+   - Note: sudo remains passwordless even after setting a user password
+
+## Screen Locking
+
+This system uses **swaylock** with a custom dark theme:
+- Theme is integrated with the centralized theme system
+- Updates automatically when you change `~/.config/themes/colors.json`
+- Lock screen: `swaylock` (or use your Niri keybinding)
+
+**Theme customization:**
+```bash
+cd ~/.config/themes
+# Edit colors.json to change colors
+./theme-manager.sh generate dark
+./theme-manager.sh apply dark
+# swaylock theme updates automatically
+```
+
+## User Authentication
+
+- **User password**: Set with `sudo passwd daphen`
+  - Used for: swaylock, manual login, SSH
+  - **Not used for**: sudo (wheel group has passwordless sudo)
+- **Auto-login**: Enabled on TTY1 (main session)
+- **Emergency TTY**: TTY2 available with auto-login for emergencies
+
 ## Key Files to Review
 
 Before first build, review and customize:
@@ -259,11 +303,13 @@ Before first build, review and customize:
 ## Migration Notes
 
 This configuration was migrated from Arch Linux with:
-- 125 explicitly installed packages
+- 125+ explicitly installed packages
 - Custom Niri window manager setup with 19 custom scripts
-- Centralized theme system supporting multiple tools
+- Centralized theme system supporting multiple tools (kitty, waybar, mako, swaylock, etc.)
+- Swaylock with custom dark theme integration
 - Comprehensive Neovim configuration with lazy.nvim
 - Fish shell with custom functions and theme integration
+- Emergency TTY2 access for system recovery
 
 See `ARCH-TO-NIXOS-MIGRATION-PLAN.md` in your home directory for full migration details.
 
