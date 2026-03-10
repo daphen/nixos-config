@@ -3,6 +3,9 @@
 {
   # System Configuration
   # ====================
+  
+  # Import secrets if file exists (gitignored)
+  imports = if builtins.pathExists ./secrets.nix then [ ./secrets.nix ] else [];
 
   # Bootloader
   boot.loader.systemd-boot.enable = true;

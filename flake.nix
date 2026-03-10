@@ -16,6 +16,7 @@
 
     # Override niri-stable to v25.11 (matches Arch machine)
     niri-flake.inputs.niri-stable.url = "github:YaLTeR/niri/v25.11";
+
   };
 
   outputs = { self, nixpkgs, home-manager, niri-flake, ... }@inputs:
@@ -28,6 +29,7 @@
           allowUnfree = true;
           allowUnfreePredicate = (_: true);
         };
+
       };
 
     in {
