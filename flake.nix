@@ -29,7 +29,12 @@
           allowUnfree = true;
           allowUnfreePredicate = (_: true);
         };
+      };
 
+      # Enable Widevine DRM on browsers that need it
+      widevineOverlay = final: prev: {
+        chromium = prev.chromium.override { enableWideVine = true; };
+        qutebrowser = prev.qutebrowser.override { enableWideVine = true; };
       };
 
     in {
@@ -42,6 +47,9 @@
           };
           
           modules = [
+            # Apply Widevine overlay so all browsers get DRM support
+            { nixpkgs.overlays = [ widevineOverlay ]; }
+
             # Core system configuration
             ./configuration.nix
             
