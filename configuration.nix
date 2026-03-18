@@ -12,6 +12,10 @@
   boot.loader.efi.canTouchEfiVariables = true;
   boot.kernelPackages = pkgs.linuxPackages_latest;
   boot.kernelParams = [ "i915.enable_psr=0" "i915.enable_dc=0" "i915.enable_guc=0" ];
+  # zram swap (compressed in-memory swap to prevent OOM freezes)
+  zramSwap.enable = true;
+  zramSwap.memoryPercent = 50;
+
   hardware.enableRedistributableFirmware = true;
   hardware.enableAllFirmware = true;
   hardware.graphics.enable = true;
@@ -133,6 +137,7 @@
     wtype
     ydotool
     cliphist
+    hyprpicker
     
     # Screenshot & Screen Sharing
     imv
@@ -203,6 +208,7 @@
     
     # Keyboard Tools
     kanata
+    vial
     # keyd
     
     # Text Expansion
@@ -232,6 +238,7 @@
     bun
     opencode
     claude-code
+    electron
     
     # System Tools
     efibootmgr
@@ -282,6 +289,9 @@
 
   # dconf (needed for gsettings / GTK dark mode preference)
   programs.dconf.enable = true;
+
+  # Keyboard firmware (udev rules for Vial/QMK)
+  hardware.keyboard.qmk.enable = true;
 
   # OpenSSH
   services.openssh.enable = true;
