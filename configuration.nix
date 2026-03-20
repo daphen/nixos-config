@@ -138,6 +138,7 @@
     ydotool
     cliphist
     hyprpicker
+    dragon-drop
     
     # Screenshot & Screen Sharing
     imv
