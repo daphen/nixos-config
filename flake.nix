@@ -23,9 +23,12 @@
     # Override niri-stable to v25.11 (matches Arch machine)
     niri-flake.inputs.niri-stable.url = "github:YaLTeR/niri/v25.11";
 
+    # Pinned nixpkgs for iwd 3.12 (fixes repeated SIGSEGV in build_ciphers_common during roaming)
+    nixpkgs-iwd.url = "github:nixos/nixpkgs/34c521aa2928ec0f0b376f60d33816fe768ea60d";
+
   };
 
-  outputs = { self, nixpkgs, home-manager, niri-flake, worktrunk, ... }@inputs:
+  outputs = { self, nixpkgs, nixpkgs-iwd, home-manager, niri-flake, worktrunk, ... }@inputs:
     let
       system = "x86_64-linux";
       
@@ -35,6 +38,11 @@
           allowUnfree = true;
           allowUnfreePredicate = (_: true);
         };
+      };
+
+      # Pin iwd to 3.12 to fix SIGSEGV crashes during WiFi roaming (build_ciphers_common)
+      iwdOverlay = final: prev: {
+        iwd = (import nixpkgs-iwd { inherit system; }).iwd;
       };
 
       # Enable Widevine DRM on browsers that need it
@@ -54,7 +62,7 @@
           
           modules = [
             # Apply Widevine overlay so all browsers get DRM support
-            { nixpkgs.overlays = [ widevineOverlay ]; }
+            { nixpkgs.overlays = [ iwdOverlay widevineOverlay ]; }
 
             # Core system configuration
             ./configuration.nix
