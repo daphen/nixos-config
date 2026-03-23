@@ -46,4 +46,10 @@
     };
   };
   programs.lazygit.enable = true;
+
+  # Git worktree management
+  programs.worktrunk = {
+    enable = true;
+    enableFishIntegration = true;
+  };
 }

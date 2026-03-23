@@ -11,6 +11,12 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Worktrunk - git worktree management CLI
+    worktrunk = {
+      url = "github:max-sixty/worktrunk";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Niri flake - provides proper niri build with all dependencies
     niri-flake.url = "github:sodiboo/niri-flake";
 
@@ -19,7 +25,7 @@
 
   };
 
-  outputs = { self, nixpkgs, home-manager, niri-flake, ... }@inputs:
+  outputs = { self, nixpkgs, home-manager, niri-flake, worktrunk, ... }@inputs:
     let
       system = "x86_64-linux";
       

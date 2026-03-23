@@ -1,5 +1,5 @@
 # Home Manager Configuration
-{ config, pkgs, ... }:
+{ config, pkgs, inputs, ... }:
 {
   home.username = "daphen";
   home.homeDirectory = "/home/daphen";
@@ -11,6 +11,7 @@
     ./symlinks.nix
     ./programs.nix
     ./theme-system.nix
+    inputs.worktrunk.homeModules.default
   ];
 
   home.sessionVariables = {
