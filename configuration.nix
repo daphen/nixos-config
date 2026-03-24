@@ -203,8 +203,6 @@
     # azure-cli  # TODO: broken on unstable, re-enable later
     
     # Security
-    _1password-gui
-    _1password-cli
     mkcert
     
     # Keyboard Tools
@@ -290,6 +288,11 @@
 
   # dconf (needed for gsettings / GTK dark mode preference)
   programs.dconf.enable = true;
+
+ # 1Password with polkit integration
+ programs._1password.enable = true;
+ programs._1password-gui.enable = true;
+ programs._1password-gui.polkitPolicyOwners = [ "daphen" ];
 
   # Keyboard firmware (udev rules for Vial/QMK)
   hardware.keyboard.qmk.enable = true;
