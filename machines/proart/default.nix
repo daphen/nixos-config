@@ -14,7 +14,11 @@
   # NVIDIA RTX 5080 (open = true required for RTX 50 series)
   services.xserver.videoDrivers = [ "nvidia" ];
   hardware.nvidia.open = true;
-  hardware.nvidia.prime.offload.enable = true;
+  hardware.nvidia.prime = {
+    offload.enable = true;
+    amdgpuBusId = "PCI:101:0:0";
+    nvidiaBusId = "PCI:100:0:0";
+  };
 
   # TODO: MT7925 WiFi — should work on linuxPackages_latest (>=6.7)
 }
