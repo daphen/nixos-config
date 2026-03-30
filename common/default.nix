@@ -83,6 +83,7 @@
     stow
 
     # Development
+    devenv
     gcc
     gnumake
     automake

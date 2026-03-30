@@ -14,8 +14,11 @@
   # NVIDIA RTX 5080 (open = true required for RTX 50 series)
   services.xserver.videoDrivers = [ "nvidia" ];
   hardware.nvidia.open = true;
+  hardware.nvidia.powerManagement.enable = true;
+  hardware.nvidia.powerManagement.finegrained = true;
   hardware.nvidia.prime = {
     offload.enable = true;
+    offload.enableOffloadCmd = true;
     amdgpuBusId = "PCI:101:0:0";
     nvidiaBusId = "PCI:100:0:0";
   };
