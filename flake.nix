@@ -1,5 +1,5 @@
 {
-  description = "NixOS configuration - migrated from Arch Linux";
+  description = "NixOS configuration - multi-machine flake";
 
   inputs = {
     # Use unstable nixpkgs for latest kernel/mesa (needed for new Intel GPU)
@@ -31,7 +31,7 @@
   outputs = { self, nixpkgs, nixpkgs-iwd, home-manager, niri-flake, worktrunk, ... }@inputs:
     let
       system = "x86_64-linux";
-      
+
       pkgs = import nixpkgs {
         inherit system;
         config = {
@@ -51,55 +51,47 @@
         qutebrowser = prev.qutebrowser.override { enableWideVine = true; };
       };
 
+      # Shared modules used by all machines
+      commonModules = [
+        # Apply overlays
+        { nixpkgs.overlays = [ iwdOverlay widevineOverlay ]; }
+
+        # Niri flake module (sets up dbus, portals, polkit, etc.)
+        niri-flake.nixosModules.niri
+
+        # System modules
+        ./common/niri.nix
+        ./common/audio.nix
+        ./common/bluetooth.nix
+        ./common/networking.nix
+
+        # Home Manager integration
+        home-manager.nixosModules.home-manager
+        {
+          home-manager = {
+            useGlobalPkgs = true;
+            useUserPackages = true;
+            backupFileExtension = "backup";
+            users.daphen = import ./common/home;
+            extraSpecialArgs = {
+              inherit inputs;
+            };
+          };
+        }
+      ];
+
+      # Helper to build a machine configuration
+      mkHost = machineModule: nixpkgs.lib.nixosSystem {
+        inherit system;
+        specialArgs = { inherit inputs; };
+        modules = commonModules ++ [ machineModule ];
+      };
+
     in {
       nixosConfigurations = {
-        nixos = nixpkgs.lib.nixosSystem {
-          inherit system;
-          
-          specialArgs = { 
-            inherit inputs;
-          };
-          
-          modules = [
-            # Apply Widevine overlay so all browsers get DRM support
-            { nixpkgs.overlays = [ iwdOverlay widevineOverlay ]; }
-
-            # Core system configuration
-            ./configuration.nix
-            
-            # Hardware configuration (auto-generated)
-            ./hardware-configuration.nix
-            
-            # Niri flake module (sets up dbus, portals, polkit, etc.)
-            niri-flake.nixosModules.niri
-
-            # System modules
-            ./modules/niri.nix
-            ./modules/audio.nix
-            ./modules/bluetooth.nix
-            ./modules/networking.nix
-            
-            # Home Manager integration
-            home-manager.nixosModules.home-manager
-            {
-              home-manager = {
-                useGlobalPkgs = true;
-                useUserPackages = true;
-                
-                # Backup existing files that conflict
-                backupFileExtension = "backup";
-                
-                # Main user configuration
-                users.daphen = import ./modules/home;
-                
-                # Pass extra arguments to home-manager
-                extraSpecialArgs = { 
-                  inherit inputs;
-                };
-              };
-            }
-          ];
-        };
+        thinkpad = mkHost ./machines/thinkpad;
+        proart   = mkHost ./machines/proart;
+        # zenbook  = mkHost ./machines/zenbook;
       };
 
       # Development shell for testing configurations

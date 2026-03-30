@@ -6,13 +6,10 @@
   # Uses niri-stable from niri-flake (overridden to v25.11 in flake.nix)
   # The niri-flake nixosModule is imported in flake.nix and provides
   # programs.niri options, dbus config, polkit, portals, etc.
-  
+
   programs.niri.enable = true;
   programs.niri.package = inputs.niri-flake.packages.x86_64-linux.niri-stable;
 
-  # TrackPoint and touchpad button area are left at default ThinkPad behavior.
-  # The top ~1cm of the touchpad acts as a software button area for TrackPoint use.
-  
   # Use console autologin instead
   services.getty.autologinUser = "daphen";
 
@@ -20,6 +17,8 @@
   environment.sessionVariables = {
     NIXOS_OZONE_WL = "1";  # Enable Wayland for Electron apps
     MOZ_ENABLE_WAYLAND = "1";  # Enable Wayland for Firefox
+    QT_QPA_PLATFORMTHEME = "kvantum";  # Use Kvantum for Qt theming
+    QT_STYLE_OVERRIDE = "kvantum";  # Force Kvantum style
   };
 
   # XWayland support

@@ -1,17 +1,14 @@
 { config, pkgs, inputs, ... }:
 
 {
-  # System Configuration
-  # ====================
-  
   # Import secrets if file exists (gitignored)
-  imports = if builtins.pathExists ./secrets.nix then [ ./secrets.nix ] else [];
+  imports = if builtins.pathExists ../secrets.nix then [ ../secrets.nix ] else [];
 
   # Bootloader
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
   boot.kernelPackages = pkgs.linuxPackages_latest;
-  boot.kernelParams = [ "i915.enable_psr=0" "i915.enable_dc=0" "i915.enable_guc=0" ];
+
   # zram swap (compressed in-memory swap to prevent OOM freezes)
   zramSwap.enable = true;
   zramSwap.memoryPercent = 50;
@@ -19,18 +16,12 @@
   hardware.enableRedistributableFirmware = true;
   hardware.enableAllFirmware = true;
   hardware.graphics.enable = true;
-  hardware.graphics.extraPackages = with pkgs; [
-    intel-media-driver
-  ];
-
-  # Hostname
-  networking.hostName = "nixos";
 
   # Enable networking
   networking.networkmanager.enable = true;
 
   # Time zone
-  time.timeZone = "Europe/Stockholm";  # Adjust to your timezone
+  time.timeZone = "Europe/Stockholm";
 
   # Internationalisation
   i18n.defaultLocale = "en_US.UTF-8";
@@ -53,14 +44,14 @@
   users.users.daphen = {
     isNormalUser = true;
     description = "daphen";
-    extraGroups = [ 
-      "networkmanager" 
-      "wheel" 
+    extraGroups = [
+      "networkmanager"
+      "wheel"
       "docker"
       "video"
       "audio"
     ];
-    shell = pkgs.fish;  # Fish works perfectly in QEMU!
+    shell = pkgs.fish;
   };
 
   # Enable Fish shell system-wide
@@ -79,7 +70,6 @@
   security.pam.services.swaylock = {};
 
   # System Packages
-  # ===============
   environment.systemPackages = with pkgs; [
     # Core utilities
     vim
@@ -90,17 +80,16 @@
     htop
     less
     nano
-    stow  # Keep for reference, but won't use in Nix
+    stow
 
     # Development
-    # base-devel  # Note: Not a package in Nix, using individual build tools below instead
     gcc
     gnumake
     automake
     autoconf
     pkg-config
     binutils
-    
+
     # Shells & Terminal Tools
     fish
     fzf
@@ -110,26 +99,25 @@
     jq
     direnv
     glow
-    
+
     # File Management
     yazi
-    
+
     # Version Control
     git
     github-cli
     lazygit
-    
+
     # Terminal Emulators
     alacritty
     kitty
     ghostty
     wezterm
-    
+
     # Browsers
     chromium
     qutebrowser
-    # zen-browser # May need to package separately
-    
+
     # Wayland Tools
     grim
     slurp
@@ -140,116 +128,112 @@
     cliphist
     hyprpicker
     dragon-drop
-    
+
     # Screenshot & Screen Sharing
     imv
     chafa
-    
+
     # Clipboard Managers
     copyq
     clipse
-    
+
     # Audio/Video
     pavucontrol
     brightnessctl
     playerctl
-    
+
     # Image Tools
     imagemagick
-    
+
     # Notifications
     mako
-    
+
     # Background & Idle
     swaybg
     swayidle
     swaylock-effects
-    
+
     # Launchers & Menus
     rofi
     rofi-bluetooth
     rofimoji
     eww
-    
+
     # GTK / System Theme
     dconf-editor
     adwaita-icon-theme
-    
+
     # Display Management
     waypaper
-    
+
     # Fonts
     noto-fonts-color-emoji
-    # Need to add custom fonts like BerkeleyMono
-    
+
     # Communication
     slack
-    vesktop  # Discord
-    # teams-for-linux
-    
+    vesktop
+
     # Media
     spotify
     spotify-player
-    
+
     # Office
     libreoffice-fresh
-    
 
-    
     # Container Tools
     docker
     docker-compose
-    
+
     # Cloud Tools
     # azure-cli  # TODO: broken on unstable, re-enable later
-    
+
     # Security
     mkcert
-    
+
+    # Qt/Kvantum theming
+    libsForQt5.qtstyleplugin-kvantum
+    kdePackages.qtstyleplugin-kvantum
+
     # Keyboard Tools
     kanata
     vial
-    # keyd
-    
+
     # Text Expansion
     espanso
-    
+
     # Network Tools
     openssh
     dnsmasq
     iwd
-    wirelesstools  # Note: Changed from wireless-tools (correct package name)
+    wirelesstools
     wpa_supplicant
-    
+
     # System Monitoring
     fastfetch
     smartmontools
-    
-    # Package Management (Nix equivalents)
-    # yay - not needed in NixOS
-    
+
     # Gaming
     steam
-    
-    # AMD GPU
+
+    # GPU diagnostics
     libva-utils
-    
+
     # Misc Tools
     bun
     opencode
     claude-code
     electron
-    
+
     # System Tools
     efibootmgr
-    iptables  # Note: Changed from iptables-nft (nixpkgs uses 'iptables')
-    xset  # Needed by kanata for key repeat rate
-    
+    iptables
+    xset
+
     # Development Languages/Tools
     nodejs
     python3
     python3Packages.pip
-    python3Packages.mdformat  # Markdown formatter
+    python3Packages.mdformat
     cargo
     rustc
     go
@@ -258,28 +242,19 @@
   # Fonts
   fonts.packages = with pkgs; [
     noto-fonts
-    noto-fonts-cjk-sans  # Renamed from noto-fonts-cjk
+    noto-fonts-cjk-sans
     noto-fonts-color-emoji
     font-awesome
     nerd-fonts.geist-mono
     nerd-fonts.jetbrains-mono
     nerd-fonts.fira-code
     nerd-fonts.symbols-only
-    # Add custom fonts here (e.g. BerkeleyMono)
   ];
-
-  # Enable sound with pipewire
-  # (Configured in modules/audio.nix)
-  
-  # Enable bluetooth
-  # (Configured in modules/bluetooth.nix)
 
   # Enable Docker
   virtualisation.docker.enable = true;
 
   # XDG Desktop Portal for Wayland
-  # Note: niri-flake module already sets up xdg.portal with xdg-desktop-portal-gnome
-  # Only add extra portals here if needed
   xdg.portal = {
     enable = true;
     extraPortals = with pkgs; [
@@ -290,10 +265,10 @@
   # dconf (needed for gsettings / GTK dark mode preference)
   programs.dconf.enable = true;
 
- # 1Password with polkit integration
- programs._1password.enable = true;
- programs._1password-gui.enable = true;
- programs._1password-gui.polkitPolicyOwners = [ "daphen" ];
+  # 1Password with polkit integration
+  programs._1password.enable = true;
+  programs._1password-gui.enable = true;
+  programs._1password-gui.polkitPolicyOwners = [ "daphen" ];
 
   # Keyboard firmware (udev rules for Vial/QMK)
   hardware.keyboard.qmk.enable = true;
@@ -307,8 +282,7 @@
   # Enable firmware updates
   services.fwupd.enable = true;
 
-  # Enable TTY2 for emergency access (if swaylock locks you out)
-  # Try Ctrl+Alt+F2 to switch (may not work in Wayland, use hard reboot if needed)
+  # Enable TTY2 for emergency access
   systemd.services."getty@tty2".enable = true;
 
   # Nix settings
@@ -316,8 +290,7 @@
     settings = {
       experimental-features = [ "nix-command" "flakes" ];
       auto-optimise-store = true;
-      
-      # Substituters for faster builds
+
       substituters = [
         "https://cache.nixos.org"
         "https://nix-community.cachix.org"
@@ -340,6 +313,5 @@
   nixpkgs.config.allowUnfree = true;
 
   # System state version
-  # DO NOT CHANGE unless you know what you're doing
   system.stateVersion = "24.11";
 }
