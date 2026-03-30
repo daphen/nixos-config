@@ -109,6 +109,7 @@
     fd
     jq
     direnv
+    glow
     
     # File Management
     yazi
