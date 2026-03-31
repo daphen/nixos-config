@@ -9,7 +9,12 @@
   networking.hostName = "proart";
 
   # AMD OLED panel — fix PSR2 flickering
-  boot.kernelParams = [ "amdgpu.dcdebugmask=0x200" ];
+  # NVreg_DynamicPowerManagement=0x02 enables fine-grained PM so NVIDIA stays suspended
+  boot.kernelParams = [
+    "amdgpu.dcdebugmask=0x200"
+    "resume_offset=421093376"
+    "nvidia.NVreg_DynamicPowerManagement=0x02"
+  ];
 
   # NVIDIA RTX 5080 (open = true required for RTX 50 series)
   services.xserver.videoDrivers = [ "nvidia" ];
@@ -22,6 +27,16 @@
     amdgpuBusId = "PCI:101:0:0";
     nvidiaBusId = "PCI:100:0:0";
   };
+
+  # Swap file for hibernate (s2idle is the only sleep mode on this machine,
+  # which keeps CPU warm — suspend-then-hibernate powers off fully after 30min)
+  swapDevices = [{ device = "/swapfile"; size = 65 * 1024; }];
+  boot.resumeDevice = "/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0";
+  systemd.sleep.settings.Sleep.HibernateDelaySec = "30min";
+  services.logind.lidSwitch = "suspend-then-hibernate";
+
+  # ASUS control daemon — manages keyboard lighting, fan curves, etc.
+  services.asusd.enable = true;
 
   # TODO: MT7925 WiFi — should work on linuxPackages_latest (>=6.7)
 }
