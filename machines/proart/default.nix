@@ -33,7 +33,22 @@
   swapDevices = [{ device = "/swapfile"; size = 65 * 1024; }];
   boot.resumeDevice = "/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0";
   systemd.sleep.settings.Sleep.HibernateDelaySec = "30min";
-  services.logind.lidSwitch = "suspend-then-hibernate";
+  services.logind.settings.Login.HandleLidSwitch = "suspend-then-hibernate";
+
+  # nvidia-suspend.service only declares Before=systemd-suspend.service by default,
+  # but lid uses suspend-then-hibernate — pull it into all sleep paths explicitly.
+  systemd.services.nvidia-suspend.wantedBy = [
+    "systemd-suspend-then-hibernate.service"
+    "systemd-hibernate.service"
+  ];
+  systemd.services.nvidia-resume.wantedBy = [
+    "systemd-suspend-then-hibernate.service"
+    "systemd-hibernate.service"
+  ];
+  systemd.services.nvidia-resume.unitConfig.After = [
+    "systemd-suspend-then-hibernate.service"
+    "systemd-hibernate.service"
+  ];
 
   # ASUS control daemon — manages keyboard lighting, fan curves, etc.
   services.asusd.enable = true;
