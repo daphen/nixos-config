@@ -171,7 +171,13 @@
     noto-fonts-color-emoji
 
     # Communication
-    slack
+    (pkgs.slack.overrideAttrs (old: {
+      nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.makeWrapper ];
+      postInstall = (old.postInstall or "") + ''
+        wrapProgram $out/bin/slack \
+          --add-flags "--ozone-platform=wayland --render-node-override=/dev/dri/renderD129"
+      '';
+    }))
     vesktop
 
     # Media
