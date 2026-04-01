@@ -50,6 +50,21 @@
     "systemd-hibernate.service"
   ];
 
+  # MT7925 Bluetooth generates wake events during s2idle causing a suspend loop.
+  # rfkill block/unblock around sleep to prevent this.
+  systemd.services.bluetooth-sleep = {
+    description = "Block Bluetooth before suspend";
+    before = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
+    wantedBy = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
+    serviceConfig = { Type = "oneshot"; ExecStart = "${pkgs.util-linux}/bin/rfkill block bluetooth"; };
+  };
+  systemd.services.bluetooth-resume = {
+    description = "Unblock Bluetooth after resume";
+    after = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
+    wantedBy = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
+    serviceConfig = { Type = "oneshot"; ExecStart = "${pkgs.util-linux}/bin/rfkill unblock bluetooth"; };
+  };
+
   # ASUS control daemon — manages keyboard lighting, fan curves, etc.
   services.asusd.enable = true;
 
