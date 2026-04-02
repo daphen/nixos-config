@@ -12,8 +12,12 @@
   # NVreg_DynamicPowerManagement=0x02 enables fine-grained PM so NVIDIA stays suspended
   boot.kernelParams = [
     "amdgpu.dcdebugmask=0x200"
+    "resume=/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0"
     "resume_offset=421093376"
     "nvidia.NVreg_DynamicPowerManagement=0x02"
+    # Prevent ACPI EC and GPIO (pinctrl_amd IRQ 7) from waking the system
+    # during s2idle — without this the machine wakes every ~6s in a loop.
+    "acpi.ec_no_wakeup=1"
   ];
 
   # NVIDIA RTX 5080 (open = true required for RTX 50 series)
@@ -52,17 +56,19 @@
 
   # MT7925 Bluetooth generates wake events during s2idle causing a suspend loop.
   # rfkill block/unblock around sleep to prevent this.
+  # MT7925 combo chip (WiFi+BT) generates wake events during s2idle causing a
+  # suspend loop. rfkill block/unblock both radios around sleep to prevent this.
   systemd.services.bluetooth-sleep = {
-    description = "Block Bluetooth before suspend";
+    description = "Block Bluetooth and WiFi before suspend";
     before = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
     wantedBy = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
-    serviceConfig = { Type = "oneshot"; ExecStart = "${pkgs.util-linux}/bin/rfkill block bluetooth"; };
+    serviceConfig = { Type = "oneshot"; ExecStart = "${pkgs.util-linux}/bin/rfkill block all"; };
   };
   systemd.services.bluetooth-resume = {
-    description = "Unblock Bluetooth after resume";
+    description = "Unblock Bluetooth and WiFi after resume";
     after = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
     wantedBy = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
-    serviceConfig = { Type = "oneshot"; ExecStart = "${pkgs.util-linux}/bin/rfkill unblock bluetooth"; };
+    serviceConfig = { Type = "oneshot"; ExecStart = "${pkgs.util-linux}/bin/rfkill unblock all"; };
   };
 
   # ASUS control daemon — manages keyboard lighting, fan curves, etc.
