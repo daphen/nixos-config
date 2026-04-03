@@ -51,10 +51,23 @@
         qutebrowser = prev.qutebrowser.override { enableWideVine = true; };
       };
 
+      # Add H7606WW (ProArt Studiobook 16) to asusctl's aura_support.ron.
+      # The asusd binary reads this file from its own store path (hardcoded at
+      # compile time), so we must recompile with the patched file.
+      asusctlOverlay = final: prev: {
+        asusctl = prev.asusctl.overrideAttrs (old: {
+          postInstall = (old.postInstall or "") + ''
+            sed -i 's/\])$/    (\n        device_name: "H7606WW",\n        product_id: "19b6",\n        layout_name: "g634j-per-key",\n        basic_modes: [Static, Breathe, RainbowCycle, RainbowWave, Star, Rain, Highlight, Laser, Ripple, Pulse, Comet, Flash],\n        basic_zones: [],\n        advanced_type: PerKey,\n        power_zones: [Keyboard, Lightbar, Logo],\n    ),\n])/' \
+              $out/share/asusd/aura_support.ron
+          '';
+        });
+      };
+
+
       # Shared modules used by all machines
       commonModules = [
         # Apply overlays
-        { nixpkgs.overlays = [ iwdOverlay widevineOverlay ]; }
+        { nixpkgs.overlays = [ iwdOverlay widevineOverlay asusctlOverlay ]; }
 
         # Niri flake module (sets up dbus, portals, polkit, etc.)
         niri-flake.nixosModules.niri
