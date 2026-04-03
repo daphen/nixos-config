@@ -57,7 +57,7 @@
       asusctlOverlay = final: prev: {
         asusctl = prev.asusctl.overrideAttrs (old: {
           postInstall = (old.postInstall or "") + ''
-            sed -i 's/\])$/    (\n        device_name: "H7606WW",\n        product_id: "19b6",\n        layout_name: "g634j-per-key",\n        basic_modes: [Static, Breathe, RainbowCycle, RainbowWave, Star, Rain, Highlight, Laser, Ripple, Pulse, Comet, Flash],\n        basic_zones: [],\n        advanced_type: PerKey,\n        power_zones: [Keyboard, Lightbar, Logo],\n    ),\n])/' \
+            sed -i 's/\])$/    (\n        device_name: "H7606WW",\n        product_id: "19b6",\n        layout_name: "g634j-per-key",\n        basic_modes: [Static, Breathe, RainbowCycle, RainbowWave, Pulse],\n        basic_zones: [],\n        advanced_type: r#None,\n        power_zones: [Keyboard],\n    ),\n])/' \
               $out/share/asusd/aura_support.ron
           '';
         });
