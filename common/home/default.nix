@@ -35,9 +35,32 @@
     templates = "${config.home.homeDirectory}/Templates";
   };
 
+  xdg.desktopEntries.helium = {
+    name = "Helium";
+    comment = "Privacy-focused Chromium browser";
+    exec = "${config.home.homeDirectory}/.local/share/helium/helium.AppImage %U";
+    icon = "helium";
+    terminal = false;
+    type = "Application";
+    categories = [ "Network" "WebBrowser" ];
+    mimeType = [ "x-scheme-handler/http" "x-scheme-handler/https" "text/html" ];
+  };
+
+  xdg.desktopEntries.google-chrome = {
+    name = "Google Chrome";
+    comment = "Access the Internet";
+    exec = "${config.home.homeDirectory}/.config/niri/scripts/chromium-launch %U";
+    icon = "google-chrome";
+    terminal = false;
+    type = "Application";
+    categories = [ "Network" "WebBrowser" ];
+    mimeType = [ "application/pdf" "text/html" "x-scheme-handler/http" "x-scheme-handler/https" ];
+    settings.StartupWMClass = "google-chrome";
+  };
+
   xdg.desktopEntries.browser-dispatch = {
     name = "Browser Dispatch";
-    comment = "Routes URLs to the last-focused qutebrowser profile";
+    comment = "Routes URLs to the correct Vivaldi profile (personal or work)";
     exec = "${config.home.homeDirectory}/.config/niri/scripts/browser-dispatch %u";
     terminal = false;
     type = "Application";

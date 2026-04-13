@@ -116,8 +116,10 @@
     wezterm
 
     # Browsers
+    google-chrome
     chromium
     qutebrowser
+    vivaldi
 
     # Wayland Tools
     grim
@@ -219,8 +221,8 @@
     fastfetch
     smartmontools
 
-    # Gaming
-    steam
+    # Gaming — steam package kept for compatibility; programs.steam.enable handles FHS
+    gamescope
 
     # GPU diagnostics
     libva-utils
@@ -229,6 +231,7 @@
     bun
     opencode
     claude-code
+    pi-coding-agent
     electron
 
     # System Tools
@@ -313,6 +316,21 @@
       automatic = true;
       dates = "weekly";
       options = "--delete-older-than 7d";
+    };
+  };
+
+  # Steam — programs.steam handles FHS compatibility layers needed on NixOS
+  programs.steam = {
+    enable = true;
+    remotePlay.openFirewall = true;
+    dedicatedServer.openFirewall = false;
+    # Run all games via PRIME offload on the RTX 5080
+    package = pkgs.steam.override {
+      extraEnv = {
+        __NV_PRIME_RENDER_OFFLOAD = "1";
+        __GLX_VENDOR_LIBRARY_NAME = "nvidia";
+        __EGL_VENDOR_LIBRARY_FILENAMES = "/run/opengl-driver/lib/libEGL_nvidia.so.0";
+      };
     };
   };
 

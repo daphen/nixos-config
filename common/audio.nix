@@ -28,6 +28,16 @@
     
     # WirePlumber (session manager)
     wireplumber.enable = true;
+
+    # Increase quantum to avoid buffer underruns on AMD ACP audio chain.
+    # Default 1024 (~21ms) starves on this hardware; 2048 (~42ms) is stable.
+    extraConfig.pipewire."92-quantum" = {
+      "context.properties" = {
+        "default.clock.quantum"     = 2048;
+        "default.clock.min-quantum" = 1024;
+        "default.clock.max-quantum" = 8192;
+      };
+    };
   };
 
   # Additional audio packages
