@@ -20,7 +20,7 @@ in {
     "git/personal".source = link "${dotfiles}/git/.config/git/personal";
     "git/work".source = link "${dotfiles}/git/.config/git/work";
     "git/ignore".source = link "${dotfiles}/git/.config/git/ignore";
-    "mako/config".source = link "${dotfiles}/mako/.config/mako/config";
+    "mako".source = link "${dotfiles}/mako/.config/mako";
     "waybar".source = link "${dotfiles}/waybar/.config/waybar";
     "yazi".source = link "${dotfiles}/yazi/.config/yazi";
     "qutebrowser".source = link "${dotfiles}/qutebrowser/.config/qutebrowser";
