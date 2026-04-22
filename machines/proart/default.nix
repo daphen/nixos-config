@@ -42,11 +42,11 @@
     nvidiaBusId = "PCI:100:0:0";
   };
 
-  # Swap file for hibernate (s2idle is the only sleep mode on this machine,
-  # which keeps CPU warm — suspend-then-hibernate powers off fully after 30min)
+  # Swap file for hibernate (s2idle wake doesn't work — user always resumes from
+  # hibernate after the delay timer fires. Keep delay short for quick resume.)
   swapDevices = [{ device = "/swapfile"; size = 65 * 1024; }];
   boot.resumeDevice = "/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0";
-  systemd.sleep.settings.Sleep.HibernateDelaySec = "30min";
+  systemd.sleep.settings.Sleep.HibernateDelaySec = "5min";
   services.logind.settings.Login.HandleLidSwitch = "suspend-then-hibernate";
 
   # nvidia-suspend.service only declares Before=systemd-suspend.service by default,
@@ -78,6 +78,25 @@
     wantedBy = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
     serviceConfig = { Type = "oneshot"; ExecStart = "${pkgs.util-linux}/bin/rfkill unblock all"; };
   };
+  # NOTE: kbd-backlight-resume service removed — running asusctl during early
+  # resume interfered with GPU initialization and caused amdgpu crashes.
+  # The keyboard backlight pulse on resume remains an open issue.
+
+  # Lid switch fires spurious "open" events during hibernate image write,
+  # aborting hibernate and leaving the GPU in a crashed state. Disable lid
+  # as a wake source — we wake with the power button anyway.
+  systemd.services.lid-wakeup-disable = {
+    description = "Disable lid switch wakeup before sleep";
+    before = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
+    wantedBy = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = pkgs.writeShellScript "lid-wakeup-disable" ''
+        [ -f /sys/devices/LNXSYSTM:00/LNXSYBUS:00/PNP0C0D:00/power/wakeup ] && \
+          echo disabled > /sys/devices/LNXSYSTM:00/LNXSYBUS:00/PNP0C0D:00/power/wakeup
+      '';
+    };
+  };
 
   # XHC (USB host) controllers fire PME wakeup events during s2idle causing a
   # suspend loop — the USB-C port's UCSI_GET_PDOS errors are the likely trigger.
@@ -101,6 +120,18 @@
       '';
     };
   };
+
+  # MT7925 Bluetooth: SCO socket returns EOPNOTSUPP without this fix,
+  # breaking HFP/HSP (no mic in video calls).
+  boot.extraModprobeConfig = "options btusb force_scofix=1";
+
+  # Unbind snd_hda_intel from the NVIDIA GPU's HDA function. snd_hda_intel
+  # otherwise polls the device every ~30s to detect HDMI audio sinks, which
+  # wakes the dGPU out of runtime suspend and glitches system audio (esp. BT).
+  # HDMI audio from the dGPU isn't a use case on this machine.
+  services.udev.extraRules = ''
+    SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x040300", ACTION=="add", RUN+="${pkgs.bash}/bin/sh -c 'echo %k > /sys/bus/pci/drivers/snd_hda_intel/unbind 2>/dev/null || true'"
+  '';
 
   # ASUS control daemon — manages keyboard lighting, fan curves, etc.
   services.asusd.enable = true;

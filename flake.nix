@@ -26,9 +26,14 @@
     # Pinned nixpkgs for iwd 3.12 (fixes repeated SIGSEGV in build_ciphers_common during roaming)
     nixpkgs-iwd.url = "github:nixos/nixpkgs/34c521aa2928ec0f0b376f60d33816fe768ea60d";
 
+    # Fast-moving apps channel — bumped independently of the system nixpkgs
+    # via: nix flake update nixpkgs-apps
+    # Use nixos-unstable (Hydra-cached) rather than master to avoid mass source rebuilds
+    nixpkgs-apps.url = "github:nixos/nixpkgs/nixos-unstable";
+
   };
 
-  outputs = { self, nixpkgs, nixpkgs-iwd, home-manager, niri-flake, worktrunk, ... }@inputs:
+  outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, home-manager, niri-flake, worktrunk, ... }@inputs:
     let
       system = "x86_64-linux";
 
@@ -63,11 +68,43 @@
         });
       };
 
+      # Route fast-moving user-facing apps through the nixpkgs-apps channel so
+      # they can be bumped independently of the system nixpkgs. Bump with:
+      # nix flake update nixpkgs-apps && sudo nixos-rebuild switch --flake ~/nixos#<host>
+      appsOverlay = final: prev:
+        let
+          apps = import nixpkgs-apps {
+            inherit system;
+            config.allowUnfree = true;
+          };
+        in {
+          inherit (apps)
+            # AI CLIs (ship daily)
+            claude-code
+            opencode
+            pi-coding-agent
+            # Compositor-adjacent
+            waybar
+            mako
+            # Browsers (security updates matter)
+            chromium
+            qutebrowser
+            vivaldi
+            google-chrome
+            # Desktop apps
+            slack
+            vesktop
+            spotify;
+            # Note: _1password/_1password-gui intentionally left on system nixpkgs —
+            # AgileBits rotates source URLs aggressively, so master/nixos-unstable
+            # frequently point at versions whose download has already disappeared.
+        };
+
 
       # Shared modules used by all machines
       commonModules = [
         # Apply overlays
-        { nixpkgs.overlays = [ iwdOverlay widevineOverlay asusctlOverlay ]; }
+        { nixpkgs.overlays = [ iwdOverlay widevineOverlay asusctlOverlay appsOverlay ]; }
 
         # Niri flake module (sets up dbus, portals, polkit, etc.)
         niri-flake.nixosModules.niri
@@ -109,10 +146,10 @@
 
       # Development shell for testing configurations
       devShells.${system}.default = pkgs.mkShell {
-        packages = with pkgs; [
-          nixpkgs-fmt
-          nil # Nix LSP
-          home-manager
+        packages = [
+          pkgs.nixpkgs-fmt
+          pkgs.nil # Nix LSP
+          home-manager.packages.${system}.home-manager
         ];
       };
     };

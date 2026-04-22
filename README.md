@@ -298,8 +298,6 @@ This configuration was migrated from Arch Linux with:
 - Fish shell with custom functions and theme integration
 - Emergency TTY2 access for system recovery
 
-See `ARCH-TO-NIXOS-MIGRATION-PLAN.md` in your home directory for full migration details.
-
 ## Resources
 
 - [NixOS Manual](https://nixos.org/manual/nixos/stable/)

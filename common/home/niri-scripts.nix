@@ -10,7 +10,7 @@ let
 
     buildInputs = with pkgs; [
       bash coreutils jq grim slurp
-      wl-clipboard ghostty yazi zoxide fzf
+      wl-clipboard yazi zoxide fzf
     ];
 
     installPhase = ''

@@ -30,13 +30,17 @@
   # DNS
   services.resolved = {
     enable = true;
-    settings.Resolve.DNSSEC = "allow-downgrade";
+    settings.Resolve.DNSSEC = "false";
   };
 
   # GoLinks - maps "go" hostname to GoLinks' server so http://go/* works in all browsers
   networking.hosts = {
     "52.72.13.96" = [ "go" ];
   };
+
+  boot.kernel.sysctl = {
+    "net.ipv6.conf.wlan0.disable_ipv6" = 1;                                                                                                       
+  };                                                                                                                                              
 
   # Additional network tools
   # NetworkManager is already included by enabling the service

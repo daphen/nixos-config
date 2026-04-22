@@ -103,6 +103,7 @@
 
     # File Management
     yazi
+    nautilus
 
     # Version Control
     git
@@ -110,10 +111,7 @@
     lazygit
 
     # Terminal Emulators
-    alacritty
     kitty
-    ghostty
-    wezterm
 
     # Browsers
     google-chrome
@@ -177,7 +175,7 @@
       nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.makeWrapper ];
       postInstall = (old.postInstall or "") + ''
         wrapProgram $out/bin/slack \
-          --add-flags "--ozone-platform=wayland --render-node-override=/dev/dri/renderD129"
+          --add-flags "--ozone-platform=wayland --render-node-override=/dev/dri/by-path/pci-0000:65:00.0-render"
       '';
     }))
     vesktop
@@ -270,10 +268,20 @@
     extraPortals = with pkgs; [
       xdg-desktop-portal-gtk
     ];
+    config.niri = {
+      default = [ "gtk" ];
+      "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
+    };
   };
+
+  # gvfs: trash, mounts, and network shares for GTK file dialogs
+  services.gvfs.enable = true;
 
   # dconf (needed for gsettings / GTK dark mode preference)
   programs.dconf.enable = true;
+
+  # nix-ld: allows dynamically-linked binaries from generic Linux distros to run
+  programs.nix-ld.enable = true;
 
   # 1Password with polkit integration
   programs._1password.enable = true;

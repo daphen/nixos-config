@@ -12,28 +12,22 @@
     enableFishIntegration = true;
   };
 
-  # Editor
-  programs.neovim = {
-    enable = true;
-    defaultEditor = true;
-    viAlias = true;
-    vimAlias = true;
-    package = pkgs.neovim-unwrapped;
-    extraPackages = with pkgs; [
-      nodejs
-      python3
-      python3Packages.pip
-      nodePackages.prettier
-      black
-      stylua
-      nodePackages.eslint
-      gcc
-      gnumake
-      wl-clipboard
-      xclip
-      ripgrep
-      fd
-    ];
+  # Editor — neovim installed directly rather than via programs.neovim, since HM's
+  # module generates its own init.lua which conflicts with the dotfile-based config
+  # symlinked through symlinks.nix.
+  home.packages = with pkgs; [
+    neovim-unwrapped
+    # LSP/formatter tooling expected on PATH by the nvim config
+    prettier
+    black
+    stylua
+    eslint
+    xclip
+  ];
+  home.sessionVariables.EDITOR = "nvim";
+  programs.fish.shellAliases = {
+    vi = "nvim";
+    vim = "nvim";
   };
 
   # Git
