@@ -31,9 +31,20 @@
     # Use nixos-unstable (Hydra-cached) rather than master to avoid mass source rebuilds
     nixpkgs-apps.url = "github:nixos/nixpkgs/nixos-unstable";
 
+    # Dotfiles as a flake input (fetched by the portable homeConfiguration;
+    # NOT used by local NixOS configs which keep mkOutOfStoreSymlink semantics).
+    dotfiles = {
+      url = "github:daphen/dotfiles";
+      flake = false;
+    };
+
+    # Wrapper modules — bundles neovim + plugins + config into a standalone
+    # derivation for the portable nvim package.
+    wrapper-modules.url = "github:BirdeeHub/nix-wrapper-modules";
+
   };
 
-  outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, home-manager, niri-flake, worktrunk, ... }@inputs:
+  outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, home-manager, niri-flake, worktrunk, wrapper-modules, dotfiles, ... }@inputs:
     let
       system = "x86_64-linux";
 
@@ -43,6 +54,12 @@
           allowUnfree = true;
           allowUnfreePredicate = (_: true);
         };
+      };
+
+      # Portable neovim — bundled standalone derivation (jlodenius-style)
+      neovimPackages = import ./packages/neovim {
+        inherit pkgs inputs;
+        lib = nixpkgs.lib;
       };
 
       # Pin iwd to 3.12 to fix SIGSEGV crashes during WiFi roaming (build_ciphers_common)
@@ -142,6 +159,18 @@
         thinkpad = mkHost ./machines/thinkpad;
         proart   = mkHost ./machines/proart;
         # zenbook  = mkHost ./machines/zenbook;
+      };
+
+      # Standalone packages — the portable neovim bundle.
+      # Run on any Linux host with Nix: nix run github:daphen/nixos-config#neovim
+      packages.${system} = neovimPackages;
+
+      # Portable home-manager configuration — for SSH containers / remote dev hosts.
+      # Apply via: home-manager switch --flake github:daphen/nixos-config#daphen-remote
+      homeConfigurations.daphen-remote = home-manager.lib.homeManagerConfiguration {
+        inherit pkgs;
+        extraSpecialArgs = { inherit inputs self; };
+        modules = [ ./home-modules/remote.nix ];
       };
 
       # Development shell for testing configurations
