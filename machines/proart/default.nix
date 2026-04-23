@@ -35,6 +35,11 @@
   hardware.nvidia.open = true;
   hardware.nvidia.powerManagement.enable = true;
   hardware.nvidia.powerManagement.finegrained = true;
+  # 595.58.03's in-kernel VRAM-save path (NVreg_UseKernelSuspendNotifiers=1)
+  # fails on this machine: nv_pmops_suspend returns -5 with "System Power
+  # Management attempted without driver procfs suspend interface". Fall back to
+  # the userspace nvidia-sleep.sh path until a driver release fixes it.
+  hardware.nvidia.powerManagement.kernelSuspendNotifier = false;
   hardware.nvidia.prime = {
     offload.enable = true;
     offload.enableOffloadCmd = true;
