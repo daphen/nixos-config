@@ -37,6 +37,7 @@ in {
     "spotify-player/theme.toml".source = link "${dotfiles}/spotify-player/.config/spotify-player/theme.toml";
     "reference/commands-reference.md".source = link "${dotfiles}/reference/.config/commands-reference.md";
     "swaylock/config".source = link "${dotfiles}/swaylock/.config/swaylock/config";
+    "starship.toml".source = link "${dotfiles}/starship/.config/starship/starship.toml";
     # Note: systemd/user services are managed by home-manager's systemd.user.services option
     # or can be manually copied to ~/.config/systemd/user/
   };
