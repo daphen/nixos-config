@@ -20,8 +20,11 @@
     # Niri flake - provides proper niri build with all dependencies
     niri-flake.url = "github:sodiboo/niri-flake";
 
-    # Override niri-stable to v26.04 (niri moved orgs from YaLTeR to niri-wm)
-    niri-flake.inputs.niri-stable.url = "github:niri-wm/niri/v26.04";
+    # Override niri-stable. v26.04 is held back: the niri-flake derivation's
+    # substituteStream still looks for /usr/bin in niri.service, but v26.04
+    # removed that hardcoding (release notes called this out for packagers).
+    # Re-bump once sodiboo updates the build expression.
+    niri-flake.inputs.niri-stable.url = "github:niri-wm/niri/v25.11";
 
     # Pinned nixpkgs for iwd 3.12 (fixes repeated SIGSEGV in build_ciphers_common during roaming)
     nixpkgs-iwd.url = "github:nixos/nixpkgs/34c521aa2928ec0f0b376f60d33816fe768ea60d";
