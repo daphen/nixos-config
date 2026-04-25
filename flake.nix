@@ -81,6 +81,7 @@
           inherit (apps)
             # AI CLIs (ship daily)
             claude-code
+            codex
             opencode
             pi-coding-agent
             # Compositor-adjacent

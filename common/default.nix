@@ -229,6 +229,7 @@
     bun
     opencode
     claude-code
+    codex
     pi-coding-agent
     electron
 
