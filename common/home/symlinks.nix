@@ -48,10 +48,11 @@ in {
     ".gitignore_global".source = link "${dotfiles}/git/.gitignore_global";
     "Pictures/Wallpapers".source = link "${dotfiles}/wallpapers/Pictures/Wallpapers";
     "Pictures/fastfetch".source = link "${dotfiles}/fastfetch/Pictures/fastfetch";
-    # Codex reads AGENTS.md the same way Claude reads CLAUDE.md — point both
-    # at the same source so global instructions stay in sync without manual
-    # duplication.
-    ".codex/AGENTS.md".source = link "${dotfiles}/claude/.claude/CLAUDE.md";
+    # AI agent instructions — neutral file at dotfiles/ai/instructions.md
+    # is the single source of truth. Claude reads it via the .claude
+    # directory symlink (CLAUDE.md inside is a symlink to ai/instructions.md).
+    # Codex's AGENTS.md points directly at the same neutral file here.
+    ".codex/AGENTS.md".source = link "${dotfiles}/ai/instructions.md";
   };
 
   # Claude Code config lives at ~/.claude (not ~/.config)
