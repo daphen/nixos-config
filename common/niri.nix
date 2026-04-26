@@ -3,12 +3,16 @@
 {
   # Niri Window Manager Configuration
   # ==================================
-  # Uses niri-stable from niri-flake (overridden to v25.11 in flake.nix)
+  # Uses niri-unstable from niri-flake — tracks niri's master branch.
+  # "unstable" is a misnomer; tagged releases (v26.04 etc.) are cut from
+  # this branch, and niri-flake updates the lock multiple times per day.
+  # niri-stable in niri-flake currently lags and is hardcoded to expect
+  # the pre-v26.04 systemd service file format.
   # The niri-flake nixosModule is imported in flake.nix and provides
   # programs.niri options, dbus config, polkit, portals, etc.
 
   programs.niri.enable = true;
-  programs.niri.package = inputs.niri-flake.packages.x86_64-linux.niri-stable;
+  programs.niri.package = inputs.niri-flake.packages.x86_64-linux.niri-unstable;
 
   # Use console autologin instead
   services.getty.autologinUser = "daphen";
