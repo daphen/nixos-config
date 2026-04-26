@@ -48,6 +48,10 @@ in {
     ".gitignore_global".source = link "${dotfiles}/git/.gitignore_global";
     "Pictures/Wallpapers".source = link "${dotfiles}/wallpapers/Pictures/Wallpapers";
     "Pictures/fastfetch".source = link "${dotfiles}/fastfetch/Pictures/fastfetch";
+    # Codex reads AGENTS.md the same way Claude reads CLAUDE.md — point both
+    # at the same source so global instructions stay in sync without manual
+    # duplication.
+    ".codex/AGENTS.md".source = link "${dotfiles}/claude/.claude/CLAUDE.md";
   };
 
   # Claude Code config lives at ~/.claude (not ~/.config)
