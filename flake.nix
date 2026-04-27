@@ -24,6 +24,10 @@
     # Pinned nixpkgs for iwd 3.12 (fixes repeated SIGSEGV in build_ciphers_common during roaming)
     nixpkgs-iwd.url = "github:nixos/nixpkgs/34c521aa2928ec0f0b376f60d33816fe768ea60d";
 
+    # Pinned nixpkgs for neovim 0.11.6 — nvim 0.12 broke too many plugins
+    # (treesitter, markview, etc.); revisit when ecosystem catches up.
+    nixpkgs-neovim.url = "github:nixos/nixpkgs/46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9";
+
     # Fast-moving apps channel — bumped independently of the system nixpkgs
     # via: nix flake update nixpkgs-apps
     # Use nixos-unstable (Hydra-cached) rather than master to avoid mass source rebuilds
@@ -31,7 +35,7 @@
 
   };
 
-  outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, home-manager, niri-flake, worktrunk, ... }@inputs:
+  outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, nixpkgs-neovim, home-manager, niri-flake, worktrunk, ... }@inputs:
     let
       system = "x86_64-linux";
 
@@ -46,6 +50,13 @@
       # Pin iwd to 3.12 to fix SIGSEGV crashes during WiFi roaming (build_ciphers_common)
       iwdOverlay = final: prev: {
         iwd = (import nixpkgs-iwd { inherit system; }).iwd;
+      };
+
+      # Pin neovim to 0.11.6 — nvim 0.12 broke nvim-treesitter master, markview,
+      # and a chunk of plugins that haven't migrated. Re-evaluate when the
+      # plugin ecosystem stabilises on 0.12.
+      neovimOverlay = final: prev: {
+        neovim-unwrapped = (import nixpkgs-neovim { inherit system; config.allowUnfree = true; }).neovim-unwrapped;
       };
 
       # Enable Widevine DRM on browsers that need it
@@ -103,7 +114,7 @@
       # Shared modules used by all machines
       commonModules = [
         # Apply overlays
-        { nixpkgs.overlays = [ iwdOverlay widevineOverlay asusctlOverlay appsOverlay ]; }
+        { nixpkgs.overlays = [ iwdOverlay widevineOverlay asusctlOverlay appsOverlay neovimOverlay ]; }
 
         # Niri flake module (sets up dbus, portals, polkit, etc.)
         niri-flake.nixosModules.niri

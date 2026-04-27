@@ -157,6 +157,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-neovim": {
+      "locked": {
+        "lastModified": 1774386573,
+        "narHash": "sha256-4hAV26quOxdC6iyG7kYaZcM3VOskcPUrdCQd/nx8obc=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9",
+        "type": "github"
+      }
+    },
     "nixpkgs-stable": {
       "locked": {
         "lastModified": 1776734388,
@@ -196,6 +212,7 @@
         "nixpkgs": "nixpkgs_2",
         "nixpkgs-apps": "nixpkgs-apps",
         "nixpkgs-iwd": "nixpkgs-iwd",
+        "nixpkgs-neovim": "nixpkgs-neovim",
         "worktrunk": "worktrunk"
       }
     },
