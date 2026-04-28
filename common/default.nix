@@ -148,6 +148,7 @@
 
     # Notifications
     mako
+    libnotify
 
     # Background & Idle
     swaybg

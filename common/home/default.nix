@@ -69,6 +69,16 @@
     noDisplay = true;
   };
 
+  xdg.desktopEntries.restart-wifi = {
+    name = "Restart Wi-Fi";
+    comment = "Deactivate and reconnect the active Wi-Fi connection";
+    exec = "${config.home.homeDirectory}/.config/niri/scripts/restart-wifi";
+    icon = "network-wireless";
+    terminal = false;
+    type = "Application";
+    categories = [ "Network" "System" ];
+  };
+
   xdg.mimeApps = {
     enable = true;
     defaultApplications = {
