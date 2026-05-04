@@ -16,6 +16,7 @@ dotfiles-source/
 # Editor files
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
