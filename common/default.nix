@@ -164,6 +164,8 @@
     # GTK / System Theme
     dconf-editor
     adwaita-icon-theme
+    glib                       # provides `gsettings` CLI
+    gsettings-desktop-schemas  # schema for org.gnome.desktop.interface (color-scheme)
 
     # Display Management
     waypaper
@@ -279,7 +281,11 @@
   # gvfs: trash, mounts, and network shares for GTK file dialogs
   services.gvfs.enable = true;
 
-  # dconf (needed for gsettings / GTK dark mode preference)
+  # dconf (needed for gsettings / GTK dark mode preference).
+  # `glib` (gsettings binary) and `gsettings-desktop-schemas` (schema for
+  # org.gnome.desktop.interface, including color-scheme) are added to
+  # environment.systemPackages above. xdg-desktop-portal-gtk reads the
+  # color-scheme from dconf so Chromium's `Device` mode resolves correctly.
   programs.dconf.enable = true;
 
   # nix-ld: allows dynamically-linked binaries from generic Linux distros to run

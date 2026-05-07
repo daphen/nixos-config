@@ -1,6 +1,6 @@
 # User programs - only installation and Nix integration
 # All config files are handled by symlinks.nix
-{ pkgs, ... }:
+{ pkgs, inputs, ... }:
 {
   # Shell
   programs.fzf = {
@@ -21,7 +21,7 @@
   # Editor — neovim installed directly rather than via programs.neovim, since HM's
   # module generates its own init.lua which conflicts with the dotfile-based config
   # symlinked through symlinks.nix.
-  home.packages = with pkgs; [
+  home.packages = (with pkgs; [
     neovim-unwrapped
     # LSP/formatter tooling expected on PATH by the nvim config
     prettier
@@ -29,6 +29,10 @@
     stylua
     eslint
     xclip
+  ]) ++ [
+    # Helium browser — wrapped via flake (not in nixpkgs). Ships its own
+    # .desktop entry and icon, so no xdg.desktopEntries needed.
+    inputs.helium-nix.packages.${pkgs.system}.default
   ];
   home.sessionVariables.EDITOR = "nvim";
   programs.fish.shellAliases = {

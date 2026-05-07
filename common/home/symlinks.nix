@@ -24,6 +24,15 @@ in {
     "waybar".source = link "${dotfiles}/waybar/.config/waybar";
     "yazi".source = link "${dotfiles}/yazi/.config/yazi";
     "qutebrowser".source = link "${dotfiles}/qutebrowser/.config/qutebrowser";
+    # Quickmarks: shared file format consumed by Chrome Palette via the
+    # native messaging host. Edits to ~/dotfiles/quickmarks are live —
+    # the host re-reads on every palette open, no rebuild needed.
+    "quickmarks".source = link "${dotfiles}/quickmarks/.config/quickmarks";
+    # Native messaging host manifest for Chrome Palette → quickmarks-host.
+    # Helium reads ~/.config/net.imput.helium/NativeMessagingHosts/<name>.json
+    # to discover hosts the extension can call via chrome.runtime.sendNativeMessage.
+    "net.imput.helium/NativeMessagingHosts/com.daphen.quickmarks.json".source =
+      link "${dotfiles}/quickmarks/.config/net.imput.helium/NativeMessagingHosts/com.daphen.quickmarks.json";
     "kanata".source = link "${dotfiles}/kanata/.config/kanata";
     "niri/config.kdl".source = link "${dotfiles}/niri/.config/niri/config.kdl";
     "niri/scripts".source = link "${dotfiles}/niri/.config/niri/scripts";

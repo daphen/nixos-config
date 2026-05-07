@@ -33,6 +33,13 @@
     # Use nixos-unstable (Hydra-cached) rather than master to avoid mass source rebuilds
     nixpkgs-apps.url = "github:nixos/nixpkgs/nixos-unstable";
 
+    # Helium browser — not in nixpkgs; this flake wraps the upstream AppImage with
+    # appimageTools and auto-bumps via GitHub Actions on new releases.
+    helium-nix = {
+      url = "github:AlvaroParker/helium-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
   };
 
   outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, nixpkgs-neovim, home-manager, niri-flake, worktrunk, ... }@inputs:

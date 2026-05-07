@@ -35,17 +35,6 @@
     templates = "${config.home.homeDirectory}/Templates";
   };
 
-  xdg.desktopEntries.helium = {
-    name = "Helium";
-    comment = "Privacy-focused Chromium browser";
-    exec = "${config.home.homeDirectory}/.local/share/helium/helium.AppImage %U";
-    icon = "helium";
-    terminal = false;
-    type = "Application";
-    categories = [ "Network" "WebBrowser" ];
-    mimeType = [ "x-scheme-handler/http" "x-scheme-handler/https" "text/html" ];
-  };
-
   xdg.desktopEntries.google-chrome = {
     name = "Google Chrome";
     comment = "Access the Internet";
