@@ -15,12 +15,19 @@ let
 in {
   home.packages = [ theme-generator pkgs.jq ];
 
+  # Regenerate + reapply themes on every activation. Pre-rebuild this hook
+  # always applied `dark` regardless of state, which flipped any tool whose
+  # config is written *outside* a HM-managed directory (endcord, claude-code,
+  # starship.toml, etc.) to dark while HM-managed configs (kitty, waybar,
+  # mako) kept whatever was in dotfiles. Honor ~/.config/theme_mode so the
+  # active mode wins on rebuild.
   home.activation.generateThemes = config.lib.dag.entryAfter ["writeBoundary"] ''
-    echo "Generating themes..."
     if [ -f "$HOME/.config/themes/theme-manager.sh" ]; then
+      mode="$(cat "$HOME/.config/theme_mode" 2>/dev/null || echo dark)"
+      echo "Regenerating themes for $mode mode..."
       cd "$HOME/.config/themes"
-      ./theme-manager.sh generate dark || true
-      ./theme-manager.sh apply dark || true
+      ./theme-manager.sh generate "$mode" || true
+      ./theme-manager.sh apply "$mode" || true
     fi
   '';
 }

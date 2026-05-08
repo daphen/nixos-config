@@ -1,6 +1,6 @@
 # User programs - only installation and Nix integration
 # All config files are handled by symlinks.nix
-{ pkgs, inputs, ... }:
+{ pkgs, inputs, endcord, ... }:
 {
   # Shell
   programs.fzf = {
@@ -29,12 +29,15 @@
     stylua
     eslint
     xclip
+    # mpv — used by ~/.config/endcord/media-viewer.sh to play gif-as-mp4
+    # attachments (Discord converts giphy gifv to mp4 server-side).
+    mpv
   ]) ++ [
     # Helium browser — wrapped via flake (not in nixpkgs). Ships its own
     # .desktop entry and icon, so no xdg.desktopEntries needed.
     inputs.helium-nix.packages.${pkgs.system}.default
-    # endcord — Discord TUI, not in nixpkgs. Sourced from hexadecimalDinosaur's NUR.
-    inputs.endcord-nur.packages.${pkgs.system}.endcord
+    # endcord — Discord TUI 1.4.2, built from source. See pkgs/endcord/default.nix.
+    endcord
   ];
   home.sessionVariables.EDITOR = "nvim";
   programs.fish.shellAliases = {
