@@ -15,6 +15,26 @@
         "type": "github"
       }
     },
+    "endcord-nur": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1778008634,
+        "narHash": "sha256-VBZbW2+tZIxsCs7u2dxaGlOLZYIUHGS26WPvfYdLgMo=",
+        "owner": "hexadecimalDinosaur",
+        "repo": "nur",
+        "rev": "49f94264cf74213972e3dab5c87355f44b409168",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hexadecimalDinosaur",
+        "repo": "nur",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -263,6 +283,7 @@
     },
     "root": {
       "inputs": {
+        "endcord-nur": "endcord-nur",
         "helium-nix": "helium-nix",
         "home-manager": "home-manager",
         "niri-flake": "niri-flake",

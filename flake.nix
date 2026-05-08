@@ -40,6 +40,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # endcord (Discord TUI) — not in nixpkgs. Upstream issue #73 closed
+    # not-planned; maintainer is fine with community packaging. Using
+    # hexadecimalDinosaur's NUR, which exposes `packages.<system>.endcord`.
+    endcord-nur = {
+      url = "github:hexadecimalDinosaur/nur";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
   };
 
   outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, nixpkgs-neovim, home-manager, niri-flake, worktrunk, ... }@inputs:

@@ -33,6 +33,8 @@
     # Helium browser — wrapped via flake (not in nixpkgs). Ships its own
     # .desktop entry and icon, so no xdg.desktopEntries needed.
     inputs.helium-nix.packages.${pkgs.system}.default
+    # endcord — Discord TUI, not in nixpkgs. Sourced from hexadecimalDinosaur's NUR.
+    inputs.endcord-nur.packages.${pkgs.system}.endcord
   ];
   home.sessionVariables.EDITOR = "nvim";
   programs.fish.shellAliases = {
