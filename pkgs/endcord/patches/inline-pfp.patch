@@ -1,0 +1,420 @@
+Inline profile pictures in the chat (Kitty graphics protocol).
+
+Adds an opt-in feature: each message header line gets the author's
+avatar rendered next to it via Kitty's image protocol. Off by default
+(set `inline_pfp = True` in config.ini to enable). No-op on
+non-Kitty terminals.
+
+Mechanics:
+- New module endcord/pfp.py owns the avatar cache + Kitty escape
+  sequence wrangling.
+- message.py and app.py stop discarding the "avatar" hash so the
+  renderer can find it per message.
+- When enabled, the chat formatter's format_message / format_newline /
+  format_reply / format_reactions / format_interaction are prefixed
+  with 3 spaces so the 2-cell avatar doesn't cover text.
+- tui.draw_chat calls into place_inline_pfps after curses redraws,
+  which deletes the previous Kitty placements and re-issues them for
+  the currently-visible header rows. App-side _build_pfp_lines maps
+  chat_map entries to (user_id, avatar_id) tuples.
+
+Risks: Kitty placements layer on top of curses cells, so anything
+that scrolls / partially redraws the chat without going through
+draw_chat will leave orphaned images on screen. The feature is
+gated to make rollback trivial.
+
+--- a/endcord/defaults.py	2026-05-11 11:14:16.012470110 +0200
++++ b/endcord/defaults.py	2026-05-11 11:31:07.568860292 +0200
+@@ -62,6 +62,7 @@
+     "game_detection_download_delay": 7,
+     "downloads_path": None,
+     "notifications_pfp": True,
++    "inline_pfp": False,   # render inline avatars in chat (Kitty-only)
+     "linux_notification_sound": "message",
+     "custom_notification_sound": None,
+     "linux_ringtone_incoming": "phone-incoming-call",
+--- a/endcord/message.py	2026-05-11 11:14:16.003132798 +0200
++++ b/endcord/message.py	2026-05-11 11:28:31.206622095 +0200
+@@ -275,8 +275,8 @@
+     messages = []
+     for message in data:
+         ready_message = prepare_message(message)
+-        if clean:
+-            del ready_message["avatar"]
++        # Note: previously deleted ready_message["avatar"] when clean=True;
++        # we keep it so inline-PFP rendering can find the avatar hash.
+         messages.append(ready_message)
+         if have_channel_id:
+             messages[-1]["channel_id"] = message["channel_id"]
+--- a/endcord/app.py	2026-05-11 11:14:16.022788582 +0200
++++ b/endcord/app.py	2026-05-11 11:30:53.684927935 +0200
+@@ -33,6 +33,7 @@
+     parser,
+     peripherals,
+     perms,
++    pfp as pfp_mod,
+     rpc,
+     search,
+     tui,
+@@ -252,6 +253,13 @@
+         threading.Thread(target=self.gateway.connect, daemon=True).start()
+         self.downloader = downloader.Downloader(config["proxy"])
+         self.tui = tui.TUI(self.screen, self.config, keybindings, command_bindings)
++        # Inline avatars in chat (Kitty-only; defaults off — set
++        # inline_pfp = True in config.ini to enable).
++        self.pfp_renderer = pfp_mod.PfpRenderer(
++            peripherals.cache_path, self.discord,
++            enabled=bool(config.get("inline_pfp", False)),
++        )
++        self.tui.set_pfp_renderer(self.pfp_renderer)
+         if self.fun:
+             today = (time.localtime().tm_mon, time.localtime().tm_mday)
+             self.fun = 2 if (10, 25) <= today <= (11, 8) else self.fun
+@@ -266,6 +274,15 @@
+         self.tui.update_chat(self.chat, [[[self.colors[0]]]] * len(self.chat))
+         self.tui.update_status_line(" CONNECTING")
+         self.my_id = None   # will be taken from gateway in main()
++        # If we're going to draw inline avatars, reserve 3 leading cols
++        # on every chat line so the 2-cell avatar doesn't cover text.
++        if self.pfp_renderer.enabled:
++            pad = "   "
++            self.config["format_message"] = pad + self.config["format_message"].replace("\n", "\n" + pad)
++            self.config["format_newline"] = pad + self.config["format_newline"]
++            self.config["format_reply"] = pad + self.config["format_reply"]
++            self.config["format_reactions"] = pad + self.config["format_reactions"]
++            self.config["format_interaction"] = pad + self.config["format_interaction"]
+         self.formatter = formatter.ChatGenerator(self.config, self.colors, self.colors_formatted, self.my_id)
+         self.premium = None    # same
+         self.my_user_data = None    # same
+@@ -5965,6 +5982,7 @@
+             change_type=change_type,
+         )
+         self.tui.set_wide(self.chat_map)
++        self.tui.set_pfp_lines(self._build_pfp_lines())
+ 
+         if keep_selected:
+             selected_msg = selected_msg + change_amount
+@@ -6367,6 +6385,26 @@
+             self.tui.set_tray_icon(tray_state)
+ 
+ 
++    def _build_pfp_lines(self):
++        """Return a list parallel to chat_buffer where each header line is
++        tagged with (user_id, avatar_id). Other lines are None.
++
++        chat_map[line] is a 7-tuple; index 0 = msg_num, index 4 = the
++        timestamp range (only set on header lines). We treat "has
++        timestamp range" as "is the avatar row".
++        """
++        out = []
++        for line in self.chat_map:
++            if line and line[0] is not None and line[4]:
++                msg_num = line[0]
++                if 0 <= msg_num < len(self.messages):
++                    msg = self.messages[msg_num]
++                    out.append((msg.get("user_id"), msg.get("avatar")))
++                    continue
++            out.append(None)
++        return out
++
++
+     def lines_to_msg(self, line_index, space=False):
+         """Convert line index from formatted chat to message index"""
+         if not self.chat_map:
+@@ -7945,7 +7983,9 @@
+                     new_message = self.execute_extensions_methods("on_message_event", new_message, cache=True)[0]
+                     new_message_channel_id = new_message["d"]["channel_id"]
+                     this_channel = (new_message_channel_id == self.active_channel["channel_id"])
+-                    avatar_id = new_message["d"].pop("avatar", None)
++                    # Keep "avatar" on the message dict (use get instead of
++                    # pop) so the inline-PFP renderer can find it later.
++                    avatar_id = new_message["d"].get("avatar", None)
+                     if this_channel and self.get_chat_last_message_id() == self.last_message_id:   # if its scrolled far up, this channel bot is cached
+                         self.process_msg_events_active_channel(new_message)
+                     # handle cached channels
+--- a/endcord/tui.py	2026-05-11 11:14:16.020987675 +0200
++++ b/endcord/tui.py	2026-05-11 11:28:10.641722288 +0200
+@@ -12,7 +12,7 @@
+ import threading
+ import time
+ 
+-from endcord import acs, peripherals, utils
++from endcord import acs, peripherals, pfp as pfp_mod, utils
+ 
+ logger = logging.getLogger(__name__)
+ uses_pgcurses = hasattr(curses, "PGCURSES")
+@@ -310,6 +310,11 @@
+         self.chat_buffer = []
+         self.chat_format = []
+         self.wide_map = []
++        # Inline-PFP state. Wired up later via set_pfp_renderer().
++        # pfp_lines: parallel to chat_buffer. None for non-header lines,
++        # (user_id, avatar_id) for lines where we want to draw an avatar.
++        self.pfp_renderer = None
++        self.pfp_lines = []
+         self.tree = []
+         self.tree_format = []
+         self.tree_clean_len = 0
+@@ -1431,6 +1436,7 @@
+                     self.default_color,
+                 )
+                 self.win_chat.noutrefresh()
++                self.place_inline_pfps()
+                 if not norefresh:
+                     self.need_update.set()
+             except curses.error:
+@@ -1446,6 +1452,52 @@
+                 self.wide_map.append(num + 1)
+ 
+ 
++    def set_pfp_renderer(self, renderer):
++        """Install a PfpRenderer; called once during app startup."""
++        self.pfp_renderer = renderer
++
++
++    def set_pfp_lines(self, pfp_lines):
++        """Update the per-line PFP map (parallel to chat_buffer).
++
++        Each entry is None or a tuple (user_id, avatar_id) — when not None
++        the line is a message header that should get an avatar.
++        """
++        self.pfp_lines = pfp_lines
++
++
++    def place_inline_pfps(self):
++        """Render avatars for currently visible header lines.
++
++        Called from draw_chat after curses has produced its output, so
++        Kitty placements layer on top of the cell content. The chat
++        formatter is responsible for leaving leading whitespace in
++        header / newline rows so avatars don't cover text.
++        """
++        if not self.pfp_renderer or not self.pfp_renderer.enabled:
++            return
++        if not self.pfp_lines or self.disable_drawing:
++            return
++        self.pfp_renderer.clear_placements()
++        chat_y, chat_x = self.win_chat.getbegyx()
++        chat_h = self.chat_hw[0]
++        # draw_chat renders bottom-up: chat_buffer[chat_index] -> bottom row.
++        # So visible buffer line i is at screen row (chat_y + chat_h - 1 -
++        # (i - chat_index)). Skip the row of avatars that would overflow
++        # past the top.
++        for i in range(self.chat_index, min(self.chat_index + chat_h, len(self.pfp_lines))):
++            entry = self.pfp_lines[i]
++            if not entry:
++                continue
++            user_id, avatar_id = entry
++            if not avatar_id:
++                continue
++            row = chat_y + chat_h - 1 - (i - self.chat_index)
++            if row < chat_y:
++                continue
++            self.pfp_renderer.place(user_id, avatar_id, row, chat_x)
++
++
+     def clear_chat_wide(self, wait=True):
+         """Clear specific chat lines that are containing emoji"""
+         if self.disable_drawing or not self.wide_map:
+--- a/endcord/pfp.py	2026-05-04 19:19:32.542750226 +0200
++++ b/endcord/pfp.py	2026-05-11 11:26:50.090114739 +0200
+@@ -0,0 +1,199 @@
++"""Inline profile pictures via the Kitty graphics protocol.
++
++Renders each message's author avatar at the chat header line using
++Kitty's image transmission + placement commands. Images are written
++directly to stdout (bypassing curses) and re-placed on every chat
++redraw so they track scroll.
++
++Layout: avatars are 2 columns wide and 2 rows tall, placed at the
++leftmost columns of the chat window. The chat formatter prepends 3
++spaces to each header / newline so the avatar doesn't cover text.
++"""
++
++import base64
++import io
++import logging
++import os
++import sys
++import threading
++
++logger = logging.getLogger(__name__)
++
++# Pillow is optional - if not present, inline PFPs are disabled.
++try:
++    from PIL import Image
++    HAVE_PIL = True
++except ImportError:
++    HAVE_PIL = False
++
++# Width/height in terminal cells. 2x2 fits the header + first content row.
++PFP_COLS = 2
++PFP_ROWS = 2
++# Pixel size to ask Discord for. Anything >= cell-pixels * dimensions works.
++PFP_SIZE_PX = 64
++# Kitty image IDs are 32-bit. Start at a high offset so we don't clash
++# with anything else that might be using the protocol (e.g. notifications).
++KITTY_ID_BASE = 0x70667000   # "pfp\0"
++
++
++def kitty_supported():
++    """Heuristic: is the current terminal Kitty-compatible?
++
++    Checks $TERM and a couple of common env vars. We don't query the
++    terminal here because that requires read-back on stdin which we
++    can't safely do while curses owns it.
++    """
++    term = os.environ.get("TERM", "")
++    if "kitty" in term:
++        return True
++    if os.environ.get("TERM_PROGRAM") == "kitty":
++        return True
++    # Ghostty also implements the protocol.
++    if os.environ.get("TERM_PROGRAM") == "ghostty":
++        return True
++    if os.environ.get("KITTY_WINDOW_ID"):
++        return True
++    return False
++
++
++def _send(payload):
++    """Write a Kitty graphics escape sequence to stdout."""
++    try:
++        os.write(sys.stdout.fileno(), payload)
++    except OSError:
++        pass
++
++
++def _chunk_payload(data, controls):
++    """Build the Kitty protocol APC sequence(s).
++
++    Long payloads are split into chunks of 4096 base64 chars with m=1
++    on all but the last chunk.
++    """
++    b64 = base64.standard_b64encode(data)
++    chunks = []
++    chunk_size = 4096
++    pos = 0
++    first = True
++    while pos < len(b64):
++        chunk = b64[pos:pos + chunk_size]
++        pos += chunk_size
++        more = pos < len(b64)
++        if first:
++            ctrl = controls + (",m=1" if more else "")
++        else:
++            ctrl = ("m=1" if more else "m=0")
++        chunks.append(b"\x1b_G" + ctrl.encode("ascii") + b";" + chunk + b"\x1b\\")
++        first = False
++    return b"".join(chunks)
++
++
++class PfpRenderer:
++    """Owns the avatar cache and pushes images into the terminal."""
++
++    def __init__(self, cache_path, discord, enabled=True):
++        self.discord = discord
++        self.cache_path = cache_path
++        self.enabled = enabled and HAVE_PIL and kitty_supported()
++        # avatar_id -> kitty image id (already transmitted)
++        self._transmitted = {}
++        # avatar_id -> True while a background download is in flight
++        self._fetching = set()
++        # next free Kitty image id
++        self._next_id = KITTY_ID_BASE
++        # placement ids currently on screen, so we can clear them
++        self._placed = set()
++        self._lock = threading.Lock()
++
++    def _alloc_id(self, avatar_id):
++        with self._lock:
++            if avatar_id in self._transmitted:
++                return self._transmitted[avatar_id]
++            kid = self._next_id
++            self._next_id += 1
++            self._transmitted[avatar_id] = kid
++            return kid
++
++    def _avatar_path(self, user_id, avatar_id):
++        """Return a local path to a square 64px PNG of the avatar.
++
++        Downloads + converts if needed. Returns None on failure.
++        """
++        png_name = f"pfp_{avatar_id}.png"
++        png_path = os.path.join(os.path.expanduser(self.cache_path), png_name)
++        if os.path.isfile(png_path):
++            return png_path
++        # Pull the webp via endcord's existing helper, then convert.
++        webp_path = self.discord.get_pfp(
++            user_id, avatar_id, size=PFP_SIZE_PX, save_path=self.cache_path,
++        )
++        if not webp_path or not os.path.isfile(webp_path):
++            return None
++        try:
++            with Image.open(webp_path) as im:
++                im = im.convert("RGBA").resize(
++                    (PFP_SIZE_PX, PFP_SIZE_PX), Image.LANCZOS,
++                )
++                im.save(png_path, format="PNG")
++        except Exception as e:
++            logger.debug(f"pfp convert failed for {avatar_id}: {e}")
++            return None
++        return png_path
++
++    def _ensure_transmitted(self, user_id, avatar_id):
++        """If the image isn't on the terminal yet, transmit it.
++
++        Returns the Kitty image id, or None if not yet ready.
++        """
++        if avatar_id in self._transmitted:
++            return self._transmitted[avatar_id]
++        if avatar_id in self._fetching:
++            return None
++        # Fetch synchronously here — caller is the draw thread; the cache
++        # hit path is fast and the cold path happens at most once per user.
++        # Background-thread this if it becomes a bottleneck.
++        self._fetching.add(avatar_id)
++        try:
++            path = self._avatar_path(user_id, avatar_id)
++            if not path:
++                return None
++            kid = self._alloc_id(avatar_id)
++            with open(path, "rb") as f:
++                data = f.read()
++            # a=t: transmit only. f=100: PNG (auto-detect). i: image id.
++            # q=2: suppress all responses. C=1: don't move cursor.
++            ctrl = f"a=t,f=100,i={kid},q=2"
++            _send(_chunk_payload(data, ctrl))
++            return kid
++        finally:
++            self._fetching.discard(avatar_id)
++
++    def clear_placements(self):
++        """Remove all current avatar placements from the terminal."""
++        if not self.enabled or not self._placed:
++            return
++        for pid in self._placed:
++            # a=d: delete. d=I: by image id. i=<id>. q=2: silent.
++            _send(b"\x1b_Ga=d,d=I,i=" + str(pid).encode("ascii") + b",q=2\x1b\\")
++        self._placed.clear()
++
++    def place(self, user_id, avatar_id, row, col):
++        """Place this user's avatar at terminal cell (row, col).
++
++        Uses Kitty's a=p with C=1 (don't move cursor) so we can write
++        the placement without disturbing curses' notion of cursor pos.
++        Position is set via the standard CUP escape before the place.
++        """
++        if not self.enabled or not avatar_id:
++            return
++        kid = self._ensure_transmitted(user_id, avatar_id)
++        if kid is None:
++            return
++        # Move cursor (1-indexed in CUP), then place. C=1 keeps the
++        # cursor on the same cell after placement so curses isn't lost.
++        cup = f"\x1b[{row + 1};{col + 1}H".encode("ascii")
++        place = (
++            f"\x1b_Ga=p,i={kid},p={kid},c={PFP_COLS},r={PFP_ROWS},C=1,q=2\x1b\\"
++        ).encode("ascii")
++        _send(cup + place)
++        self._placed.add(kid)

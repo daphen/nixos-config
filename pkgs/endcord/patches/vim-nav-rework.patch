@@ -1,0 +1,102 @@
+Vim-mode nav rework + jump-to-media.
+
+Final keymap (vim NORMAL mode):
+  j / k         chat line up/down (unchanged)
+  Shift+J / K   jump message-by-message in chat (NEW)
+  Up / Down     tree (sidebar) navigation (was Shift+J / K)
+  ]m / [m       jump to next/prev message containing media (NEW)
+  Space         enter selected channel (unchanged)
+
+Media def: any message with embeds or stickers (covers attachments,
+gifs, images, video, link previews, custom stickers).
+
+Adds 4 new actions (50–53), no upstream codes touched. Off-screen
+fetching is intentionally out of scope: walks only the currently
+loaded messages list. Reaching the end shows
+"No more media in this direction." in the extra line.
+
+--- a/endcord/defaults.py	2026-05-08 01:43:35.000000000 +0200
++++ b/endcord/defaults.py	2026-05-08 17:48:47.688935248 +0200
+@@ -213,6 +213,10 @@
+     "send_message": 10,   # Enter
+     "chat_up": 259,   # Up
+     "chat_down": 258,   # Down
++    "chat_msg_up": 275,   # F11 — overridden by vim mode K
++    "chat_msg_down": 276,   # F12 — overridden by vim mode J
++    "jump_next_media": 277,   # F13 — overridden by vim mode ]m
++    "jump_prev_media": 278,   # F14 — overridden by vim mode [m
+     "reply": 18,   # Ctrl+R
+     "edit": 5,   # Ctrl+E
+     "delete": 4,   # Ctrl+D
+@@ -275,8 +279,12 @@
+     # special
+     "insert_mode": "i",
+     # tree
+-    "tree_up": "K",
+-    "tree_down": "J",
++    "tree_up": 259,   # Up
++    "tree_down": 258,   # Down
++    "chat_msg_up": "K",
++    "chat_msg_down": "J",
++    "jump_next_media": "]-109",   # ]m chord
++    "jump_prev_media": "[-109",   # [m chord
+     "tree_select": " ",
+     "tree_collapse_threads": "W",
+     "tree_join_thread": "O",
+--- a/endcord/tui.py	2026-05-08 01:43:35.000000000 +0200
++++ b/endcord/tui.py	2026-05-08 17:48:56.023866315 +0200
+@@ -2800,6 +2800,18 @@
+             elif key in self.keybindings["view_media"] and self.chat_selected != -1:
+                 return self.return_input_code(17)
+ 
++            elif key in self.keybindings["chat_msg_up"]:
++                return self.return_input_code(50)
++
++            elif key in self.keybindings["chat_msg_down"]:
++                return self.return_input_code(51)
++
++            elif key in self.keybindings["jump_next_media"]:
++                return self.return_input_code(52)
++
++            elif key in self.keybindings["jump_prev_media"]:
++                return self.return_input_code(53)
++
+             elif key in self.keybindings["spoil"] and self.chat_selected != -1 and not forum:
+                 return self.return_input_code(18)
+ 
+--- a/endcord/app.py	2026-05-08 01:43:35.000000000 +0200
++++ b/endcord/app.py	2026-05-08 17:49:07.087774735 +0200
+@@ -1578,6 +1578,33 @@
+                     continue
+                 self.go_replied(msg_index)
+ 
++            # chat_msg_up / chat_msg_down: jump message-by-message
++            elif (action == 50 or action == 51) and self.messages:
++                self.restore_input_text = (input_text, "standard")
++                cur = self.lines_to_msg(chat_sel)
++                if cur is None:
++                    continue
++                target = cur + (-1 if action == 50 else 1)
++                if 0 <= target < len(self.messages):
++                    self.tui.set_selected(self.msg_to_lines(target, smart=True))
++
++            # jump_next_media / jump_prev_media
++            elif (action == 52 or action == 53) and self.messages:
++                self.restore_input_text = (input_text, "standard")
++                cur = self.lines_to_msg(chat_sel)
++                if cur is None:
++                    continue
++                direction = 1 if action == 52 else -1
++                start = cur + direction
++                end = len(self.messages) if direction == 1 else -1
++                for i in range(start, end, direction):
++                    m = self.messages[i]
++                    if m.get("embeds") or m.get("stickers"):
++                        self.tui.set_selected(self.msg_to_lines(i, smart=True))
++                        break
++                else:
++                    self.update_extra_line("No more media in this direction.", timed=True)
++
+             # download file
+             elif action == 9:
+                 self.restore_input_text = (input_text, "standard")

@@ -62,6 +62,11 @@ in {
     # directory symlink (CLAUDE.md inside is a symlink to ai/instructions.md).
     # Codex's AGENTS.md points directly at the same neutral file here.
     ".codex/AGENTS.md".source = link "${dotfiles}/ai/instructions.md";
+    # xclip shim → wl-paste fallback. Lives ahead of the real xclip in
+    # PATH so apps that hardcode xclip (Claude Code's image paste, etc.)
+    # keep working when niri's Wayland↔X11 selection bridge wedges after
+    # suspend/wake. No-op when the bridge is healthy.
+    ".local/bin/xclip".source = link "${dotfiles}/bin/.local/bin/xclip-shim";
   };
 
   # Claude Code config lives at ~/.claude (not ~/.config)
