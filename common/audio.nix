@@ -38,6 +38,22 @@
         "default.clock.max-quantum" = 8192;
       };
     };
+
+    # Bump every Bluetooth A2DP sink above analog/HDMI so whichever pair of
+    # headphones is currently connected becomes the default automatically.
+    # With no configured-default sink saved, ties break in favor of the
+    # most recently added node — i.e. last-connected-wins.
+    wireplumber.extraConfig."51-bluetooth-priority" = {
+      "monitor.bluez.rules" = [
+        {
+          matches = [{ "node.name" = "~bluez_output\\..*"; }];
+          actions.update-props = {
+            "priority.session" = 4000;
+            "priority.driver"  = 4000;
+          };
+        }
+      ];
+    };
   };
 
   # Additional audio packages

@@ -95,6 +95,11 @@ pkgs.stdenv.mkDerivation {
   patches = [
     ./patches/vim-search-and-extend-fix.patch
     ./patches/vim-insert-border-color.patch
+    ./patches/vim-nav-rework.patch
+    ./patches/group-dm-typing-fix.patch
+    ./patches/vim-insert-clears-selection.patch
+    ./patches/dm-mention-assist-fix.patch
+    ./patches/inline-pfp.patch
   ];
 
   installPhase = ''

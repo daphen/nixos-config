@@ -8,10 +8,14 @@
 
   networking.hostName = "proart";
 
-  # AMD OLED panel — fix PSR2 flickering
+  # AMD OLED panel — fix PSR2 flickering + disable IPS2 dynamic
+  # dcdebugmask bits: 0x200 = DC_DISABLE_PSR_SU, 0x4000 = DC_DISABLE_IPS2_DYNAMIC.
+  # IPS2 dynamic entry/exit on DCN3.5 is fragile: amdgpu wedged + ring-reset on
+  # 2026-05-14, then a brightness sweep (which exits IPS) hung the system hard.
+  # Disabling just the IPS2 dynamic sub-state costs ~0.5W idle vs. full IPS off.
   # NVreg_DynamicPowerManagement=0x02 enables fine-grained PM so NVIDIA stays suspended
   boot.kernelParams = [
-    "amdgpu.dcdebugmask=0x200"
+    "amdgpu.dcdebugmask=0x4200"
     "amdgpu.sg_display=0" # fix DCN3.5 idle power opt stalls (video freeze + audio static)
     "resume=/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0"
     "resume_offset=421093376"

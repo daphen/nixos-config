@@ -33,9 +33,11 @@
     # attachments (Discord converts giphy gifv to mp4 server-side).
     mpv
   ]) ++ [
-    # Helium browser — wrapped via flake (not in nixpkgs). Ships its own
-    # .desktop entry and icon, so no xdg.desktopEntries needed.
-    inputs.helium-nix.packages.${pkgs.system}.default
+    # Helium browser — locally pinned to 0.12.2.1 (pre-release) until the
+    # helium-nix flake auto-bumper picks it up. See pkgs/helium/default.nix
+    # for context and revert instructions. Ships its own .desktop and icon,
+    # so no xdg.desktopEntries needed.
+    (pkgs.callPackage ../../pkgs/helium {})
     # endcord — Discord TUI 1.4.2, built from source. See pkgs/endcord/default.nix.
     endcord
   ];
