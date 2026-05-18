@@ -1,6 +1,9 @@
 # User programs - only installation and Nix integration
 # All config files are handled by symlinks.nix
 { pkgs, inputs, endcord, ... }:
+let
+  palette-daemon = inputs.palette-daemon.packages.${pkgs.system}.default;
+in
 {
   # Shell
   programs.fzf = {
@@ -40,7 +43,34 @@
     (pkgs.callPackage ../../pkgs/helium {})
     # endcord — Discord TUI 1.4.2, built from source. See pkgs/endcord/default.nix.
     endcord
+    # palette-daemon — WebKit command-palette overlay, replacing the
+    # per-tab iframe prewarm. Service unit defined below.
+    palette-daemon
   ];
+
+  # palette-daemon as a user systemd service, mirroring mako's pattern
+  # (PartOf graphical-session.target, ExecCondition gate on
+  # WAYLAND_DISPLAY). The chromium-palette popup bundle still lives in
+  # ~/personal/chromium-palette/dist; PALETTE_POPUP_DIST pins it.
+  systemd.user.services.palette-daemon = {
+    Unit = {
+      Description = "Palette Daemon (WebKit command-palette overlay)";
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecCondition = "/bin/sh -c '[ -n \"$WAYLAND_DISPLAY\" ]'";
+      ExecStart = "${palette-daemon}/bin/palette-daemon";
+      Environment = [
+        "PALETTE_POPUP_DIST=%h/personal/chromium-palette/dist"
+        "RUST_LOG=palette_daemon=info"
+      ];
+      Restart = "on-failure";
+      RestartSec = 2;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
   home.sessionVariables.EDITOR = "nvim";
   programs.fish.shellAliases = {
     vi = "nvim";

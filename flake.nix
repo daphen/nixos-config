@@ -17,6 +17,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # palette-daemon — long-running WebKit command palette + browser
+    # extension shim, replacing the per-tab iframe prewarm. Private
+    # repo, hence git+ssh URL (the `github:` shorthand hits the public
+    # GitHub API and 404s without an auth token).
+    palette-daemon = {
+      url = "git+ssh://git@github.com/daphen/palette-daemon";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Niri flake - provides proper niri build with all dependencies.
     # We use niri-unstable from this flake (tracks master, includes v26.04+).
     niri-flake.url = "github:sodiboo/niri-flake";
@@ -64,7 +73,7 @@
 
   };
 
-  outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, nixpkgs-neovim, home-manager, niri-flake, worktrunk, uv2nix, pyproject-nix, pyproject-build-systems, ... }@inputs:
+  outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, nixpkgs-neovim, home-manager, niri-flake, worktrunk, palette-daemon, uv2nix, pyproject-nix, pyproject-build-systems, ... }@inputs:
     let
       system = "x86_64-linux";
 
