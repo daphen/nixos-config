@@ -1,5 +1,8 @@
 # Home Manager Configuration
 { config, pkgs, inputs, ... }:
+let
+  gsettingsSchemaDir = "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}/glib-2.0/schemas";
+in
 {
   home.username = "daphen";
   home.homeDirectory = "/home/daphen";
@@ -19,6 +22,13 @@
     VISUAL = "nvim";
     BROWSER = "browser-dispatch";
     TERMINAL = "kitty";
+    # Lets glib find the gnome-desktop schema so xdg-desktop-portal-gtk
+    # can read color-scheme; Chromium's "Device" mode reads from there.
+    GSETTINGS_SCHEMA_DIR = gsettingsSchemaDir;
+  };
+
+  systemd.user.sessionVariables = {
+    GSETTINGS_SCHEMA_DIR = gsettingsSchemaDir;
   };
 
   xdg.enable = true;
