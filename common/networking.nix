@@ -7,12 +7,31 @@
   # Enable NetworkManager
   networking.networkmanager = {
     enable = true;
-    wifi.powersave = false;
+    wifi.powersave = false;  # only honored when NM owns wlan0 directly — see service below
   };
 
   # Enable IWD (iNet Wireless Daemon) as backend for NetworkManager
   networking.wireless.iwd.enable = true;
   networking.networkmanager.wifi.backend = "iwd";
+
+  # NM's wifi.powersave=false does NOT apply when iwd is the backend — NM hands
+  # off device management to iwd and the kernel default (power_save=on) sticks.
+  # That caused 100-400ms ping spikes to the gateway from MT7925 dozing between
+  # AP beacons. Force power_save off at boot + after resume.
+  systemd.services.wifi-powersave-off = {
+    description = "Disable WiFi power save on wlan0";
+    wants = [ "iwd.service" ];
+    after = [ "iwd.service" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.iw}/bin/iw dev wlan0 set power_save off";
+    };
+  };
+  powerManagement.resumeCommands = ''
+    ${pkgs.iw}/bin/iw dev wlan0 set power_save off || true
+  '';
 
   # Firewall
   networking.firewall = {
@@ -34,14 +53,21 @@
   };
 
   # GoLinks - maps "go" hostname to GoLinks' server so http://go/* works in all browsers
-  # internal.lovable.net - Tailscale-only whoami endpoint. tsauth.DevResolver
-  # in go-api calls it on every authenticated request with a 5s timeout, no
-  # negative caching. Off-Tailscale (i.e. here), every request blocked 5s
-  # waiting for that to fail. Pointing it at loopback turns the failure
-  # mode from "5s timeout" into "instant ECONNREFUSED".
   networking.hosts = {
     "52.72.13.96" = [ "go" ];
-    "127.0.0.1" = [ "internal.lovable.net" ];
+  };
+
+  # Tailscale - lovbox requires it; also resolves internal.lovable.net for
+  # tsauth.DevResolver (previously worked around by pointing the host at
+  # 127.0.0.1, now removed above).
+  #
+  # --accept-routes is load-bearing: lovable infra advertises subnet routes
+  # (e.g. internal.lovable.net at 185.41.151.3) via tailscale-subnet-router-*
+  # peers. Without accepting them, the public-IP destinations time out
+  # because traffic goes out the default route instead of through the tailnet.
+  services.tailscale = {
+    enable = true;
+    extraUpFlags = [ "--accept-routes" ];
   };
 
   # IPv6 strategy: enabled on loopback, disabled on every external interface.
