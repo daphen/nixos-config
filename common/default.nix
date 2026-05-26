@@ -224,6 +224,7 @@
 
     # Gaming — steam package kept for compatibility; programs.steam.enable handles FHS
     gamescope
+    mangohud      # FPS / temp / power overlay (prefix games with `mangohud %command%`)
 
     # GPU diagnostics
     libva-utils
@@ -334,6 +335,11 @@
       options = "--delete-older-than 7d";
     };
   };
+
+  # GameMode — flips CPU governor to performance + nice's the game process
+  # while a game is running, then restores on exit. Wrap a game with
+  # `gamemoderun %command%` in Steam launch options to opt in per-title.
+  programs.gamemode.enable = true;
 
   # Steam — programs.steam handles FHS compatibility layers needed on NixOS
   programs.steam = {
