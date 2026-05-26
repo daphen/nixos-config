@@ -625,6 +625,38 @@ gated to make rollback trivial.
 +        ).encode("ascii")
 +        _send(cup + place)
 +        self._placed.add(kid)
+--- a/endcord/discord.py
++++ b/endcord/discord.py
+@@ -129,6 +129,9 @@
+             self.host = DISCORD_HOST
+             self.cdn_host = DISCORD_CDN_HOST
+         logger.debug(f"Endpoints: API={self.host}, CDN={self.cdn_host}")
++        # Populated by send_message when a non-2xx is returned, so the
++        # message_sender thread can surface a visible error.
++        self.last_send_error = None
+         self.token = token
+         self.header = {
+             "Accept": "*/*",
+@@ -796,6 +799,19 @@
+                 "stickers": data.get("sticker_items", []),
+             }
+         log_api_error(data, status, "send_message")
++        # Stash a short human-readable description of the failure so the
++        # message_sender thread can surface it in the extra line — the
++        # caller currently only sees False.
++        err_code = None
++        try:
++            err_code = json.loads(data).get("code") if data else None
++        except (ValueError, TypeError):
++            pass
++        self.last_send_error = {
++            "status": status,
++            "error_code": err_code,
++            "nonce": nonce,
++        }
+         return False
+ 
+ 
 --- a/endcord/app.py
 +++ b/endcord/app.py
 @@ -33,6 +33,7 @@
@@ -676,7 +708,64 @@ gated to make rollback trivial.
          self.formatter = formatter.ChatGenerator(self.config, self.colors, self.colors_formatted, self.my_id)
          self.premium = None    # same
          self.my_user_data = None    # same
-@@ -954,6 +982,11 @@
+@@ -498,12 +526,56 @@
+                             self.message_send_queue.get_nowait()
+                         except queue.Empty:
+                             break
++                elif success is False and func == self.discord.send_message:
++                    # API rejected the send — show what Discord said and
++                    # mark the pending bubble as failed so it doesn't sit
++                    # there looking like it was delivered.
++                    err = self.discord.last_send_error or {}
++                    self.discord.last_send_error = None
++                    code = err.get("error_code")
++                    status = err.get("status")
++                    label = {
++                        50035: "invalid form (too long? bad mention?)",
++                        50007: "cannot send to this user",
++                        50013: "missing permissions",
++                        20009: "explicit content blocked",
++                        40005: "request entity too large",
++                    }.get(code, f"code {code}" if code else f"HTTP {status}")
++                    self.update_extra_line(
++                        f"Send failed: {label}", timed=True,
++                    )
++                    self._mark_pending_failed(err.get("nonce"))
+             except Exception:
+                 pass
+             finally:
+                 self.message_send_queue.task_done()
+ 
+ 
++    def _mark_pending_failed(self, nonce):
++        """Tag the pending message with the given nonce as failed so the
++        renderer can colour it distinctly (rather than leaving it stuck
++        looking like it was delivered)."""
++        if not nonce:
++            return
++        for msg in self.messages:
++            if msg.get("nonce") == nonce or msg.get("id") == nonce:
++                # The formatter treats `"pending" in message` (key
++                # existence, not value) as "still sending" — so we must
++                # `del`, not assign False, to drop the pending style.
++                msg.pop("pending", None)
++                # Prefix the content with a visible marker. Reusing the
++                # deleted-style colour would also work; this gives a
++                # clear text indication regardless of theme.
++                content = msg.get("content") or ""
++                if not content.startswith("[SEND FAILED] "):
++                    msg["content"] = "[SEND FAILED] " + content
++                break
++        try:
++            self.update_chat(scroll=False)
++        except Exception:
++            pass
++
++
+     def put_to_message_sender(self, func, *args, **kwargs):
+         """Put method to queue with its args and kwargs"""
+         self.message_send_queue.put((func, args, kwargs))
+@@ -954,6 +1026,11 @@
              self.update_chat(keep_selected=False, select_message_index=select_message_index, select_unread=True)
          else:
              self.tui.update_chat(self.chat, self.chat_format)
@@ -688,7 +777,7 @@ gated to make rollback trivial.
          self.set_channel_seen(channel_id, self.get_chat_last_message_id(), force_remove_notify=True)   # right after update_chat so new_unreads is determined
          if not guild_id:   # no member list in dms
              self.tui.remove_member_list()
-@@ -1678,6 +1711,51 @@
+@@ -1678,6 +1755,51 @@
                              self.tui.tree_select(self.tree_pos_from_id(channel_id))
                          self.switch_channel(channel_id, channel_name, guild_id, guild_name, parent_hint=parent_hint)
  
@@ -740,7 +829,28 @@ gated to make rollback trivial.
              # download file
              elif action == 9:
                  self.restore_input_text = (input_text, "standard")
-@@ -2736,6 +2814,7 @@
+@@ -2717,6 +2839,20 @@
+                         self.update_extra_line("Nothing happens.")
+                     if not text_to_send.strip():
+                         continue
++                    # Pre-flight: Discord rejects messages > 2000 chars with
++                    # HTTP 400 / error code 50035. Surface this synchronously
++                    # in the extra line and refuse to send so the pending
++                    # message isn't left stuck forever in the chat buffer.
++                    # (Nitro Basic raises to 4000; if you have it, bump
++                    # DISCORD_MSG_MAX_LEN — we don't auto-detect.)
++                    DISCORD_MSG_MAX_LEN = 2000
++                    if len(text_to_send) > DISCORD_MSG_MAX_LEN:
++                        self.update_extra_line(
++                            f"Message too long: {len(text_to_send)} chars "
++                            f"(limit {DISCORD_MSG_MAX_LEN}). Not sent.",
++                            timed=True,
++                        )
++                        continue
+                     nonce = discord.generate_nonce()
+                     self.put_to_message_sender(self.discord.send_message,
+                         self.active_channel["channel_id"],
+@@ -2736,6 +2872,7 @@
                          attachments=this_attachments,
                          stickers=stickers,
                      )
@@ -748,7 +858,7 @@ gated to make rollback trivial.
                      self.reset_states(replying=True)
                      continue
  
-@@ -4482,6 +4561,7 @@
+@@ -4482,6 +4619,7 @@
              "username": self.my_user_data["username"],
              "global_name": self.my_user_data["global_name"],   # spacebar_fix - get
              "nick": self.my_user_data["nick"],
@@ -756,7 +866,7 @@ gated to make rollback trivial.
              "referenced_message": referenced_message,
              "reactions": [],
              "embeds": embeds,
-@@ -4812,6 +4892,8 @@
+@@ -4812,6 +4950,8 @@
              self.messages = self.messages[-self.limit_chat_buffer:]
              if new_chunk:
                  self.update_chat(keep_selected=None)
@@ -765,7 +875,7 @@ gated to make rollback trivial.
                  # when messages are trimmed, keep same selected position
                  if len(self.messages) != all_msg:
                      selected_msg_new = selected_msg - (all_msg - len(self.messages))
-@@ -5964,7 +6046,34 @@
+@@ -5964,7 +6104,34 @@
              change_id=change_id,
              change_type=change_type,
          )
@@ -800,7 +910,7 @@ gated to make rollback trivial.
  
          if keep_selected:
              selected_msg = selected_msg + change_amount
-@@ -6347,6 +6456,26 @@
+@@ -6347,6 +6514,26 @@
          # debug.save_json(self.tree_metadata, "tree_metadata.json", False)
          self.tui.update_tree(self.tree, self.tree_format)
  
@@ -827,7 +937,7 @@ gated to make rollback trivial.
          # check for unreads/mentions for tray icon
          if uses_pgcurses:
              if not self.tui.is_window_open and not bool(self.tui.get_chat_selected()[1]):
-@@ -6367,6 +6496,302 @@
+@@ -6367,6 +6554,302 @@
              self.tui.set_tray_icon(tray_state)
  
  
@@ -1130,7 +1240,7 @@ gated to make rollback trivial.
      def lines_to_msg(self, line_index, space=False):
          """Convert line index from formatted chat to message index"""
          if not self.chat_map:
-@@ -6428,6 +6853,12 @@
+@@ -6428,6 +6911,12 @@
                      if next_line_map and next_line_map[0] == line_map[0] and next_line_map[2]:
                          return line_index - in_msg_start_index - 1
                  return line_index - in_msg_start_index
@@ -1143,7 +1253,7 @@ gated to make rollback trivial.
          return 0
  
  
-@@ -7945,7 +8376,9 @@
+@@ -7945,7 +8434,9 @@
                      new_message = self.execute_extensions_methods("on_message_event", new_message, cache=True)[0]
                      new_message_channel_id = new_message["d"]["channel_id"]
                      this_channel = (new_message_channel_id == self.active_channel["channel_id"])
@@ -1154,7 +1264,7 @@ gated to make rollback trivial.
                      if this_channel and self.get_chat_last_message_id() == self.last_message_id:   # if its scrolled far up, this channel bot is cached
                          self.process_msg_events_active_channel(new_message)
                      # handle cached channels
-@@ -7961,7 +8394,13 @@
+@@ -7961,7 +8452,13 @@
                              # still have to do this when scrolled far up, only to handle message delete/edit/react/poll
                              self.process_msg_events_active_channel(new_message, latest_chat=False)
                      # handle unseen and mentions
