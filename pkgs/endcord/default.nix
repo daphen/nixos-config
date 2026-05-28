@@ -29,11 +29,17 @@ let
   python = pkgs.python313;
 
   src = pkgs.fetchFromGitHub {
-    owner = "sparklost";
+    owner = "daphen";
     repo = "endcord";
-    # 2026-05-07 master HEAD; bump as needed.
-    rev = "b4f890b9b6f9e2a3b3494c41e78ad77f72859d4b";
-    hash = "sha256-C16z2lEvnAqVce3odrDkl4ek2TNzhm5OXRmUb48fSnc=";
+    # Our fork, which now contains all our patches AND tracks upstream.
+    # try-upstream-merge merges sparklost/endcord HEAD (f537896) into
+    # our customisations. To pull more upstream changes:
+    #   cd /tmp/endcord-fork
+    #   git fetch upstream && git merge upstream/main
+    #   git push origin <branch>
+    # Then bump rev + hash here.
+    rev = "ae88677ec26a36efa9f3dbc01961bc8aa3ab7400";
+    hash = "sha256-oK+k9d+3LFRitq28JdJI7v5VHJwj/4/W4joFRk+Bu+g=";
   };
 
   # Upstream's pyproject.toml omits a [build-system] table because the
@@ -83,24 +89,17 @@ let
 in
 pkgs.stdenv.mkDerivation {
   inherit pname;
-  version = "1.4.2-unstable-2026-05-07";
+  version = "1.4.2-unstable-2026-05-25";
   inherit src;
 
   nativeBuildInputs = [ pkgs.makeWrapper ];
 
   buildInputs = [ python ] ++ lib.optional (withMedia && isLinux) pkgs.pulseaudio;
 
-  # Master-HEAD bugs we hit and reported upstream-style — drop these patches
-  # when upstream lands equivalent fixes.
-  patches = [
-    ./patches/vim-search-and-extend-fix.patch
-    ./patches/vim-insert-border-color.patch
-    ./patches/vim-nav-rework.patch
-    ./patches/group-dm-typing-fix.patch
-    ./patches/vim-insert-clears-selection.patch
-    ./patches/dm-mention-assist-fix.patch
-    ./patches/inline-pfp.patch
-  ];
+  # No patches needed — all of our changes live in the fork itself
+  # (daphen/endcord). The ./patches/ dir is kept for reference but
+  # not applied at build time.
+  patches = [ ];
 
   installPhase = ''
     runHook preInstall
