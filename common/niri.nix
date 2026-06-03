@@ -31,6 +31,11 @@
   # Additional Wayland tools
   environment.systemPackages = with pkgs; [
     xwayland-satellite  # For X11 app positioning
-    waybar              # Status bar
+    waybar              # Status bar (current)
+    quickshell          # QML-based shell — running alongside waybar for evaluation
   ];
+
+  # UPower DBus service — Quickshell's battery service binds to this. Waybar's
+  # [battery] module read /sys directly, so this wasn't needed before.
+  services.upower.enable = true;
 }
