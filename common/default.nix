@@ -155,10 +155,8 @@
     swaylock-effects
 
     # Launchers & Menus
-    rofi
-    rofi-bluetooth
-    rofimoji
-    eww
+    rofi                # base rofi still used by claude-rename's name prompt
+    rofimoji            # shipped emoji CSVs read by the QS emoji picker
 
     # GTK / System Theme
     dconf-editor
