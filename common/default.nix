@@ -146,8 +146,7 @@
     # Image Tools
     imagemagick
 
-    # Notifications
-    mako
+    # Notifications (daemon is Quickshell; libnotify provides notify-send)
     libnotify
 
     # Background & Idle

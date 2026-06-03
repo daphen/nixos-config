@@ -136,8 +136,6 @@
             opencode
             pi-coding-agent
             # Compositor-adjacent
-            waybar
-            mako
             # Browsers (security updates matter)
             chromium
             qutebrowser
