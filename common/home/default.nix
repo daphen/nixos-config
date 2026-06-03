@@ -35,6 +35,10 @@ in
   xdg.userDirs = {
     enable = true;
     createDirectories = true;
+    # Default changed at HM 26.05 (true → false). Pin to true so XDG_*_DIR
+    # env vars stay exported for apps that read them out of the session
+    # environment instead of ~/.config/user-dirs.dirs directly.
+    setSessionVariables = true;
     desktop = "${config.home.homeDirectory}/Desktop";
     documents = "${config.home.homeDirectory}/Documents";
     download = "${config.home.homeDirectory}/Downloads";

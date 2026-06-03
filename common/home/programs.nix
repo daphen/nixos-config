@@ -79,6 +79,9 @@ in
 
   # Git
   programs.git.enable = true;
+  # Default changed at HM 25.05 ("openpgp" → null). Pin explicitly so the
+  # warning silences and behavior stays consistent across stateVersion bumps.
+  programs.git.signing.format = "openpgp";
   programs.gh = {
     enable = true;
     settings = {
