@@ -141,6 +141,8 @@
   # HDMI audio from the dGPU isn't a use case on this machine.
   services.udev.extraRules = ''
     SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x040300", ACTION=="add", RUN+="${pkgs.bash}/bin/sh -c 'echo %k > /sys/bus/pci/drivers/snd_hda_intel/unbind 2>/dev/null || true'"
+    KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="676d", TAG+="uaccess", MODE="0666"
+    SUBSYSTEM=="usb", ATTRS{idVendor}=="676d", TAG+="uaccess", MODE="0666"
   '';
 
   # ASUS control daemon — manages keyboard lighting, fan curves, etc.
