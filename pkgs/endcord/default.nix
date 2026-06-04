@@ -38,7 +38,7 @@ let
     #   git fetch upstream && git merge upstream/main
     #   git push origin <branch>
     # Then bump rev + hash here.
-    rev = "1e8e8ed2921846aa42330cb838be38042164b053";
+    rev = "f94ba8c0c287a81fcf2b0336ca3d19f5b673a76c";
     hash = "sha256-Kw6wFyyA6vCr2bNB7HTBoeN1aMoWUXplquVwifxVeJQ=";
   };
 
