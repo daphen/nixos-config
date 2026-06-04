@@ -122,6 +122,7 @@
     # Wayland Tools
     grim
     slurp
+    wf-recorder
     wl-clipboard
     wl-clip-persist
     wtype
