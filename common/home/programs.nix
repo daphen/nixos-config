@@ -63,6 +63,12 @@ in
       Environment = [
         "PALETTE_POPUP_DIST=%h/personal/chromium-palette/dist"
         "RUST_LOG=palette_daemon=info"
+        # Force GTK4's OpenGL renderer instead of the default Vulkan one.
+        # The Vulkan swapchain doesn't recreate on output reconfiguration
+        # (VK_SUBOPTIMAL_KHR in journal logs), which bilinear-stretches the
+        # webview to the new surface dimensions — the "palette becomes
+        # fuzzy after unplugging external monitors" symptom.
+        "GSK_RENDERER=ngl"
       ];
       Restart = "on-failure";
       RestartSec = 2;
