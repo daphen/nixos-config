@@ -25,6 +25,10 @@ in
     # Lets glib find the gnome-desktop schema so xdg-desktop-portal-gtk
     # can read color-scheme; Chromium's "Device" mode reads from there.
     GSETTINGS_SCHEMA_DIR = gsettingsSchemaDir;
+    # File-based fzf opts so theme toggles take effect immediately in
+    # already-running processes (yazi, nvim, claude TUI). theme-manager
+    # repoints this symlink between light/dark on toggle.
+    FZF_DEFAULT_OPTS_FILE = "${config.home.homeDirectory}/.config/fzf/opts.conf";
   };
 
   systemd.user.sessionVariables = {
