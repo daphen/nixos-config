@@ -32,9 +32,8 @@ let
     owner = "daphen";
     repo = "endcord";
     # Our fork, which now contains all our patches AND tracks upstream.
-    # try-upstream-merge merges sparklost/endcord HEAD (f537896) into
-    # our customisations. To pull more upstream changes:
-    #   cd /tmp/endcord-fork
+    # Local clone lives at ~/personal/endcord-fork. To pull more upstream:
+    #   cd ~/personal/endcord-fork
     #   git fetch upstream && git merge upstream/main
     #   git push origin <branch>
     # Then bump rev + hash here.
