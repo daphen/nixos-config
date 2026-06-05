@@ -16,8 +16,9 @@
     };
   };
 
-  # Bluetooth manager
-  services.blueman.enable = true;
+  # blueman intentionally NOT enabled — its applet emits duplicate
+  # connect/disconnect notifications on top of the toggle-headphones
+  # script. Bluetooth control lives in the QS BluetoothPicker + bluetoothctl.
 
   # Additional bluetooth packages
   environment.systemPackages = with pkgs; [
