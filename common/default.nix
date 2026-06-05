@@ -50,6 +50,7 @@
       "docker"
       "video"
       "audio"
+      "input" # /dev/input/event* — read by wpm-daemon
     ];
     shell = pkgs.fish;
   };

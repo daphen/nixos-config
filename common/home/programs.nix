@@ -46,6 +46,25 @@ in
     palette-daemon
   ];
 
+  # wpm-daemon — burst-based WPM counter. Reads /dev/input/event* (needs
+  # `input` group, added in common/default.nix) and writes the current
+  # value to ~/.local/state/wpm where the QS Wpm widget picks it up.
+  # Local-source build for now; lives at ~/personal/wpm-daemon.
+  systemd.user.services.wpm-daemon = {
+    Unit = {
+      Description = "WPM daemon — keystroke rate counter for the QS bar";
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "%h/personal/wpm-daemon/target/release/wpm-daemon";
+      Restart = "on-failure";
+      RestartSec = 2;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
   # palette-daemon as a user systemd service, mirroring mako's pattern
   # (PartOf graphical-session.target, ExecCondition gate on
   # WAYLAND_DISPLAY). The chromium-palette popup bundle still lives in
