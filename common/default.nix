@@ -185,6 +185,9 @@
     spotify
     spotify-player
 
+    # Notes / knowledge base
+    obsidian
+
     # Office
     libreoffice-fresh
 
