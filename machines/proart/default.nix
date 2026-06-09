@@ -148,5 +148,15 @@
   # ASUS control daemon — manages keyboard lighting, fan curves, etc.
   services.asusd.enable = true;
 
+  # Local embeddings for the notes vault semantic search. CPU is plenty
+  # for nomic-embed-text (137M params, ~30ms/embed). Exposed to the
+  # webapp via `tailscale funnel` so Vercel can reach it at
+  # https://<host>.<tailnet>.ts.net for /api/search and /api/sync.
+  services.ollama = {
+    enable = true;
+    package = pkgs.ollama-cpu;
+    loadModels = [ "nomic-embed-text" ];
+  };
+
   # TODO: MT7925 WiFi — should work on linuxPackages_latest (>=6.7)
 }

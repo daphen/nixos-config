@@ -37,8 +37,8 @@ let
     #   git fetch upstream && git merge upstream/main
     #   git push origin <branch>
     # Then bump rev + hash here.
-    rev = "3bdfe80aecb4f53897d5b5e37332f9246cde2ca9";
-    hash = "sha256-foPmbNHlGtkR/9RHpyTNJ4kXSxw/FKRT4YK74wzT64E=";
+    rev = "72216b6b9d68968cebd4578079fd9b9c54213e57";
+    hash = "sha256-SJoYE9Ypg/tViJirywj4WZn35Gv5DlAPULWOJUajC4E=";
   };
 
   # Upstream's pyproject.toml omits a [build-system] table because the
