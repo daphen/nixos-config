@@ -14,6 +14,7 @@ in
     ./symlinks.nix
     ./programs.nix
     ./theme-system.nix
+    ./notes-sync.nix
     inputs.worktrunk.homeModules.default
   ];
 
