@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, inputs, ... }:
 
 {
   # Network Configuration
@@ -67,6 +67,8 @@
   # because traffic goes out the default route instead of through the tailnet.
   services.tailscale = {
     enable = true;
+    # From the fresher pin: LoL preview rejects older clients.
+    package = inputs.nixpkgs-latest.legacyPackages.${pkgs.system}.tailscale;
     extraUpFlags = [ "--accept-routes" ];
   };
 

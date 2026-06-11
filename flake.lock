@@ -231,6 +231,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-latest": {
+      "locked": {
+        "lastModified": 1780749050,
+        "narHash": "sha256-3av0pIjlOWQ6rDbNOmpUSvbNnJkGORQKKjb4LtCZsIY=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "a799d3e3886da994fa307f817a6bc705ae538eeb",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "nixpkgs-neovim": {
       "locked": {
         "lastModified": 1774386573,
@@ -354,6 +370,7 @@
         "nixpkgs": "nixpkgs_2",
         "nixpkgs-apps": "nixpkgs-apps",
         "nixpkgs-iwd": "nixpkgs-iwd",
+        "nixpkgs-latest": "nixpkgs-latest",
         "nixpkgs-neovim": "nixpkgs-neovim",
         "palette-daemon": "palette-daemon",
         "pyproject-build-systems": "pyproject-build-systems",

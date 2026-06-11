@@ -5,6 +5,11 @@
     # Use unstable nixpkgs for latest kernel/mesa (needed for new Intel GPU)
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
+    # Fresher unstable pin for cherry-picked packages that must track
+    # upstream (tailscale: LoL preview needs a current client) without
+    # rebuilding the world off the main pin.
+    nixpkgs-latest.url = "github:nixos/nixpkgs/nixos-unstable";
+
     # Home Manager - use master branch for unstable nixpkgs compatibility
     home-manager = {
       url = "github:nix-community/home-manager";
