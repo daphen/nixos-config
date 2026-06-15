@@ -1,0 +1,37 @@
+diff --git a/internal/ui/app.go b/internal/ui/app.go
+index 7269181..2d0778e 100644
+--- a/internal/ui/app.go
++++ b/internal/ui/app.go
+@@ -1250,10 +1250,15 @@ func (a *App) scrollFocusedPanel(delta int) tea.Cmd {
+ 	}
+ 	switch a.focusedPanel {
+ 	case PanelSidebar:
+-		if delta < 0 {
+-			a.sidebar.ScrollUp(n)
+-		} else {
+-			a.sidebar.ScrollDown(n)
++		// Half/full-page keys move the selection (the viewport snaps to
++		// follow) rather than scrolling the viewport independently of the
++		// cursor, so a following j/k doesn't jump back to the old position.
++		for i := 0; i < n; i++ {
++			if delta < 0 {
++				a.sidebar.MoveUp()
++			} else {
++				a.sidebar.MoveDown()
++			}
+ 		}
+ 	case PanelMessages:
+ 		if a.view == ViewThreads {
+diff --git a/internal/ui/statusbar/model.go b/internal/ui/statusbar/model.go
+index 56921b8..94f8c16 100644
+--- a/internal/ui/statusbar/model.go
++++ b/internal/ui/statusbar/model.go
+@@ -288,7 +288,7 @@ func (m Model) View(width int) string {
+ 	// dark terminal running a light slk theme, which previously left a stray
+ 	// dark cell between segments).
+ 	sep := lipgloss.NewStyle().Background(styles.SurfaceDark).Render(" ")
+-	trailing := lipgloss.NewStyle().Background(styles.SurfaceDark).Render("  ")
++	trailing := lipgloss.NewStyle().Background(styles.SurfaceDark).Render("      ")
+ 
+ 	rightContent := ""
+ 	for i, p := range rightParts {
