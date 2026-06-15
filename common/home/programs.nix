@@ -1,6 +1,6 @@
 # User programs - only installation and Nix integration
 # All config files are handled by symlinks.nix
-{ pkgs, inputs, endcord, ... }:
+{ pkgs, inputs, endcord, nvimLocal, nvimBaked, ... }:
 let
   palette-daemon = inputs.palette-daemon.packages.${pkgs.system}.default;
   # nvim — the converged config (0.12, lz.n, native LSP), with the desktop
@@ -11,7 +11,7 @@ let
   nvim = pkgs.writeShellScriptBin "nvim" ''
     export NVIM_PROFILE=full
     export PATH=${pkgs.lib.makeBinPath [ pkgs.pyright ]}:$PATH
-    exec ${inputs.nixos-portable-config.packages.${pkgs.system}.neovimLocal}/bin/nvim "$@"
+    exec ${nvimLocal}/bin/nvim "$@"
   '';
   # nvim-next — baked-from-github variant (what sandboxes get). Sources the
   # config from the dotfiles flake input, so it lags local edits until they're
@@ -19,7 +19,7 @@ let
   nvim-next = pkgs.writeShellScriptBin "nvim-next" ''
     export NVIM_PROFILE=full
     export PATH=${pkgs.lib.makeBinPath [ pkgs.pyright ]}:$PATH
-    exec ${inputs.nixos-portable-config.packages.${pkgs.system}.neovim}/bin/nvim "$@"
+    exec ${nvimBaked}/bin/nvim "$@"
   '';
 in
 {

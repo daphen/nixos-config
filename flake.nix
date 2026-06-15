@@ -10,11 +10,8 @@
     # rebuilding the world off the main pin.
     nixpkgs-latest.url = "github:nixos/nixpkgs/nixos-unstable";
 
-    # Portable nvim (lz.n, nix-packaged plugins, 0.12). Exposed locally as
-    # the `nvim-next` binary for the convergence migration — runs alongside
-    # the lazy.nvim `nvim` until cutover. Local path: no auth, picks up
-    # local commits via `nix flake lock --update-input nixos-portable-config`.
-    nixos-portable-config.url = "git+file:///home/daphen/nixos-portable-config";
+    # nvim wrapper builder (config lives in-repo at pkgs/neovim).
+    wrapper-modules.url = "github:BirdeeHub/nix-wrapper-modules";
 
     # Home Manager - use master branch for unstable nixpkgs compatibility
     home-manager = {
@@ -99,6 +96,8 @@
       endcord = pkgs.callPackage ./pkgs/endcord {
         inherit uv2nix pyproject-nix pyproject-build-systems;
       };
+
+      nvimPkgs = import ./pkgs/neovim { inherit pkgs inputs; lib = nixpkgs.lib; };
 
       # Pin iwd to 3.12 to fix SIGSEGV crashes during WiFi roaming (build_ciphers_common)
       iwdOverlay = final: prev: {
@@ -186,6 +185,8 @@
             users.daphen = import ./common/home;
             extraSpecialArgs = {
               inherit inputs endcord;
+              nvimLocal = nvimPkgs.neovimLocal;
+              nvimBaked = nvimPkgs.neovim;
             };
           };
         }
@@ -203,6 +204,12 @@
         thinkpad = mkHost ./machines/thinkpad;
         proart   = mkHost ./machines/proart;
         # zenbook  = mkHost ./machines/zenbook;
+      };
+
+      # Clean pkgs (no neovimOverlay) so this is 0.12, not the system's 0.11.6.
+      packages.${system} = {
+        neovim = nvimPkgs.neovim;
+        neovim-local = nvimPkgs.neovimLocal;
       };
 
       # Development shell for testing configurations

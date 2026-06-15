@@ -8,7 +8,7 @@ let
 in {
   # Files in ~/.config
   xdg.configFile = {
-    "nvim".source = link "${dotfiles}/nvim/.config/nvim";
+    "nvim".source = link "${config.home.homeDirectory}/nixos/pkgs/neovim";
     "fish/config.fish".source = link "${dotfiles}/fish/.config/fish/config.fish";
     "fish/functions".source = link "${dotfiles}/fish/.config/fish/functions";
     "fish/conf.d".source = link "${dotfiles}/fish/.config/fish/conf.d";
