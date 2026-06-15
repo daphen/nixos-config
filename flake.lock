@@ -262,11 +262,11 @@
         "wrapper-modules": "wrapper-modules"
       },
       "locked": {
-        "lastModified": 1781514181,
-        "narHash": "sha256-+H4qMErIPU89RWVoCfynTzuWTEMcpw1gYLagulUozi4=",
+        "lastModified": 1781515085,
+        "narHash": "sha256-73CWHVV36mNdEGRn2A61sP2yBGKm6ILbJMBCXNEF/e4=",
         "ref": "refs/heads/main",
-        "rev": "8752665a326b6fabf5abb21de7524871581e5772",
-        "revCount": 134,
+        "rev": "594eb4fbe5ad53f195b8510b750ff94c4e856865",
+        "revCount": 135,
         "type": "git",
         "url": "file:///home/daphen/nixos-portable-config"
       },
