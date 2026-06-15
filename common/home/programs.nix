@@ -6,7 +6,13 @@ let
   # Convergence migration: portable 0.12 config (lz.n, nix-packaged) as a
   # second binary `nvim-next`, alongside the lazy.nvim `nvim`. Test during
   # real work; flip `nvim` to it only at cutover. Zero risk to `nvim`.
+  # nvim-next runs the portable config with the "full" profile: the lean
+  # config (the sandbox/Lovable baseline) plus the desktop-only extras gated
+  # behind NVIM_PROFILE=full. Extra server binaries the lean build doesn't
+  # bundle (e.g. pyright) are layered onto PATH here.
   nvim-next = pkgs.writeShellScriptBin "nvim-next" ''
+    export NVIM_PROFILE=full
+    export PATH=${pkgs.lib.makeBinPath [ pkgs.pyright ]}:$PATH
     exec ${inputs.nixos-portable-config.packages.${pkgs.system}.neovim}/bin/nvim "$@"
   '';
 in
