@@ -76,3 +76,77 @@ index 56921b8..94f8c16 100644
  
  	rightContent := ""
  	for i, p := range rightParts {
+diff --git a/internal/ui/styles/styles.go b/internal/ui/styles/styles.go
+index ddaf504..9f2ddcc 100644
+--- a/internal/ui/styles/styles.go
++++ b/internal/ui/styles/styles.go
+@@ -21,6 +21,9 @@ var (
+ 	TextPrimary color.Color = lipgloss.Color("#E0E0E0")
+ 	TextMuted   color.Color = lipgloss.Color("#888888")
+ 	Border      color.Color = lipgloss.Color("#333333")
++	// Focused-panel border color. Apply() falls back to Primary when the
++	// theme doesn't set border_focus, so built-in themes are unchanged.
++	BorderFocus color.Color = lipgloss.Color("#4A9EFF")
+ 
+ 	// Sidebar/rail colors (default to Background/Text/TextMuted/SurfaceDark
+ 	// for backwards compatibility with themes that don't set them).
+@@ -44,7 +47,7 @@ var (
+ 	// Panel styles
+ 	FocusedBorder = lipgloss.NewStyle().
+ 			BorderStyle(lipgloss.ThickBorder()).
+-			BorderForeground(Primary).
++			BorderForeground(BorderFocus).
+ 			BorderBackground(Background).
+ 			Background(Background)
+ 
+@@ -376,6 +379,14 @@ func Apply(themeName string, overrides config.Theme) {
+ 		selectionBgUnfocused = lipgloss.Color(colors.SelectionBgUnfocused)
+ 	}
+ 
++	// Focused-panel border: explicit theme override wins, else Primary
++	// (so built-in themes keep their current blue/primary border).
++	if colors.BorderFocus != "" {
++		BorderFocus = lipgloss.Color(colors.BorderFocus)
++	} else {
++		BorderFocus = Primary
++	}
++
+ 	buildStyles()
+ }
+ 
+@@ -394,7 +405,7 @@ func SelectionBorderColor(focused bool) color.Color {
+ 
+ func buildStyles() {
+ 	FocusedBorder = lipgloss.NewStyle().
+-		BorderStyle(lipgloss.ThickBorder()).BorderForeground(Primary).BorderBackground(Background).Background(Background)
++		BorderStyle(lipgloss.ThickBorder()).BorderForeground(BorderFocus).BorderBackground(Background).Background(Background)
+ 	UnfocusedBorder = lipgloss.NewStyle().
+ 		BorderStyle(lipgloss.RoundedBorder()).BorderForeground(Border).BorderBackground(Background).Background(Background)
+ 	WorkspaceActive = lipgloss.NewStyle().
+diff --git a/internal/ui/styles/themes.go b/internal/ui/styles/themes.go
+index c91dadd..a13427a 100644
+--- a/internal/ui/styles/themes.go
++++ b/internal/ui/styles/themes.go
+@@ -43,6 +43,9 @@ type ThemeColors struct {
+ 	ComposeInsertBG      string `toml:"compose_insert_bg"`
+ 	SelectionBgFocused   string `toml:"selection_bg_focused"`
+ 	SelectionBgUnfocused string `toml:"selection_bg_unfocused"`
++	// BorderFocus overrides the focused-panel border color; falls back to
++	// Primary when empty.
++	BorderFocus string `toml:"border_focus"`
+ }
+ 
+ // builtinThemes maps lowercase theme names to their display name and colors.
+diff --git a/internal/ui/view_sidebar.go b/internal/ui/view_sidebar.go
+index 5825718..ed27229 100644
+--- a/internal/ui/view_sidebar.go
++++ b/internal/ui/view_sidebar.go
+@@ -57,7 +57,7 @@ func (a *App) renderSidebar(sidebarWidth, sidebarBorder, contentHeight int, them
+ 	if sbFocused {
+ 		borderStyle = lipgloss.NewStyle().
+ 			BorderStyle(lipgloss.ThickBorder()).
+-			BorderForeground(styles.Primary).
++			BorderForeground(styles.BorderFocus).
+ 			BorderBackground(styles.SidebarBackground).
+ 			Background(styles.SidebarBackground).
+ 			Width(sidebarWidth)

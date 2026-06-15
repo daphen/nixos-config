@@ -24,6 +24,9 @@ buildGoModule rec {
   #  - selection tint: also re-tint the surface bg (inline code, quoted /
   #    attachment blocks) so a selected message reads as one uniform block
   #    instead of showing lighter patches behind styled spans.
+  #  - focused border: add an optional `border_focus` theme color for the
+  #    focused-panel border (falls back to Primary), so it can differ from
+  #    links/mentions. Our theme sets it to the cursor orange.
   patches = [ ./slk-fixes.patch ];
 
   # golang.design/x/clipboard uses cgo + X11 (Xlib.h) on Linux.
