@@ -37,8 +37,8 @@ let
     #   git fetch upstream && git merge upstream/main
     #   git push origin <branch>
     # Then bump rev + hash here.
-    rev = "72216b6b9d68968cebd4578079fd9b9c54213e57";
-    hash = "sha256-SJoYE9Ypg/tViJirywj4WZn35Gv5DlAPULWOJUajC4E=";
+    rev = "c9994ad23a0fdb30dffe34b9df2171bba748d2ab";
+    hash = "sha256-nNsyLKgoaBOy/D5cIcLWnHvV/spVdryVEW8nQknC3rg=";
   };
 
   # Upstream's pyproject.toml omits a [build-system] table because the
@@ -88,7 +88,7 @@ let
 in
 pkgs.stdenv.mkDerivation {
   inherit pname;
-  version = "1.4.2-unstable-2026-05-25";
+  version = "1.4.2-unstable-2026-06-15";
   inherit src;
 
   nativeBuildInputs = [ pkgs.makeWrapper ];
