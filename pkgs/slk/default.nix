@@ -16,6 +16,17 @@ buildGoModule rec {
 
   vendorHash = "sha256-dPa469oNv6eYyDdly3uhc273DAGz+erc0E3K/am7WoY=";
 
+  # The status bar right-aligns its connection pills assuming the `●`
+  # glyphs are 1 cell wide, but kitty renders them wider, pushing
+  # "Connected" past the screen edge. Widen the trailing pad so the
+  # block always fits. (Cosmetic; doesn't change the source hash.)
+  postPatch = ''
+    substituteInPlace internal/ui/statusbar/model.go \
+      --replace-fail \
+        'trailing := lipgloss.NewStyle().Background(styles.SurfaceDark).Render("  ")' \
+        'trailing := lipgloss.NewStyle().Background(styles.SurfaceDark).Render("      ")'
+  '';
+
   # golang.design/x/clipboard uses cgo + X11 (Xlib.h) on Linux.
   nativeBuildInputs = [ pkg-config ];
   buildInputs = [ xorg.libX11 ];
