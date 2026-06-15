@@ -30,7 +30,7 @@ in
   # Editor — neovim installed directly rather than via programs.neovim, since HM's
   # module generates its own init.lua which conflicts with the dotfile-based config
   # symlinked through symlinks.nix.
-  home.packages = [ nvim-next ] ++ (with pkgs; [
+  home.packages = [ nvim-next (pkgs.callPackage ../../pkgs/slk { }) ] ++ (with pkgs; [
     neovim-unwrapped
     # LSP/formatter tooling expected on PATH by the nvim config
     prettier
