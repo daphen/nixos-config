@@ -10,6 +10,12 @@
     # rebuilding the world off the main pin.
     nixpkgs-latest.url = "github:nixos/nixpkgs/nixos-unstable";
 
+    # Portable nvim (lz.n, nix-packaged plugins, 0.12). Exposed locally as
+    # the `nvim-next` binary for the convergence migration — runs alongside
+    # the lazy.nvim `nvim` until cutover. Local path: no auth, picks up
+    # local commits via `nix flake lock --update-input nixos-portable-config`.
+    nixos-portable-config.url = "git+file:///home/daphen/nixos-portable-config";
+
     # Home Manager - use master branch for unstable nixpkgs compatibility
     home-manager = {
       url = "github:nix-community/home-manager";

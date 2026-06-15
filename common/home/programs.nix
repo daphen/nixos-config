@@ -3,6 +3,12 @@
 { pkgs, inputs, endcord, ... }:
 let
   palette-daemon = inputs.palette-daemon.packages.${pkgs.system}.default;
+  # Convergence migration: portable 0.12 config (lz.n, nix-packaged) as a
+  # second binary `nvim-next`, alongside the lazy.nvim `nvim`. Test during
+  # real work; flip `nvim` to it only at cutover. Zero risk to `nvim`.
+  nvim-next = pkgs.writeShellScriptBin "nvim-next" ''
+    exec ${inputs.nixos-portable-config.packages.${pkgs.system}.neovim}/bin/nvim "$@"
+  '';
 in
 {
   # Shell
@@ -24,7 +30,7 @@ in
   # Editor — neovim installed directly rather than via programs.neovim, since HM's
   # module generates its own init.lua which conflicts with the dotfile-based config
   # symlinked through symlinks.nix.
-  home.packages = (with pkgs; [
+  home.packages = [ nvim-next ] ++ (with pkgs; [
     neovim-unwrapped
     # LSP/formatter tooling expected on PATH by the nvim config
     prettier
