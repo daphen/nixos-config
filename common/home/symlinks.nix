@@ -55,7 +55,6 @@ in {
   home.file = {
     ".gitconfig".source = link "${dotfiles}/git/.gitconfig";
     ".gitignore_global".source = link "${dotfiles}/git/.gitignore_global";
-    "Pictures/Wallpapers".source = link "${dotfiles}/wallpapers/Pictures/Wallpapers";
     "Pictures/fastfetch".source = link "${dotfiles}/fastfetch/Pictures/fastfetch";
     # AI agent instructions — neutral file at dotfiles/ai/instructions.md
     # is the single source of truth. Claude reads it via the .claude
