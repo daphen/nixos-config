@@ -3,13 +3,19 @@
 { pkgs, inputs, endcord, ... }:
 let
   palette-daemon = inputs.palette-daemon.packages.${pkgs.system}.default;
-  # Convergence migration: portable 0.12 config (lz.n, nix-packaged) as a
-  # second binary `nvim-next`, alongside the lazy.nvim `nvim`. Test during
-  # real work; flip `nvim` to it only at cutover. Zero risk to `nvim`.
-  # nvim-next runs the portable config with the "full" profile: the lean
-  # config (the sandbox/Lovable baseline) plus the desktop-only extras gated
-  # behind NVIM_PROFILE=full. Extra server binaries the lean build doesn't
-  # bundle (e.g. pyright) are layered onto PATH here.
+  # nvim — the converged config (0.12, lz.n, native LSP), with the desktop
+  # "full" profile (extras like pyright gated behind NVIM_PROFILE=full and
+  # layered onto PATH). Lua lives in ~/dotfiles/nvim and is read live from
+  # ~/.config/nvim, so lua edits apply with no rebuild. Old lazy config is
+  # archived under ~/dotfiles/nvim-lazy.
+  nvim = pkgs.writeShellScriptBin "nvim" ''
+    export NVIM_PROFILE=full
+    export PATH=${pkgs.lib.makeBinPath [ pkgs.pyright ]}:$PATH
+    exec ${inputs.nixos-portable-config.packages.${pkgs.system}.neovimLocal}/bin/nvim "$@"
+  '';
+  # nvim-next — baked-from-github variant (what sandboxes get). Sources the
+  # config from the dotfiles flake input, so it lags local edits until they're
+  # pushed + the input bumped. Kept as a fallback and a sandbox-preview.
   nvim-next = pkgs.writeShellScriptBin "nvim-next" ''
     export NVIM_PROFILE=full
     export PATH=${pkgs.lib.makeBinPath [ pkgs.pyright ]}:$PATH
@@ -36,8 +42,7 @@ in
   # Editor — neovim installed directly rather than via programs.neovim, since HM's
   # module generates its own init.lua which conflicts with the dotfile-based config
   # symlinked through symlinks.nix.
-  home.packages = [ nvim-next (pkgs.callPackage ../../pkgs/slk { }) ] ++ (with pkgs; [
-    neovim-unwrapped
+  home.packages = [ nvim nvim-next (pkgs.callPackage ../../pkgs/slk { }) ] ++ (with pkgs; [
     # LSP/formatter tooling expected on PATH by the nvim config
     prettier
     black
