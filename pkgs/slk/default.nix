@@ -21,6 +21,9 @@ buildGoModule rec {
   #    push "Connected" off the screen edge.
   #  - sidebar: make Ctrl-u/d move the selection (viewport follows) instead
   #    of scrolling independently of the cursor.
+  #  - selection tint: also re-tint the surface bg (inline code, quoted /
+  #    attachment blocks) so a selected message reads as one uniform block
+  #    instead of showing lighter patches behind styled spans.
   patches = [ ./slk-fixes.patch ];
 
   # golang.design/x/clipboard uses cgo + X11 (Xlib.h) on Linux.
