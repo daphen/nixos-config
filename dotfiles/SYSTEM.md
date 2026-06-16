@@ -38,7 +38,7 @@ and trying to figure out what to touch for a given task.
 |---|---|---|
 | `nixos-config` | `~/nixos` | System + home-manager config, dotfiles, and the `#dev-env` flake output for sandboxes |
 | `dotfiles` | `~/nixos/dotfiles` | App configs, scripts, themes (now a subtree of nixos-config, not a standalone repo) |
-| `nixos-portable-config` | `~/nixos-portable-config` | Deprecated — `dev-env` now lives in nixos-config (`nix run github:daphen/nixos-config#dev-env`). Only the legacy `devbox` Docker flow still references it. |
+| `nixos-portable-config` | `~/nixos-portable-config` | Retired — fully replaced by `nix run github:daphen/nixos-config#dev-env`. No remaining references; the repo + local clone can be deleted. |
 | `palette-daemon` | `~/personal/palette-daemon` | Rust + webkit6 |
 | `chromium-palette` | `~/personal/chromium-palette` | Solid app served by palette-daemon |
 | `wpm-daemon` | `~/personal/wpm-daemon` | Rust evdev daemon |
