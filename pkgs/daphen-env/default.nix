@@ -222,6 +222,17 @@ in pkgs.writeShellApplication {
       cp -fL "${configRoot}/claude/themes"/* "$HOME/.claude/themes/" 2>/dev/null || true
     fi
 
+    # Default Claude Code to auto mode (user scope only — project settings
+    # can't grant auto). Merge so any lovbox-seeded settings.json survives.
+    mkdir -p "$HOME/.claude"
+    if [ -f "$HOME/.claude/settings.json" ]; then
+      jq '.permissions.defaultMode = "auto"' "$HOME/.claude/settings.json" \
+        > "$HOME/.claude/settings.json.tmp" \
+        && mv "$HOME/.claude/settings.json.tmp" "$HOME/.claude/settings.json"
+    else
+      printf '{\n  "permissions": { "defaultMode": "auto" }\n}\n' > "$HOME/.claude/settings.json"
+    fi
+
     # Wire notes-memory MCP via claude's own CLI — Claude v2 rewrites
     # ~/.claude.json on session end and drops hand-written mcpServers.
     if [ -n "''${NOTES_MEMORY_TOKEN:-}" ] && command -v claude >/dev/null; then
@@ -243,6 +254,8 @@ in pkgs.writeShellApplication {
     export STARSHIP_CONFIG="$WRITABLE_CONFIG/starship/starship.toml"
     export EDITOR="nvim"
     export VISUAL="nvim"
+    # Required for auto mode on Bedrock/Vertex/Foundry-backed claude; no-op on the standard API.
+    export CLAUDE_CODE_ENABLE_AUTO_MODE=1
     exec ${pkgs.fish}/bin/fish -l "$@"
   '';
 }

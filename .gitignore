@@ -16,7 +16,9 @@ dotfiles-source/
 # Editor files
 .vscode/
 .idea/
-.claude/
+# Anchored to repo root: ignore ~/nixos/.claude (agent state for this repo)
+# but NOT dotfiles/claude/.claude, whose themes ship with #dev-env.
+/.claude/
 *.swp
 *.swo
 *~
