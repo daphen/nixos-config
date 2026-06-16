@@ -1,5 +1,5 @@
 diff --git a/cmd/slk/main.go b/cmd/slk/main.go
-index 0f7c7ca..d3839dc 100644
+index 0f7c7ca..becf961 100644
 --- a/cmd/slk/main.go
 +++ b/cmd/slk/main.go
 @@ -87,9 +87,13 @@ func (a sectionsProviderAdapter) OrderedSlackSections() []sidebar.SectionMeta {
@@ -17,7 +17,17 @@ index 0f7c7ca..d3839dc 100644
  			Emoji: s.Emoji,
  			Type:  s.Type,
  		})
-@@ -1369,7 +1373,7 @@ func run() error {
+@@ -103,6 +107,9 @@ type WorkspaceContext struct {
+ 	ConnMgr    *slackclient.ConnectionManager
+ 	RTMHandler *rtmEventHandler
+ 	UserNames  map[string]string
++	// UsergroupNames maps subteam ID -> handle, for resolving bare
++	// <!subteam^ID> mentions that carry no embedded label.
++	UsergroupNames map[string]string
+ 	// AvatarURLs maps userID -> avatar image URL. Populated from the
+ 	// local users cache at connect time (synchronous, before any
+ 	// goroutines spin up) and refreshed from the background
+@@ -1369,7 +1376,7 @@ func run() error {
  					}
  				}()
  			},
@@ -26,7 +36,7 @@ index 0f7c7ca..d3839dc 100644
  				chIDStr, threadTSStr := string(channelID), string(threadTS)
  				wctx := router.Active()
  				if wctx == nil {
-@@ -1378,7 +1382,7 @@ func run() error {
+@@ -1378,7 +1385,7 @@ func run() error {
  				client := wctx.Client
  				userNames := wctx.UserNames
  				ctx := context.Background()
@@ -35,10 +45,34 @@ index 0f7c7ca..d3839dc 100644
  				if err != nil {
  					log.Printf("Warning: failed to send thread reply: %v", err)
  					return ui.ThreadReplySendFailedMsg{ChannelID: chIDStr, ThreadTS: threadTSStr, Reason: err.Error()}
-@@ -1955,11 +1959,15 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
+@@ -1525,6 +1532,7 @@ func run() error {
+ 			Channels:         wctx.Channels,
+ 			FinderItems:      wctx.FinderItems,
+ 			UserNames:        wctx.UserNames,
++			UsergroupNames:   wctx.UsergroupNames,
+ 			ExternalUsers:    external,
+ 			UserID:           wctx.UserID,
+ 			CustomEmoji:      wctx.CustomEmoji,
+@@ -1679,6 +1687,7 @@ func run() error {
+ 				Channels:         wctx.Channels,
+ 				FinderItems:      wctx.FinderItems,
+ 				UserNames:        wctx.UserNames,
++				UsergroupNames:   wctx.UsergroupNames,
+ 				ExternalUsers:    external,
+ 				UserID:           wctx.UserID,
+ 				CustomEmoji:      wctx.CustomEmoji, // empty at this point; filled by the goroutine below
+@@ -1955,11 +1964,23 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
  		return nil, fmt.Errorf("fetching channels for %s: %w", token.TeamName, err)
  	}
  
++	// Usergroup (subteam) handles for resolving bare <!subteam^ID> mentions.
++	// Best-effort: a failure just leaves those mentions as @group.
++	if ug, ugErr := client.GetUsergroups(ctx); ugErr == nil {
++		wctx.UsergroupNames = ug
++	} else {
++		log.Printf("Warning: fetching usergroups for %s: %v", token.TeamName, ugErr)
++	}
++
 +	var dmUserIDs []string
  	for _, ch := range channels {
  		item, finderItem := buildChannelItem(ch, wctx, cfg, client.TeamID())
@@ -51,7 +85,7 @@ index 0f7c7ca..d3839dc 100644
  			if _, ok := wctx.UserNames[ch.User]; !ok {
  				wctx.UnresolvedDMs = append(wctx.UnresolvedDMs, UnresolvedDM{
  					ChannelID: ch.ID,
-@@ -1976,6 +1984,21 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
+@@ -1976,6 +1997,21 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
  		wctx.FinderItems = append(wctx.FinderItems, finderItem)
  	}
  
@@ -73,7 +107,7 @@ index 0f7c7ca..d3839dc 100644
  	// Fetch unread counts
  	unreadCounts, threadsAgg, ucErr := client.GetUnreadCounts()
  	if ucErr != nil {
-@@ -3261,16 +3284,29 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
+@@ -3261,16 +3297,29 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
  		if h.activeChannelID != nil {
  			activeChID = h.activeChannelID()
  		}
@@ -104,7 +138,7 @@ index 0f7c7ca..d3839dc 100644
  		// Pass the raw userID (not authorID): ShouldNotify's self-message
  		// suppression keys on the human sender, and a bot message
  		// (userID == "", authorID == botID) can never be "you" — so the
-@@ -3282,13 +3318,15 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
+@@ -3282,13 +3331,15 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
  			} else if username != "" {
  				senderName = username
  			}
@@ -305,10 +339,18 @@ index 2084189..b0f5492 100644
  	}
  }
 diff --git a/internal/slack/client.go b/internal/slack/client.go
-index da3a9e5..e4c0eef 100644
+index da3a9e5..deb915b 100644
 --- a/internal/slack/client.go
 +++ b/internal/slack/client.go
-@@ -350,6 +350,23 @@ func (c *Client) SubscribePresence(userIDs []string) error {
+@@ -42,6 +42,7 @@ type SlackAPI interface {
+ 	JoinConversation(channelID string) (*slack.Channel, string, []string, error)
+ 	SetUserPresenceContext(ctx context.Context, presence string) error
+ 	GetUserPresenceContext(ctx context.Context, user string) (*slack.UserPresence, error)
++	GetUserGroupsContext(ctx context.Context, options ...slack.GetUserGroupsOption) ([]slack.UserGroup, error)
+ 	SetSnoozeContext(ctx context.Context, minutes int) (*slack.DNDStatus, error)
+ 	EndSnoozeContext(ctx context.Context) (*slack.DNDStatus, error)
+ 	EndDNDContext(ctx context.Context) error
+@@ -350,6 +351,23 @@ func (c *Client) SubscribePresence(userIDs []string) error {
  	return c.wsConn.WriteJSON(msg)
  }
  
@@ -332,7 +374,7 @@ index da3a9e5..e4c0eef 100644
  // GetChannels retrieves conversations the user is a member of (channels, DMs,
  // group DMs), paginating automatically. Uses users.conversations which returns
  // only joined channels — much faster than conversations.list for large workspaces.
-@@ -963,7 +980,7 @@ func (c *Client) GetUnreadCounts() ([]UnreadInfo, ThreadsAggregate, error) {
+@@ -963,7 +981,7 @@ func (c *Client) GetUnreadCounts() ([]UnreadInfo, ThreadsAggregate, error) {
  
  // SendReply posts a threaded reply to the specified message.
  // Returns the timestamp and the converted mrkdwn text actually sent.
@@ -341,7 +383,7 @@ index da3a9e5..e4c0eef 100644
  	mr, block := mrkdwn.Convert(text)
  	opts := []slack.MsgOption{
  		slack.MsgOptionText(mr, false),
-@@ -972,6 +989,9 @@ func (c *Client) SendReply(ctx context.Context, channelID, threadTS, text string
+@@ -972,6 +990,9 @@ func (c *Client) SendReply(ctx context.Context, channelID, threadTS, text string
  	if block != nil {
  		opts = append(opts, slack.MsgOptionBlocks(block))
  	}
@@ -351,6 +393,34 @@ index da3a9e5..e4c0eef 100644
  	_, ts, err := c.api.PostMessage(channelID, opts...)
  	if err != nil {
  		return "", "", fmt.Errorf("sending reply: %w", err)
+@@ -979,6 +1000,27 @@ func (c *Client) SendReply(ctx context.Context, channelID, threadTS, text string
+ 	return ts, mr, nil
+ }
+ 
++// GetUsergroups returns a map of usergroup (subteam) ID -> handle, used to
++// resolve bare <!subteam^ID> mentions (which carry no embedded label) to a
++// readable @handle. Falls back to the group's name when it has no handle.
++func (c *Client) GetUsergroups(ctx context.Context) (map[string]string, error) {
++	groups, err := c.api.GetUserGroupsContext(ctx)
++	if err != nil {
++		return nil, fmt.Errorf("fetching usergroups: %w", err)
++	}
++	out := make(map[string]string, len(groups))
++	for _, g := range groups {
++		name := g.Handle
++		if name == "" {
++			name = g.Name
++		}
++		if name != "" {
++			out[g.ID] = name
++		}
++	}
++	return out, nil
++}
++
+ // GetReplies retrieves all replies in a thread.
+ // The first message in the returned slice is the parent message.
+ func (c *Client) GetReplies(ctx context.Context, channelID, threadTS string) ([]slack.Message, error) {
 diff --git a/internal/slack/events.go b/internal/slack/events.go
 index 7d08daa..57d139b 100644
 --- a/internal/slack/events.go
@@ -392,7 +462,7 @@ index 7d08daa..57d139b 100644
  	case "manual_presence_change":
  		var evt wsManualPresenceEvent
 diff --git a/internal/ui/app.go b/internal/ui/app.go
-index 7269181..2fa21c2 100644
+index 7269181..5c0863f 100644
 --- a/internal/ui/app.go
 +++ b/internal/ui/app.go
 @@ -107,6 +107,10 @@ type App struct {
@@ -491,7 +561,21 @@ index 7269181..2fa21c2 100644
  	a.statusbar.SetInThread(true)
  	parent := messages.MessageItem{
  		TS:       sum.ParentTS,
-@@ -2616,7 +2662,7 @@ func (a *App) submitWithAttachments(c *compose.Model) tea.Cmd {
+@@ -2094,6 +2140,13 @@ func openURLCmd(url string) tea.Cmd {
+ 	}
+ }
+ 
++// SetUsergroupNames passes the subteam ID -> handle map to the panes so
++// bare <!subteam^ID> mentions resolve to @handle.
++func (a *App) SetUsergroupNames(names map[string]string) {
++	a.messagepane.SetUsergroupNames(names)
++	a.threadPanel.SetUsergroupNames(names)
++}
++
+ // SetUserNames passes the user ID -> display name map to the message pane for mention resolution.
+ func (a *App) SetUserNames(names map[string]string) {
+ 	a.userNames = names
+@@ -2616,7 +2669,7 @@ func (a *App) submitWithAttachments(c *compose.Model) tea.Cmd {
  // No-op if clipboard.Init() failed at startup.
  func (a *App) smartPaste() tea.Cmd {
  	if !a.clipboardAvailable {
@@ -500,7 +584,7 @@ index 7269181..2fa21c2 100644
  	}
  
  	// Resolve the active compose pointer.
-@@ -2633,8 +2679,12 @@ func (a *App) smartPaste() tea.Cmd {
+@@ -2633,8 +2686,12 @@ func (a *App) smartPaste() tea.Cmd {
  	// Text fallback — paste verbatim into the active compose.
  	if len(textBytes) > 0 {
  		target.SetValue(target.Value() + string(textBytes))
@@ -593,11 +677,47 @@ index a120899..07ad568 100644
  		OpenPreview:         key.NewBinding(key.WithKeys("O", "v"), key.WithHelp("O/v", "open image preview")),
  		OpenLink:            key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open link in message")),
  		MarkUnread:          key.NewBinding(key.WithKeys("U"), key.WithHelp("U", "mark unread")),
+diff --git a/internal/ui/messages/flatten.go b/internal/ui/messages/flatten.go
+index 83cea92..17d7e24 100644
+--- a/internal/ui/messages/flatten.go
++++ b/internal/ui/messages/flatten.go
+@@ -14,9 +14,9 @@ var (
+ 	userMentionWithLabelRe = regexp.MustCompile(`<@([A-Z0-9]+)\|([^>]+)>`)
+ 	specialMentionRe       = regexp.MustCompile(`<!(here|channel|everyone)(?:\|[^>]*)?>`)
+ 	// Usergroup mentions: <!subteam^SID|@label> or bare <!subteam^SID>.
+-	// Group 1 is the optional label (conventionally already "@"-prefixed
+-	// on the wire, but not guaranteed).
+-	usergroupMentionRe = regexp.MustCompile(`<!subteam\^[A-Z0-9]+(?:\|([^>]+))?>`)
++	// Group 1 is the subteam ID; group 2 is the optional label
++	// (conventionally "@"-prefixed on the wire, but not guaranteed).
++	usergroupMentionRe = regexp.MustCompile(`<!subteam\^([A-Z0-9]+)(?:\|([^>]+))?>`)
+ )
+ 
+ // FlattenMrkdwn converts Slack mrkdwn entity tokens into plain text for
+@@ -85,7 +85,7 @@ func FlattenMrkdwn(text string, resolveUser, resolveChannel func(id string) (str
+ 	})
+ 
+ 	text = usergroupMentionRe.ReplaceAllStringFunc(text, func(match string) string {
+-		label := usergroupMentionRe.FindStringSubmatch(match)[1]
++		label := usergroupMentionRe.FindStringSubmatch(match)[2]
+ 		if label == "" {
+ 			// Bare token: there's no local usergroup cache to resolve
+ 			// SIDs against, so a generic placeholder beats leaking the
 diff --git a/internal/ui/messages/model.go b/internal/ui/messages/model.go
-index 900f60c..e97455f 100644
+index 900f60c..ca05035 100644
 --- a/internal/ui/messages/model.go
 +++ b/internal/ui/messages/model.go
-@@ -883,10 +883,20 @@ func (m *Model) LastHitsForTest() []HitRect {
+@@ -229,7 +229,8 @@ type Model struct {
+ 	loading      bool
+ 	spinnerFrame int               // braille-spinner frame index for "Loading messages..." animation
+ 	avatarFn     AvatarFunc        // optional: returns half-block avatar for a userID
+-	userNames    map[string]string // user ID -> display name for mention resolution
++	userNames      map[string]string // user ID -> display name for mention resolution
++	usergroupNames map[string]string // subteam ID -> handle for bare <!subteam^ID>
+ 	channelNames map[string]string // channel ID -> name for bare <#CID> resolution
+ 
+ 	// searchTerms are folded word-prefix terms of the active in-channel
+@@ -883,10 +884,20 @@ func (m *Model) LastHitsForTest() []HitRect {
  	return out
  }
  
@@ -618,7 +738,7 @@ index 900f60c..e97455f 100644
  	if m.selected > 0 {
  		m.selected--
  		m.dirty()
-@@ -931,6 +941,12 @@ func (m *Model) MoveDown() {
+@@ -931,6 +942,12 @@ func (m *Model) MoveDown() {
  	if m.reactionNavActive {
  		m.ExitReactionNav()
  	}
@@ -631,8 +751,63 @@ index 900f60c..e97455f 100644
  	if m.selected < len(m.messages)-1 {
  		m.selected++
  		m.dirty()
+@@ -1298,6 +1315,14 @@ func (m *Model) SetUserNames(names map[string]string) {
+ 	m.dirty()
+ }
+ 
++// SetUsergroupNames sets the subteam ID -> handle map used to resolve bare
++// <!subteam^ID> mentions that carry no embedded label.
++func (m *Model) SetUsergroupNames(names map[string]string) {
++	m.usergroupNames = names
++	m.cache = nil
++	m.dirty()
++}
++
+ // SetCurrentUser records the authenticated user ID so UpdateReaction can
+ // flag the current user's own reactions (HasReacted) correctly.
+ func (m *Model) SetCurrentUser(userID string) {
+@@ -1833,12 +1858,13 @@ func (m *Model) blockkitContext(msg MessageItem, userNames, channelNames map[str
+ 		// emoji on first reveal. Acceptable.
+ 		RenderText: func(s string, un map[string]string) string {
+ 			return RenderSlackMarkdownWith(s, RenderSlackMarkdownOpts{
+-				UserNames:    un,
+-				ChannelNames: channelNames,
+-				PlaceCtx:     m.emojiCtx.PlaceCtx,
+-				EmojiCells:   m.emojiCtx.Cells,
+-				Customs:      m.emojiCtx.Customs,
+-				EmojiFlushes: nil,
++				UserNames:      un,
++				ChannelNames:   channelNames,
++				UsergroupNames: m.usergroupNames,
++				PlaceCtx:       m.emojiCtx.PlaceCtx,
++				EmojiCells:     m.emojiCtx.Cells,
++				Customs:        m.emojiCtx.Customs,
++				EmojiFlushes:   nil,
+ 			})
+ 		},
+ 		WrapText: WordWrap,
+@@ -1890,12 +1916,13 @@ func (m *Model) renderMessagePlain(msg MessageItem, width int, avatarStr string,
+ 	// emoji flushes land in the same per-message `flushes` named-return
+ 	// slice the View() loop walks for inline-image attachments.
+ 	bodyOpts := RenderSlackMarkdownOpts{
+-		UserNames:    userNames,
+-		ChannelNames: channelNames,
+-		PlaceCtx:     m.emojiCtx.PlaceCtx,
+-		EmojiCells:   m.emojiCtx.Cells,
+-		Customs:      m.emojiCtx.Customs,
+-		EmojiFlushes: &flushes,
++		UserNames:      userNames,
++		ChannelNames:   channelNames,
++		UsergroupNames: m.usergroupNames,
++		PlaceCtx:       m.emojiCtx.PlaceCtx,
++		EmojiCells:     m.emojiCtx.Cells,
++		Customs:        m.emojiCtx.Customs,
++		EmojiFlushes:   &flushes,
+ 	}
+ 	rendered := RenderSlackMarkdownWith(MessageTextSource(msg), bodyOpts)
+ 	if len(m.searchTerms) > 0 {
 diff --git a/internal/ui/messages/render.go b/internal/ui/messages/render.go
-index 6fabdd6..42265c7 100644
+index 6fabdd6..4436145 100644
 --- a/internal/ui/messages/render.go
 +++ b/internal/ui/messages/render.go
 @@ -320,9 +320,9 @@ func SelectionTintBgANSI(focused bool) string {
@@ -672,16 +847,32 @@ index 6fabdd6..42265c7 100644
  }
  
  // bgSGRParams strips the "\x1b[" prefix and "m" suffix from a bg ANSI
-@@ -774,6 +782,18 @@ func renderInlineFormattingWith(text string, opts RenderSlackMarkdownOpts) strin
+@@ -613,8 +621,9 @@ func SidebarMutedFgANSI() string {
+ // path. nil disables flush collection (cold-only callers, or callers
+ // that don't care about flushes — e.g., tests).
+ type RenderSlackMarkdownOpts struct {
+-	UserNames    map[string]string
+-	ChannelNames map[string]string
++	UserNames      map[string]string
++	ChannelNames   map[string]string
++	UsergroupNames map[string]string // subteam ID -> handle, for bare <!subteam^ID>
+ 
+ 	// Emoji-image opts (zero values disable the image path).
+ 	PlaceCtx     emojiutil.PlaceContext
+@@ -774,6 +783,22 @@ func renderInlineFormattingWith(text string, opts RenderSlackMarkdownOpts) strin
  		return mentionStyle().Render("@" + name)
  	})
  
 +	// Usergroup (subteam) mentions: <!subteam^S1|@eng> -> @eng. The bare
-+	// form <!subteam^S1> has no embedded label and no usergroup-name cache
-+	// to resolve against, so it falls back to @group — still readable, and
-+	// never the raw <!subteam^…> wire form.
++	// form <!subteam^S1> carries no label, so resolve its ID via the
++	// usergroup cache; fall back to @group when unknown. Never leaks the
++	// raw <!subteam^…> wire form.
 +	text = usergroupMentionRe.ReplaceAllStringFunc(text, func(match string) string {
-+		name := strings.TrimPrefix(usergroupMentionRe.FindStringSubmatch(match)[1], "@")
++		g := usergroupMentionRe.FindStringSubmatch(match)
++		name := strings.TrimPrefix(g[2], "@")
++		if name == "" && opts.UsergroupNames != nil {
++			name = opts.UsergroupNames[g[1]]
++		}
 +		if name == "" {
 +			name = "group"
 +		}
@@ -771,7 +962,7 @@ index d856c5c..bd73d20 100644
  		return a.beginEditOfSelected()
  
 diff --git a/internal/ui/msgs.go b/internal/ui/msgs.go
-index 95e4367..7ea3e86 100644
+index 95e4367..6de8172 100644
 --- a/internal/ui/msgs.go
 +++ b/internal/ui/msgs.go
 @@ -132,6 +132,7 @@ type (
@@ -782,6 +973,28 @@ index 95e4367..7ea3e86 100644
  	}
  	ThreadReplySentMsg struct {
  		ChannelID string
+@@ -237,9 +238,10 @@ type (
+ 		Domain       string
+ 		Theme        string // resolved theme name (per-workspace or global default)
+ 		SidebarWidth int    // resolved sidebar width (per-workspace or global default)
+-		Channels     []sidebar.ChannelItem
+-		FinderItems  []channelfinder.Item
+-		UserNames    map[string]string
++		Channels       []sidebar.ChannelItem
++		FinderItems    []channelfinder.Item
++		UserNames      map[string]string
++		UsergroupNames map[string]string
+ 		// ExternalUsers maps userID -> true for users this workspace
+ 		// considers Slack Connect / shared-channel guests. Hydrated from
+ 		// cache.User.IsExternal so the mention picker can flag externals
+@@ -304,6 +306,7 @@ type (
+ 		Channels     []sidebar.ChannelItem
+ 		FinderItems  []channelfinder.Item
+ 		UserNames    map[string]string
++		UsergroupNames map[string]string
+ 		// ExternalUsers maps userID -> true for users this workspace
+ 		// considers Slack Connect / shared-channel guests. Hydrated from
+ 		// cache.User.IsExternal so the mention picker can flag externals
 diff --git a/internal/ui/reducer_send.go b/internal/ui/reducer_send.go
 index b5d3003..0731df5 100644
 --- a/internal/ui/reducer_send.go
@@ -838,6 +1051,26 @@ index 8268f66..c7248ed 100644
  			switch r := result.(type) {
  			case ThreadReplySentMsg:
  				r.LocalTS = localTS
+diff --git a/internal/ui/reducer_workspace.go b/internal/ui/reducer_workspace.go
+index 9e5a35c..e22d029 100644
+--- a/internal/ui/reducer_workspace.go
++++ b/internal/ui/reducer_workspace.go
+@@ -192,6 +192,7 @@ func reduceWorkspaceReady(a *App, m WorkspaceReadyMsg) tea.Cmd {
+ 		// SetUserNames last is the canonical state.
+ 		a.SetExternalUsers(m.ExternalUsers)
+ 		a.SetUserNames(m.UserNames)
++		a.SetUsergroupNames(m.UsergroupNames)
+ 		a.SetCustomEmoji(m.CustomEmoji)
+ 		// Route through the setter so messagepane/threadPanel also learn
+ 		// the current user — production never calls SetCurrentUserID
+@@ -281,6 +282,7 @@ func reduceWorkspaceSwitched(a *App, m WorkspaceSwitchedMsg) tea.Cmd {
+ 	// last is the canonical state.
+ 	a.SetExternalUsers(m.ExternalUsers)
+ 	a.SetUserNames(m.UserNames)
++		a.SetUsergroupNames(m.UsergroupNames)
+ 	a.SetCustomEmoji(m.CustomEmoji)
+ 	// Route through the setter so messagepane/threadPanel also learn the
+ 	// current user (see WorkspaceReadyMsg above).
 diff --git a/internal/ui/services.go b/internal/ui/services.go
 index 21da2e6..99c6a7e 100644
 --- a/internal/ui/services.go
@@ -1023,10 +1256,32 @@ index a1cc703..61979da 100644
  	const hex = "0123456789ABCDEF"
  	out := []byte("#000000")
 diff --git a/internal/ui/thread/model.go b/internal/ui/thread/model.go
-index 1edb2a0..e6cf28b 100644
+index 1edb2a0..d062f35 100644
 --- a/internal/ui/thread/model.go
 +++ b/internal/ui/thread/model.go
-@@ -698,10 +698,20 @@ func (m *Model) ViewportAtTop() bool {
+@@ -97,6 +97,7 @@ type Model struct {
+ 	focused           bool
+ 	avatarFn          messages.AvatarFunc
+ 	userNames         map[string]string
++	usergroupNames    map[string]string
+ 	channelNames      map[string]string
+ 	vp                viewport.Model
+ 	reactionNavActive bool
+@@ -587,6 +588,13 @@ func (m *Model) SetUserNames(names map[string]string) {
+ 	m.InvalidateCache()
+ }
+ 
++// SetUsergroupNames sets the subteam ID -> handle map used to resolve bare
++// <!subteam^ID> mentions that carry no embedded label.
++func (m *Model) SetUsergroupNames(names map[string]string) {
++	m.usergroupNames = names
++	m.InvalidateCache()
++}
++
+ // SetCurrentUser records the authenticated user ID so UpdateReaction can
+ // flag the current user's own reactions (HasReacted) correctly.
+ func (m *Model) SetCurrentUser(userID string) {
+@@ -698,10 +706,20 @@ func (m *Model) ViewportAtTop() bool {
  	return m.vp.YOffset() == 0
  }
  
@@ -1047,7 +1302,7 @@ index 1edb2a0..e6cf28b 100644
  	if m.selected > 0 {
  		m.selected--
  		m.dirty()
-@@ -713,6 +723,12 @@ func (m *Model) MoveDown() {
+@@ -713,6 +731,12 @@ func (m *Model) MoveDown() {
  	if m.reactionNavActive {
  		m.ExitReactionNav()
  	}
@@ -1060,6 +1315,46 @@ index 1edb2a0..e6cf28b 100644
  	if m.selected < len(m.replies)-1 {
  		m.selected++
  		m.dirty()
+@@ -1753,12 +1777,13 @@ func (m *Model) blockkitContext(msg messages.MessageItem, userNames, channelName
+ 		Channel:     m.channelID,
+ 		RenderText: func(s string, un map[string]string) string {
+ 			return messages.RenderSlackMarkdownWith(s, messages.RenderSlackMarkdownOpts{
+-				UserNames:    un,
+-				ChannelNames: channelNames,
+-				PlaceCtx:     m.emojiCtx.PlaceCtx,
+-				EmojiCells:   m.emojiCtx.Cells,
+-				Customs:      m.emojiCtx.Customs,
+-				EmojiFlushes: nil,
++				UserNames:      un,
++				ChannelNames:   channelNames,
++				UsergroupNames: m.usergroupNames,
++				PlaceCtx:       m.emojiCtx.PlaceCtx,
++				EmojiCells:     m.emojiCtx.Cells,
++				Customs:        m.emojiCtx.Customs,
++				EmojiFlushes:   nil,
+ 			})
+ 		},
+ 		WrapText: messages.WordWrap,
+@@ -1784,12 +1809,13 @@ func (m *Model) renderThreadMessage(msg messages.MessageItem, width int, userNam
+ 	// Mirrors the messages-pane named-return `flushes` slice.
+ 	var flushes []func(io.Writer) error
+ 	bodyOpts := messages.RenderSlackMarkdownOpts{
+-		UserNames:    userNames,
+-		ChannelNames: channelNames,
+-		PlaceCtx:     m.emojiCtx.PlaceCtx,
+-		EmojiCells:   m.emojiCtx.Cells,
+-		Customs:      m.emojiCtx.Customs,
+-		EmojiFlushes: &flushes,
++		UserNames:      userNames,
++		ChannelNames:   channelNames,
++		UsergroupNames: m.usergroupNames,
++		PlaceCtx:       m.emojiCtx.PlaceCtx,
++		EmojiCells:     m.emojiCtx.Cells,
++		Customs:        m.emojiCtx.Customs,
++		EmojiFlushes:   &flushes,
+ 	}
+ 	text := styles.MessageText.Render(messages.WordWrap(messages.RenderSlackMarkdownWith(messages.MessageTextSource(msg), bodyOpts), contentWidth))
+ 
 diff --git a/internal/ui/view_sidebar.go b/internal/ui/view_sidebar.go
 index 5825718..ed27229 100644
 --- a/internal/ui/view_sidebar.go
