@@ -45,34 +45,34 @@ how they talk to each other — see `SYSTEM.md`.
 
 ## Deployment
 
-This repo is consumed by `~/nixos/`'s home-manager configuration which
-symlinks the relevant paths into `~/.config/`. To bring a new machine up:
+These dotfiles live as a subtree of `~/nixos` (the nixos-config repo),
+whose home-manager configuration symlinks the relevant paths into
+`~/.config/`. To bring a new machine up:
 
 ```bash
-# 1. Clone both repos
+# 1. Clone the monorepo (dotfiles are inside it)
 git clone https://github.com/daphen/nixos-config.git ~/nixos
-git clone https://github.com/daphen/dotfiles.git    ~/dotfiles
 
 # 2. Build the system
 sudo nixos-rebuild switch --flake ~/nixos
 
 # 3. Generate the initial themes (once; subsequent toggles use the manager)
-~/dotfiles/themes/.config/themes/generate-themes.sh
+~/nixos/dotfiles/themes/.config/themes/generate-themes.sh
 ```
 
-On a remote/sandbox host that can't run NixOS, use
-`nixos-portable-config` (the `dev-env` flake) — see that repo for the
-bootstrap one-liner.
+On a remote/sandbox host that can't run NixOS, run the in-repo dev-env:
+`nix run github:daphen/nixos-config#dev-env` — an ephemeral fish + tools +
+themed configs with no profile installs (this is what `lovssh` launches in
+lovbox sandboxes).
 
 ## Editing managed configs
 
 Files under `~/.config/` that are symlinks point at this repo. Edit
-either side and the change is live. Commit + push from `~/dotfiles` to
-sync.
+either side and the change is live. Commit + push from `~/nixos` to sync.
 
 ```bash
 nvim ~/.config/kitty/kitty.conf   # follow the symlink
-cd ~/dotfiles && git add kitty && git commit -m "..." && git push
+cd ~/nixos && git add dotfiles/kitty && git commit -m "..." && git push
 ```
 
 ## Promoting a new app to managed

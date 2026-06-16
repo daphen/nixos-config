@@ -37,14 +37,10 @@ nixos/
 
 ## Prerequisites
 
-Before using this configuration, you need to set up the dotfiles-source link:
-
-```bash
-cd ~/nixos
-ln -s ~/dotfiles dotfiles-source
-```
-
-This allows the NixOS configuration to reference your existing dotfiles from `~/dotfiles/`.
+None beyond a clone of this repo. The dotfiles live in-repo under
+`dotfiles/` and home-manager symlinks them into `~/.config/` directly —
+there is no longer an external `~/dotfiles` repo or a `dotfiles-source`
+symlink to set up.
 
 ## Installation in VM
 
@@ -159,13 +155,16 @@ sudo nixos-rebuild build-vm --flake .#nixos
 
 ## Home Manager
 
-Home Manager is integrated into the system configuration. Changes to home-manager configs will be applied when you run `nixos-rebuild switch`.
+Home Manager is integrated into the system configuration (via
+`home-manager.nixosModules`), so its configs are applied by
+`nixos-rebuild switch` — there is no standalone `homeConfigurations`
+output to switch separately.
 
-Alternatively, manage home-manager separately:
+For a non-NixOS host (remote/sandbox), the portable dev environment is a
+flake output instead:
 
 ```bash
-# Switch home-manager only (after system changes)
-home-manager switch --flake .#daphen
+nix run github:daphen/nixos-config#dev-env
 ```
 
 ## Theme System
