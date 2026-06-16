@@ -6,21 +6,17 @@
 # Don't use set -e: individual tool apply failures shouldn't abort the whole script
 
 # Determine the directory where this script is located
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 THEMES_DIR="$SCRIPT_DIR"
 COLORS_FILE="$THEMES_DIR/colors.json"
 TEMPLATES_DIR="$THEMES_DIR/templates"
 GENERATED_DIR="$THEMES_DIR/generated"
 
-# Detect dotfiles directory (for stow-managed configs)
-# Assumes dotfiles is in ~/dotfiles or find it from the themes directory
-if [[ -d "$HOME/dotfiles" ]]; then
-    DOTFILES_DIR="$HOME/dotfiles"
-else
-    # Fallback: derive from SCRIPT_DIR (themes/.config/themes -> dotfiles root)
-    DOTFILES_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-fi
+# Derive the dotfiles root from where this script physically lives
+# (themes/.config/themes -> dotfiles root), so managed-config writes follow
+# the repo wherever it's checked out instead of a hardcoded ~/dotfiles.
+DOTFILES_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 
 # Colors for output
 RED='\033[0;31m'
