@@ -1,8 +1,23 @@
 diff --git a/cmd/slk/main.go b/cmd/slk/main.go
-index 0f7c7ca..02c8bb6 100644
+index 0f7c7ca..d3839dc 100644
 --- a/cmd/slk/main.go
 +++ b/cmd/slk/main.go
-@@ -1369,7 +1369,7 @@ func run() error {
+@@ -87,9 +87,13 @@ func (a sectionsProviderAdapter) OrderedSlackSections() []sidebar.SectionMeta {
+ 	secs := a.store.OrderedSections()
+ 	out := make([]sidebar.SectionMeta, 0, len(secs))
+ 	for _, s := range secs {
++		name := s.Name
++		if s.Type == "stars" && name == "" {
++			name = "Starred"
++		}
+ 		out = append(out, sidebar.SectionMeta{
+ 			ID:    s.ID,
+-			Name:  s.Name,
++			Name:  name,
+ 			Emoji: s.Emoji,
+ 			Type:  s.Type,
+ 		})
+@@ -1369,7 +1373,7 @@ func run() error {
  					}
  				}()
  			},
@@ -11,7 +26,7 @@ index 0f7c7ca..02c8bb6 100644
  				chIDStr, threadTSStr := string(channelID), string(threadTS)
  				wctx := router.Active()
  				if wctx == nil {
-@@ -1378,7 +1378,7 @@ func run() error {
+@@ -1378,7 +1382,7 @@ func run() error {
  				client := wctx.Client
  				userNames := wctx.UserNames
  				ctx := context.Background()
@@ -20,7 +35,7 @@ index 0f7c7ca..02c8bb6 100644
  				if err != nil {
  					log.Printf("Warning: failed to send thread reply: %v", err)
  					return ui.ThreadReplySendFailedMsg{ChannelID: chIDStr, ThreadTS: threadTSStr, Reason: err.Error()}
-@@ -1955,11 +1955,15 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
+@@ -1955,11 +1959,15 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
  		return nil, fmt.Errorf("fetching channels for %s: %w", token.TeamName, err)
  	}
  
@@ -36,7 +51,7 @@ index 0f7c7ca..02c8bb6 100644
  			if _, ok := wctx.UserNames[ch.User]; !ok {
  				wctx.UnresolvedDMs = append(wctx.UnresolvedDMs, UnresolvedDM{
  					ChannelID: ch.ID,
-@@ -1976,6 +1980,16 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
+@@ -1976,6 +1984,21 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
  		wctx.FinderItems = append(wctx.FinderItems, finderItem)
  	}
  
@@ -48,18 +63,101 @@ index 0f7c7ca..02c8bb6 100644
 +		if err := client.SubscribePresence(dmUserIDs); err != nil {
 +			log.Printf("Warning: DM presence subscribe for %s: %v", token.TeamName, err)
 +		}
++		// no_query_on_subscribe=1 on the socket means the sub above never
++		// returns current state — query it explicitly so dots start correct.
++		if err := client.QueryPresence(dmUserIDs); err != nil {
++			log.Printf("Warning: DM presence query for %s: %v", token.TeamName, err)
++		}
 +	}
 +
  	// Fetch unread counts
  	unreadCounts, threadsAgg, ucErr := client.GetUnreadCounts()
  	if ucErr != nil {
+@@ -3261,16 +3284,29 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
+ 		if h.activeChannelID != nil {
+ 			activeChID = h.activeChannelID()
+ 		}
++		chType := h.channelTypes[channelID]
++		chName := h.channelNames[channelID]
++		// Thread participation: only query when it's actually a reply and
++		// the trigger is on, to avoid a DB hit on every message.
++		threadFollowed := false
++		if h.notifyCfg.OnThread && threadTS != "" && threadTS != ts && h.db != nil {
++			if involved, err := h.db.ThreadInvolvesUser(h.workspaceID, channelID, threadTS, h.currentUserID); err == nil {
++				threadFollowed = involved
++			}
++		}
+ 		ctx := notify.NotifyContext{
+ 			CurrentUserID:   h.currentUserID,
+ 			ActiveChannelID: activeChID,
+ 			IsActiveWS:      isActiveWS,
+ 			OnMention:       h.notifyCfg.OnMention,
+ 			OnDM:            h.notifyCfg.OnDM,
++			OnThread:        h.notifyCfg.OnThread,
+ 			OnKeyword:       h.notifyCfg.OnKeyword,
++			NotifyChannels:  h.notifyCfg.NotifyChannels,
+ 			IsDND:           h.wsCtx != nil && h.wsCtx.DNDEnabled && (h.wsCtx.DNDEndTS.IsZero() || time.Now().Before(h.wsCtx.DNDEndTS)),
++			ChannelName:     chName,
++			ThreadFollowed:  threadFollowed,
+ 		}
+-		chType := h.channelTypes[channelID]
+ 		// Pass the raw userID (not authorID): ShouldNotify's self-message
+ 		// suppression keys on the human sender, and a bot message
+ 		// (userID == "", authorID == botID) can never be "you" — so the
+@@ -3282,13 +3318,15 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
+ 			} else if username != "" {
+ 				senderName = username
+ 			}
+-			chName := h.channelNames[channelID]
+ 			title := h.workspaceName + ": #" + chName
+ 			if chType == "dm" || chType == "group_dm" {
+ 				title = h.workspaceName + ": " + senderName
+ 			}
+ 			body := senderName + ": " + notify.StripSlackMarkup(text, h.userNames)
+-			go h.notifier.Notify(title, body)
++			// Group by channel so successive messages from the same
++			// conversation replace the prior notification (latest message
++			// shown) instead of stacking stale ones.
++			go h.notifier.Notify(channelID, title, body)
+ 		}
+ 	}
+ 
+diff --git a/internal/config/config.go b/internal/config/config.go
+index 2a1c7c9..317744c 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -110,8 +110,13 @@ type Notifications struct {
+ 	Enabled    bool     `toml:"enabled"`
+ 	OnMention  bool     `toml:"on_mention"`
+ 	OnDM       bool     `toml:"on_dm"`
++	OnThread   bool     `toml:"on_thread"`
+ 	OnKeyword  []string `toml:"on_keyword"`
+-	QuietHours string   `toml:"quiet_hours"`
++	// NotifyChannels: notify on ANY message in a channel whose name
++	// contains one of these (case-insensitive substring), regardless of
++	// mention. e.g. ["design-system"] catches design-system(s) channels.
++	NotifyChannels []string `toml:"notify_channels"`
++	QuietHours     string   `toml:"quiet_hours"`
+ }
+ 
+ type CacheConfig struct {
+@@ -189,6 +194,7 @@ func Default() Config {
+ 			Enabled:   true,
+ 			OnMention: true,
+ 			OnDM:      true,
++			OnThread:  true,
+ 		},
+ 		Cache: CacheConfig{
+ 			MessageRetentionDays: 30,
 diff --git a/internal/notify/notifier.go b/internal/notify/notifier.go
-index 2feb239..77764b2 100644
+index 2feb239..8400e57 100644
 --- a/internal/notify/notifier.go
 +++ b/internal/notify/notifier.go
-@@ -5,17 +5,30 @@ import (
+@@ -4,26 +4,63 @@ package notify
+ import (
  	"regexp"
  	"strings"
++	"sync"
  
 +	enotify "github.com/esiqveland/notify"
  	"github.com/gen2brain/beeep"
@@ -70,12 +168,15 @@ index 2feb239..77764b2 100644
  type Notifier struct {
  	enabled bool
 +	conn    *dbus.Conn
++
++	mu     sync.Mutex
++	lastID map[string]uint32 // group key (channel) -> last notification id
  }
  
  // New creates a Notifier. If enabled is false, Notify is a no-op.
  func New(enabled bool) *Notifier {
 -	return &Notifier{enabled: enabled}
-+	n := &Notifier{enabled: enabled}
++	n := &Notifier{enabled: enabled, lastID: map[string]uint32{}}
 +	if enabled {
 +		// Own session-bus connection so notifications carry AppName "slk".
 +		// beeep hardcodes "DefaultAppName", which downstream consumers (e.g.
@@ -88,28 +189,150 @@ index 2feb239..77764b2 100644
 +	return n
  }
  
- // Notify sends a desktop notification with the given title and body.
-@@ -24,6 +37,15 @@ func (n *Notifier) Notify(title, body string) error {
+-// Notify sends a desktop notification with the given title and body.
+-// Returns nil if notifications are disabled.
+-func (n *Notifier) Notify(title, body string) error {
++// Notify sends a desktop notification. key groups notifications by
++// conversation: a new message for the same key replaces the prior
++// notification in place (via ReplacesID) so the tray shows the latest
++// message rather than piling up stale ones. Returns nil if disabled.
++func (n *Notifier) Notify(key, title, body string) error {
  	if !n.enabled {
  		return nil
  	}
 +	if n.conn != nil {
-+		_, err := enotify.SendNotification(n.conn, enotify.Notification{
++		n.mu.Lock()
++		replaces := n.lastID[key]
++		n.mu.Unlock()
++		id, err := enotify.SendNotification(n.conn, enotify.Notification{
 +			AppName:       "slk",
++			ReplacesID:    replaces,
 +			Summary:       title,
 +			Body:          body,
 +			ExpireTimeout: enotify.ExpireTimeoutSetByNotificationServer,
 +		})
++		if err == nil {
++			n.mu.Lock()
++			n.lastID[key] = id
++			n.mu.Unlock()
++		}
 +		return err
 +	}
  	return beeep.Notify(title, body, "")
  }
  
+@@ -34,8 +71,16 @@ type NotifyContext struct {
+ 	IsActiveWS      bool
+ 	OnMention       bool
+ 	OnDM            bool
++	OnThread        bool
+ 	OnKeyword       []string
++	NotifyChannels  []string
+ 	IsDND           bool // when true, ShouldNotify always returns false
++
++	// ChannelName is the human channel name, matched against NotifyChannels.
++	ChannelName string
++	// ThreadFollowed is true when this message is a reply in a thread the
++	// user participates in (authored or was mentioned). Set by the caller.
++	ThreadFollowed bool
+ }
+ 
+ // ShouldNotify returns true if a message should trigger a desktop notification.
+@@ -55,8 +100,14 @@ func ShouldNotify(ctx NotifyContext, channelID, userID, text, channelType string
+ 		return false
+ 	}
+ 
+-	// Check DM trigger
+-	if ctx.OnDM && (channelType == "dm" || channelType == "group_dm") {
++	// Check DM trigger. "app" covers bot/app DMs (Swarmia, GitHub, …),
++	// which are still direct messages the user wants surfaced.
++	if ctx.OnDM && (channelType == "dm" || channelType == "group_dm" || channelType == "app") {
++		return true
++	}
++
++	// Check thread trigger: a reply in a thread the user participates in.
++	if ctx.OnThread && ctx.ThreadFollowed {
+ 		return true
+ 	}
+ 
+@@ -65,6 +116,17 @@ func ShouldNotify(ctx NotifyContext, channelID, userID, text, channelType string
+ 		return true
+ 	}
+ 
++	// Watched channels: notify on any message in a channel whose name
++	// matches one of NotifyChannels (case-insensitive substring).
++	if ctx.ChannelName != "" && len(ctx.NotifyChannels) > 0 {
++		lname := strings.ToLower(ctx.ChannelName)
++		for _, pat := range ctx.NotifyChannels {
++			if pat != "" && strings.Contains(lname, strings.ToLower(pat)) {
++				return true
++			}
++		}
++	}
++
+ 	// Check keyword triggers
+ 	if len(ctx.OnKeyword) > 0 {
+ 		lower := strings.ToLower(text)
+diff --git a/internal/service/sectionstore.go b/internal/service/sectionstore.go
+index 2084189..b0f5492 100644
+--- a/internal/service/sectionstore.go
++++ b/internal/service/sectionstore.go
+@@ -60,6 +60,11 @@ func (s *SectionStore) Bootstrap(ctx context.Context, client SectionsClient) err
+ 		return fmt.Errorf("fetching sections: %w", err)
+ 	}
+ 
++	for i := range sections {
++		sec := &sections[i]
++		log.Printf("section store: fetched section type=%q name=%q id=%s channel_ids=%d channels_count=%d",
++			sec.Type, sec.Name, sec.ID, len(sec.ChannelIDs), sec.ChannelsCount)
++	}
+ 	for i := range sections {
+ 		sec := &sections[i]
+ 		if sec.ChannelsCount > len(sec.ChannelIDs) {
+@@ -179,10 +184,12 @@ func includeInSidebar(sec *slk.SidebarSection) bool {
+ 	switch sec.Type {
+ 	case "standard", "channels", "direct_messages":
+ 		return true
+-	case "recent_apps":
++	case "recent_apps", "stars":
++		// Render only when populated. stars groups the user's starred
++		// channels under a "Starred" header (see OrderedSlackSections).
+ 		return len(sec.ChannelIDs) > 0
+ 	default:
+-		// stars, slack_connect, salesforce_records, agents, anything new.
++		// slack_connect, salesforce_records, agents, anything new.
+ 		return false
+ 	}
+ }
 diff --git a/internal/slack/client.go b/internal/slack/client.go
-index da3a9e5..96646f8 100644
+index da3a9e5..e4c0eef 100644
 --- a/internal/slack/client.go
 +++ b/internal/slack/client.go
-@@ -963,7 +963,7 @@ func (c *Client) GetUnreadCounts() ([]UnreadInfo, ThreadsAggregate, error) {
+@@ -350,6 +350,23 @@ func (c *Client) SubscribePresence(userIDs []string) error {
+ 	return c.wsConn.WriteJSON(msg)
+ }
+ 
++// QueryPresence asks Slack for the current presence of the given users.
++// The socket is opened with no_query_on_subscribe=1, so presence_sub
++// alone never returns initial state — only later changes. The reply
++// arrives as presence_change events (batched when batch_presence_aware).
++func (c *Client) QueryPresence(userIDs []string) error {
++	c.wsMu.Lock()
++	defer c.wsMu.Unlock()
++	if c.wsConn == nil {
++		return fmt.Errorf("websocket not connected")
++	}
++	msg := map[string]interface{}{
++		"type": "presence_query",
++		"ids":  userIDs,
++	}
++	return c.wsConn.WriteJSON(msg)
++}
++
+ // GetChannels retrieves conversations the user is a member of (channels, DMs,
+ // group DMs), paginating automatically. Uses users.conversations which returns
+ // only joined channels — much faster than conversations.list for large workspaces.
+@@ -963,7 +980,7 @@ func (c *Client) GetUnreadCounts() ([]UnreadInfo, ThreadsAggregate, error) {
  
  // SendReply posts a threaded reply to the specified message.
  // Returns the timestamp and the converted mrkdwn text actually sent.
@@ -118,7 +341,7 @@ index da3a9e5..96646f8 100644
  	mr, block := mrkdwn.Convert(text)
  	opts := []slack.MsgOption{
  		slack.MsgOptionText(mr, false),
-@@ -972,6 +972,9 @@ func (c *Client) SendReply(ctx context.Context, channelID, threadTS, text string
+@@ -972,6 +989,9 @@ func (c *Client) SendReply(ctx context.Context, channelID, threadTS, text string
  	if block != nil {
  		opts = append(opts, slack.MsgOptionBlocks(block))
  	}
@@ -540,6 +763,47 @@ index 95e4367..7ea3e86 100644
  	}
  	ThreadReplySentMsg struct {
  		ChannelID string
+diff --git a/internal/ui/reducer_send.go b/internal/ui/reducer_send.go
+index b5d3003..0731df5 100644
+--- a/internal/ui/reducer_send.go
++++ b/internal/ui/reducer_send.go
+@@ -228,6 +228,12 @@ func reduceNewMessage(a *App, m NewMessageMsg) tea.Cmd {
+ 	// and scheduled side effects; redoing them here would
+ 	// double-render.
+ 	if a.selfSend.IsSelfSent(m.Message.TS) {
++		// A broadcast's optimistic add went to the thread panel only, so the
++		// channel pane still needs this echo — otherwise a broadcast you sent
++		// doesn't appear in the channel until you re-enter it.
++		if m.Message.Subtype == "thread_broadcast" && m.ChannelID == a.activeChannelID {
++			a.messagepane.AppendMessage(m.Message)
++		}
+ 		debuglog.Cache("NewMessageMsg: channel=%s ts=%s decision=skipped_self_send",
+ 			m.ChannelID, m.Message.TS)
+ 		return nil
+@@ -245,6 +251,9 @@ func reduceNewMessage(a *App, m NewMessageMsg) tea.Cmd {
+ 	// Slack client while slk is open) do NOT update
+ 	// lastSelfSendByChannel, so they pass through this guard.
+ 	if m.Message.UserID != "" && m.Message.UserID == a.currentUserID && a.selfSend.InFlight(m.ChannelID) {
++		if m.Message.Subtype == "thread_broadcast" && m.ChannelID == a.activeChannelID {
++			a.messagepane.AppendMessage(m.Message)
++		}
+ 		debuglog.Cache("NewMessageMsg: channel=%s ts=%s decision=skipped_self_send_in_flight",
+ 			m.ChannelID, m.Message.TS)
+ 		return nil
+@@ -261,9 +270,10 @@ func reduceNewMessage(a *App, m NewMessageMsg) tea.Cmd {
+ 		if a.threadVisible && m.Message.ThreadTS == a.threadPanel.ThreadTS() {
+ 			a.threadPanel.AddReply(m.Message)
+ 		}
+-		// Always add to main pane if it's a top-level message (no
+-		// ThreadTS or is the parent).
+-		if m.Message.ThreadTS == "" || m.Message.ThreadTS == m.Message.TS {
++		// Add to main pane if it's a top-level message (no ThreadTS or is
++		// the parent), or a thread_broadcast — a reply the author also
++		// posted to the channel, so it belongs in the channel pane too.
++		if m.Message.ThreadTS == "" || m.Message.ThreadTS == m.Message.TS || m.Message.Subtype == "thread_broadcast" {
+ 			a.messagepane.AppendMessage(m.Message)
+ 		}
+ 		// Update reply count on parent message when a thread reply
 diff --git a/internal/ui/reducer_threads.go b/internal/ui/reducer_threads.go
 index 8268f66..c7248ed 100644
 --- a/internal/ui/reducer_threads.go
