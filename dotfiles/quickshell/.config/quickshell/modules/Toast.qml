@@ -38,7 +38,7 @@ Rectangle {
     readonly property bool isCritical: notification && notification.urgency === NotificationUrgency.Critical
     readonly property bool isInboxApp: {
         const a = (notification && notification.appName || "").toLowerCase()
-        return a === "slack" || a === "endcord" || a === "kitty"
+        return a === "slack" || a === "slk" || a === "endcord" || a === "kitty"
     }
     readonly property real effectiveTimeout: {
         if (!notification) return 5000

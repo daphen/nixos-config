@@ -22,6 +22,7 @@ in {
     "git/ignore".source = link "${dotfiles}/git/.config/git/ignore";
     "yazi".source = link "${dotfiles}/yazi/.config/yazi";
     "qutebrowser".source = link "${dotfiles}/qutebrowser/.config/qutebrowser";
+    "quickshell".source = link "${dotfiles}/quickshell/.config/quickshell";
     # Quickmarks: shared file format consumed by Chrome Palette via the
     # native messaging host. Edits to ~/dotfiles/quickmarks are live —
     # the host re-reads on every palette open, no rebuild needed.
