@@ -2,10 +2,10 @@
 # Launch slk (Slack TUI) in a dedicated kitty window with no padding —
 # the global window_padding_width (30) wastes screen edge on a full-window
 # TUI. Mirrors launch-endcord; the --class lets niri-jump-or-exec focus it.
-# COLORTERM_CELL_* force slk's inline-image sizing to the real cell pixel
-# dims (≈9x25 at font 11 on this HiDPI display); without it slk mis-measures
-# and stretches inline images. Avatars are unaffected — kitty sizes those.
-exec env COLORTERM_CELL_WIDTH=9 COLORTERM_CELL_HEIGHT=25 kitty \
+# No cell-size override: kitty reports real per-monitor cell pixels via
+# TIOCGWINSZ, so slk auto-sizes inline images per output. A fixed override
+# only matched the laptop and stretched images on the external monitor.
+exec kitty \
     --class slk \
     -o font_size=11 \
     -o window_padding_width=0 \
