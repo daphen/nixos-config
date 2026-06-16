@@ -68,9 +68,8 @@ in {
     ".local/bin/xclip".source = link "${dotfiles}/bin/.local/bin/xclip-shim";
   };
 
-  # Claude Code config lives at ~/.claude. Still points at the old
-  # ~/dotfiles/claude (live runtime state — transcripts/plugins/file-history);
-  # relocate to a plain local dir when no Claude session is running, then
-  # this line goes away. Deliberately NOT under nixos/dotfiles.
-  home.file.".claude".source = link "${config.home.homeDirectory}/dotfiles/claude/.claude";
+  # Claude Code lives at ~/.claude, now sourced from the in-repo dotfiles
+  # like everything else. Its content (transcripts, credentials, settings,
+  # plugins) is gitignored — only themes/ is tracked (dev-env ships those).
+  home.file.".claude".source = link "${config.home.homeDirectory}/nixos/dotfiles/claude/.claude";
 }

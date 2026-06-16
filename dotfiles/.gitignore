@@ -55,35 +55,12 @@ starship/.config/starship/starship.toml
 secrets/
 opencode/.config/opencode/opencode.json
 
-# Claude Code runtime files
-claude/.claude/.credentials.json
-claude/.claude/history.jsonl
-claude/.claude/debug/
-claude/.claude/file-history/
-claude/.claude/session-env/
-claude/.claude/shell-snapshots/
-claude/.claude/statsig/
-claude/.claude/todos/
-claude/.claude/projects/
-claude/.claude/backups/
-claude/.claude/plugins/cache/
-claude/.claude/plugins/installed_plugins.json
-claude/.claude/mcp-needs-auth-cache.json
-claude/.claude/policy-limits.json
-claude/.claude/plans/
-claude/.claude/sessions/
-claude/.claude/image-cache/
-claude/.claude/paste-cache/
-claude/.claude/.claude/
-
-# Claude Code per-session runtime caches/telemetry
-claude/.claude/telemetry/
-claude/.claude/tasks/
-claude/.claude/cache/
-claude/.claude/stats-cache.json
-claude/.claude/plugins/install-counts-cache.json
-claude/.claude/plugins/known_marketplaces.json
-claude/.claude/.last-cleanup
+# Claude Code lives at ~/.claude (relocated into the repo) but is local
+# runtime/config — transcripts, credentials, settings, plugins, caches.
+# This is a PUBLIC repo, so ignore everything under it; only the custom
+# prompt themes are tracked (dev-env ships them to sandboxes).
+claude/.claude/*
+!claude/.claude/themes/
 
 # Per-project Claude Code state written into other tools' config dirs
 qutebrowser/.config/qutebrowser/.claude/
