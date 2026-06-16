@@ -64,8 +64,8 @@ end
 
 vim.api.nvim_create_user_command("VaultRecent", open_vault_recent_picker, {})
 
--- Markdown list auto-continue + checkbox toggle. obsidian.nvim's own
--- mappings are disabled (mappings = {} below) so they don't fight these.
+-- Markdown list auto-continue + checkbox toggle. obsidian.nvim 3.x no
+-- longer sets buffer mappings, so these own <CR>.
 local function t(keys)
 	return vim.api.nvim_replace_termcodes(keys, true, true, true)
 end
@@ -127,13 +127,11 @@ return {
 		},
 		after = function()
 			require("obsidian").setup({
+				legacy_commands = false,
 				workspaces = {
 					{ name = "personal", path = "~/personal/notes/storage" },
 				},
 				ui = { enable = false },
-				-- Disable obsidian's auto-mappings so its <CR> handler doesn't
-				-- fight the list-continue map above.
-				mappings = {},
 				new_notes_location = "notes_subdir",
 				notes_subdir = "inbox",
 				daily_notes = {
@@ -141,21 +139,19 @@ return {
 					date_format = "%Y-%m-%d",
 					default_tags = { "daily" },
 				},
-				preferred_link_style = "wiki",
-				wiki_link_func = "use_alias_only",
+				link = { style = "wiki" },
 				completion = { nvim_cmp = true, min_chars = 2 },
 				picker = { name = "snacks.pick" },
-				note_frontmatter_func = function(note)
-					return {
-						type = note.metadata and note.metadata.type or "note",
-						status = note.metadata and note.metadata.status or "active",
-						tags = note.tags,
-						created = os.date("%Y-%m-%d"),
-					}
-				end,
-				follow_url_func = function(url)
-					vim.fn.jobstart({ "xdg-open", url })
-				end,
+				frontmatter = {
+					func = function(note)
+						return {
+							type = note.metadata and note.metadata.type or "note",
+							status = note.metadata and note.metadata.status or "active",
+							tags = note.tags,
+							created = os.date("%Y-%m-%d"),
+						}
+					end,
+				},
 			})
 		end,
 	},
