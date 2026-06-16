@@ -14,7 +14,7 @@ let
   configRoot = pkgs.runCommand "daphen-env-config" {
     nativeBuildInputs = [ pkgs.python3 ];
   } ''
-    mkdir -p $out/fish $out/starship $out/nvim/colors
+    mkdir -p $out/fish $out/starship $out/nvim/colors $out/fzf
 
     # Fish: config.fish, conf.d, functions, fish_plugins (completions/ isn't
     # in the dotfiles repo — fish autoloads built-in completions from the
@@ -65,6 +65,16 @@ let
       # changing proart's prompt). Our injected one takes effect because
       # it's at root scope.
       python3 ${./inject-sandbox-format.py} "$out/starship/$mode.toml"
+
+      # fzf colors — the fish conf.d points FZF_DEFAULT_OPTS_FILE at
+      # ~/.config/fzf/opts.conf; generate it from the same palette so the
+      # sandbox doesn't error on a missing file (the runtime wrapper places
+      # the active-mode one).
+      python3 $THEMES/theme-processor.py \
+        $THEMES/templates/fzf.template \
+        $THEMES/colors.json \
+        $mode \
+        $out/fzf/$mode.conf
     done
 
     # nvim colorscheme files — dual-theme lua, generated from the same
@@ -248,6 +258,10 @@ in pkgs.writeShellApplication {
     THEME_MODE=$(cat "$HOME/.config/theme_mode" 2>/dev/null || echo light)
     if [ -e "$WRITABLE_CONFIG/starship/$THEME_MODE.toml" ]; then
       cp -f "$WRITABLE_CONFIG/starship/$THEME_MODE.toml" "$WRITABLE_CONFIG/starship/starship.toml"
+    fi
+    if [ -e "$WRITABLE_CONFIG/fzf/$THEME_MODE.conf" ]; then
+      mkdir -p "$HOME/.config/fzf"
+      cp -f "$WRITABLE_CONFIG/fzf/$THEME_MODE.conf" "$HOME/.config/fzf/opts.conf"
     fi
 
     export XDG_CONFIG_HOME="$WRITABLE_CONFIG"
