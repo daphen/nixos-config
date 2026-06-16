@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+"""
+ws-tracker
+
+Watches niri's event stream and maintains the workspace-stack state:
+
+    ~/.local/state/wt-stacks/ws/active
+        Most recently focused `lovable-<name>` workspace name. Single
+        source of truth for "which stack is active". ws-focus derives
+        the inactive-stack window set live from this + `niri msg
+        workspaces`, so we don't cache a window-id list here.
+
+Side effects on each `lovable-<name>` focus event:
+  - Moves the lovable_deps singleton to the active workspace.
+  - Runs ws-reorder to keep lovable-* pinned with active at the bottom.
+"""
+from __future__ import annotations
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import traceback
+from pathlib import Path
+
+STATE_DIR = Path(os.environ["HOME"]) / ".local/state/wt-stacks/ws"
+ACTIVE_FILE = STATE_DIR / "active"
+RECENCY_FILE = STATE_DIR / "recency"
+REORDER_SCRIPT = Path(os.environ["HOME"]) / ".config/niri/scripts/ws-reorder"
+
+# Cap on the recency list — only matters as a sanity bound, since
+# closed worktrees are filtered out at read time anyway.
+RECENCY_LIMIT = 50
+
+# Niri shuffles workspaces to a surviving output when one disappears
+# and doesn't always shuffle them back on reconnect. We pin lovable-*
+# workspaces to the first available "external" output (anything not
+# the laptop built-in eDP-1) and move them back on reconnect (detected
+# by the output set gaining ANY new non-laptop output between events).
+# Override the laptop name via env var on a different machine.
+LAPTOP_OUTPUT = os.environ.get("NIRI_LAPTOP_OUTPUT", "eDP-1")
+
+WS_FOCUSED_RE = re.compile(r"^Workspace focused:\s+(\d+)")
+RELEVANT_EVENT_RE = re.compile(
+    r"^("
+    r"Workspace focused"
+    r"|Workspace activated"
+    r"|Workspaces changed"
+    r")\b"
+)
+
+
+def niri_json(*args: str):
+    """Wrap `niri msg --json` so a transient timeout/parse error
+    doesn't take the daemon down."""
+    try:
+        out = subprocess.run(
+            ["niri", "msg", "--json", *args],
+            capture_output=True, text=True, timeout=2,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    if not out.stdout.strip():
+        return None
+    try:
+        return json.loads(out.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def lovable_stack_name_by_id(ws_id: int) -> str | None:
+    """Return the workspace's name iff it's a `lovable-<x>` stack
+    (excludes the legacy bare `lovable` workspace)."""
+    for w in (niri_json("workspaces") or []):
+        if w.get("id") == ws_id:
+            name = w.get("name") or ""
+            if name.startswith("lovable-") and name != "lovable":
+                return name
+    return None
+
+
+def read_active() -> str | None:
+    try:
+        return ACTIVE_FILE.read_text().strip() or None
+    except Exception:
+        return None
+
+
+def write_active(name: str) -> None:
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        ACTIVE_FILE.write_text(name + "\n")
+    except Exception:
+        pass
+
+
+def update_recency(name: str) -> None:
+    """Promote `name` to the front of the recency list (most-recently
+    focused first). Used by Super+O toggle and rofi-ws-jump ordering."""
+    try:
+        existing = json.loads(RECENCY_FILE.read_text())
+        if not isinstance(existing, list):
+            existing = []
+    except Exception:
+        existing = []
+    existing = [n for n in existing if isinstance(n, str) and n != name]
+    existing.insert(0, name)
+    existing = existing[:RECENCY_LIMIT]
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = RECENCY_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(existing))
+        tmp.replace(RECENCY_FILE)
+    except Exception:
+        pass
+
+
+def reorder() -> None:
+    try:
+        subprocess.run([str(REORDER_SCRIPT)], check=False, timeout=2)
+    except Exception:
+        pass
+
+
+def niri_action(*args: str) -> None:
+    """Wrap `niri msg action` so timeouts/errors don't escape and
+    crash the daemon. Niri can briefly stall during heavy redraws
+    (e.g. ws-createwt spawning four windows at once)."""
+    try:
+        subprocess.run(
+            ["niri", "msg", "action", *args],
+            capture_output=True, timeout=2,
+        )
+    except Exception:
+        pass
+
+
+def move_deps_to_active() -> None:
+    """Stub — deps is now a floating window (set via niri window-rule)
+    and is reached on demand via Super+Ctrl+M (ws-focus deps), so
+    there's no need to drag it onto the active stack on every focus
+    event. Kept as a no-op so we don't have to touch the call site."""
+    return
+
+
+def output_set() -> set[str]:
+    """Set of output names currently hosting at least one workspace."""
+    return {
+        w.get("output")
+        for w in (niri_json("workspaces") or [])
+        if w.get("output")
+    }
+
+
+def pick_external_output(workspaces: list) -> str | None:
+    """Return the first non-laptop output currently connected, or None
+    if only the laptop is connected (i.e. nothing to reclaim TO)."""
+    seen = []
+    for w in workspaces:
+        out = w.get("output")
+        if out and out != LAPTOP_OUTPUT and out not in seen:
+            seen.append(out)
+    return seen[0] if seen else None
+
+
+def reclaim_preferred_output() -> None:
+    """Move every lovable-* workspace to the first connected non-laptop
+    output. Safe no-op when only the laptop is connected, or when all
+    lovable-* are already on the external."""
+    workspaces = niri_json("workspaces") or []
+    target = pick_external_output(workspaces)
+    if target is None:
+        return
+    for w in workspaces:
+        name = w.get("name") or ""
+        if not name.startswith("lovable-"):
+            continue
+        if w.get("output") == target:
+            continue
+        niri_action(
+            "move-workspace-to-monitor",
+            "--reference", name, target,
+        )
+
+
+# Window classes whose default-window-height window-rule is
+# `proportion 1.0` (kitty / claude / lovable_deps in this config) —
+# these are the ones niri doesn't auto-relayout when a workspace
+# crosses outputs, so the windows end up shorter than the new
+# monitor. reset-window-height re-applies the proportion.
+RESIZABLE_CLASSES = {"kitty", "claude", "lovable_deps"}
+
+
+def reset_heights_on_output(output_name: str) -> None:
+    """Force every kitty-family window on `output_name` to re-fit the
+    output's height. Called when an external output (re)connects —
+    niri leaves the existing tile sizes from the old output in place,
+    which is what produces the "kitty windows shorter than the new
+    monitor" problem when plugging in an external."""
+    workspaces = niri_json("workspaces") or []
+    windows = niri_json("windows") or []
+    ws_ids = {w["id"] for w in workspaces if w.get("output") == output_name}
+    for win in windows:
+        if win.get("workspace_id") not in ws_ids:
+            continue
+        if win.get("app_id") not in RESIZABLE_CLASSES:
+            continue
+        niri_action("reset-window-height", "--id", str(win["id"]))
+
+
+def daemon() -> int:
+    # Startup: pick up currently focused stack workspace if any.
+    fw = niri_json("focused-window")
+    if fw and (ws_id := fw.get("workspace_id")) is not None:
+        if (name := lovable_stack_name_by_id(ws_id)) is not None:
+            write_active(name)
+            update_recency(name)
+
+    reorder()
+    # Track outputs across events so we can detect a reconnect: when
+    # any non-laptop output transitions from absent → present, snap
+    # lovable-* workspaces over to it.
+    known_outputs = output_set()
+    if any(o != LAPTOP_OUTPUT for o in known_outputs):
+        reclaim_preferred_output()
+
+    proc = subprocess.Popen(
+        ["niri", "msg", "event-stream"],
+        stdout=subprocess.PIPE, text=True, bufsize=1,
+    )
+    assert proc.stdout is not None
+
+    for line in proc.stdout:
+        if not RELEVANT_EVENT_RE.match(line):
+            continue
+
+        m = WS_FOCUSED_RE.search(line)
+        if m:
+            ws_id = int(m.group(1))
+            name = lovable_stack_name_by_id(ws_id)
+            if name is None:
+                continue  # not a lovable workspace — nothing to do
+            write_active(name)
+            update_recency(name)
+            move_deps_to_active()
+            reorder()
+            continue
+
+        # Output-reconnect reclaim: fires when ANY new non-laptop
+        # output appears in the set (i.e. an external just got plugged
+        # in, whichever port/model it is). Catches monitor plug-back-in
+        # without fighting manual cross-output moves. We ALSO
+        # reset-window-height on every kitty-family window on the new
+        # output(s) — niri leaves stale tile sizes from the previous
+        # output when a workspace migrates, so kitty windows end up
+        # short of the new monitor's full height.
+        new_outputs = output_set()
+        new_externals = {o for o in new_outputs
+                         if o != LAPTOP_OUTPUT and o not in known_outputs}
+        if new_externals:
+            reclaim_preferred_output()
+            for out in new_externals:
+                reset_heights_on_output(out)
+        known_outputs = new_outputs
+
+    # event-stream returned EOF (niri restarted, IPC dropped, etc.).
+    # Caller should reconnect.
+    return 0
+
+
+def main() -> int:
+    """Top-level retry loop. Anything that escapes daemon() — niri
+    restart, brief IPC outage, unforeseen exception — gets logged and
+    we reconnect after a short sleep. Beats the previous behavior
+    where one TimeoutExpired killed the daemon for the rest of the
+    session."""
+    while True:
+        try:
+            daemon()
+            print("ws-tracker: event-stream closed, reconnecting in 1s…",
+                  file=sys.stderr, flush=True)
+        except Exception:
+            print("ws-tracker: unhandled error, reconnecting in 1s…",
+                  file=sys.stderr, flush=True)
+            traceback.print_exc()
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

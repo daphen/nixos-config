@@ -1,0 +1,12 @@
+--color=bg+:{{background.tertiary}}
+--color=bg:{{background.primary}}
+--color=spinner:{{accent.cyan}}
+--color=hl:{{accent.red}}
+--color=fg:{{foreground.primary}}
+--color=header:{{accent.red}}
+--color=info:{{accent.cyan}}
+--color=pointer:{{semantic.cursor}}
+--color=marker:{{semantic.cursor}}
+--color=fg+:{{foreground.primary}}
+--color=prompt:{{accent.cyan}}
+--color=hl+:{{accent.red}}

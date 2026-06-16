@@ -1,0 +1,33 @@
+;; Piantor config - Swedish characters via numpad keys
+;; Vial sends kp1/kp2/kp3 which kanata converts to å/ä/ö using unicode
+
+(defcfg
+  process-unmapped-keys yes
+  log-layer-changes no
+  rapid-event-delay 2  ;; Reduce delay between macro events (default is 5ms)
+  linux-dev-names-include ("beekeeb Piantor Pro Keyboard")
+  macos-dev-names-include ("Piantor Pro")
+)
+
+(defsrc
+  tab  q    w    kp4  r    t    y    u    i    o    p    kp1
+  lctl a    s    d    f    g    h    j    k    l    kp3  kp2
+  lsft z    x    c    v    b    n    m    ,    .    /    rsft
+             lalt lmet spc  ret  bspc ralt
+)
+
+(defalias
+  ;; Swedish characters using AltGr (ralt) combinations for US-International layout
+  ;; Same as built-in keyboard config - using fork with multi
+  aa (fork (multi ralt w) (multi ralt S-w) (lsft rsft))
+  ae (fork (multi ralt q) (multi ralt S-q) (lsft rsft))
+  oe (fork (multi ralt p) (multi ralt S-p) (lsft rsft))
+  ee (fork (multi ralt e) (multi ralt S-e) (lsft rsft))
+)
+
+(deflayer base
+  tab  q    w    @ee  r    t    y    u    i    o    p    @aa
+  lctl a    s    d    f    g    h    j    k    l    @oe  @ae
+  lsft z    x    c    v    b    n    m    ,    .    /    rsft
+             lalt lmet spc  ret  bspc ralt
+)

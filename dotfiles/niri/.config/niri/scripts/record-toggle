@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Toggle a screen recording. Usage:
+#   record-toggle           — region (slurp), if no recording is active; else stop
+#   record-toggle screen    — active monitor; else stop
+#
+# Saves to ~/Videos/Recordings/. Sends a notification + copies the path
+# to the clipboard when stopped.
+set -u
+
+OUT_DIR="$HOME/Videos/Recordings"
+mkdir -p "$OUT_DIR"
+
+if pgrep -x wf-recorder >/dev/null; then
+    pkill -INT -x wf-recorder
+    sleep 0.3
+    latest=$(ls -t "$OUT_DIR"/*.mp4 2>/dev/null | head -1)
+    if [ -n "$latest" ]; then
+        printf '%s' "$latest" | wl-copy
+        notify-send -a "screen-recorder" "Recording stopped" "$latest (path copied)"
+    else
+        notify-send -a "screen-recorder" "Recording stopped"
+    fi
+    exit 0
+fi
+
+mode="${1:-region}"
+out="$OUT_DIR/$(date +%F-%H%M%S).mp4"
+
+# Match the focused output's actual refresh rate. wf-recorder defaults
+# to 60fps, which duplicates frames on a 120Hz laptop screen.
+read -r out_name fps <<<"$(niri msg --json focused-output 2>/dev/null \
+    | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+name = d.get("name", "")
+modes = d.get("modes", [])
+cur = d.get("current_mode")
+hz = 60
+if isinstance(cur, int) and 0 <= cur < len(modes):
+    hz = round(modes[cur].get("refresh_rate", 60000) / 1000)
+print(name, hz)
+' 2>/dev/null)"
+fps="${fps:-60}"
+
+case "$mode" in
+    region)
+        geom=$(slurp) || exit 1
+        notify-send -a "screen-recorder" "Recording region (${fps}fps)" "Same shortcut to stop."
+        exec wf-recorder -g "$geom" -r "$fps" -f "$out"
+        ;;
+    screen)
+        notify-send -a "screen-recorder" "Recording screen${out_name:+ ($out_name)} (${fps}fps)" "Same shortcut to stop."
+        if [ -n "$out_name" ]; then
+            exec wf-recorder -o "$out_name" -r "$fps" -f "$out"
+        else
+            exec wf-recorder -r "$fps" -f "$out"
+        fi
+        ;;
+    *)
+        echo "usage: record-toggle [region|screen]" >&2
+        exit 2
+        ;;
+esac

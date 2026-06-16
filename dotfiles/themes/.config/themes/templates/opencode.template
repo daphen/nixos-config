@@ -1,0 +1,205 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "theme": {
+    "primary": {
+      "dark": "{{accent.orange}}",
+      "light": "{{accent.green}}"
+    },
+    "secondary": {
+      "dark": "{{accent.purple}}",
+      "light": "{{accent.purple}}"
+    },
+    "accent": {
+      "dark": "{{accent.orange}}",
+      "light": "{{accent.cyan}}"
+    },
+    "error": {
+      "dark": "{{accent.red}}",
+      "light": "{{accent.red}}"
+    },
+    "warning": {
+      "dark": "{{accent.orange}}",
+      "light": "{{accent.orange}}"
+    },
+    "success": {
+      "dark": "{{accent.cyan}}",
+      "light": "{{accent.cyan}}"
+    },
+    "info": {
+      "dark": "{{accent.green}}",
+      "light": "{{accent.green}}"
+    },
+    "text": {
+      "dark": "{{foreground.primary}}",
+      "light": "{{foreground.primary}}"
+    },
+    "textMuted": {
+      "dark": "{{foreground.muted}}",
+      "light": "{{foreground.muted}}"
+    },
+    "background": {
+      "dark": "{{background.primary}}",
+      "light": "{{background.primary}}"
+    },
+    "backgroundPanel": {
+      "dark": "{{background.secondary}}",
+      "light": "{{background.secondary}}"
+    },
+    "backgroundElement": {
+      "dark": "{{background.secondary}}",
+      "light": "{{background.secondary}}"
+    },
+    "border": {
+      "dark": "{{accent.orange}}",
+      "light": "{{accent.orange}}"
+    },
+    "borderActive": {
+      "dark": "{{accent.orange}}",
+      "light": "{{accent.orange}}"
+    },
+    "borderSubtle": {
+      "dark": "{{accent.orange}}",
+      "light": "{{accent.orange}}"
+    },
+    "diffAdded": {
+      "dark": "{{accent.cyan}}",
+      "light": "{{accent.cyan}}"
+    },
+    "diffRemoved": {
+      "dark": "{{accent.red}}",
+      "light": "{{accent.red}}"
+    },
+    "diffContext": {
+      "dark": "{{foreground.muted}}",
+      "light": "{{foreground.muted}}"
+    },
+    "diffHunkHeader": {
+      "dark": "{{foreground.subtle}}",
+      "light": "{{foreground.subtle}}"
+    },
+    "diffHighlightAdded": {
+      "dark": "{{accent.cyan}}",
+      "light": "{{accent.cyan}}"
+    },
+    "diffHighlightRemoved": {
+      "dark": "{{accent.red}}",
+      "light": "{{accent.red}}"
+    },
+    "diffAddedBg": {
+      "dark": "#2A3C29",
+      "light": "#E8F5E8"
+    },
+    "diffRemovedBg": {
+      "dark": "#3D2326",
+      "light": "#FDEDEF"
+    },
+    "diffContextBg": {
+      "dark": "{{background.secondary}}",
+      "light": "{{background.secondary}}"
+    },
+    "diffLineNumber": {
+      "dark": "{{foreground.muted}}",
+      "light": "{{foreground.muted}}"
+    },
+    "diffAddedLineNumberBg": {
+      "dark": "#2A3C29",
+      "light": "#E8F5E8"
+    },
+    "diffRemovedLineNumberBg": {
+      "dark": "#3D2326",
+      "light": "#FDEDEF"
+    },
+    "markdownText": {
+      "dark": "{{foreground.primary}}",
+      "light": "{{foreground.primary}}"
+    },
+    "markdownHeading": {
+      "dark": "{{accent.purple}}",
+      "light": "{{accent.purple}}"
+    },
+    "markdownLink": {
+      "dark": "{{accent.cyan}}",
+      "light": "{{accent.cyan}}"
+    },
+    "markdownLinkText": {
+      "dark": "{{accent.green}}",
+      "light": "{{accent.green}}"
+    },
+    "markdownCode": {
+      "dark": "{{accent.pink}}",
+      "light": "{{accent.pink}}"
+    },
+    "markdownBlockQuote": {
+      "dark": "{{foreground.muted}}",
+      "light": "{{foreground.muted}}"
+    },
+    "markdownEmph": {
+      "dark": "{{accent.orange}}",
+      "light": "{{accent.orange}}"
+    },
+    "markdownStrong": {
+      "dark": "{{accent.red}}",
+      "light": "{{accent.red}}"
+    },
+    "markdownHorizontalRule": {
+      "dark": "#3a3a3a",
+      "light": "#D8D1C3"
+    },
+    "markdownListItem": {
+      "dark": "{{accent.green}}",
+      "light": "{{accent.green}}"
+    },
+    "markdownListEnumeration": {
+      "dark": "{{accent.cyan}}",
+      "light": "{{accent.cyan}}"
+    },
+    "markdownImage": {
+      "dark": "{{accent.purple}}",
+      "light": "{{accent.purple}}"
+    },
+    "markdownImageText": {
+      "dark": "{{accent.cyan}}",
+      "light": "{{accent.cyan}}"
+    },
+    "markdownCodeBlock": {
+      "dark": "{{foreground.primary}}",
+      "light": "{{foreground.primary}}"
+    },
+    "syntaxComment": {
+      "dark": "{{foreground.muted}}",
+      "light": "{{foreground.muted}}"
+    },
+    "syntaxKeyword": {
+      "dark": "{{accent.green}}",
+      "light": "{{accent.green}}"
+    },
+    "syntaxFunction": {
+      "dark": "{{accent.cyan}}",
+      "light": "{{accent.cyan}}"
+    },
+    "syntaxVariable": {
+      "dark": "{{foreground.primary}}",
+      "light": "{{foreground.primary}}"
+    },
+    "syntaxString": {
+      "dark": "{{accent.orange}}",
+      "light": "{{accent.orange}}"
+    },
+    "syntaxNumber": {
+      "dark": "{{accent.purple}}",
+      "light": "{{accent.purple}}"
+    },
+    "syntaxType": {
+      "dark": "{{accent.pink}}",
+      "light": "{{accent.pink}}"
+    },
+    "syntaxOperator": {
+      "dark": "{{foreground.subtle}}",
+      "light": "{{foreground.subtle}}"
+    },
+    "syntaxPunctuation": {
+      "dark": "{{foreground.subtle}}",
+      "light": "{{foreground.subtle}}"
+    }
+  }
+}

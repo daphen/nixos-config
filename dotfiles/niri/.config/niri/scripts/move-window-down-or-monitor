@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Move window down to next workspace, or to monitor below if no other workspaces with windows below
+# If at the bottom monitor, create a new workspace below
+
+# Get current workspace info
+current_output=$(niri msg -j workspaces | jq -r '.[] | select(.is_active == true and .is_focused == true) | .output')
+current_workspace=$(niri msg -j workspaces | jq -r '.[] | select(.is_active == true and .is_focused == true) | .idx')
+
+# Get all workspaces on current output with windows (excluding current), sorted by index
+workspaces_with_windows=$(niri msg -j workspaces | jq -r --arg output "$current_output" --argjson current "$current_workspace" '.[] | select(.output == $output and .active_window_id != null and .idx != $current) | .idx' | sort -n)
+
+# Find if there are any workspaces with windows below us
+next_workspace_down=$(echo "$workspaces_with_windows" | awk -v current="$current_workspace" '$1 > current' | head -n1)
+
+# If there's no workspace with windows below us, check if we can move to monitor below
+if [ -z "$next_workspace_down" ]; then
+    # Get current output Y position
+    current_y=$(niri msg -j outputs | jq -r --arg output "$current_output" '.[$output].logical.y')
+
+    # Check if there's any monitor below the current one (with greater Y value)
+    monitor_below=$(niri msg -j outputs | jq -r --argjson current_y "$current_y" 'to_entries[] | select(.value.logical.y > $current_y) | .key' | head -n1)
+
+    if [ -n "$monitor_below" ]; then
+        # There's a monitor below, move window there
+        niri msg action move-window-to-monitor-down
+    else
+        # We're at the bottom monitor, create a new workspace below and move window there
+        niri msg action move-window-to-workspace-down
+    fi
+else
+    # Otherwise, move to workspace down
+    niri msg action move-window-to-workspace-down
+fi

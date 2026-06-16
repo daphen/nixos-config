@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Spawn a fresh work-profile browser window. Used by Super+Shift+W —
+# the regular Super+W (ws-focus browser) cycles existing work windows
+# but doesn't have a way to force a brand-new one.
+
+set -u
+
+source "$(dirname "$0")/browser-config.sh"
+
+exec "$BROWSER_BIN" \
+    "${BROWSER_FLAGS[@]}" \
+    --user-data-dir="$BROWSER_USER_DATA_WORK" \
+    --profile-directory="$BROWSER_PROFILE" \
+    --class="$BROWSER_CLASS_WORK" \
+    --new-window

@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""
+niri-focus-tracker
+
+Per-app last-focused window tracker. Watches niri's event stream and
+maintains, for each `app_id`, the id of the most recently focused
+window with that class:
+
+    /tmp/niri-focus-tracker/app-<class>   →   <window-id>
+
+Used by:
+  - niri-jump-or-exec (Super+C/S/A — single-instance app jumping)
+  - browser-dispatch  (default-browser routing)
+
+That's the entire job. Workspace-stack tracking, the active-stack
+state file, and all the lovable tab-stack sync logic moved to
+ws-tracker when we switched to per-workspace stacks.
+"""
+from __future__ import annotations
+import json
+import re
+import subprocess
+import time
+from pathlib import Path
+
+STATE_DIR = Path("/tmp/niri-focus-tracker")
+STATE_DIR.mkdir(exist_ok=True)
+
+# Cap on tracked windows so a long-running session can't grow unbounded.
+WINDOW_LIMIT = 50
+
+last_active: dict[int, float] = {}     # window_id -> last-focused epoch
+window_to_app: dict[int, str] = {}     # window_id -> app_id
+
+
+def update_focus(window_id: int, app_id: str) -> None:
+    last_active[window_id] = time.time()
+    window_to_app[window_id] = app_id
+    (STATE_DIR / f"app-{app_id}").write_text(str(window_id))
+    cleanup_old_windows()
+    flush_focus_times()
+
+
+def flush_focus_times() -> None:
+    """Write the last_active dict to disk so ws-focus can use it as the
+    authoritative recency source. Niri's `focus_timestamp` doesn't
+    reliably update on programmatic focus-window calls — but the
+    `Window focus changed` event always fires, so this overlay always
+    reflects what actually got focused."""
+    try:
+        path = STATE_DIR / "focus-times.json"
+        tmp = path.with_suffix(".tmp")
+        # JSON object keys must be strings.
+        tmp.write_text(json.dumps({str(k): v for k, v in last_active.items()}))
+        tmp.replace(path)
+    except OSError:
+        pass
+
+
+def cleanup_old_windows() -> None:
+    if len(last_active) <= WINDOW_LIMIT:
+        return
+    sorted_windows = sorted(last_active.items(), key=lambda x: x[1])
+    for window_id, _ in sorted_windows[: len(last_active) - WINDOW_LIMIT]:
+        last_active.pop(window_id, None)
+        window_to_app.pop(window_id, None)
+
+
+def remove_window(window_id: int) -> None:
+    last_active.pop(window_id, None)
+    app_id = window_to_app.pop(window_id, None)
+    flush_focus_times()
+    if not app_id:
+        return
+    state_file = STATE_DIR / f"app-{app_id}"
+    if state_file.exists() and state_file.read_text().strip() == str(window_id):
+        # Promote any other live window of the same app, else drop the file.
+        for wid, aid in window_to_app.items():
+            if aid == app_id:
+                state_file.write_text(str(wid))
+                return
+        state_file.unlink(missing_ok=True)
+
+
+def get_initial_state() -> None:
+    result = subprocess.run(
+        ["niri", "msg", "--json", "windows"], capture_output=True, text=True
+    )
+    for w in json.loads(result.stdout):
+        wid, app = w.get("id"), w.get("app_id")
+        if not (wid and app):
+            continue
+        window_to_app[wid] = app
+        last_active[wid] = time.time()
+        if w.get("is_focused"):
+            update_focus(wid, app)
+
+
+def main() -> None:
+    get_initial_state()
+    proc = subprocess.Popen(
+        ["niri", "msg", "event-stream"],
+        stdout=subprocess.PIPE, text=True, bufsize=1,
+    )
+    assert proc.stdout is not None
+
+    focus_re = re.compile(r"Window focus changed:\s*Some\((\d+)\)")
+    close_re = re.compile(r"Window closed:\s*(\d+)")
+
+    for line in proc.stdout:
+        m = focus_re.search(line)
+        if m:
+            wid = int(m.group(1))
+            app_id = window_to_app.get(wid)
+            if not app_id:
+                # New window we don't know yet — re-snapshot.
+                get_initial_state()
+                app_id = window_to_app.get(wid)
+            if app_id:
+                update_focus(wid, app_id)
+            continue
+        m = close_re.search(line)
+        if m:
+            remove_window(int(m.group(1)))
+
+
+if __name__ == "__main__":
+    main()

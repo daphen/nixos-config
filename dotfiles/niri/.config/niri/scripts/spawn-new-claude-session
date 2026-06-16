@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# spawn-new-claude-session
+#
+# Pick a directory via zoxide+fzf and start a fresh `claude` session
+# there. Bound to Super+Shift+G.
+
+set -euo pipefail
+
+# Spawn the picker kitty as a floating window (lovable_picker class is
+# already styled as floating in niri config).
+exec kitty --class lovable_picker fish -c '
+    set selected_dir (zoxide query -l | fzf \
+        --height=100% --reverse --border=rounded \
+        --prompt="claude in: ")
+    if test -z "$selected_dir"
+        exit 0
+    end
+    # Spawn the claude session as its own kitty so it gets the `claude`
+    # class (Super+G reaches it). The picker kitty exits when fish does.
+    setsid -f kitty --class claude --directory "$selected_dir" -e claude
+'

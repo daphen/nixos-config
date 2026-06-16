@@ -1,0 +1,7 @@
+[Unit]
+Description=Clean up old clipboard image files
+Documentation=man:find(1)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/find /tmp -name 'clip_*' -type f -mtime +1 -delete

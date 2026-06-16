@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Routes URLs to the correct browser profile (personal or work).
+# Default routing is by URL pattern; callers that need an explicit profile
+# (e.g. ws-createwt) can pass --profile=<work|personal>.
+#
+# Usage:
+#   browser-dispatch <url>                              URL-routed, existing window
+#   browser-dispatch --profile=work <url>               force work profile
+#   browser-dispatch --new-window <url>                 open in a new window
+#   browser-dispatch --profile=work --new-window <url>  combine both
+#
+# Browser binary, profile names and class names live in browser-config.sh
+# — switching browsers is a one-file edit.
+
+set -u
+
+source "$(dirname "$0")/browser-config.sh"
+
+# ── Argument parsing ──────────────────────────────────────────────────────────
+
+FORCED_PROFILE=""
+NEW_WINDOW=""
+URL=""
+for arg in "$@"; do
+    case "$arg" in
+        --profile=*)   FORCED_PROFILE="${arg#--profile=}" ;;
+        --new-window)  NEW_WINDOW="--new-window" ;;
+        *)             URL="$arg" ;;
+    esac
+done
+
+# ── URL routing rules ─────────────────────────────────────────────────────────
+
+is_personal_url() {
+    [[ "$1" =~ ^https?://(www\.|m\.|music\.)?youtube\.com ]] || \
+    [[ "$1" =~ ^https?://youtu\.be ]]
+}
+
+is_work_url() {
+    [[ "$1" =~ lovable ]]
+}
+
+# ── Profile selection ─────────────────────────────────────────────────────────
+
+# Default: whichever browser profile was last focused. niri-focus-tracker
+# writes per-app-id ids to /tmp/niri-focus-tracker/app-<app-id>;
+# browser-personal / browser-work stash each profile's window id in
+# /tmp/<class>-window-id at launch.
+pick_last_focused_profile() {
+    local last_id personal_id work_id
+    last_id=$(cat \
+        "/tmp/niri-focus-tracker/app-${BROWSER_CLASS_PERSONAL}" \
+        "/tmp/niri-focus-tracker/app-${BROWSER_CLASS_WORK}" \
+        2>/dev/null | tail -1)
+    personal_id=$(cat "/tmp/${BROWSER_CLASS_PERSONAL}-window-id" 2>/dev/null)
+    work_id=$(cat "/tmp/${BROWSER_CLASS_WORK}-window-id" 2>/dev/null)
+    if [[ -n "$last_id" && "$last_id" == "$work_id" ]]; then
+        echo "work"
+    elif [[ -n "$last_id" && "$last_id" == "$personal_id" ]]; then
+        echo "personal"
+    else
+        echo "personal"
+    fi
+}
+
+if [[ -n "$FORCED_PROFILE" ]]; then
+    PROFILE="$FORCED_PROFILE"
+else
+    PROFILE=$(pick_last_focused_profile)
+    if is_work_url "$URL"; then PROFILE="work"; fi
+    if is_personal_url "$URL"; then PROFILE="personal"; fi
+fi
+
+# ── Browser dispatch ──────────────────────────────────────────────────────────
+
+# Redirect stdout/stderr to /dev/null so chromium-based browsers don't
+# print "Opening in existing browser session." to whatever terminal
+# launched us (corrupts endcord's curses-rendered screen).
+if [[ "$PROFILE" == "work" ]]; then
+    exec "$BROWSER_BIN" \
+        "${BROWSER_FLAGS[@]}" \
+        --user-data-dir="$BROWSER_USER_DATA_WORK" \
+        --profile-directory="$BROWSER_PROFILE" \
+        --class="$BROWSER_CLASS_WORK" \
+        $NEW_WINDOW "$URL" >/dev/null 2>&1
+else
+    exec "$BROWSER_BIN" \
+        "${BROWSER_FLAGS[@]}" \
+        --user-data-dir="$BROWSER_USER_DATA_PERSONAL" \
+        --profile-directory="$BROWSER_PROFILE" \
+        --class="$BROWSER_CLASS_PERSONAL" \
+        $NEW_WINDOW "$URL" >/dev/null 2>&1
+fi

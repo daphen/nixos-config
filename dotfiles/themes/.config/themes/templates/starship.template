@@ -1,0 +1,159 @@
+# Starship prompt configuration
+# Generated from the centralized theme system — palette values come from colors.json
+# Style: single dark-bar with muted accent text. Designed for a muted palette
+# where "purple" and "pink" are actually gray-blue — don't lean on them.
+
+add_newline = true
+palette = "custom"
+
+# Format MUST stay above the first [section] header — otherwise TOML
+# absorbs it into that section's table and starship silently ignores it.
+# Single dark bar, rounded left, rounded right:
+#   (dir · git · langs              ·   duration  time)
+#                                                    ❯
+format = """
+[](fg:prompt)\
+[  ](bg:prompt fg:fg_muted)\
+${env_var.SANDBOX_LABEL}\
+$git_branch\
+$git_status\
+$nodejs\
+$golang\
+$rust\
+$fill\
+$cmd_duration\
+[](fg:prompt)\
+$line_break\
+$directory\
+$character"""
+
+[palettes.custom]
+bg         = "{{background.primary}}"
+bg_alt     = "{{background.secondary}}"
+surface    = "{{background.surface}}"
+prompt     = "{{background.prompt}}"
+fg         = "{{foreground.primary}}"
+fg_muted   = "{{foreground.muted}}"
+red        = "{{accent.red}}"
+orange     = "{{accent.orange}}"
+yellow     = "{{accent.yellow}}"
+green      = "{{accent.green}}"
+cyan       = "{{accent.cyan}}"
+blue       = "{{accent.blue}}"
+# purple and pink are #8A92A7 (muted gray-blue) — deliberately not used
+# for backgrounds since they don't read as distinct from cyan/blue.
+
+
+[fill]
+symbol = " "
+style = "bg:prompt"
+
+[directory]
+style = "fg:fg_muted"
+format = "[$path]($style) "
+truncation_length = 3
+truncation_symbol = "…/"
+read_only = " "
+read_only_style = "bg:prompt fg:red"
+
+[directory.substitutions]
+"Documents" = "󰈙"
+"Downloads" = ""
+"Music"     = "󰝚"
+"Pictures"  = ""
+"work"      = ""
+
+[git_branch]
+symbol = ""
+style = "bg:prompt fg:green"
+format = "[$symbol $branch ]($style)"
+truncation_length = 24
+truncation_symbol = "…"
+
+# Sandbox label — set by lovssh to the short-name (e.g. 1186-private-npm-lol).
+# daphen-env (portable env) overrides this with a default of "ssh" so manual
+# SSH sessions still show something useful. Empty + no-default on proart, so
+# the module hides locally.
+[env_var.SANDBOX_LABEL]
+disabled = false
+style = "bg:prompt fg:fg_muted bold"
+format = "[  $env_value ]($style)"
+
+[git_status]
+style = "bg:prompt fg:red"
+format = "[$all_status$ahead_behind ]($style)"
+
+[nodejs]
+symbol = ""
+style = "bg:prompt fg:green"
+format = "[$symbol $version ]($style)"
+
+[golang]
+symbol = ""
+style = "bg:prompt fg:cyan"
+format = "[$symbol $version ]($style)"
+
+[rust]
+symbol = ""
+style = "bg:prompt fg:orange"
+format = "[$symbol $version ]($style)"
+
+[cmd_duration]
+min_time = 500
+style = "bg:prompt fg:yellow"
+format = "[  $duration ]($style)"
+
+[time]
+disabled = false
+time_format = "%H:%M"
+style = "bg:prompt fg:fg_muted"
+format = "[ 󰥔 $time ]($style)"
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+vimcmd_symbol = "[❮](bold cyan)"
+vimcmd_replace_symbol = "[❮](bold yellow)"
+vimcmd_visual_symbol = "[❮](bold orange)"
+
+# Disable auto-detected modules not in my format string
+[aws]
+disabled = true
+[azure]
+disabled = true
+[buf]
+disabled = true
+[bun]
+disabled = true
+[container]
+disabled = false
+[docker_context]
+disabled = true
+[gcloud]
+disabled = true
+[helm]
+disabled = true
+[hostname]
+disabled = true
+[java]
+disabled = true
+[jobs]
+disabled = true
+[kubernetes]
+disabled = true
+[nix_shell]
+disabled = true
+[os]
+disabled = true
+[package]
+disabled = true
+[python]
+disabled = true
+[shell]
+disabled = true
+[shlvl]
+disabled = true
+[status]
+disabled = true
+[username]
+disabled = true

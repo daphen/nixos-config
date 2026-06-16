@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Sync links from synced app to qutebrowser bookmarks (additive only)
+
+# Load database URL from synced .env
+ENV_FILE="$HOME/personal/synced/.env"
+if [[ ! -f "$ENV_FILE" ]]; then
+    echo "message-error 'Sync: .env file not found'" >> "$QUTE_FIFO"
+    exit 1
+fi
+
+DATABASE_URL=$(grep -E "^DATABASE_URL=" "$ENV_FILE" | cut -d'=' -f2- | tr -d '"')
+
+if [[ -z "$DATABASE_URL" ]]; then
+    echo "message-error 'Sync: DATABASE_URL not found in .env'" >> "$QUTE_FIFO"
+    exit 1
+fi
+
+BOOKMARKS_FILE="$HOME/.config/qutebrowser/bookmarks/urls"
+
+# Build a list of existing bookmark URLs for deduplication
+declare -A existing_urls
+if [[ -f "$BOOKMARKS_FILE" ]]; then
+    while read -r line; do
+        url=$(echo "$line" | cut -d' ' -f1)
+        [[ -n "$url" ]] && existing_urls["$url"]=1
+    done < "$BOOKMARKS_FILE"
+fi
+
+# Add only new links from DB that aren't already bookmarked
+count=0
+while IFS=$'\t' read -r title url; do
+    if [[ -z "${existing_urls[$url]}" ]]; then
+        clean_title=$(echo "$title" | tr -cd '[:alnum:] /_-' | sed 's/  */ /g' | head -c 50)
+        echo "bookmark-add \"$url\" \"$clean_title\"" >> "$QUTE_FIFO"
+        echo "$url $clean_title" >> "$BOOKMARKS_FILE"
+        count=$((count + 1))
+    fi
+done < <(psql "$DATABASE_URL" -t -A -F $'\t' -c "
+    SELECT
+        COALESCE(NULLIF(title, ''), REGEXP_REPLACE(url, '^https?://([^/]+).*', '\1')) as name,
+        url
+    FROM links
+    WHERE deleted_at IS NULL
+    ORDER BY created_at DESC
+" 2>/dev/null)
+
+echo "message-info 'Added $count new bookmarks'" >> "$QUTE_FIFO"
+echo "cmd-later 200 bookmark-list" >> "$QUTE_FIFO"

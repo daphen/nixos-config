@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Launch the personal-profile browser. Always uses AMD iGPU — PRIME offload
+# adds too much overhead for browsers. Games use NVIDIA via programs.steam.
+# Browser binary and profile name come from browser-config.sh.
+
+set -u
+
+source "$(dirname "$0")/browser-config.sh"
+
+exec "$BROWSER_BIN" \
+    "${BROWSER_FLAGS[@]}" \
+    --user-data-dir="$BROWSER_USER_DATA_PERSONAL" \
+    --profile-directory="$BROWSER_PROFILE" \
+    --class="$BROWSER_CLASS_PERSONAL" "$@"

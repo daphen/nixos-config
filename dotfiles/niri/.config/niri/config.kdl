@@ -1,0 +1,864 @@
+// This config is in the KDL format: https://kdl.dev
+// "/-" comments out the following node.
+// Check the wiki for a full description of the configuration:
+// https://yalter.github.io/niri/Configuration:-Introduction
+
+// Env applied to commands niri spawns (Super+E yazi, claude, etc).
+// Pinning FZF_DEFAULT_OPTS_FILE here means fzf reads the current
+// theme's options from disk on every invocation, so light/dark
+// toggles reach already-running yazi without a relogin. Also clear
+// any inherited FZF_DEFAULT_OPTS — when set it would override the
+// file path.
+environment {
+    FZF_DEFAULT_OPTS_FILE "/home/daphen/.config/fzf/opts.conf"
+    FZF_DEFAULT_OPTS null
+}
+
+cursor {
+    xcursor-theme "Adwaita"
+    xcursor-size 24
+    hide-when-typing
+    hide-after-inactive-ms 1500
+}
+
+// Input device configuration.
+// Find the full list of options on the wiki:
+// https://yalter.github.io/niri/Configuration:-Input
+input {
+    keyboard {
+        xkb {
+            // Custom XKB keymap: US ANSI layout with Swedish åäö characters
+            // in traditional Swedish keyboard positions (via F10/F11/F12 keys)
+            file "/home/daphen/.config/kanata/keymap.xkb"
+
+            // Note: When using a custom keymap file, the layout, variant,
+            // and options settings below are ignored.
+
+            // Previous settings (now overridden by custom keymap):
+            // layout "us"
+            // variant "intl"
+        }
+
+        // Enable numlock on startup, omitting this setting disables it.
+        numlock
+    }
+
+    // Next sections include libinput settings.
+    // Omitting settings disables them, or leaves them at their default values.
+    // All commented-out settings here are examples, not defaults.
+    touchpad {
+        // off
+        tap
+        dwt  // Disable-while-typing: ignores trackpad input while you're typing
+        // dwtp
+        drag false
+        // drag-lock
+        // natural-scroll
+        accel-speed 0.1
+        // accel-profile "flat"
+        scroll-factor 0.3
+        // scroll-method "two-finger"
+        // disabled-on-external-mouse
+        // click-method "clickfinger"
+    }
+
+    mouse {
+        // off
+        natural-scroll
+        // natural-scroll inverts vertical; horizontal tilt-wheel stays
+        // at hardware default and feels backwards. Flip explicitly.
+        scroll-factor horizontal=-1.0 vertical=1.0
+        // accel-speed 0.2
+        // accel-profile "flat"
+        // scroll-method "no-scroll"
+    }
+
+    trackpoint {
+        // off
+        // natural-scroll false
+        // accel-speed 0.2
+        // accel-profile "flat"
+        // scroll-method "on-button-down"
+        // scroll-button 273
+        // scroll-button-lock
+        // middle-emulation
+    }
+
+    // Uncomment this to make the mouse warp to the center of newly focused windows.
+    // warp-mouse-to-focus
+
+    // Focus windows and outputs automatically when moving the mouse into them.
+    // Setting max-scroll-amount="0%" makes it work only on windows already fully on screen.
+    // focus-follows-mouse max-scroll-amount="0%"
+}
+
+// You can configure outputs by their name, which you can find
+// by running `niri msg outputs` while inside a niri instance.
+// The built-in laptop monitor is usually called "eDP-1".
+// Find more information on the wiki:
+// https://yalter.github.io/niri/Configuration:-Outputs
+// Remember to uncomment the node by removing "/-"!
+
+// Built-in laptop display - always at origin
+// Logical size: 3840/1.5 x 2400/1.5 = 2560x1600
+output "eDP-1" {
+    mode "3840x2400@120.000"
+    scale 1.75
+    position x=0 y=0
+}
+
+// Dell P3425WE ultrawide - positioned to the LEFT of laptop, raised on stand
+// Dell logical width 3440 → laptop sits at x=0, Dell at x=-3440. Raised 823 above laptop.
+output "Dell Inc. DELL P3425WE B94NY54" {
+    mode "3440x1440@59.973"
+    scale 1.0
+    position x=-3440 y=-823
+    focus-at-startup
+}
+
+// Dell P3425WE ultrawide (work unit - serial 8Y8PY54) - same position as home unit
+output "Dell Inc. DELL P3425WE 8Y8PY54" {
+    mode "3440x1440@59.973"
+    scale 1.0
+    position x=-3440 y=-823
+    focus-at-startup
+}
+
+// Office monitor (Dell U2515H) - positioned to the LEFT of laptop
+// Dell at scale 1.0 is 2560x1440 logical pixels
+// x = -2560 to place it left of laptop at origin
+output "Dell Inc. DELL U2515H 9X2VY5840MWL" {
+    mode "2560x1440@59.951"
+    scale 1.0
+    position x=-2560 y=0
+    focus-at-startup
+}
+
+// External monitor (Technical Concepts 27R83U) - HOME MONITOR - positioned to the RIGHT of laptop
+// 3840x2160 @ scale 1.5 = 2560x1440 logical pixels
+// eDP-1 logical width = 3840/1.75 = 2194
+output "Technical Concepts Ltd 27R83U X2414000823" {
+    mode "3840x2160@144.000"
+    scale 1.5
+    position x=2194 y=0
+    focus-at-startup
+}
+
+// Samsung S34C65xV ultrawide - positioned to the LEFT of laptop
+// At scale 1.0: logical width = 3440
+// x = -3440 to place it left of laptop at origin
+output "Samsung Electric Company S34C65xV HNTY700216" {
+    mode "3440x1440@59.973"
+    scale 1.0
+    position x=-3440 y=0
+    focus-at-startup
+}
+
+// Settings that influence how windows are positioned and sized.
+// Find more information on the wiki:
+// https://yalter.github.io/niri/Configuration:-Layout
+layout {
+    // Set gaps around windows in logical pixels.
+    gaps 16
+
+    // Transparent background so the static wallpaper shows through
+    background-color "transparent"
+
+    // Stack new columns as tabs by default — one window visible at a time
+    // with a small tab indicator. Single-window columns hide the indicator
+    // (set below) so it's invisible until you stack actual tabs.
+    default-column-display "tabbed"
+
+    // Tab indicator: dots at the bottom of the column. Hidden entirely on
+    // single-window columns.
+    tab-indicator {
+        hide-when-single-tab
+        place-within-column
+        position "bottom"
+        gap 4
+        // Dot shape: width == 2 × corner-radius gives a circle; short
+        // total-proportion + gaps-between-tabs leaves clear space between dots.
+        width 10
+        corner-radius 5
+        length total-proportion=0.06
+        gaps-between-tabs 6
+        // Active tab in cursor-orange (themes/colors.json accent.orange);
+        // inactive tabs lightened from the default so they're visible on
+        // dark backgrounds.
+        active-color "#FF570D"
+        inactive-color "#999999"
+    }
+
+    // When to center a column when changing focus, options are:
+    // - "never", default behavior, focusing an off-screen column will keep at the left
+    //   or right edge of the screen.
+    // - "always", the focused column will always be centered.
+    // - "on-overflow", focusing a column will center it if it doesn't fit
+    //   together with the previously focused column.
+    center-focused-column "on-overflow"
+
+    // Center a workspace when it has exactly one window — solo windows
+    // sit in the middle instead of left-aligned. For multi-window
+    // workspaces, niri has no native "center the whole stack" option,
+    // so they continue to left-align (or scroll-center on overflow).
+    always-center-single-column
+
+    // You can customize the widths that "switch-preset-column-width" (Mod+R) toggles between.
+    preset-column-widths {
+        // Proportion sets the width as a fraction of the output width, taking gaps into account.
+        // For example, you can perfectly fit four windows sized "proportion 0.25" on an output.
+        // The default preset widths are 1/3, 1/2 and 2/3 of the output.
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+
+        // Fixed sets the width in logical pixels exactly.
+        // fixed 1920
+    }
+
+    // You can also customize the heights that "switch-preset-window-height" (Mod+Shift+R) toggles between.
+    // preset-window-heights { }
+
+    // You can change the default width of the new windows.
+    // default-column-width { proportion 0.5; }
+    // If you leave the brackets empty, the windows themselves will decide their initial width.
+    default-column-width { proportion 0.5; }
+
+    // By default focus ring and border are rendered as a solid background rectangle
+    // behind windows. That is, they will show up through semitransparent windows.
+    // This is because windows using client-side decorations can have an arbitrary shape.
+    //
+    // If you don't like that, you should uncomment `prefer-no-csd` below.
+    // Niri will draw focus ring and border *around* windows that agree to omit their
+    // client-side decorations.
+    //
+    // Alternatively, you can override it with a window rule called
+    // `draw-border-with-background`.
+
+    // You can change how the focus ring looks.
+    focus-ring {
+        // Uncomment this line to disable the focus ring.
+        off
+
+        // How many logical pixels the ring extends out from the windows.
+        width 4
+
+        // Colors can be set in a variety of ways:
+        // - CSS named colors: "red"
+        // - RGB hex: "#rgb", "#rgba", "#rrggbb", "#rrggbbaa"
+        // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
+
+        // Color of the ring on the active monitor.
+        active-color "#FF570D"
+
+        // Color of the ring on inactive monitors.
+        //
+        // The focus ring only draws around the active window, so the only place
+        // where you can see its inactive-color is on other monitors.
+        inactive-color "#999999"
+
+        // You can also use gradients. They take precedence over solid colors.
+        // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
+        // The angle is the same as in linear-gradient, and is optional,
+        // defaulting to 180 (top-to-bottom gradient).
+        // You can use any CSS linear-gradient tool on the web to set these up.
+        // Changing the color space is also supported, check the wiki for more info.
+        //
+        // active-gradient from="#80c8ff" to="#c7ff7f" angle=45
+
+        // You can also color the gradient relative to the entire view
+        // of the workspace, rather than relative to just the window itself.
+        // To do that, set relative-to="workspace-view".
+        //
+        // inactive-gradient from="#505050" to="#808080" angle=45 relative-to="workspace-view"
+    }
+
+    // You can also add a border. It's similar to the focus ring, but always visible.
+    border {
+        // The settings are the same as for the focus ring.
+        // If you enable the border, you probably want to disable the focus ring.
+
+        width 4
+        active-color "#FF570D"
+        // Matches waybar-notch light theme hairline
+        // (foreground.primary @ 50% alpha).
+        inactive-color "#999999"
+
+        // Color of the border around windows that request your attention.
+        urgent-color "#9b0000"
+
+        // Gradients can use a few different interpolation color spaces.
+        // For example, this is a pastel rainbow gradient via in="oklch longer hue".
+        //
+        // active-gradient from="#e5989b" to="#ffb4a2" angle=45 relative-to="workspace-view" in="oklch longer hue"
+
+        // inactive-gradient from="#505050" to="#808080" angle=45 relative-to="workspace-view"
+    }
+
+    // You can enable drop shadows for windows.
+    shadow {
+        // Uncomment the next line to enable shadows.
+        on
+
+        // By default, the shadow draws only around its window, and not behind it.
+        // Uncomment this setting to make the shadow draw behind its window.
+        //
+        // Note that niri has no way of knowing about the CSD window corner
+        // radius. It has to assume that windows have square corners, leading to
+        // shadow artifacts inside the CSD rounded corners. This setting fixes
+        // those artifacts.
+        //
+        // However, instead you may want to set prefer-no-csd and/or
+        // geometry-corner-radius. Then, niri will know the corner radius and
+        // draw the shadow correctly, without having to draw it behind the
+        // window. These will also remove client-side shadows if the window
+        // draws any.
+        //
+        // draw-behind-window true
+
+        // You can change how shadows look. The values below are in logical
+        // pixels and match the CSS box-shadow properties.
+
+        // Softness controls the shadow blur radius.
+        softness 30
+
+        // Spread expands the shadow.
+        spread 5
+
+        // Offset moves the shadow relative to the window.
+        offset x=0 y=5
+
+        // You can also change the shadow color and opacity.
+        color "#0007"
+    }
+
+    // Struts shrink the area occupied by windows, similarly to layer-shell panels.
+    // You can think of them as a kind of outer gaps. They are set in logical pixels.
+    // Left and right struts will cause the next window to the side to always be visible.
+    // Top and bottom struts will simply add outer gaps in addition to the area occupied by
+    // layer-shell panels and regular gaps.
+    struts {
+        left 0
+        right 0
+        top 0
+        bottom 0
+    }
+}
+
+// Soft background blur. Tune `passes` and `offset` to taste —
+// higher = smoother/heavier; lower = subtler/cheaper.
+// passes 2 is niri's default and keeps amdgpu in a much lower DPM
+// state at idle (~28W → ~10W on the proart iGPU). passes 4 looked
+// fractionally smoother but was the largest single battery cost.
+blur {
+    passes 2
+    offset 4.5
+    noise 0.02
+    saturation 1.1
+}
+
+// Add lines like this to spawn processes at startup.
+// Note that running niri as a session supports xdg-desktop-autostart,
+// which may be more convenient to use.
+// See the binds section below for more spawn examples.
+
+spawn-at-startup "qs"
+
+// Auto-restore wallpaper on startup with waypaper
+spawn-at-startup "waypaper" "--restore"
+
+// Start Kanata keyboard remapper in background
+spawn-at-startup "bash" "-c" "/home/daphen/.config/kanata/start-kanata.sh"
+
+// Start focus tracker for window history
+spawn-sh-at-startup "/home/daphen/.config/niri/scripts/niri-focus-tracker >> /tmp/niri-focus-tracker.log 2>&1"
+
+// Start workspace-stack tracker (records the active lovable-* workspace)
+spawn-sh-at-startup "/home/daphen/.config/niri/scripts/ws-tracker >> /tmp/ws-tracker.log 2>&1"
+
+// Ensure a named "chat" workspace exists for the chat-app window-rules
+// below. Position isn't pinned — niri keeps named workspaces wherever
+// they're moved.
+spawn-sh-at-startup "/home/daphen/.config/niri/scripts/ensure-chat-workspace"
+
+// Always-on main workspace: deps singleton + main-context claude +
+// work browser at lovable.dev, all running from ~/work/lovable.
+// Idempotent — only spawns missing window types.
+spawn-sh-at-startup "/home/daphen/.config/niri/scripts/ws-startmain"
+
+
+// To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
+// spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"
+
+hotkey-overlay {
+    // Uncomment this line to disable the "Important Hotkeys" pop-up at startup.
+    // skip-at-startup
+}
+
+// Disable hot corners (prevents overview mode from triggering when mouse hits screen corners)
+gestures {
+    hot-corners {
+        off
+    }
+}
+
+// Uncomment this line to ask the clients to omit their client-side decorations if possible.
+// If the client will specifically ask for CSD, the request will be honored.
+// Additionally, clients will be informed that they are tiled, removing some client-side rounded corners.
+// This option will also fix border/focus ring drawing behind some semitransparent windows.
+// After enabling or disabling this, you need to restart the apps for this to take effect.
+prefer-no-csd
+
+// You can change the path where screenshots are saved.
+// A ~ at the front will be expanded to the home directory.
+// The path is formatted with strftime(3) to give you the screenshot date and time.
+screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
+
+// You can also set this to null to disable saving screenshots to disk.
+// screenshot-path null
+
+// Animation settings.
+// The wiki explains how to configure individual animations:
+// https://yalter.github.io/niri/Configuration:-Animations
+animations {
+    // Uncomment to turn off all animations.
+    // off
+
+    // Slow down all animations by this factor. Values below 1 speed them up instead.
+    // slowdown 3.0
+}
+
+// Use AMD iGPU for rendering (eDP-1 is connected to AMD)
+// Avoids cross-GPU copies from NVIDIA that cause sluggish animations
+// Using stable PCI path so it survives render device reordering across boots
+debug {
+    render-drm-device "/dev/dri/by-path/pci-0000:65:00.0-render"
+}
+
+// Window rules let you adjust behavior for individual windows.
+// Find more information on the wiki:
+// https://yalter.github.io/niri/Configuration:-Window-Rules
+
+// Open the Firefox picture-in-picture player as floating by default.
+window-rule {
+    // This app-id regular expression will work for both:
+    // - host Firefox (app-id is "firefox")
+    // - Flatpak Firefox (app-id is "org.mozilla.firefox")
+    match app-id=r#"firefox$"# title="^Picture-in-Picture$"
+    open-floating true
+}
+
+// imv (images) and mpv (gif-as-mp4 + audio/video) are both launched by
+// endcord's media-viewer.sh. Float them so they overlay endcord without
+// reflowing the tile; niri centers floating windows on focus by default.
+window-rule {
+    match app-id=r#"^imv$"#
+    match app-id=r#"^mpv$"#
+    open-floating true
+    default-column-width { fixed 2400; }
+    default-window-height { fixed 1200; }
+}
+
+// Example: block out two password managers from screen capture.
+// (This example rule is commented out with a "/-" in front.)
+/-window-rule {
+    match app-id=r#"^org\.keepassxc\.KeePassXC$"#
+    match app-id=r#"^org\.gnome\.World\.Secrets$"#
+
+    block-out-from "screen-capture"
+
+    // Use this instead if you want them visible on third-party screenshot tools.
+    // block-out-from "screencast"
+}
+
+// Default styling for all windows: rounded corners, the lightest
+// touch of transparency, and border-around-window so the active
+// border doesn't bleed through. Opacity dropped from 0.9 → 0.97
+// after halving blur passes — the softer blur made the previous
+// 10% transparency read as visual noise. 3% keeps a hint of the
+// glassy look without distracting from window contents.
+window-rule {
+    geometry-corner-radius 10
+    clip-to-geometry true
+    opacity 0.97
+    draw-border-with-background false
+}
+
+// Force background blur behind all windows. Without this, apps would have to
+// opt in via the ext-background-effect protocol, which most don't.
+window-rule {
+    background-effect {
+        blur true
+    }
+}
+
+// Opt out heavy fullscreen-tending apps from blur AND set them fully
+// opaque. Their contents are opaque anyway (web pages, chat panes);
+// the 3% transparency + blur was invisible cost. Setting opacity=1
+// also signals niri to skip the per-frame blur compositing entirely
+// for these windows.
+window-rule {
+    match app-id=r#"^(browser-personal|browser-work|Slack|vesktop)$"#
+    background-effect {
+        blur false
+    }
+    opacity 1.0
+}
+
+// Disable corner radius for eww bar (it handles its own corners)
+layer-rule {
+    match namespace="^gtk-layer-shell$"
+    geometry-corner-radius 0
+}
+
+layer-rule {
+    match namespace="^palette-daemon$"
+    geometry-corner-radius 14
+}
+
+
+// Make wallpaper static (doesn't scroll with workspaces)
+// Places swaybg in the backdrop layer so it stays fixed
+// Disabled for now — backdrop layer hides wallpaper from blur sampling.
+/-layer-rule {
+    match namespace="^wallpaper$"
+    place-within-backdrop true
+}
+
+// Terminal-shaped windows - uniform fixed width so Super+H/L navigation
+// doesn't trigger center-focused-column "on-overflow" jumps when columns
+// differ in size. Covers plain kitty (shells, nvim, yazi, devenv,
+// ad-hoc claude), the tagged `claude` class (managed claude sessions),
+// and the lovable_deps singleton.
+window-rule {
+    match app-id=r#"^(kitty|claude|lovable_deps)$"#
+    default-column-width { fixed 1500; }
+    default-window-height { proportion 1.0; }
+}
+
+// Work-profile browser windows — same fixed width as the lovable
+// stack siblings. The previous version constrained on title=daphen-…
+// .localhost, but niri evaluates default-column-width at window-open
+// time when the title is still "New Tab" / "Helium", so the rule
+// never matched. Class-only match is reliable because browser-work
+// is reserved for the work-profile browser (set by browser-dispatch
+// / browser-work via --class=browser-work).
+window-rule {
+    match app-id="browser-work"
+    default-column-width { fixed 1500; }
+}
+
+// Qutebrowser - fixed size
+window-rule {
+    match app-id=r#"^qutebrowser"#
+    default-column-width { fixed 1500; }
+    default-window-height { proportion 1.0; }
+}
+
+// Float calculator, file pickers, and other dialogs
+window-rule {
+    match title=r#"(?i)calculator"#
+    open-floating true
+}
+
+window-rule {
+    match app-id=r#"(?i)org\.gnome\.Nautilus"# title=r#"(?i)^(open|save)"#
+    open-floating true
+}
+
+window-rule {
+    match app-id=r#"(?i)zenity"#
+    open-floating true
+}
+
+// Lovable devenv terminal - same sizing as kitty, excluded from Super+d
+window-rule {
+    match app-id="lovable_devenv"
+    default-column-width { fixed 1500; }
+    default-window-height { proportion 1.0; }
+}
+
+// Spotify player - same sizing as kitty
+window-rule {
+    match app-id="spotify_player"
+    default-column-width { fixed 1500; }
+    default-window-height { proportion 1.0; }
+}
+
+// Endcord (Discord TUI) - same sizing as kitty. Launched via Super+C as
+// `$HOME/.config/niri/scripts/launch-endcord`, so its app-id is "endcord" (not
+// "kitty") which keeps it out of the Super+d "general terminal" cycle
+// (ws-focus filters by app_id == "kitty").
+window-rule {
+    match app-id="endcord"
+    default-column-width { fixed 1500; }
+    default-window-height { proportion 1.0; }
+}
+
+// Devenv deps singleton: floats so it never claims a tiled column
+// slot. ws-tracker still drags it onto the active stack workspace
+// so Super+M shows it overlaid on whatever stack is in front, but
+// floating moves don't shift tiled column indices, so the viewport
+// stays stable when switching worktrees.
+
+// Chat apps (Vesktop, Slack) live on a named "chat" workspace so they
+// stay together regardless of where they were spawned from. The
+// workspace itself is created by ensure-chat-workspace at startup; its
+// position is not pinned and can be moved freely with Alt+Shift+J/K.
+window-rule {
+    match app-id="vesktop"
+    match app-id="Slack"
+    open-on-workspace "chat"
+}
+
+// Notes window - tiled like other apps
+window-rule {
+    match app-id="notes-scratchpad"
+    // No special rules - behaves like normal tiled window
+}
+
+// Clipse clipboard manager - floating with fixed size
+window-rule {
+    match app-id="clipse"
+    open-floating true
+    default-column-width { fixed 1000; }
+    default-window-height { fixed 750; }
+}
+
+// Lovable createwt/startwt picker (kitty + fzf/rofi prompt) - floating
+window-rule {
+    match app-id="lovable_picker"
+    open-floating true
+    default-column-width { fixed 1400; }
+    default-window-height { fixed 900; }
+}
+
+binds {
+    // Keys consist of modifiers separated by + signs, followed by an XKB key name
+    // in the end. To find an XKB name for a particular key, you may use a program
+    // like wev.
+    //
+    // "Mod" is a special modifier equal to Super when running on a TTY, and to Alt
+    // when running as a winit window.
+    //
+    // Most actions that you can bind here can also be invoked programmatically with
+    // `niri msg action do-something`.
+
+    // Mod-Shift-/, which is usually the same as Mod-?,
+    // shows a list of important hotkeys.
+    Mod+Shift+Slash { show-hotkey-overlay; }
+
+    // Suggested binds for running programs: app launcher, screen locker.
+    Super+Space hotkey-overlay-title="Run an Application" { spawn "qs" "ipc" "call" "launcher" "toggle"; }
+    Super+Return { spawn "qs" "ipc" "call" "launcher" "toggle"; }
+    Super+P { spawn "1password"; }
+    Super+Ctrl+q hotkey-overlay-title="Force Kill Focused Window" { spawn "/home/daphen/.config/niri/scripts/force-kill-focused"; }
+    Super+Shift+Ctrl+q hotkey-overlay-title="Lock the Screen" { spawn "swaylock"; }
+
+    // Use spawn-sh to run a shell command. Do this if you need pipes, multiple commands, etc.
+    // Note: the entire command goes as a single argument. It's passed verbatim to `sh -c`.
+    // For example, this is a standard bind to toggle the screen reader (orca).
+    Super+Alt+S allow-when-locked=true hotkey-overlay-title=null { spawn-sh "pkill orca || exec orca"; }
+
+    // Jump-or-exec keybinds for quick app access
+    Super+c { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec endcord $HOME/.config/niri/scripts/launch-endcord"; }
+    Super+e { spawn-sh "$HOME/.config/niri/scripts/spawn-terminal-with-yazi"; }
+    // Press in response to any chat-app mako notification. Reads the
+    // top notification's app_name and dispatches to the right handler:
+    // endcord → focus + N; Slack → focus + Alt+Shift+Down. Defaults
+    // to endcord if no notification is visible.
+    Super+i { spawn-sh "$HOME/.config/niri/scripts/inbox-jump"; }
+    // Super+Ctrl+g: resume an existing claude session (fzf picker)
+    // Super+Shift+g: start a NEW claude session, picking a working dir via zoxide+fzf
+    Super+Ctrl+g { spawn-sh "kitty --class lovable_picker $HOME/.config/niri/scripts/spawn-claude-session-picker"; }
+    Super+Shift+g { spawn-sh "$HOME/.config/niri/scripts/spawn-new-claude-session"; }
+    Super+Shift+f { spawn-sh "$HOME/.config/niri/scripts/fork-claude-session"; }
+    Super+r { spawn-sh "$HOME/.config/niri/scripts/spawn-terminal-with-zoxide-picker"; }
+    Super+g { spawn-sh "$HOME/.config/niri/scripts/ws-focus claude"; }
+    Super+d { spawn-sh "$HOME/.config/niri/scripts/ws-focus term"; }
+    Super+Shift+d { spawn-sh "SHOW_FASTFETCH=1 kitty"; }
+    Super+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec slk $HOME/.config/niri/scripts/launch-slk"; }
+    Super+Shift+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
+    Super+a { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 'title:spotify_player' 'kitty --class spotify_player spotify_player'"; }
+    // Browser keybinds. Browser binary lives in browser-config.sh —
+    // these scripts are browser-agnostic.
+    // Super+Q  = personal (direct launch-or-focus, single tracked window)
+    // Super+W  = work — uses ws-focus so it scopes to the active worktree's
+    //   browser-work window, falling back to the browser-work script when
+    //   no candidate window matches. browser-work in INACTIVE worktrees is
+    //   excluded automatically via ws-tracker's excluded-id list.
+    Super+q { spawn-sh "/home/daphen/.config/niri/scripts/browser-personal"; }
+    Super+w { spawn-sh "$HOME/.config/niri/scripts/ws-focus browser"; }
+    Super+Shift+q { spawn-sh "/home/daphen/.config/niri/scripts/chromium-launch"; }
+    Super+Shift+w { spawn-sh "$HOME/.config/niri/scripts/browser-work-new"; }
+
+    Super+f hotkey-overlay-title="Toggle Command Palette" { spawn-sh "$HOME/.config/niri/scripts/palette-toggle"; }
+    Super+Shift+m hotkey-overlay-title="Add Quickmark" { spawn "palette-ipc" "add-quickmark"; }
+    Super+m { spawn-sh "$HOME/.config/niri/scripts/ws-focus devenv"; }
+    // Super+Ctrl+M: focus the lovable-main workspace (always-on
+    // home for deps + main-context claude + main browser). On first
+    // press of a session it'll spawn missing windows; subsequent
+    // presses just focus the workspace.
+    Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/ws-startmain"; }
+
+    // Lovable worktree shortcuts (T for tree):
+    //   Super+T        — pick an OPEN worktree and focus it
+    //   Super+Shift+T  — create a NEW worktree (rofi name prompt)
+    //   Super+Ctrl+T   — start an EXISTING worktree from disk (fzf picker)
+    Super+t       { spawn "qs" "ipc" "call" "worktrees" "toggle"; }
+    Super+Shift+t { spawn "qs" "ipc" "call" "worktree-create" "toggle"; }
+    Super+Ctrl+t  { spawn-sh "$HOME/.config/niri/scripts/rofi-ws-startwt"; }
+
+    // Super+O: toggle to the previously visited worktree (vim ctrl-o style).
+    Super+o       { spawn-sh "$HOME/.config/niri/scripts/ws-toggle-worktree"; }
+
+    // Super+B: jump to an already-running lovbox workspace.
+    // Sandbox-from-history picking lives in the unified Super+Ctrl+T picker
+    // (ws-startwt — both worktrees and sandboxes shown together).
+    Super+b       { spawn "qs" "ipc" "call" "lovbox" "toggle"; }
+
+    // Notes capture picker — type chooses routing into the vault
+    Super+n       hotkey-overlay-title="Capture note" { spawn "qs" "ipc" "call" "notes" "toggle"; }
+    Super+Shift+n hotkey-overlay-title="Quick inbox note" { spawn "/home/daphen/.config/quickshell/scripts/notes-capture" "note"; }
+
+    // Theme toggle is now reachable from the app launcher
+    // ("Toggle Theme") — Super+Ctrl+T was repurposed for ws-startwt.
+
+    // Media and function keys for Asus ProArt P16
+    // XF86 keycodes (for external keyboards / future use)
+    XF86AudioRaiseVolume allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 && wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"; }
+    XF86AudioLowerVolume allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 && wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"; }
+    XF86AudioMute allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"; }
+    XF86AudioMicMute allow-when-locked=true { spawn-sh "$HOME/.config/niri/scripts/toggle-mic"; }
+    XF86WebCam allow-when-locked=true { spawn-sh "$HOME/.config/niri/scripts/toggle-camera"; }
+    XF86MonBrightnessUp allow-when-locked=true { spawn "/home/daphen/.config/niri/scripts/brightness-throttled" "5%+"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn "/home/daphen/.config/niri/scripts/brightness-throttled" "5%-"; }
+    XF86KbdBrightnessUp allow-when-locked=true { spawn "asusctl" "leds" "next"; }
+    XF86KbdBrightnessDown allow-when-locked=true { spawn "asusctl" "leds" "prev"; }
+    XF86KbdLightOnOff allow-when-locked=true { spawn "asusctl" "leds" "next"; }
+
+    // ProArt P16 function row (sends plain F-keys, not XF86)
+    F1  allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"; }
+    F2  allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 && wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"; }
+    F3  allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 && wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"; }
+    F4  allow-when-locked=true { spawn-sh "brightnessctl --device='*kbd_backlight' set 33%+"; }
+    F5  allow-when-locked=true { spawn "/home/daphen/.config/niri/scripts/brightness-throttled" "5%-"; }
+    F6  allow-when-locked=true { spawn "/home/daphen/.config/niri/scripts/brightness-throttled" "5%+"; }
+    F8  allow-when-locked=true { spawn "qs" "ipc" "call" "emoji" "toggle"; }
+    F9  allow-when-locked=true { spawn-sh "$HOME/.config/niri/scripts/toggle-mic"; }
+    F10 allow-when-locked=true { spawn-sh "$HOME/.config/niri/scripts/toggle-camera"; }
+
+    // Media playback controls
+    XF86AudioPlay allow-when-locked=true { spawn "playerctl" "play-pause"; }
+    XF86AudioPause allow-when-locked=true { spawn "playerctl" "play-pause"; }
+    XF86AudioNext allow-when-locked=true { spawn "playerctl" "next"; }
+    XF86AudioPrev allow-when-locked=true { spawn "playerctl" "previous"; }
+
+    // Window navigation with Super+hl - crosses monitors at edges
+    Super+h { focus-column-or-monitor-left; }
+    Super+l { focus-column-or-monitor-right; }
+
+    // Move windows with Super+Shift+hl. Also pokes the niri-minimap
+    // daemon (SIGUSR1) because niri's event-stream doesn't emit any
+    // event for column reorders — without this the minimap stays stale.
+    Super+Shift+h { spawn-sh "niri msg action move-column-left  && pkill -USR1 -f 'niri-minimap.sh'"; }
+    Super+Shift+l { spawn-sh "niri msg action move-column-right && pkill -USR1 -f 'niri-minimap.sh'"; }
+
+    // Move windows to workspace up/down with Super+Shift+jk
+    Super+Shift+j { move-window-to-workspace-down; }
+    Super+Shift+k { move-window-to-workspace-up; }
+
+    // Switch workspaces with Super+jk
+    // These scripts focus the adjacent monitor at edge workspaces and treat
+    // the lovable-* workspace group as a *single* navigable entry — only the
+    // currently-active stack participates; inactive lovable-* are hidden.
+    Super+j { spawn "/home/daphen/.config/niri/scripts/ws-focus-workspace-down"; }
+    Super+k { spawn "/home/daphen/.config/niri/scripts/ws-focus-workspace-up"; }
+
+    // Move windows to different monitors with Super+Ctrl+Shift+hjkl
+    Super+Ctrl+Shift+h { move-window-to-monitor-left; }
+    Super+Ctrl+Shift+j { move-window-to-monitor-down; }
+    Super+Ctrl+Shift+k { move-window-to-monitor-up; }
+    Super+Ctrl+Shift+l { move-window-to-monitor-right; }
+
+    // Move entire workspace up/down with Alt+Shift+jk
+    Alt+Shift+j { move-workspace-down; }
+    Alt+Shift+k { move-workspace-up; }
+
+    // Move entire workspace to another monitor with Alt+Shift+Ctrl+hjkl
+    Alt+Shift+Ctrl+h { move-workspace-to-monitor-left; }
+    Alt+Shift+Ctrl+j { move-workspace-to-monitor-down; }
+    Alt+Shift+Ctrl+k { move-workspace-to-monitor-up; }
+    Alt+Shift+Ctrl+l { move-workspace-to-monitor-right; }
+
+    // Focus monitor directly with Alt+hjkl
+    Alt+h { focus-monitor-left; }
+    Alt+j { focus-monitor-down; }
+    Alt+k { focus-monitor-up; }
+    Alt+l { focus-monitor-right; }
+
+    // Resize windows with Super+Ctrl+hjkl
+    Super+Ctrl+h { set-column-width "-5%"; }
+    Super+Ctrl+l { set-column-width "+5%"; }
+
+    // Maximize window (take full screen space) with Super+Ctrl+F
+    Super+Ctrl+f { maximize-column; }
+
+    // Toggle overview mode with Super+Tab
+    Super+Tab { toggle-overview; }
+
+    // Tab/stack navigation via arrow keys.
+    // - Left/Right walks tabs (windows) within a column — feels natural
+    //   because the tab indicator is horizontal even though the underlying
+    //   layout direction is vertical. Column navigation is on Super+H/L.
+    // - Shift+Left/Right consumes-or-expels the focused window into the
+    //   neighboring column (use for stacking/unstacking)
+    // - Ctrl+Tab toggles the current column between normal & tabbed display
+    // On a lovable-<name> stack workspace, Super+Left/Right cycles to
+    // the prev/next stack. Anywhere else, falls back to walking
+    // tabs/windows within the focused tabbed column.
+    Super+Left        { spawn-sh "$HOME/.config/niri/scripts/ws-window-or-stack prev"; }
+    Super+Right       { spawn-sh "$HOME/.config/niri/scripts/ws-window-or-stack next"; }
+    Super+Shift+Left  { consume-or-expel-window-left; }
+    Super+Shift+Right { consume-or-expel-window-right; }
+    Super+Ctrl+Tab    { toggle-column-tabbed-display; }
+
+    // Close focused window with Super+Ctrl+w
+    // If the window belongs to a tracked worktree stack, the whole stack is
+    // closed and removed from state; otherwise just the focused window.
+    Super+Ctrl+w { close-window; }
+
+    // Screenshot keybinds
+    Print { screenshot; }                    // Interactive screenshot UI (select area)
+    Super+Print { screenshot-screen; }       // Screenshot entire screen
+    Super+Ctrl+e { screenshot-screen; }      // Screenshot active monitor
+    Super+Ctrl+Shift+e { spawn "/home/daphen/.config/niri/scripts/screenshot-to-clipboard"; }  // Screenshot selection to clipboard
+
+    // Screen recording (wf-recorder + slurp). Same keybind toggles start/stop.
+    Super+Shift+r { spawn "/home/daphen/.config/niri/scripts/record-toggle" "region"; }   // Record region
+    Super+Ctrl+Shift+r { spawn "/home/daphen/.config/niri/scripts/record-toggle" "screen"; }  // Record current monitor
+
+    // Color picker
+    Super+Ctrl+c { spawn "/home/daphen/.config/niri/scripts/pick-color"; }  // Pick color from screen
+    Super+Ctrl+Shift+c { spawn "qs" "ipc" "call" "color-format" "toggle"; }  // Change color picker format
+
+    // Do-not-disturb toggle. Quickshell watches the file via DndState.
+    Super+Ctrl+Shift+d { spawn-sh "f=$HOME/.config/quickshell/dnd; if [ -e \"$f\" ]; then rm -f \"$f\"; else mkdir -p \"$(dirname \"$f\")\" && touch \"$f\"; fi"; }
+
+    // Rofi keybinds
+    Super+Ctrl+V { spawn "kitty" "--class" "clipse" "-o" "initial_window_width=1000" "-o" "initial_window_height=750" "clipse"; }  // Open clipboard history (clipse in floating terminal)
+    Super+Ctrl+J { spawn "qs" "ipc" "call" "emoji" "toggle"; }  // Open emoji picker (copy + auto-type)
+    Super+Ctrl+B { spawn "qs" "ipc" "call" "bluetooth" "toggle"; }  // Open bluetooth menu
+    Super+Ctrl+N { spawn "qs" "ipc" "call" "network" "toggle"; }    // Open wifi picker
+    Super+Ctrl+Shift+B { spawn-sh "$HOME/.config/niri/scripts/waybar-theme --cycle"; }  // Cycle waybar theme
+    Super+Ctrl+P { spawn "qs" "ipc" "call" "asus-profile" "toggle"; }  // Switch ASUS performance profile
+    Super+Ctrl+A { spawn "/home/daphen/.config/niri/scripts/toggle-headphones"; }  // Toggle whichever headphones are on (Px8 or AirPods)
+    Super+Ctrl+R { spawn "/home/daphen/.config/niri/scripts/claude-rename"; }  // Rename focused Claude session via QS prompt
+
+    // Dismiss all notifications
+    Super+Escape { spawn "qs" "ipc" "call" "notifications" "dismissAll"; }
+}
+
+// Clipboard management with clipse
+spawn-at-startup "wl-clip-persist" "--clipboard" "regular"
+spawn-at-startup "clipse" "--listen"

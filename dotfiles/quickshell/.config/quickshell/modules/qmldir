@@ -1,0 +1,47 @@
+singleton Theme 1.0 Theme.qml
+singleton NiriState 1.0 NiriState.qml
+Bar 1.0 Bar.qml
+Clock 1.0 Clock.qml
+DateText 1.0 DateText.qml
+Battery 1.0 Battery.qml
+Audio 1.0 Audio.qml
+Minimap 1.0 Minimap.qml
+Weather 1.0 Weather.qml
+Cpu 1.0 Cpu.qml
+Memory 1.0 Memory.qml
+singleton WpmState 1.0 WpmState.qml
+singleton SpendState 1.0 SpendState.qml
+Wpm 1.0 Wpm.qml
+Network 1.0 Network.qml
+Worktree 1.0 Worktree.qml
+Dnd 1.0 Dnd.qml
+Inbox 1.0 Inbox.qml
+singleton Notifications 1.0 Notifications.qml
+singleton DndState 1.0 DndState.qml
+Toast 1.0 Toast.qml
+NotificationOverlay 1.0 NotificationOverlay.qml
+singleton LauncherState 1.0 LauncherState.qml
+Launcher 1.0 Launcher.qml
+Picker 1.0 Picker.qml
+singleton WorktreePickerState 1.0 WorktreePickerState.qml
+WorktreePicker 1.0 WorktreePicker.qml
+singleton WorktreeCreatePickerState 1.0 WorktreeCreatePickerState.qml
+WorktreeCreatePicker 1.0 WorktreeCreatePicker.qml
+singleton WorktreeNameInputPickerState 1.0 WorktreeNameInputPickerState.qml
+WorktreeNameInputPicker 1.0 WorktreeNameInputPicker.qml
+singleton LovboxPickerState 1.0 LovboxPickerState.qml
+LovboxPicker 1.0 LovboxPicker.qml
+singleton BluetoothPickerState 1.0 BluetoothPickerState.qml
+BluetoothPicker 1.0 BluetoothPicker.qml
+singleton NetworkPickerState 1.0 NetworkPickerState.qml
+NetworkPicker 1.0 NetworkPicker.qml
+singleton AsusProfilePickerState 1.0 AsusProfilePickerState.qml
+AsusProfilePicker 1.0 AsusProfilePicker.qml
+singleton EmojiPickerState 1.0 EmojiPickerState.qml
+EmojiPicker 1.0 EmojiPicker.qml
+singleton ClaudeRenamePickerState 1.0 ClaudeRenamePickerState.qml
+ClaudeRenamePicker 1.0 ClaudeRenamePicker.qml
+singleton ColorFormatPickerState 1.0 ColorFormatPickerState.qml
+ColorFormatPicker 1.0 ColorFormatPicker.qml
+singleton NotesPickerState 1.0 NotesPickerState.qml
+NotesPicker 1.0 NotesPicker.qml

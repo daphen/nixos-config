@@ -1,0 +1,386 @@
+#!/usr/bin/env python3
+"""
+ws-createlovbox <name> [project-url-or-claim]
+
+Spawns a niri stack for a REMOTE lovbox sandbox — mirror of
+ws-createwt's pattern, but with SSH-into-sandbox kitty windows
+instead of local devenv/claude/nvim ones.
+
+Workspace name: `lovable-<name>` (matches ws-createwt convention so the
+existing Super+T picker / rofi-ws-jump shows it alongside worktrees).
+
+Three modes for the second arg:
+  • omitted              → scratch sandbox (template lovable-devenv-pvc),
+                           no Lovable project, no browser window.
+  • project URL / UUID   → Lovable-on-Lovable sandbox attached to that
+                           project. Browser opens to the project page.
+  • claim name           → existing sandbox, no provisioning, browser
+                           opens to lovable.dev root.
+
+Windows spawned:
+  1. kitty → lovssh + claude in ~/lovable
+  2. kitty → lovssh + nvim  in ~/lovable
+  3. browser → the Lovable project page (only when a URL is associated)
+
+To CREATE a new Lovable-on-Lovable project: use ws-newlol to open the
+web UI (project-create is Castle-gated and requires a browser-minted
+token). Then pass the resulting project URL to ws-createlovbox.
+"""
+from __future__ import annotations
+import argparse
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+import urllib.error
+
+HOME = os.environ["HOME"]
+SANDCASTLE = "https://sandcastle.lovable.net"
+
+
+def niri_json(*args: str):
+    out = subprocess.run(
+        ["niri", "msg", "--json", *args], capture_output=True, text=True, timeout=3
+    )
+    return json.loads(out.stdout) if out.stdout.strip() else None
+
+
+def niri_action(*args: str) -> int:
+    return subprocess.run(
+        ["niri", "msg", "action", *args], capture_output=True, timeout=3
+    ).returncode
+
+
+def workspace_id_by_name(name: str) -> int | None:
+    for ws in (niri_json("workspaces") or []):
+        if ws.get("name") == name:
+            return ws["id"]
+    return None
+
+
+def trailing_empty_unnamed_idx(output: str) -> int | None:
+    cands = [
+        w for w in (niri_json("workspaces") or [])
+        if w.get("output") == output
+        and w.get("name") is None
+        and w.get("active_window_id") is None
+    ]
+    cands.sort(key=lambda w: -w["idx"])
+    return cands[0]["idx"] if cands else None
+
+
+def focused_output() -> str | None:
+    fw = niri_json("focused-window")
+    if fw is None:
+        return None
+    ws_id = fw.get("workspace_id")
+    for w in (niri_json("workspaces") or []):
+        if w["id"] == ws_id:
+            return w.get("output")
+    return None
+
+
+def ensure_workspace(name: str) -> int:
+    wid = workspace_id_by_name(name)
+    if wid is not None:
+        niri_action("focus-workspace", name)
+        return wid
+
+    out = focused_output() or "DP-2"
+    idx = trailing_empty_unnamed_idx(out)
+    if idx is None:
+        niri_action("focus-workspace-down")
+        time.sleep(0.15)
+        idx = trailing_empty_unnamed_idx(out)
+    if idx is None:
+        return -1
+    niri_action("set-workspace-name", "--workspace", str(idx), name)
+    time.sleep(0.15)
+    niri_action("focus-workspace", name)
+    time.sleep(0.1)
+    return workspace_id_by_name(name) or -1
+
+
+def snapshot_window_ids() -> set[int]:
+    return {w["id"] for w in (niri_json("windows") or [])}
+
+
+def spawn_and_wait(cmd: list[str], timeout: float = 9.0) -> int | None:
+    before = snapshot_window_ids()
+    subprocess.Popen(
+        ["setsid", *cmd],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(0.15)
+        after = snapshot_window_ids()
+        new = after - before
+        if new:
+            return next(iter(new))
+    return None
+
+
+def extract_project_uuid(s: str) -> str | None:
+    m = re.search(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", s
+    )
+    return m.group(0) if m else None
+
+
+def deterministic_claim(project_id: str, purpose: str = "main") -> str:
+    """Mirror schedulerTemplateClaimName for purpose='main' / template
+    'lovable-on-lovable' — sha256(project_id\\0purpose\\0template)[:16]."""
+    digest = hashlib.sha256(
+        f"{project_id}\x00{purpose}\x00lovable-on-lovable".encode()
+    ).hexdigest()[:16]
+    base = "lovable" if purpose == "main" else f"lovable-{purpose}"
+    return f"{base}-{digest}"
+
+
+def sandbox_lookup(claim: str) -> dict | None:
+    """Search personal + shared lists for a sandbox by claim name."""
+    for qs in ("", "?access=shared"):
+        try:
+            with urllib.request.urlopen(
+                f"{SANDCASTLE}/api/v1/sandboxes{qs}", timeout=15
+            ) as r:
+                data = json.loads(r.read())
+        except Exception:
+            continue
+        for sb in (data or []):
+            if sb.get("name") == claim:
+                return sb
+    return None
+
+
+def post_create_sandbox(
+    claim: str, template: str = "lovable-on-lovable", access: str = "shared"
+) -> tuple[int, str]:
+    body = json.dumps({"name": claim, "template": template, "access": access}).encode()
+    req = urllib.request.Request(
+        f"{SANDCASTLE}/api/v1/sandboxes",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, r.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode(errors="replace")
+    except Exception as e:
+        return 0, str(e)
+
+
+def ensure_sandbox(claim: str, template: str, polls: int = 60, interval: float = 3.0) -> str:
+    """Return one of: 'exists-ready', 'created-ready', 'create-failed:<msg>',
+    'timeout-not-ready'.
+    """
+    sb = sandbox_lookup(claim)
+    if sb and sb.get("status") == "Ready":
+        return "exists-ready"
+
+    if sb is None:
+        status, body = post_create_sandbox(claim, template=template)
+        if status not in (200, 201, 409):
+            return f"create-failed:HTTP {status} {body.strip()[:200]}"
+
+    for _ in range(polls):
+        sb = sandbox_lookup(claim)
+        if sb and sb.get("status") == "Ready":
+            return "created-ready" if sb.get("creation_time") else "exists-ready"
+        time.sleep(interval)
+    return "timeout-not-ready"
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("name", help="short workspace name (workspace becomes lovable-<name>)")
+    ap.add_argument(
+        "url_or_claim",
+        nargs="?",
+        default=None,
+        help="(optional) Lovable project URL/UUID, or claim name. Omit to "
+             "provision a brand-new scratch sandbox with no Lovable project "
+             "association (template lovable-devenv-pvc).",
+    )
+    ap.add_argument(
+        "--prompt", "-p",
+        help=argparse.SUPPRESS,
+    )
+    ap.add_argument(
+        "--here",
+        action="store_true",
+        help="Spawn the stack on the currently-focused niri workspace "
+             "instead of creating/focusing a new lovable-<name> workspace.",
+    )
+    args = ap.parse_args()
+
+    name = args.name
+    # The `daphen-` prefix is for local branches/worktrees (ws-createwt),
+    # not lovbox workspace names — passing it here would make lovssh try
+    # to resolve "daphen-..." as a claim/UUID and fail downstream.
+    if name.startswith("daphen-") or name.startswith("daphen/"):
+        print(
+            f"error: drop the 'daphen-' prefix from the name. "
+            f"Got '{name}', use '{name.replace('daphen-', '', 1).replace('daphen/', '', 1)}'.",
+            file=sys.stderr,
+        )
+        return 2
+    target = args.url_or_claim
+    workspace = f"lovable-{name}"
+
+    # --prompt mode is removed: api.lovable.dev's project-create is now
+    # Castle-gated and requires the X-Castle-Request-Token header that only
+    # Castle.js (browser-side SDK) can mint. Create the project in the web
+    # UI instead, then pass its URL here. See ws-newlol for the entry point.
+    if args.prompt:
+        print(
+            "ws-createlovbox --prompt has been removed.\n"
+            "  Project creation is Castle-gated and requires a browser-minted token.\n"
+            "  Use: ws-newlol  →  create the project in the web UI  →  copy URL.\n"
+            "  Then: ws-createlovbox <name> <project-url>",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Three input modes:
+    # - bare name (no URL/claim arg): scratch sandbox, no Lovable project,
+    #   no browser window. claim = "daphen-<name>", template lovable-devenv-pvc.
+    # - URL or UUID: lovable-on-lovable sandbox, deterministic claim, browser
+    #   opens the Lovable project URL.
+    # - claim name (e.g. lovable-d32914...): assume existing, no provision,
+    #   browser opens lovable.dev root (no way to recover the project URL).
+    project_url: str | None = None
+    if target is None:
+        claim = f"daphen-{name}"
+        ssh_input = claim
+        template = "lovable-devenv-pvc"
+    elif target.startswith("lovable-"):
+        # Real lovable-on-lovable claims are `lovable-<16hex>` (deterministic
+        # from project_id). Any other `lovable-*` is a user-named scratch
+        # sandbox — same handler either way: assume existing, skip provision.
+        claim = target
+        ssh_input = target
+        template = "lovable-on-lovable"
+        project_url = "https://lovable.dev"
+    else:
+        uuid = extract_project_uuid(target)
+        if uuid is None:
+            print(f"Couldn't parse '{target}' as URL, UUID, or claim", file=sys.stderr)
+            return 2
+        project_url = target if target.startswith("http") else f"https://lovable.dev/projects/{uuid}"
+        ssh_input = project_url
+        claim = deterministic_claim(uuid)
+        template = "lovable-on-lovable"
+
+    print(f"==> claim:     {claim}")
+    print(f"==> template:  {template}")
+    print(f"==> workspace: {workspace}")
+
+    # 1. Ensure the sandbox exists + is Ready. POSTs to sandcastle if
+    # missing; polls otherwise.
+    print(f"==> ensuring sandbox is Ready (template={template})…")
+    result = ensure_sandbox(claim, template=template)
+    if result == "exists-ready":
+        print("==> sandbox already running")
+    elif result == "created-ready":
+        print("==> sandbox provisioned and Ready")
+    elif result == "timeout-not-ready":
+        print(
+            "⚠ sandbox didn't reach Ready in 3 min. Continuing anyway — "
+            "the SSH windows will retry; you can also click "
+            f"'Build with Lovable on Lovable runtime' at {project_url} "
+            "if the API path didn't wire the project.",
+            file=sys.stderr,
+        )
+    elif result.startswith("create-failed:"):
+        print(
+            f"⚠ {result}. Click 'Build with Lovable on Lovable runtime' "
+            f"at {project_url} (one-time per project) and re-run.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # 2. Auto-label the sandbox with the human name so `Super+B`'s picker
+    # shows "1252-components-md-silent-drop" instead of the short UUID
+    # short-hash. Lives at ~/.local/state/lovssh/names.json — same file
+    # `lov-name` writes — so a manual `lov-name <claim> <new-label>` later
+    # overrides this without conflict.
+    names_path = os.path.expanduser("~/.local/state/lovssh/names.json")
+    os.makedirs(os.path.dirname(names_path), exist_ok=True)
+    try:
+        with open(names_path) as fh:
+            names = json.load(fh)
+        if not isinstance(names, dict):
+            names = {}
+    except (FileNotFoundError, json.JSONDecodeError):
+        names = {}
+    # Old entries pointing at the same short-name stay — the old sandbox may
+    # still be useful (e.g. broken L-on-L project but the sandbox itself is
+    # fine). bare-args lovssh disambiguates by picking the most-recent entry
+    # (see lovssh.fish: `tail -1`), so the latest wins for inference while
+    # explicit `lovssh <old-claim>` still works.
+    if names.get(claim) != name:
+        names[claim] = name
+        with open(names_path, "w") as fh:
+            json.dump(names, fh, indent=2)
+        print(f"==> labeled {claim} → {name}")
+
+    # 3. Focus / create the workspace, OR rename the current one with --here
+    if args.here:
+        print(f"==> --here: renaming current workspace to '{workspace}'")
+        niri_action("set-workspace-name", workspace)
+    else:
+        print(f"==> focusing workspace {workspace}")
+        ensure_workspace(workspace)
+
+    # 2. Spawn the 3 stack windows.
+    # SSH-into-sandbox windows. lovssh lands in ~/lovable on the sandbox;
+    # user types `claude` / `nvim` themselves (lovssh's exec replaces the
+    # shell so we can't chain). 800ms sleep between spawns avoids three
+    # parallel `nix run`s racing for the same eval-cache.
+    import time
+
+    print("==> spawning lovssh + claude")
+    spawn_and_wait([
+        "kitty", "--hold",
+        "--class", "claude",
+        "-e", "fish", "-c", f"echo 'After landing: claude'; lovssh '{ssh_input}'",
+    ])
+    time.sleep(0.8)
+
+    print("==> spawning lovssh + nvim")
+    spawn_and_wait([
+        "kitty", "--hold",
+        "-e", "fish", "-c", f"echo 'After landing: nvim'; lovssh '{ssh_input}'",
+    ])
+
+    if project_url:
+        print(f"==> spawning work browser → {project_url}")
+        spawn_and_wait([
+            "/home/daphen/.config/niri/scripts/browser-dispatch",
+            "--profile=work",
+            "--new-window",
+            project_url,
+        ])
+    else:
+        print("==> skipping browser (no project URL — scratch sandbox)")
+
+    if args.here:
+        print(f"==> lovbox stack '{name}' ready on current workspace")
+    else:
+        print(f"==> lovbox stack '{name}' ready on workspace '{workspace}'")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

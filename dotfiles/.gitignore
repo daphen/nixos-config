@@ -1,0 +1,92 @@
+# Fish shell
+fish/.config/fish/fish_variables
+fish/.config/fish/fish_variables*
+fish/.config/fish/fish_history
+fish/.config/fish/secrets.fish
+fish/.config/fish/conf.d/fish_debug.log
+
+# Python bytecode caches (auto-generated, never committed)
+__pycache__/
+*.pyc
+
+# Tmux plugins (managed by TPM)
+tmux/.config/tmux/plugins/
+
+# Themes - generated output directory
+themes/.config/themes/generated/
+themes/.config/themes/*.log
+themes/.config/themes/.current-theme
+themes/.config/themes/theme-viewer/
+themes/.config/themes/node_modules/
+
+# Theme-manager generated output files (recreated by: theme-manager.sh switch dark)
+kitty/.config/kitty/theme.conf
+waybar/.config/waybar/style.css
+waybar/.config/waybar/themes/*/style.css
+mako/.config/mako/config
+qutebrowser/.config/qutebrowser/theme.py
+qutebrowser/.config/qutebrowser/userstyles.css
+wezterm/.config/wezterm/colors/
+eww/.config/eww/eww.scss
+eww/.config/eww/assets/
+clipse/.config/clipse/custom_theme.json
+fish/.config/fish/conf.d/z_custom_theme_colors.fish
+nvim/.config/nvim/colors/custom-theme-dark.lua
+nvim/.config/nvim/colors/custom-theme-light.lua
+opencode/.config/opencode/themes/customtheme.json
+rofi/.config/rofi/theme.rasi
+spotify-player/.config/spotify-player/theme.toml
+swaylock/.config/swaylock/config
+claude/.claude/themes/
+# Note: starship.toml is intentionally tracked (not gitignored) so the
+# portable daphen-remote config can fetch it via inputs.dotfiles. Theme
+# switches will produce diffs on the file — expected.
+
+# Temporary files
+*.swp
+*.tmp
+*.bak
+*~
+.DS_Store
+
+# Private/sensitive files
+*.key
+*.pem
+secrets/
+opencode/.config/opencode/opencode.json
+
+# Claude Code runtime files
+claude/.claude/.credentials.json
+claude/.claude/history.jsonl
+claude/.claude/debug/
+claude/.claude/file-history/
+claude/.claude/session-env/
+claude/.claude/shell-snapshots/
+claude/.claude/statsig/
+claude/.claude/todos/
+claude/.claude/projects/
+claude/.claude/backups/
+claude/.claude/plugins/cache/
+claude/.claude/plugins/installed_plugins.json
+claude/.claude/mcp-needs-auth-cache.json
+claude/.claude/policy-limits.json
+claude/.claude/plans/
+claude/.claude/sessions/
+claude/.claude/image-cache/
+claude/.claude/paste-cache/
+claude/.claude/.claude/
+
+# Claude Code per-session runtime caches/telemetry
+claude/.claude/telemetry/
+claude/.claude/tasks/
+claude/.claude/cache/
+claude/.claude/stats-cache.json
+claude/.claude/plugins/install-counts-cache.json
+claude/.claude/plugins/known_marketplaces.json
+claude/.claude/.last-cleanup
+
+# Per-project Claude Code state written into other tools' config dirs
+qutebrowser/.config/qutebrowser/.claude/
+
+# JS/TS deps inside ai-tracker channel
+nvim/.config/nvim/lua/ai-tracker/channel/node_modules/

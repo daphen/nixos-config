@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Fork the Claude Code session running in the focused window into a new terminal.
+# Works for both picker-resumed sessions (kitty → claude) and Super+G sessions (kitty → fish → claude).
+
+FOCUSED_PID=$(niri msg --json windows | python3 -c "
+import sys, json
+for w in json.load(sys.stdin):
+    if w.get('is_focused', False):
+        print(w.get('pid', ''))
+        break
+")
+
+if [ -z "$FOCUSED_PID" ] || [ "$FOCUSED_PID" = "None" ]; then
+    notify-send "Fork Claude" "No focused window found"
+    exit 1
+fi
+
+# Find the claude process in the focused window's subtree.
+# First pass: direct children. Second pass: grandchildren under a shell.
+find_claude() {
+    for pid in $(pgrep -P "$1" 2>/dev/null); do
+        [ "$(cat /proc/$pid/comm 2>/dev/null)" = "claude" ] && { echo "$pid"; return; }
+    done
+    for pid in $(pgrep -P "$1" 2>/dev/null); do
+        comm=$(cat /proc/$pid/comm 2>/dev/null)
+        if [[ "$comm" =~ ^(fish|bash|zsh)$ ]]; then
+            for cpid in $(pgrep -P "$pid" 2>/dev/null); do
+                [ "$(cat /proc/$cpid/comm 2>/dev/null)" = "claude" ] && { echo "$cpid"; return; }
+            done
+        fi
+    done
+}
+
+CLAUDE_PID=$(find_claude "$FOCUSED_PID")
+
+if [ -z "$CLAUDE_PID" ]; then
+    notify-send "Fork Claude" "No claude process in focused window"
+    exit 1
+fi
+
+CWD=$(readlink -f /proc/$CLAUDE_PID/cwd 2>/dev/null)
+CMDLINE=$(tr '\0' ' ' < /proc/$CLAUDE_PID/cmdline 2>/dev/null)
+SESSION_ID=$(echo "$CMDLINE" | grep -oE -- '--resume[= ]+[0-9a-f-]{36}' | head -1 | grep -oE '[0-9a-f-]{36}')
+
+if [ -z "$CWD" ]; then
+    notify-send "Fork Claude" "Could not read cwd of claude PID $CLAUDE_PID"
+    exit 1
+fi
+
+if [ -n "$SESSION_ID" ]; then
+    kitty --class claude --directory "$CWD" fish -c "claude --resume $SESSION_ID --fork-session"
+else
+    kitty --class claude --directory "$CWD" fish -c "claude --continue --fork-session"
+fi

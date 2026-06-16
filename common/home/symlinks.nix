@@ -3,7 +3,7 @@
 # Edits to ~/dotfiles are live immediately - no rebuild needed.
 { config, ... }:
 let
-  dotfiles = "${config.home.homeDirectory}/dotfiles";
+  dotfiles = "${config.home.homeDirectory}/nixos/dotfiles";
   link = config.lib.file.mkOutOfStoreSymlink;
 in {
   # Files in ~/.config
@@ -55,7 +55,6 @@ in {
   home.file = {
     ".gitconfig".source = link "${dotfiles}/git/.gitconfig";
     ".gitignore_global".source = link "${dotfiles}/git/.gitignore_global";
-    "Pictures/fastfetch".source = link "${dotfiles}/fastfetch/Pictures/fastfetch";
     # AI agent instructions — neutral file at dotfiles/ai/instructions.md
     # is the single source of truth. Claude reads it via the .claude
     # directory symlink (CLAUDE.md inside is a symlink to ai/instructions.md).
@@ -68,6 +67,9 @@ in {
     ".local/bin/xclip".source = link "${dotfiles}/bin/.local/bin/xclip-shim";
   };
 
-  # Claude Code config lives at ~/.claude (not ~/.config)
-  home.file.".claude".source = link "${dotfiles}/claude/.claude";
+  # Claude Code config lives at ~/.claude. Still points at the old
+  # ~/dotfiles/claude (live runtime state — transcripts/plugins/file-history);
+  # relocate to a plain local dir when no Claude session is running, then
+  # this line goes away. Deliberately NOT under nixos/dotfiles.
+  home.file.".claude".source = link "${config.home.homeDirectory}/dotfiles/claude/.claude";
 }

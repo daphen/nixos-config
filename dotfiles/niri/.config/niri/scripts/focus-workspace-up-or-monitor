@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Focus workspace up, or monitor above if no non-empty workspaces above
+# If at the top monitor, stay at current workspace (no new workspace created for focus)
+
+# Get current workspace info
+current_output=$(niri msg -j workspaces | jq -r '.[] | select(.is_active == true and .is_focused == true) | .output')
+current_workspace=$(niri msg -j workspaces | jq -r '.[] | select(.is_active == true and .is_focused == true) | .idx')
+
+# Get all workspaces on current output with windows, sorted by index
+workspaces_with_windows=$(niri msg -j workspaces | jq -r --arg output "$current_output" '.[] | select(.output == $output and .active_window_id != null) | .idx' | sort -n)
+
+# Find the next workspace up that has windows
+next_workspace_up=$(echo "$workspaces_with_windows" | awk -v current="$current_workspace" '$1 < current' | tail -n1)
+
+# If there's no workspace with windows above us, check if we can move to monitor above
+if [ -z "$next_workspace_up" ]; then
+    # Get current output Y position
+    current_y=$(niri msg -j outputs | jq -r --arg output "$current_output" '.[$output].logical.y')
+
+    # Check if there's any monitor above the current one (with smaller Y value)
+    monitor_above=$(niri msg -j outputs | jq -r --argjson current_y "$current_y" 'to_entries[] | select(.value.logical.y < $current_y) | .key' | head -n1)
+
+    if [ -n "$monitor_above" ]; then
+        # There's a monitor above, focus it
+        niri msg action focus-monitor-up
+    fi
+    # If we're at the top monitor with no workspaces above, do nothing
+else
+    # Jump directly to that workspace
+    niri msg action focus-workspace "$next_workspace_up"
+fi
