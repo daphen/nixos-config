@@ -173,7 +173,7 @@ function lovssh --description "SSH into the existing lovbox for a Lovable projec
     # runs are instant. --refresh ignores the 1h flake registry cache so
     # freshly-pushed dotfiles land immediately.
     # Single-line ';' chain because the lovbox sshd truncates multi-line args.
-    set -l remote_cmd "$token_export""export TERM=xterm-256color SANDBOX_LABEL='$sandbox_label'; echo '[lovssh] connected as '\$(whoami)'@'\$(hostname); mkdir -p ~/.config; echo '$proart_theme' > ~/.config/theme_mode; echo '[lovssh] theme: $proart_theme'; cd ~/lovable 2>/dev/null; echo '[lovssh] launching dev env via nix run...'; exec nix run --refresh --option require-sigs false github:daphen/nixos-portable-config#daphen-env"
+    set -l remote_cmd "$token_export""export TERM=xterm-256color SANDBOX_LABEL='$sandbox_label'; echo '[lovssh] connected as '\$(whoami)'@'\$(hostname); mkdir -p ~/.config; echo '$proart_theme' > ~/.config/theme_mode; echo '[lovssh] theme: $proart_theme'; cd ~/lovable 2>/dev/null; echo '[lovssh] launching dev env via nix run...'; exec nix run --refresh --option require-sigs false github:daphen/nixos#dev-env"
 
     # Pre-seed the sandbox's nix store from proart. The cluster cache misses
     # most of our env closure, so a fresh sandbox compiles neovim from source
@@ -181,7 +181,7 @@ function lovssh --description "SSH into the existing lovbox for a Lovable projec
     # transfer. Every failure here is non-fatal — remote nix run still works,
     # just slower.
     echo "[lovssh] resolving env closure locally…"
-    set -l env_path (nix build --no-link --print-out-paths github:daphen/nixos-portable-config#daphen-env 2>/dev/null | tail -1)
+    set -l env_path (nix build --no-link --print-out-paths github:daphen/nixos#dev-env 2>/dev/null | tail -1)
     if test -n "$env_path"
         for t in $candidates
             echo "[lovssh] pre-seeding nix store on $t…"

@@ -199,6 +199,23 @@
         modules = commonModules ++ [ machineModule ];
       };
 
+      # Ephemeral dev-env (`nix run github:daphen/nixos#dev-env`) for remote
+      # sandboxes. Built per-arch since lovbox sandboxes are aarch64 while
+      # proart is x86_64. Sources the in-repo ./dotfiles + a baked neovim;
+      # stays off the system's private/heavy inputs (palette-daemon, niri…).
+      mkDevEnv = sys:
+        let
+          p = import nixpkgs {
+            system = sys;
+            config = { allowUnfree = true; allowUnfreePredicate = _: true; };
+          };
+          nv = import ./pkgs/neovim { pkgs = p; inherit inputs; lib = nixpkgs.lib; };
+        in import ./pkgs/daphen-env {
+          pkgs = p;
+          dotfiles = ./dotfiles;
+          neovim = nv.neovim;
+        };
+
     in {
       nixosConfigurations = {
         thinkpad = mkHost ./machines/thinkpad;
@@ -206,10 +223,18 @@
         # zenbook  = mkHost ./machines/zenbook;
       };
 
-      # Clean pkgs (no neovimOverlay) so this is 0.12, not the system's 0.11.6.
-      packages.${system} = {
-        neovim = nvimPkgs.neovim;
-        neovim-local = nvimPkgs.neovimLocal;
+      # Clean pkgs (no neovimOverlay) so neovim is 0.12, not the system's 0.11.6.
+      packages = {
+        x86_64-linux = {
+          neovim = nvimPkgs.neovim;
+          neovim-local = nvimPkgs.neovimLocal;
+          dev-env = mkDevEnv "x86_64-linux";
+          default = mkDevEnv "x86_64-linux";
+        };
+        aarch64-linux = {
+          dev-env = mkDevEnv "aarch64-linux";
+          default = mkDevEnv "aarch64-linux";
+        };
       };
 
       # Development shell for testing configurations
