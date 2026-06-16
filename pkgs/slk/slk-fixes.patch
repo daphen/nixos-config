@@ -1,23 +1,8 @@
 diff --git a/cmd/slk/main.go b/cmd/slk/main.go
-index 0f7c7ca..becf961 100644
+index 0f7c7ca..fdd47a5 100644
 --- a/cmd/slk/main.go
 +++ b/cmd/slk/main.go
-@@ -87,9 +87,13 @@ func (a sectionsProviderAdapter) OrderedSlackSections() []sidebar.SectionMeta {
- 	secs := a.store.OrderedSections()
- 	out := make([]sidebar.SectionMeta, 0, len(secs))
- 	for _, s := range secs {
-+		name := s.Name
-+		if s.Type == "stars" && name == "" {
-+			name = "Starred"
-+		}
- 		out = append(out, sidebar.SectionMeta{
- 			ID:    s.ID,
--			Name:  s.Name,
-+			Name:  name,
- 			Emoji: s.Emoji,
- 			Type:  s.Type,
- 		})
-@@ -103,6 +107,9 @@ type WorkspaceContext struct {
+@@ -103,6 +103,9 @@ type WorkspaceContext struct {
  	ConnMgr    *slackclient.ConnectionManager
  	RTMHandler *rtmEventHandler
  	UserNames  map[string]string
@@ -27,7 +12,7 @@ index 0f7c7ca..becf961 100644
  	// AvatarURLs maps userID -> avatar image URL. Populated from the
  	// local users cache at connect time (synchronous, before any
  	// goroutines spin up) and refreshed from the background
-@@ -1369,7 +1376,7 @@ func run() error {
+@@ -1369,7 +1372,7 @@ func run() error {
  					}
  				}()
  			},
@@ -36,7 +21,7 @@ index 0f7c7ca..becf961 100644
  				chIDStr, threadTSStr := string(channelID), string(threadTS)
  				wctx := router.Active()
  				if wctx == nil {
-@@ -1378,7 +1385,7 @@ func run() error {
+@@ -1378,7 +1381,7 @@ func run() error {
  				client := wctx.Client
  				userNames := wctx.UserNames
  				ctx := context.Background()
@@ -45,7 +30,7 @@ index 0f7c7ca..becf961 100644
  				if err != nil {
  					log.Printf("Warning: failed to send thread reply: %v", err)
  					return ui.ThreadReplySendFailedMsg{ChannelID: chIDStr, ThreadTS: threadTSStr, Reason: err.Error()}
-@@ -1525,6 +1532,7 @@ func run() error {
+@@ -1525,6 +1528,7 @@ func run() error {
  			Channels:         wctx.Channels,
  			FinderItems:      wctx.FinderItems,
  			UserNames:        wctx.UserNames,
@@ -53,7 +38,7 @@ index 0f7c7ca..becf961 100644
  			ExternalUsers:    external,
  			UserID:           wctx.UserID,
  			CustomEmoji:      wctx.CustomEmoji,
-@@ -1679,6 +1687,7 @@ func run() error {
+@@ -1679,6 +1683,7 @@ func run() error {
  				Channels:         wctx.Channels,
  				FinderItems:      wctx.FinderItems,
  				UserNames:        wctx.UserNames,
@@ -61,7 +46,7 @@ index 0f7c7ca..becf961 100644
  				ExternalUsers:    external,
  				UserID:           wctx.UserID,
  				CustomEmoji:      wctx.CustomEmoji, // empty at this point; filled by the goroutine below
-@@ -1955,11 +1964,23 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
+@@ -1955,11 +1960,23 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
  		return nil, fmt.Errorf("fetching channels for %s: %w", token.TeamName, err)
  	}
  
@@ -85,7 +70,7 @@ index 0f7c7ca..becf961 100644
  			if _, ok := wctx.UserNames[ch.User]; !ok {
  				wctx.UnresolvedDMs = append(wctx.UnresolvedDMs, UnresolvedDM{
  					ChannelID: ch.ID,
-@@ -1976,6 +1997,21 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
+@@ -1976,6 +1993,21 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
  		wctx.FinderItems = append(wctx.FinderItems, finderItem)
  	}
  
@@ -107,7 +92,7 @@ index 0f7c7ca..becf961 100644
  	// Fetch unread counts
  	unreadCounts, threadsAgg, ucErr := client.GetUnreadCounts()
  	if ucErr != nil {
-@@ -3261,16 +3297,29 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
+@@ -3261,16 +3293,29 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
  		if h.activeChannelID != nil {
  			activeChID = h.activeChannelID()
  		}
@@ -138,7 +123,7 @@ index 0f7c7ca..becf961 100644
  		// Pass the raw userID (not authorID): ShouldNotify's self-message
  		// suppression keys on the human sender, and a bot message
  		// (userID == "", authorID == botID) can never be "you" — so the
-@@ -3282,13 +3331,15 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
+@@ -3282,13 +3327,15 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
  			} else if username != "" {
  				senderName = username
  			}
@@ -307,37 +292,6 @@ index 2feb239..8400e57 100644
  	// Check keyword triggers
  	if len(ctx.OnKeyword) > 0 {
  		lower := strings.ToLower(text)
-diff --git a/internal/service/sectionstore.go b/internal/service/sectionstore.go
-index 2084189..b0f5492 100644
---- a/internal/service/sectionstore.go
-+++ b/internal/service/sectionstore.go
-@@ -60,6 +60,11 @@ func (s *SectionStore) Bootstrap(ctx context.Context, client SectionsClient) err
- 		return fmt.Errorf("fetching sections: %w", err)
- 	}
- 
-+	for i := range sections {
-+		sec := &sections[i]
-+		log.Printf("section store: fetched section type=%q name=%q id=%s channel_ids=%d channels_count=%d",
-+			sec.Type, sec.Name, sec.ID, len(sec.ChannelIDs), sec.ChannelsCount)
-+	}
- 	for i := range sections {
- 		sec := &sections[i]
- 		if sec.ChannelsCount > len(sec.ChannelIDs) {
-@@ -179,10 +184,12 @@ func includeInSidebar(sec *slk.SidebarSection) bool {
- 	switch sec.Type {
- 	case "standard", "channels", "direct_messages":
- 		return true
--	case "recent_apps":
-+	case "recent_apps", "stars":
-+		// Render only when populated. stars groups the user's starred
-+		// channels under a "Starred" header (see OrderedSlackSections).
- 		return len(sec.ChannelIDs) > 0
- 	default:
--		// stars, slack_connect, salesforce_records, agents, anything new.
-+		// slack_connect, salesforce_records, agents, anything new.
- 		return false
- 	}
- }
 diff --git a/internal/slack/client.go b/internal/slack/client.go
 index da3a9e5..deb915b 100644
 --- a/internal/slack/client.go
