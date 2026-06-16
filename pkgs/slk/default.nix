@@ -1,6 +1,9 @@
-# slk — Slack TUI (gammons/slk). Single static Go binary, bubbletea/lipgloss,
-# kitty-graphics inline images, vim-modal. Auth is browser-cookie (xoxc + d),
-# done once via `slk --add-workspace`; tokens live in ~/.local/share/slk/tokens.
+# slk — Slack TUI. Built from our fork (github:daphen/slk-fork), which carries
+# notification/presence/thread-broadcast/paste/subteam-mention fixes as source
+# (was a Nix patch; folded into the fork, same pattern as endcord). Upstream is
+# gammons/slk; pull upstream into ~/personal/slk-fork, push, then bump rev+hash.
+# Auth is browser-cookie (xoxc + d), done once via `slk --add-workspace`;
+# tokens live in ~/.local/share/slk/tokens.
 { lib, buildGoModule, fetchFromGitHub, pkg-config, xorg }:
 
 buildGoModule rec {
@@ -8,26 +11,13 @@ buildGoModule rec {
   version = "0.9.0";
 
   src = fetchFromGitHub {
-    owner = "gammons";
-    repo = "slk";
-    rev = "v${version}";
-    hash = "sha256-hLkJUyxFqxm+SZQHdub0N1Q7X5TtVPv+OdidiPXKkes=";
+    owner = "daphen";
+    repo = "slk-fork";
+    rev = "ac090a585a8cd52f892fbdae31ac3217ba543ef0";
+    hash = "sha256-Vm9adwjh5rTKKdFznxwc5iK4k3w9VjadbY9dsBWhKrc=";
   };
 
   vendorHash = "sha256-dPa469oNv6eYyDdly3uhc273DAGz+erc0E3K/am7WoY=";
-
-  # Local fixes (see slk-fixes.patch):
-  #  - statusbar: widen the right-side pad so the wide `●` glyphs don't
-  #    push "Connected" off the screen edge.
-  #  - sidebar: make Ctrl-u/d move the selection (viewport follows) instead
-  #    of scrolling independently of the cursor.
-  #  - selection tint: also re-tint the surface bg (inline code, quoted /
-  #    attachment blocks) so a selected message reads as one uniform block
-  #    instead of showing lighter patches behind styled spans.
-  #  - focused border: add an optional `border_focus` theme color for the
-  #    focused-panel border (falls back to Primary), so it can differ from
-  #    links/mentions. Our theme sets it to the cursor orange.
-  patches = [ ./slk-fixes.patch ];
 
   # golang.design/x/clipboard uses cgo + X11 (Xlib.h) on Linux.
   nativeBuildInputs = [ pkg-config ];
