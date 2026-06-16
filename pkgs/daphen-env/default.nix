@@ -222,15 +222,16 @@ in pkgs.writeShellApplication {
       cp -fL "${configRoot}/claude/themes"/* "$HOME/.claude/themes/" 2>/dev/null || true
     fi
 
-    # Default Claude Code to auto mode (user scope only — project settings
-    # can't grant auto). Merge so any lovbox-seeded settings.json survives.
+    # Default Claude Code to auto mode + the custom dotfiles theme (whose
+    # file we copied to ~/.claude/themes above). User scope only — project
+    # settings can't grant auto. Merge so any lovbox-seeded settings survive.
     mkdir -p "$HOME/.claude"
     if [ -f "$HOME/.claude/settings.json" ]; then
-      jq '.permissions.defaultMode = "auto"' "$HOME/.claude/settings.json" \
+      jq '.permissions.defaultMode = "auto" | .theme = "custom:dotfiles"' "$HOME/.claude/settings.json" \
         > "$HOME/.claude/settings.json.tmp" \
         && mv "$HOME/.claude/settings.json.tmp" "$HOME/.claude/settings.json"
     else
-      printf '{\n  "permissions": { "defaultMode": "auto" }\n}\n' > "$HOME/.claude/settings.json"
+      printf '{\n  "permissions": { "defaultMode": "auto" },\n  "theme": "custom:dotfiles"\n}\n' > "$HOME/.claude/settings.json"
     fi
 
     # Wire notes-memory MCP via claude's own CLI — Claude v2 rewrites
