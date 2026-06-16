@@ -632,7 +632,7 @@ index 900f60c..e97455f 100644
  		m.selected++
  		m.dirty()
 diff --git a/internal/ui/messages/render.go b/internal/ui/messages/render.go
-index 6fabdd6..7834b5e 100644
+index 6fabdd6..42265c7 100644
 --- a/internal/ui/messages/render.go
 +++ b/internal/ui/messages/render.go
 @@ -320,9 +320,9 @@ func SelectionTintBgANSI(focused bool) string {
@@ -672,6 +672,25 @@ index 6fabdd6..7834b5e 100644
  }
  
  // bgSGRParams strips the "\x1b[" prefix and "m" suffix from a bg ANSI
+@@ -774,6 +782,18 @@ func renderInlineFormattingWith(text string, opts RenderSlackMarkdownOpts) strin
+ 		return mentionStyle().Render("@" + name)
+ 	})
+ 
++	// Usergroup (subteam) mentions: <!subteam^S1|@eng> -> @eng. The bare
++	// form <!subteam^S1> has no embedded label and no usergroup-name cache
++	// to resolve against, so it falls back to @group — still readable, and
++	// never the raw <!subteam^…> wire form.
++	text = usergroupMentionRe.ReplaceAllStringFunc(text, func(match string) string {
++		name := strings.TrimPrefix(usergroupMentionRe.FindStringSubmatch(match)[1], "@")
++		if name == "" {
++			name = "group"
++		}
++		return mentionStyle().Render("@" + name)
++	})
++
+ 	// Emoji resolution.
+ 	//
+ 	// Image path (kitty + emoji_images=on): tokenize the text and
 diff --git a/internal/ui/mode_insert.go b/internal/ui/mode_insert.go
 index 2fad4c7..9672d38 100644
 --- a/internal/ui/mode_insert.go
