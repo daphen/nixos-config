@@ -199,7 +199,7 @@
         modules = commonModules ++ [ machineModule ];
       };
 
-      # Ephemeral dev-env (`nix run github:daphen/nixos#dev-env`) for remote
+      # Ephemeral dev-env (`nix run github:daphen/nixos-config#dev-env`) for remote
       # sandboxes. Built per-arch since lovbox sandboxes are aarch64 while
       # proart is x86_64. Sources the in-repo ./dotfiles + a baked neovim;
       # stays off the system's private/heavy inputs (palette-daemon, niri…).

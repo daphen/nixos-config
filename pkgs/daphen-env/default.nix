@@ -1,7 +1,7 @@
 { pkgs, dotfiles, neovim }:
 # A single ephemeral dev environment: all CLI tools + dotfile configs
 # packaged into a script that sets up env vars and execs fish. Designed for
-# `nix run github:daphen/nixos#dev-env`, with no profile installs, no
+# `nix run github:daphen/nixos-config#dev-env`, with no profile installs, no
 # home-manager, and no per-host state — disconnect from a sandbox and
 # nothing is left behind. `dotfiles` is the in-repo ./dotfiles tree.
 
