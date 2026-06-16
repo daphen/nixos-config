@@ -31,4 +31,5 @@ ShellRoot {
     ClaudeRenamePicker {}
     ColorFormatPicker {}
     NotesPicker {}
+    TodoListPicker {}
 }

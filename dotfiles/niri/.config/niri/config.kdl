@@ -708,6 +708,7 @@ binds {
     Super+t       { spawn "qs" "ipc" "call" "worktrees" "toggle"; }
     Super+Shift+t { spawn "qs" "ipc" "call" "worktree-create" "toggle"; }
     Super+Ctrl+t  { spawn-sh "$HOME/.config/niri/scripts/rofi-ws-startwt"; }
+    Super+Ctrl+Shift+t { spawn "qs" "ipc" "call" "todos" "toggle"; }  // permanent quick-todo list
 
     // Super+O: toggle to the previously visited worktree (vim ctrl-o style).
     Super+o       { spawn-sh "$HOME/.config/niri/scripts/ws-toggle-worktree"; }

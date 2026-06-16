@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Manage the permanent quick-todo list — a single vault note. Mutation lives
+# here (not in QML); the QS TodoListPicker reads the file directly and calls
+# this to add/toggle. Toggle is by 1-based line number (the picker tracks it).
+set -euo pipefail
+
+F="$HOME/personal/notes/storage/todos.md"
+
+ensure() {
+  [ -f "$F" ] && return
+  printf '%s\n' '---' 'type: todos' 'tags: [todos]' '---' '' '# Quick todos' '' >"$F"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  add)
+    ensure
+    shift
+    text="$*"
+    [ -n "$text" ] || exit 0
+    printf -- '- [ ] %s\n' "$text" >>"$F"
+    ;;
+  toggle)
+    n="${2:-0}"
+    [ "$n" -gt 0 ] 2>/dev/null || exit 0
+    awk -v n="$n" 'NR==n {
+        if ($0 ~ /- \[ \]/)      sub(/- \[ \]/, "- [x]")
+        else if ($0 ~ /- \[x\]/) sub(/- \[x\]/, "- [ ]")
+      } { print }' "$F" >"$F.tmp" && mv "$F.tmp" "$F"
+    ;;
+  remove)
+    n="${2:-0}"
+    [ "$n" -gt 0 ] 2>/dev/null || exit 0
+    sed "${n}d" "$F" >"$F.tmp" && mv "$F.tmp" "$F"
+    ;;
+  *)
+    echo "usage: todos add <text> | toggle <line> | remove <line>" >&2
+    exit 1
+    ;;
+esac

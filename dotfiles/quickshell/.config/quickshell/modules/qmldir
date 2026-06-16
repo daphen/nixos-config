@@ -45,3 +45,5 @@ singleton ColorFormatPickerState 1.0 ColorFormatPickerState.qml
 ColorFormatPicker 1.0 ColorFormatPicker.qml
 singleton NotesPickerState 1.0 NotesPickerState.qml
 NotesPicker 1.0 NotesPicker.qml
+singleton TodoListPickerState 1.0 TodoListPickerState.qml
+TodoListPicker 1.0 TodoListPicker.qml

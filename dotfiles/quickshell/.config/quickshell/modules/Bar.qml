@@ -238,6 +238,46 @@ PanelWindow {
                     onClicked: SpendState.cycle()
                 }
             }
+
+            Item {
+                visible: TodoListPickerState.openCount > 0
+                width: todoRow.implicitWidth
+                height: todoRow.implicitHeight
+                anchors.verticalCenter: parent.verticalCenter
+
+                Row {
+                    id: todoRow
+                    spacing: 8
+
+                    Text {
+                        text: "" // nf-fa-tasks
+                        color: Theme.fg_muted
+                        font.family: Theme.iconFontFamily
+                        font.pixelSize: Theme.fontSize + 2
+                        font.weight: Theme.fontWeight
+                        font.hintingPreference: Font.PreferFullHinting
+                        renderType: Text.NativeRendering
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: TodoListPickerState.openCount
+                        color: Theme.fg_muted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize
+                        font.weight: Theme.fontWeight
+                        font.hintingPreference: Font.PreferFullHinting
+                        renderType: Text.NativeRendering
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: TodoListPickerState.toggle()
+                }
+            }
         }
     }
 
