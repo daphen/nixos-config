@@ -1,20 +1,9 @@
 #!/usr/bin/env bash
-# Super+i notification responder:
-#   1 active notification → jump straight to it.
-#   0 or 2+              → open the notification-center picker (active under
-#                          "current", dismissed under "earlier").
-set -e
-
-DIR=$(dirname "$0")
-
-list=$(qs ipc call notifications list 2>/dev/null || echo '[]')
-n=$(printf '%s' "$list" | jq 'length' 2>/dev/null || echo 0)
-
-if [ "$n" -eq 1 ]; then
-    id=$(printf '%s' "$list" | jq -r '.[0].id // empty' 2>/dev/null)
-    [ -n "$id" ] && exec "$DIR/notification-dispatch" "$id"
-fi
-
-# 0 or 2+ active → notification-center picker (current + history).
-# `--` so quickshell's IPC parses `show` as the function, not a flag.
+# Super+i → always open the notification-center picker: active notifications
+# under "current", recently-dismissed under "earlier". Pick one to jump to
+# its window/app.
+#
+# Always the picker (no auto-jump): notifications never expire here, so a
+# single lingering one would otherwise make Super+i jump unpredictably.
+# `--` so quickshell's IPC parses `show` as the function name, not a flag.
 qs ipc call -- notification-jump show >/dev/null 2>&1 || true
