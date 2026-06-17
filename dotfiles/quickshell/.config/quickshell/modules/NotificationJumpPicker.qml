@@ -27,10 +27,14 @@ Picker {
     onEnter: item => {
         if (!item || item.divider) return
         NotificationJumpPickerState.open = false
-        Quickshell.execDetached([
-            Quickshell.env("HOME") + "/.config/niri/scripts/notification-dispatch",
-            "--past", item.app, item.summary, String(item.windowId || "")
-        ])
+        const base = Quickshell.env("HOME") + "/.config/niri/scripts/notification-dispatch"
+        // Active notifications dispatch by live id so their default action
+        // fires (e.g. slk opens the channel/thread). Dismissed ones are gone,
+        // so they route by stored info (window id / app+summary).
+        if (item.notifId !== undefined && item.notifId !== null)
+            Quickshell.execDetached([base, String(item.notifId)])
+        else
+            Quickshell.execDetached([base, "--past", item.app, item.summary, String(item.windowId || "")])
     }
 
     function entry(appName, summary, windowId) {
@@ -54,7 +58,9 @@ Picker {
                 const n = vals[i]
                 activeSummaries[n.summary || ""] = true
                 const wid = (n.hints && n.hints["niri-window"] !== undefined) ? n.hints["niri-window"] : ""
-                out.push(entry(n.appName, n.summary, wid))
+                const e = entry(n.appName, n.summary, wid)
+                e.notifId = n.id
+                out.push(e)
             }
         }
 
