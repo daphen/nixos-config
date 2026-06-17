@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-ws-createwt <worktree-name> [--mode new|resume|fork] [--session-id <sid>]
+ws-createwt <worktree-name> [--mode auto|new|resume|fork] [--session-id <sid>]
+
+Default mode `auto` resumes the worktree's most recent claude session
+when one exists (so reopening a stack comes back with its conversation
+intact), falling back to a fresh session otherwise.
 
 Each worktree lives on its own named niri workspace `lovable-<name>`.
 Spawns 4 windows in 4 columns: devenv terminal (kitty), work-profile
@@ -16,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -23,6 +28,18 @@ from pathlib import Path
 
 HOME = os.environ["HOME"]
 LOVABLE_DIR = Path(HOME) / "work" / "lovable"
+
+
+def latest_session_id(worktree_path: Path) -> str | None:
+    """Most-recently-modified claude session for this worktree's cwd, or
+    None. Claude stores sessions at ~/.claude/projects/<cwd with '/' and
+    '.' replaced by '-'>/<session-uuid>.jsonl."""
+    enc = re.sub(r"[/.]", "-", str(worktree_path))
+    pdir = Path(HOME) / ".claude" / "projects" / enc
+    if not pdir.is_dir():
+        return None
+    sessions = sorted(pdir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return sessions[0].stem if sessions else None
 
 
 def niri_json(*args: str):
@@ -124,7 +141,9 @@ def spawn_and_wait(cmd: list[str], timeout: float = 9.0) -> int | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("name", help="worktree short name (creates branch daphen/<name>)")
-    ap.add_argument("--mode", choices=["new", "resume", "fork"], default="new")
+    ap.add_argument("--mode", choices=["auto", "new", "resume", "fork"], default="auto",
+                    help="auto (default): resume the worktree's latest claude "
+                         "session if one exists, else start fresh")
     ap.add_argument("--session-id", default=None,
                     help="claude session id for resume/fork")
     args = ap.parse_args()
@@ -142,9 +161,13 @@ def main() -> int:
 
     # 1. Create or switch to the worktree (using `wt`)
     if not worktree_path.is_dir():
-        print(f"==> creating worktree {branch}")
+        print(f"==> creating worktree {branch} (off fresh origin/main)")
+        # Branch off remote main, not the local main ref, which can sit
+        # thousands of commits stale and births broken worktrees (missing
+        # generated files, build failures). Fetch first so origin/main is current.
+        subprocess.run(["git", "fetch", "origin", "main"], cwd=str(LOVABLE_DIR))
         rc = subprocess.run(
-            ["wt", "switch", "--create", branch],
+            ["wt", "switch", "--create", "--base", "origin/main", branch],
             cwd=str(LOVABLE_DIR),
         ).returncode
         if rc != 0:
@@ -155,19 +178,27 @@ def main() -> int:
     print(f"==> focusing workspace {workspace}")
     ensure_workspace(workspace)
 
-    # 3. Build the claude command
-    if args.mode == "new":
+    # 3. Build the claude command. `auto` resumes the worktree's most
+    #    recent session on reopen so the stack returns with its
+    #    conversation intact; a fresh worktree has none and falls to new.
+    mode, sid = args.mode, args.session_id
+    if mode == "auto":
+        sid = latest_session_id(worktree_path)
+        mode = "resume" if sid else "new"
+        print(f"==> auto: {'resuming ' + sid if sid else 'no prior session — starting new'}")
+
+    if mode == "new":
         claude_cmd = ["claude"]
-    elif args.mode == "resume":
-        if not args.session_id:
+    elif mode == "resume":
+        if not sid:
             print("--session-id required for resume", file=sys.stderr)
             return 2
-        claude_cmd = ["claude", "--resume", args.session_id]
+        claude_cmd = ["claude", "--resume", sid]
     else:  # fork
-        if not args.session_id:
+        if not sid:
             print("--session-id required for fork", file=sys.stderr)
             return 2
-        claude_cmd = ["claude", "--resume", args.session_id, "--fork-session"]
+        claude_cmd = ["claude", "--resume", sid, "--fork-session"]
 
     # 4. Spawn the 4 stack windows. Each one lands as its own column on
     #    the (now-focused) workspace — no merge logic needed.
@@ -189,7 +220,7 @@ def main() -> int:
         preview_url,
     ])
 
-    print(f"==> spawning claude session ({args.mode})")
+    print(f"==> spawning claude session ({mode})")
     spawn_and_wait([
         "kitty",
         "--class", "claude",

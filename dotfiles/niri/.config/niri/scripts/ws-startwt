@@ -11,8 +11,8 @@ Rows are tagged in the leading column:
     ssh  <name>       <claim>  (last-seen)
 
 Worktree rows go through the existing claude-mode picker
-(new/resume/fork) before forwarding to ws-createwt. SSH rows skip that
-prompt and forward directly to ws-createlovbox.
+(auto/new/resume/fork) before forwarding to ws-createwt. SSH rows skip
+that prompt and forward directly to ws-createlovbox.
 """
 from __future__ import annotations
 
@@ -107,10 +107,10 @@ def handle_worktree_pick(branch: str, picked_path: str) -> int:
     name = Path(picked_path).name.removeprefix("lovable.daphen-")
 
     mode = fzf(
-        ["new", "resume", "fork"],
+        ["auto", "new", "resume", "fork"],
         "claude session> ",
         header=f"Claude session for {name}",
-    ) or "new"
+    ) or "auto"
 
     cmd = [str(Path(__file__).parent / "ws-createwt"), name, "--mode", mode]
     if mode in ("resume", "fork"):
