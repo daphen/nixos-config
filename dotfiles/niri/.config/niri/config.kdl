@@ -637,6 +637,16 @@ window-rule {
     default-window-height { fixed 900; }
 }
 
+// Dim inactive windows so the focused one stands out. Helium
+// (browser-personal/browser-work) is excluded — it stays full opacity
+// even when unfocused. Placed last so it wins the opacity for the
+// inactive case over the earlier per-app opacity rules.
+window-rule {
+    match is-active=false
+    exclude app-id=r#"^(browser-personal|browser-work)$"#
+    opacity 0.9
+}
+
 binds {
     // Keys consist of modifiers separated by + signs, followed by an XKB key name
     // in the end. To find an XKB name for a particular key, you may use a program
