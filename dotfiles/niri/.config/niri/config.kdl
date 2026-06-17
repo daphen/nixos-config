@@ -769,9 +769,13 @@ binds {
     XF86AudioNext allow-when-locked=true { spawn "playerctl" "next"; }
     XF86AudioPrev allow-when-locked=true { spawn "playerctl" "previous"; }
 
-    // Window navigation with Super+hl - crosses monitors at edges
-    Super+h { focus-column-or-monitor-left; }
-    Super+l { focus-column-or-monitor-right; }
+    // Window navigation with Super+hl — stays on the current monitor.
+    Super+h { focus-column-left; }
+    Super+l { focus-column-right; }
+    // Toggle focus to the other monitor. Super+hl no longer crosses, and
+    // Alt+hl needs the laptop keyboard's Alt — this flips between the two
+    // displays without leaving the home row.
+    Super+u { focus-monitor-next; }
 
     // Move windows with Super+Shift+hl. Also pokes the niri-minimap
     // daemon (SIGUSR1) because niri's event-stream doesn't emit any
