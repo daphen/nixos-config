@@ -106,23 +106,10 @@ def handle_worktree_pick(branch: str, picked_path: str) -> int:
     # `wt switch --create` against an already-checked-out branch.
     name = Path(picked_path).name.removeprefix("lovable.daphen-")
 
-    mode = fzf(
-        ["auto", "new", "resume", "fork"],
-        "claude session> ",
-        header=f"Claude session for {name}",
-    ) or "auto"
-
-    cmd = [str(Path(__file__).parent / "ws-createwt"), name, "--mode", mode]
-    if mode in ("resume", "fork"):
-        sid = subprocess.run(
-            [str(Path(HOME) / ".config/niri/scripts/spawn-claude-session-picker"),
-             "--id-only"],
-            capture_output=True, text=True,
-        ).stdout.strip()
-        if sid:
-            cmd += ["--session-id", sid]
-        else:
-            return 0
+    # ws-createwt defaults to --mode auto: resumes the worktree's latest
+    # claude session if one exists, else starts fresh. fork / specific-
+    # session resume are reachable via `ws-createwt --mode ...` directly.
+    cmd = [str(Path(__file__).parent / "ws-createwt"), name]
     return subprocess.run(cmd).returncode
 
 
@@ -146,9 +133,31 @@ def sandbox_unix(e: dict) -> float:
         return 0.0
 
 
+def emit_json(worktrees: list[tuple[str, str]], sandboxes: list[dict]) -> None:
+    """List-only mode for the quickshell WorktreeCreatePicker: the merged,
+    recency-sorted resumable set. Each entry dispatches to ws-createwt
+    (wt) or ws-createlovbox (lol). The caller filters out anything already
+    open via the niri workspace name `lovable-<name>`."""
+    rows: list[tuple[float, dict]] = []
+    for _branch, path in worktrees:
+        name = Path(path).name.removeprefix("lovable.daphen-")
+        rows.append((worktree_mtime(path), {"kind": "wt", "name": name, "target": None}))
+    for e in sandboxes:
+        name = derive_sandbox_name(e)
+        pid = e.get("project_id") or ""
+        target = f"https://lovable.dev/projects/{pid}" if pid else e.get("claim", "")
+        rows.append((sandbox_unix(e), {"kind": "lol", "name": name, "target": target}))
+    rows.sort(key=lambda r: r[0], reverse=True)
+    print(json.dumps([r[1] for r in rows]))
+
+
 def main() -> int:
     worktrees = list_worktrees()
     sandboxes = list_sandboxes()
+
+    if "--json" in sys.argv:
+        emit_json(worktrees, sandboxes)
+        return 0
 
     if not worktrees and not sandboxes:
         print("no worktrees or lovssh history found", file=sys.stderr)

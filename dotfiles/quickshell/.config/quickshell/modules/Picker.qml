@@ -44,14 +44,26 @@ PanelWindow {
     readonly property var filtered: {
         const q = query.trim().toLowerCase()
         if (q.length === 0) return items
+        // While searching, drop section dividers — they're only meaningful
+        // in the unfiltered, grouped view.
         const out = []
         for (let i = 0; i < items.length; i++) {
             const it = items[i]
+            if (it.divider) continue
             const label = String(it.label || "").toLowerCase()
             const sub = subtitleField && it[subtitleField] ? String(it[subtitleField]).toLowerCase() : ""
             if (label.indexOf(q) >= 0 || (sub && sub.indexOf(q) >= 0)) out.push(it)
         }
         return out
+    }
+
+    // Move selection by `dir`, skipping non-selectable divider rows.
+    function step(dir) {
+        const n = filtered.length
+        if (n === 0) return
+        let i = selectedIndex + dir
+        while (i >= 0 && i < n && filtered[i] && filtered[i].divider) i += dir
+        if (i >= 0 && i < n) selectedIndex = i
     }
 
     function activate() {
@@ -64,7 +76,9 @@ PanelWindow {
         }
         if (filtered.length === 0) return
         const idx = Math.max(0, Math.min(selectedIndex, filtered.length - 1))
-        onEnter(filtered[idx])
+        const item = filtered[idx]
+        if (item && item.divider) return
+        onEnter(item)
         closeRequested()
     }
 
@@ -170,13 +184,11 @@ PanelWindow {
                         event.accepted = true
                     } else if (event.key === Qt.Key_Down
                             || (event.key === Qt.Key_J && (event.modifiers & Qt.ControlModifier))) {
-                        if (root.filtered.length > 0)
-                            root.selectedIndex = Math.min(root.selectedIndex + 1, root.filtered.length - 1)
+                        root.step(1)
                         event.accepted = true
                     } else if (event.key === Qt.Key_Up
                             || (event.key === Qt.Key_K && (event.modifiers & Qt.ControlModifier))) {
-                        if (root.filtered.length > 0)
-                            root.selectedIndex = Math.max(root.selectedIndex - 1, 0)
+                        root.step(-1)
                         event.accepted = true
                     } else if (event.key === root.altKey && (event.modifiers & Qt.ControlModifier)) {
                         root.altActivate()
@@ -195,23 +207,43 @@ PanelWindow {
                 spacing: 2
 
                 delegate: Rectangle {
+                    id: rowItem
                     required property var modelData
                     required property int index
+                    property bool isDivider: !!(modelData && modelData.divider)
                     width: list.width
-                    height: 36
-                    color: index === root.selectedIndex
+                    height: isDivider ? 26 : 36
+                    color: (!isDivider && index === root.selectedIndex)
                         ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.10)
                         : "transparent"
                     radius: Theme.radiusSm
 
+                    // Non-selectable section divider.
                     Text {
+                        visible: rowItem.isDivider
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 4
+                        text: rowItem.modelData ? String(rowItem.modelData.label || "") : ""
+                        color: Theme.fg_muted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                        font.weight: Theme.fontWeight
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 1
+                        renderType: Text.NativeRendering
+                    }
+
+                    Text {
+                        visible: !rowItem.isDivider
                         anchors.left: parent.left
                         anchors.leftMargin: 10
                         anchors.right: subtitleText.left
                         anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
-                        text: modelData ? String(modelData.label || "?") : "?"
-                        color: (root.highlightField && modelData && modelData[root.highlightField] === true)
+                        text: rowItem.modelData ? String(rowItem.modelData.label || "?") : "?"
+                        color: (root.highlightField && rowItem.modelData && rowItem.modelData[root.highlightField] === true)
                             ? Theme.cursor : Theme.fg
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize
@@ -221,8 +253,8 @@ PanelWindow {
                     }
                     Text {
                         id: subtitleText
-                        visible: root.subtitleField && modelData && (modelData[root.subtitleField] || "").length > 0
-                        text: modelData && root.subtitleField ? String(modelData[root.subtitleField] || "") : ""
+                        visible: !rowItem.isDivider && root.subtitleField && rowItem.modelData && (rowItem.modelData[root.subtitleField] || "").length > 0
+                        text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
                         color: Theme.fg_muted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize - 2
@@ -235,9 +267,10 @@ PanelWindow {
 
                     MouseArea {
                         anchors.fill: parent
+                        enabled: !rowItem.isDivider
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            root.selectedIndex = index
+                            root.selectedIndex = rowItem.index
                             root.activate()
                         }
                     }
