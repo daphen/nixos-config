@@ -33,10 +33,16 @@ focus_worktree_from_summary() {
 
 # ── History form: the live notification is gone, focus is best-effort ──
 if [ "$1" = "--past" ]; then
-    app="$2"; summary="$3"
+    app="$2"; summary="$3"; winid="$4"
     case "$app" in
         endcord)     exec "$DIR/endcord-jump-inbox" ;;
-        kitty)       focus_worktree_from_summary "$summary"; exit 0 ;;
+        kitty)
+            if [ -n "$winid" ] && [ "$winid" != "null" ]; then
+                niri msg action focus-window --id "$winid" >/dev/null 2>&1 || true
+            else
+                focus_worktree_from_summary "$summary"
+            fi
+            exit 0 ;;
         *)           focus_app_window "$app"; exit 0 ;;
     esac
 fi
