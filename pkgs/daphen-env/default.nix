@@ -14,7 +14,7 @@ let
   configRoot = pkgs.runCommand "daphen-env-config" {
     nativeBuildInputs = [ pkgs.python3 ];
   } ''
-    mkdir -p $out/fish $out/starship $out/nvim/colors $out/fzf
+    mkdir -p $out/fish $out/starship $out/nvim/colors $out/fzf $out/claude
 
     # Fish: config.fish, conf.d, functions, fish_plugins (completions/ isn't
     # in the dotfiles repo — fish autoloads built-in completions from the
@@ -75,6 +75,17 @@ let
         $THEMES/colors.json \
         $mode \
         $out/fzf/$mode.conf
+
+      # Claude Code theme — the theme name stays "custom:dotfiles"; its
+      # contents (themes/dotfiles.json) are the per-mode base. Generate both
+      # so the runtime wrapper can drop the active-mode one in (proart swaps
+      # the same file per mode via theme-manager; the sandbox mirrors that).
+      python3 $THEMES/theme-processor.py \
+        $THEMES/templates/claude-code-$mode.template \
+        $THEMES/colors.json \
+        $mode \
+        $out/claude/cc-$mode.json \
+        claude-code
     done
 
     # nvim colorscheme files — dual-theme lua, generated from the same
@@ -262,6 +273,12 @@ in pkgs.writeShellApplication {
     if [ -e "$WRITABLE_CONFIG/fzf/$THEME_MODE.conf" ]; then
       mkdir -p "$HOME/.config/fzf"
       cp -f "$WRITABLE_CONFIG/fzf/$THEME_MODE.conf" "$HOME/.config/fzf/opts.conf"
+    fi
+    # Claude theme (custom:dotfiles) follows the mode — swap dotfiles.json's
+    # contents to the matching base, like theme-manager does on proart.
+    if [ -e "$WRITABLE_CONFIG/claude/cc-$THEME_MODE.json" ]; then
+      mkdir -p "$HOME/.claude/themes"
+      cp -f "$WRITABLE_CONFIG/claude/cc-$THEME_MODE.json" "$HOME/.claude/themes/dotfiles.json"
     fi
 
     export XDG_CONFIG_HOME="$WRITABLE_CONFIG"
