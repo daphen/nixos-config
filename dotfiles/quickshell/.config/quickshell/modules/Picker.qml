@@ -35,11 +35,18 @@ PanelWindow {
     onActiveChanged: {
         if (active && search) {
             search.text = ""
-            selectedIndex = 0
+            selectedIndex = firstSelectable()
             search.forceActiveFocus()
         }
     }
-    onQueryChanged: selectedIndex = 0
+    onQueryChanged: selectedIndex = firstSelectable()
+
+    // First non-divider row — so selection never starts on a section header.
+    function firstSelectable() {
+        for (let i = 0; i < filtered.length; i++)
+            if (!filtered[i] || !filtered[i].divider) return i
+        return 0
+    }
 
     readonly property var filtered: {
         const q = query.trim().toLowerCase()

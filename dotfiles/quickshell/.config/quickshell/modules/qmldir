@@ -47,3 +47,5 @@ singleton NotesPickerState 1.0 NotesPickerState.qml
 NotesPicker 1.0 NotesPicker.qml
 singleton TodoListPickerState 1.0 TodoListPickerState.qml
 TodoListPicker 1.0 TodoListPicker.qml
+singleton NotificationJumpPickerState 1.0 NotificationJumpPickerState.qml
+NotificationJumpPicker 1.0 NotificationJumpPicker.qml

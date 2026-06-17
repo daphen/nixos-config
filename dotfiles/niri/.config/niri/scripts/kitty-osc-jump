@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
 # Respond to a kitty OSC-notify notification (Claude Code et al).
 #
-# Kitty registers a default action on every notification it sends. We:
-#   1. Find the topmost kitty notification
-#   2. If the summary tags a `lovable.daphen-<name>` directory, focus
-#      the matching niri workspace first (`lovable-<name>`) — so the
-#      workspace becomes active even if niri ignores kitty's window
-#      activation token (focus-stealing prevention).
-#   3. Invoke the notification's default action — kitty focuses the
-#      specific terminal window inside the workspace.
-#   4. Dismiss the notification.
+# With an explicit notification id ($1) act on that one; otherwise the
+# topmost kitty notification. Focus the originating window:
+#   1. Prefer the `niri-window` hint the hook embeds — the exact window,
+#      works for any session (worktree or not).
+#   2. Else, if the summary tags a `lovable.daphen-<name>` worktree, focus
+#      that workspace and its claude window.
+# Then dismiss the notification.
 set -e
 
-data=$(qs ipc call notifications list 2>/dev/null \
-    | jq -c 'map(select(.app_name == "kitty")) | .[0] // empty' 2>/dev/null)
+id="${1:-}"
+if [ -n "$id" ]; then
+    data=$(qs ipc call notifications list 2>/dev/null \
+        | jq -c --argjson id "$id" 'map(select(.id == $id)) | .[0] // empty' 2>/dev/null)
+else
+    data=$(qs ipc call notifications list 2>/dev/null \
+        | jq -c 'map(select(.app_name == "kitty")) | .[0] // empty' 2>/dev/null)
+fi
 
 if [ -z "$data" ] || [ "$data" = "null" ]; then
     exit 0
@@ -21,15 +25,22 @@ fi
 
 kitty_id=$(printf '%s' "$data" | jq -r '.id // empty')
 summary=$(printf '%s' "$data" | jq -r '.summary // empty')
+win=$(printf '%s' "$data" | jq -r '.hints["niri-window"] // empty')
 
-# Map summary worktree marker → niri workspace name.
-# Summary form: "Claude · lovable.daphen-<short>" → workspace lovable-<short>.
-ws=$(printf '%s' "$summary" | grep -oE 'lovable\.daphen-[^[:space:]]+' | head -1 | sed 's|lovable\.daphen-|lovable-|')
-if [ -n "$ws" ]; then
-    niri msg action focus-workspace "$ws" >/dev/null 2>&1 || true
+if [ -n "$win" ] && [ "$win" != "null" ]; then
+    niri msg action focus-window --id "$win" >/dev/null 2>&1 || true
+else
+    # Summary form: "Claude · lovable.daphen-<short>" → workspace lovable-<short>.
+    ws=$(printf '%s' "$summary" | grep -oE 'lovable\.daphen-[^[:space:]]+' | head -1 | sed 's|lovable\.daphen-|lovable-|')
+    if [ -n "$ws" ]; then
+        niri msg action focus-workspace "$ws" >/dev/null 2>&1 || true
+        ws_id=$(niri msg --json workspaces 2>/dev/null | jq -r --arg n "$ws" '.[]|select(.name==$n)|.id' | head -1)
+        if [ -n "$ws_id" ]; then
+            cwin=$(niri msg --json windows 2>/dev/null \
+                | jq -r --argjson w "$ws_id" '[.[]|select(.workspace_id==$w and .app_id=="claude")][0].id // empty')
+            [ -n "$cwin" ] && niri msg action focus-window --id "$cwin" >/dev/null 2>&1 || true
+        fi
+    fi
 fi
 
-if [ -n "$kitty_id" ]; then
-    qs ipc call notifications invoke "$kitty_id" >/dev/null 2>&1 || true
-    qs ipc call notifications dismiss "$kitty_id" >/dev/null 2>&1 || true
-fi
+[ -n "$kitty_id" ] && qs ipc call notifications dismiss "$kitty_id" >/dev/null 2>&1 || true

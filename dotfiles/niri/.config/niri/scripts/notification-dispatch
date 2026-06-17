@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Focus the window/app for a notification, shared by inbox-jump and the
+# NotificationJumpPicker. Two forms:
+#   notification-dispatch <id>              active notification (precise)
+#   notification-dispatch --past <app> <summary>   dismissed (best-effort)
+set -e
+
+DIR=$(dirname "$0")
+
+# Focus a window whose app_id matches $1 (substring, either direction).
+focus_app_window() {
+    local la win
+    la=$(printf %s "$1" | tr '[:upper:]' '[:lower:]')
+    case "$la" in helium|chromium|chrome|firefox) la="browser" ;; esac
+    win=$(niri msg --json windows 2>/dev/null | jq -r --arg a "$la" \
+        '[.[] | (.app_id // "" | ascii_downcase) as $w
+          | select($w != "" and (($w | contains($a)) or ($a | contains($w))))][0].id // empty')
+    [ -n "$win" ] && niri msg action focus-window --id "$win" >/dev/null 2>&1 || true
+}
+
+# Focus a worktree's claude window from a "lovable.daphen-<name>" summary.
+focus_worktree_from_summary() {
+    local ws ws_id cwin
+    ws=$(printf '%s' "$1" | grep -oE 'lovable\.daphen-[^[:space:]]+' | head -1 | sed 's|lovable\.daphen-|lovable-|')
+    [ -z "$ws" ] && return 0
+    niri msg action focus-workspace "$ws" >/dev/null 2>&1 || true
+    ws_id=$(niri msg --json workspaces 2>/dev/null | jq -r --arg n "$ws" '.[]|select(.name==$n)|.id' | head -1)
+    [ -z "$ws_id" ] && return 0
+    cwin=$(niri msg --json windows 2>/dev/null \
+        | jq -r --argjson w "$ws_id" '[.[]|select(.workspace_id==$w and .app_id=="claude")][0].id // empty')
+    [ -n "$cwin" ] && niri msg action focus-window --id "$cwin" >/dev/null 2>&1 || true
+}
+
+# ── History form: the live notification is gone, focus is best-effort ──
+if [ "$1" = "--past" ]; then
+    app="$2"; summary="$3"
+    case "$app" in
+        endcord)     exec "$DIR/endcord-jump-inbox" ;;
+        kitty)       focus_worktree_from_summary "$summary"; exit 0 ;;
+        *)           focus_app_window "$app"; exit 0 ;;
+    esac
+fi
+
+# ── Active form: route by the live notification's app_name ──
+id="${1:-}"
+[ -z "$id" ] && exit 0
+
+data=$(qs ipc call notifications list 2>/dev/null \
+    | jq -c --argjson id "$id" 'map(select(.id == $id)) | .[0] // empty' 2>/dev/null)
+[ -z "$data" ] && exit 0
+
+app=$(printf '%s' "$data" | jq -r '.app_name // empty')
+
+case "$app" in
+    endcord)
+        exec "$DIR/endcord-jump-inbox"
+        ;;
+    Slack|slack)
+        exec "$DIR/slack-jump-inbox"
+        ;;
+    kitty)
+        exec "$DIR/kitty-osc-jump" "$id"
+        ;;
+    *)
+        qs ipc call notifications invoke "$id" >/dev/null 2>&1 || true
+        qs ipc call notifications dismiss "$id" >/dev/null 2>&1 || true
+        sleep 0.05
+        focused=$(niri msg --json focused-window 2>/dev/null | jq -r '.app_id // empty' | tr '[:upper:]' '[:lower:]')
+        la=$(printf %s "$app" | tr '[:upper:]' '[:lower:]')
+        case "$la" in helium|chromium|chrome|firefox) la="browser" ;; esac
+        if [ -n "$focused" ]; then
+            case "$focused" in *"$la"*) exit 0 ;; esac
+            case "$la" in *"$focused"*) exit 0 ;; esac
+        fi
+        focus_app_window "$app"
+        ;;
+esac

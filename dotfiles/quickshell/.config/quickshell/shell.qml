@@ -32,4 +32,5 @@ ShellRoot {
     ColorFormatPicker {}
     NotesPicker {}
     TodoListPicker {}
+    NotificationJumpPicker {}
 }
