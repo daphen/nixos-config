@@ -35,6 +35,10 @@ SETTLE_SECONDS = 0.5
 MOVE_GUARD = 64  # max workspaces to move in one pass (runaway backstop)
 
 
+def log(msg: str) -> None:
+    print(f"{time.strftime('%H:%M:%S')} {msg}", flush=True)
+
+
 def niri_json(*args: str):
     out = subprocess.run(
         ["niri", "msg", "--json", *args], capture_output=True, text=True
@@ -124,6 +128,7 @@ def move_all_workspaces_to(target: str) -> None:
         # order, so the original ordering is preserved on the destination.
         src.sort(key=lambda w: (w["output"], w["idx"]))
         w = src[0]
+        log(f"  move workspace {w['name'] or w['idx']!r} {w['output']} -> {target}")
         if w["name"]:
             action("move-workspace-to-monitor", target, "--reference", w["name"])
         else:
@@ -148,6 +153,7 @@ def normalize_widths() -> None:
         cur = (w.get("layout") or {}).get("window_size") or [None]
         if cur[0] is not None and abs(cur[0] - target) <= 2:
             continue
+        log(f"  resize {app} (id {w['id']}) {cur[0]} -> {target}")
         action("focus-window", "--id", str(w["id"]))
         action("set-column-width", str(target))
         touched = True
@@ -156,11 +162,14 @@ def normalize_widths() -> None:
 
 
 def handle_topology_change(added: set[str], connected: set[str]) -> None:
+    log(f"topology change: added={sorted(added) or '-'} now={sorted(connected)}")
     time.sleep(SETTLE_SECONDS)
     target = pick_external(added, connected)
     if target:
+        log(f"external {target} present -> moving workspaces to it")
         move_all_workspaces_to(target)
     normalize_widths()
+    log("done")
 
 
 def plan() -> None:
