@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""
+niri-hotplug-handler
+
+Reacts to monitor connect/disconnect. niri emits no output-add/remove
+event, but `Workspaces changed` fires on every hotplug, so we use it as a
+wakeup and diff `niri msg outputs` to tell a real topology change from
+ordinary workspace churn. On a change:
+
+  1. External connected → move every workspace onto it, in existing order.
+     The external is always the main display when present.
+  2. Re-apply each window's configured `default-column-width` (the per-app
+     `fixed` px value from config.kdl). niri only honours that rule at
+     window-open, never when a hotplug shoves windows onto a
+     differently-sized output — which is why windows land too small on the
+     high-scale laptop and too wide on the low-scale ultrawide.
+
+Our own workspace moves never change the set of connected outputs, so the
+output-set diff prevents the handler from looping on its own actions.
+"""
+from __future__ import annotations
+import fcntl
+import json
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+LAPTOP = "eDP-1"
+CONFIG = Path("~/.config/niri/config.kdl").expanduser()
+# niri can fire `Workspaces changed` before it finishes migrating windows
+# to the new topology; wait for it to settle before we act.
+SETTLE_SECONDS = 0.5
+MOVE_GUARD = 64  # max workspaces to move in one pass (runaway backstop)
+
+
+def niri_json(*args: str):
+    out = subprocess.run(
+        ["niri", "msg", "--json", *args], capture_output=True, text=True
+    )
+    return json.loads(out.stdout) if out.stdout.strip() else None
+
+
+def action(*args: str) -> None:
+    subprocess.run(
+        ["niri", "msg", "action", *args],
+        capture_output=True, text=True,
+    )
+
+
+def connected_outputs() -> set[str]:
+    outs = niri_json("outputs") or {}
+    return set(outs.keys())
+
+
+def output_width(name: str) -> int:
+    o = (niri_json("outputs") or {}).get(name, {})
+    for path in (("logical", "width"), ("current_mode", "width")):
+        cur = o
+        for k in path:
+            cur = cur.get(k) if isinstance(cur, dict) else None
+        if isinstance(cur, (int, float)):
+            return int(cur)
+    return 0
+
+
+def parse_width_rules() -> list[tuple[re.Pattern, int]]:
+    """app-id regex -> fixed column width, parsed from window-rule blocks
+    that set `default-column-width { fixed N }`. Proportion rules are
+    skipped: those columns already rescale with the output on their own."""
+    try:
+        text = CONFIG.read_text()
+    except OSError:
+        return []
+    lines = text.splitlines()
+    rules: list[tuple[re.Pattern, int]] = []
+    i, n = 0, len(lines)
+    while i < n:
+        s = lines[i].strip()
+        if s.startswith("window-rule") and "{" in s and not s.startswith("/-"):
+            depth = s.count("{") - s.count("}")
+            block = [s]
+            i += 1
+            while i < n and depth > 0:
+                depth += lines[i].count("{") - lines[i].count("}")
+                block.append(lines[i])
+                i += 1
+            blob = "\n".join(block)
+            m = re.search(r"default-column-width\s*\{\s*fixed\s+(\d+)", blob)
+            if m:
+                width = int(m.group(1))
+                for a, b in re.findall(r'app-id=(?:r#"(.+?)"#|"(.+?)")', blob):
+                    try:
+                        rules.append((re.compile(a or b), width))
+                    except re.error:
+                        pass
+            continue
+        i += 1
+    return rules
+
+
+def pick_external(added: set[str], connected: set[str]) -> str | None:
+    externals = sorted(o for o in connected if o != LAPTOP)
+    if not externals:
+        return None
+    fresh = [o for o in externals if o in added]
+    pool = fresh or externals
+    return max(pool, key=output_width)
+
+
+def move_all_workspaces_to(target: str) -> None:
+    windows = niri_json("windows") or []
+    populated = {w["workspace_id"] for w in windows}
+    for _ in range(MOVE_GUARD):
+        wss = niri_json("workspaces") or []
+        src = [
+            w for w in wss
+            if w["output"] != target and (w["id"] in populated or w["name"])
+        ]
+        if not src:
+            break
+        # Lowest idx first → niri appends to the target's tail in call
+        # order, so the original ordering is preserved on the destination.
+        src.sort(key=lambda w: (w["output"], w["idx"]))
+        w = src[0]
+        if w["name"]:
+            action("move-workspace-to-monitor", target, "--reference", w["name"])
+        else:
+            action("focus-workspace", str(w["idx"]))
+            action("move-workspace-to-monitor", target)
+
+
+def normalize_widths() -> None:
+    rules = parse_width_rules()
+    if not rules:
+        return
+    windows = niri_json("windows") or []
+    focused = next((w["id"] for w in windows if w.get("is_focused")), None)
+    touched = False
+    for w in windows:
+        if w.get("is_floating"):
+            continue
+        app = w.get("app_id") or ""
+        target = next((px for pat, px in rules if pat.search(app)), None)
+        if target is None:
+            continue
+        cur = (w.get("layout") or {}).get("window_size") or [None]
+        if cur[0] is not None and abs(cur[0] - target) <= 2:
+            continue
+        action("focus-window", "--id", str(w["id"]))
+        action("set-column-width", str(target))
+        touched = True
+    if touched and focused is not None:
+        action("focus-window", "--id", str(focused))
+
+
+def handle_topology_change(added: set[str], connected: set[str]) -> None:
+    time.sleep(SETTLE_SECONDS)
+    target = pick_external(added, connected)
+    if target:
+        move_all_workspaces_to(target)
+    normalize_widths()
+
+
+def plan() -> None:
+    """Print parsed rules + what would happen for the current state. No
+    side effects — for validating logic without triggering the daemon."""
+    print("connected outputs:", sorted(connected_outputs()))
+    print("\nwidth rules (app-id regex -> px):")
+    for pat, px in parse_width_rules():
+        print(f"  {pat.pattern:40} -> {px}")
+    print("\nwindows that would be resized:")
+    rules = parse_width_rules()
+    for w in niri_json("windows") or []:
+        if w.get("is_floating"):
+            continue
+        app = w.get("app_id") or ""
+        target = next((px for pat, px in rules if pat.search(app)), None)
+        if target is None:
+            continue
+        cur = (w.get("layout") or {}).get("window_size") or [None]
+        mark = "ok" if cur[0] is not None and abs(cur[0] - target) <= 2 else "FIX"
+        print(f"  [{mark}] id={w['id']:3} {app:22} {cur[0]} -> {target}")
+    print("\nworkspaces that would move to external (if one connects):")
+    for w in sorted(niri_json("workspaces") or [], key=lambda w: (w["output"], w["idx"])):
+        moves = w["output"] == LAPTOP and bool(w["name"])
+        print(f"  {w['output']:6} idx={w['idx']} name={w['name']!r} {'-> external' if moves else ''}")
+
+
+def main() -> None:
+    if "--plan" in sys.argv:
+        plan()
+        return
+    # Singleton: spawn-at-startup plus a manual launch must not stack two
+    # daemons that both react to the same hotplug.
+    lock = open("/tmp/niri-hotplug-handler.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return
+    known = connected_outputs()
+    while True:
+        proc = subprocess.Popen(
+            ["niri", "msg", "event-stream"],
+            stdout=subprocess.PIPE, text=True, bufsize=1,
+        )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            if "Workspaces changed" not in line:
+                continue
+            cur = connected_outputs()
+            if cur == known:
+                continue
+            added = cur - known
+            known = cur
+            handle_topology_change(added, cur)
+        proc.wait()
+        time.sleep(1)  # event-stream dropped; reconnect
+
+
+if __name__ == "__main__":
+    main()

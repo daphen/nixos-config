@@ -376,6 +376,10 @@ spawn-sh-at-startup "/home/daphen/.config/niri/scripts/niri-focus-tracker >> /tm
 // Start workspace-stack tracker (records the active lovable-* workspace)
 spawn-sh-at-startup "/home/daphen/.config/niri/scripts/ws-tracker >> /tmp/ws-tracker.log 2>&1"
 
+// On monitor hotplug: move workspaces to the external (it's always main)
+// and re-apply each app's configured fixed column width.
+spawn-sh-at-startup "/home/daphen/.config/niri/scripts/niri-hotplug-handler >> /tmp/niri-hotplug-handler.log 2>&1"
+
 // Ensure a named "chat" workspace exists for the chat-app window-rules
 // below. Position isn't pinned — niri keeps named workspaces wherever
 // they're moved.
