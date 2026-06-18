@@ -15,6 +15,10 @@ Singleton {
     property bool open: false
     property var items: [] // [{ text, done, line }]
 
+    // Opening the list drops finished items completed > 24h ago; the FileView
+    // watch then re-reads the pruned file.
+    onOpenChanged: if (open) Quickshell.execDetached([root.script, "prune"])
+
     // Open (unfinished) count, for the bar pill. Recomputes when items change.
     readonly property int openCount: {
         let n = 0
@@ -63,7 +67,12 @@ Singleton {
         const re = /^\s*- \[([ xX])\]\s+(.*\S)\s*$/
         for (let i = 0; i < lines.length; i++) {
             const m = lines[i].match(re)
-            if (m) out.push({ text: m[2], done: m[1].toLowerCase() === "x", line: i + 1 })
+            if (m) {
+                // Strip the `<!-- done:EPOCH -->` completion stamp (used for
+                // the 24h prune) from the displayed text.
+                const text = m[2].replace(/\s*<!--\s*done:\d+\s*-->\s*$/, "")
+                out.push({ text: text, done: m[1].toLowerCase() === "x", line: i + 1 })
+            }
         }
         // Open items first, finished ones sink to the bottom (file order
         // preserved within each group; each item keeps its real line number).

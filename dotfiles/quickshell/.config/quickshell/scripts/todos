@@ -27,9 +27,16 @@ case "$cmd" in
   toggle)
     n="${2:-0}"
     [ "$n" -gt 0 ] 2>/dev/null || exit 0
-    awk -v n="$n" 'NR==n {
-        if ($0 ~ /- \[ \]/)      sub(/- \[ \]/, "- [x]")
-        else if ($0 ~ /- \[x\]/) sub(/- \[x\]/, "- [ ]")
+    # Checking an item stamps a completion time (used by `prune`); unchecking
+    # strips it.
+    awk -v n="$n" -v now="$(date +%s)" 'NR==n {
+        if ($0 ~ /- \[ \]/) {
+            sub(/- \[ \]/, "- [x]")
+            if ($0 !~ /<!-- done:[0-9]+ -->/) $0 = $0 " <!-- done:" now " -->"
+        } else if ($0 ~ /- \[x\]/) {
+            sub(/- \[x\]/, "- [ ]")
+            sub(/[[:space:]]*<!-- done:[0-9]+ -->[[:space:]]*$/, "")
+        }
       } { print }' "$F" >"$F.tmp" && mv "$F.tmp" "$F"
     ;;
   remove)
@@ -37,8 +44,24 @@ case "$cmd" in
     [ "$n" -gt 0 ] 2>/dev/null || exit 0
     sed "${n}d" "$F" >"$F.tmp" && mv "$F.tmp" "$F"
     ;;
+  prune)
+    # Drop checked items completed > 24h ago. Checked items with no stamp
+    # (e.g. checked by hand in nvim) get stamped now, so they age from here.
+    [ -f "$F" ] || exit 0
+    awk -v cutoff="$(($(date +%s) - 86400))" -v now="$(date +%s)" '
+        /^[[:space:]]*- \[[xX]\]/ {
+            if (match($0, /<!-- done:[0-9]+ -->/)) {
+                ts = substr($0, RSTART, RLENGTH); gsub(/[^0-9]/, "", ts)
+                if (ts + 0 < cutoff) next
+            } else {
+                $0 = $0 " <!-- done:" now " -->"
+            }
+        }
+        { print }
+      ' "$F" >"$F.tmp" && mv "$F.tmp" "$F"
+    ;;
   *)
-    echo "usage: todos add <text> | toggle <line> | remove <line>" >&2
+    echo "usage: todos add <text> | toggle <line> | remove <line> | prune" >&2
     exit 1
     ;;
 esac
