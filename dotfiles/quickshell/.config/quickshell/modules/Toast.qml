@@ -21,7 +21,15 @@ Rectangle {
     height: (collapsed && opacity === 0) ? 0 : implicitHeight
     clip: true
 
-    Component.onCompleted: shown = true
+    // Already seen (arrived while focused on its source) — never flash a toast.
+    Component.onCompleted: { shown = true; if (Notifications.isSeen(notification)) collapsed = true }
+
+    Connections {
+        target: Notifications
+        function onSeenGenChanged() {
+            if (Notifications.isSeen(root.notification)) root.collapsed = true
+        }
+    }
 
     function beginDismiss() {
         if (dismissing) return
@@ -36,10 +44,6 @@ Rectangle {
     }
 
     readonly property bool isCritical: notification && notification.urgency === NotificationUrgency.Critical
-    readonly property bool isInboxApp: {
-        const a = (notification && notification.appName || "").toLowerCase()
-        return a === "slack" || a === "slk" || a === "endcord" || a === "kitty"
-    }
     readonly property real effectiveTimeout: {
         if (!notification) return 5000
         if (isCritical) return 30000
@@ -116,9 +120,8 @@ Rectangle {
     Timer {
         running: effectiveTimeout > 0 && !root.dismissing && !root.collapsed
         interval: effectiveTimeout
-        onTriggered: {
-            if (root.isInboxApp) root.collapsed = true
-            else root.beginDismiss()
-        }
+        // Nothing auto-dismisses: the toast collapses (invisible, height 0) but
+        // stays tracked so the Super+i center keeps it as history.
+        onTriggered: root.collapsed = true
     }
 }

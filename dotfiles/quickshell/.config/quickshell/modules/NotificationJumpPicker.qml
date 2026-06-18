@@ -4,12 +4,11 @@ import Quickshell.Io
 import "."
 
 // Super+i notification center. Every entry is a LIVE notification (we never
-// auto-dismiss them), split by recency: the newest few under "current", older
-// ones under "earlier". Selecting any of them fires its live default action
-// (e.g. slk opens the channel/thread) and focuses the window — so even
-// "earlier" entries open their channel, because they're still live. Toasts
-// fade on their own (NotificationOverlay) and the live list is bounded by
-// Notifications.liveMax, so this doesn't pile up.
+// auto-dismiss them), split by whether you've looked at its source: unseen
+// ones under "current", seen ones under "earlier". Selecting any of them fires
+// its live default action (e.g. slk opens the channel/thread) and focuses the
+// window — so even "earlier" entries open their channel, because they're still
+// live. The list is bounded by Notifications.liveMax, so it doesn't pile up.
 Picker {
     id: root
 
@@ -19,13 +18,12 @@ Picker {
     placeholder: "notification"
     subtitleField: "kind"
 
-    readonly property int recentCount: 4
-
-    items: buildItems(Notifications.tracked)
+    items: buildItems(Notifications.tracked, Notifications.seenGen)
 
     onEnter: item => {
         if (!item || item.divider) return
         NotificationJumpPickerState.open = false
+        if (item.notif) Notifications.markSeen(item.notif)
         // Fire the live default action synchronously (slk opens the
         // channel/thread). Works for "earlier" too — they're still live.
         if (item.notif && item.notif.actions) {
@@ -41,23 +39,31 @@ Picker {
         ])
     }
 
-    function buildItems(tracked) {
+    function mkItem(n) {
+        const wid = (n.hints && n.hints["niri-window"] !== undefined) ? n.hints["niri-window"] : ""
+        return {
+            notif: n,
+            app: n.appName || "",
+            summary: n.summary || "",
+            windowId: wid,
+            label: n.summary || n.appName || "notification",
+            kind: n.appName || "",
+        }
+    }
+
+    function buildItems(tracked, gen) {
         const vals = (tracked && tracked.values) ? tracked.values.slice() : []
         vals.sort((a, b) => (b.id || 0) - (a.id || 0))   // newest first
+        const unseen = vals.filter(n => !Notifications.isSeen(n))
+        const seen = vals.filter(n => Notifications.isSeen(n))
         const out = []
-        for (let i = 0; i < vals.length; i++) {
-            if (i === 0) out.push({ divider: true, label: "current" })
-            else if (i === root.recentCount) out.push({ divider: true, label: "earlier" })
-            const n = vals[i]
-            const wid = (n.hints && n.hints["niri-window"] !== undefined) ? n.hints["niri-window"] : ""
-            out.push({
-                notif: n,
-                app: n.appName || "",
-                summary: n.summary || "",
-                windowId: wid,
-                label: n.summary || n.appName || "notification",
-                kind: n.appName || "",
-            })
+        if (unseen.length) {
+            out.push({ divider: true, label: "current" })
+            for (let i = 0; i < unseen.length; i++) out.push(mkItem(unseen[i]))
+        }
+        if (seen.length) {
+            out.push({ divider: true, label: "earlier" })
+            for (let i = 0; i < seen.length; i++) out.push(mkItem(seen[i]))
         }
         return out
     }
