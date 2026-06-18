@@ -3,87 +3,61 @@ import Quickshell
 import Quickshell.Io
 import "."
 
-// Super+i notification center: active notifications under "current",
-// recently-dismissed under "earlier". Selecting jumps to the window/app;
-// closing the picker (select or escape) clears the active ones — they stay
-// in history. Every entry dispatches via stored info (window id for kitty,
-// app+summary otherwise), so clearing on close can't race the jump.
+// Super+i notification center. Every entry is a LIVE notification (we never
+// auto-dismiss them), split by recency: the newest few under "current", older
+// ones under "earlier". Selecting any of them fires its live default action
+// (e.g. slk opens the channel/thread) and focuses the window — so even
+// "earlier" entries open their channel, because they're still live. Toasts
+// fade on their own (NotificationOverlay) and the live list is bounded by
+// Notifications.liveMax, so this doesn't pile up.
 Picker {
     id: root
 
     open: NotificationJumpPickerState.open
     onCloseRequested: NotificationJumpPickerState.open = false
 
-    // Opening the picker acknowledges the current notifications: clear them
-    // once it has fully closed by any means (select, escape, IPC hide) — they
-    // remain in history. `active` flips false ~300ms after close.
-    onActiveChanged: if (!active) Notifications.dismissAllActive()
-
     placeholder: "notification"
     subtitleField: "kind"
 
-    items: buildItems(Notifications.tracked, Notifications.history)
+    readonly property int recentCount: 4
+
+    items: buildItems(Notifications.tracked)
 
     onEnter: item => {
         if (!item || item.divider) return
         NotificationJumpPickerState.open = false
-        // Fire the live notification's default action SYNCHRONOUSLY here (e.g.
-        // slk opens the channel/thread) — before the picker closes and
-        // clear-on-close dismisses it. Doing this via the dispatch script
-        // raced the dismiss and lost.
+        // Fire the live default action synchronously (slk opens the
+        // channel/thread). Works for "earlier" too — they're still live.
         if (item.notif && item.notif.actions) {
             const acts = item.notif.actions
             for (let i = 0; i < acts.length; i++) {
                 if (acts[i].identifier === "default") { acts[i].invoke(); break }
             }
         }
-        // Focus the window/app via stored info — race-free with the dismiss.
+        // Focus the window/app.
         Quickshell.execDetached([
             Quickshell.env("HOME") + "/.config/niri/scripts/notification-dispatch",
             "--past", item.app, item.summary, String(item.windowId || "")
         ])
     }
 
-    function entry(appName, summary, windowId) {
-        return {
-            app: appName || "",
-            summary: summary || "",
-            windowId: (windowId !== undefined && windowId !== null) ? windowId : "",
-            label: summary || appName || "notification",
-            kind: appName || "",
-        }
-    }
-
-    function buildItems(tracked, history) {
+    function buildItems(tracked) {
+        const vals = (tracked && tracked.values) ? tracked.values.slice() : []
+        vals.sort((a, b) => (b.id || 0) - (a.id || 0))   // newest first
         const out = []
-        const vals = (tracked && tracked.values) ? tracked.values : []
-        const activeSummaries = {}
-
-        if (vals.length > 0) {
-            out.push({ divider: true, label: "current" })
-            for (let i = 0; i < vals.length; i++) {
-                const n = vals[i]
-                activeSummaries[n.summary || ""] = true
-                const wid = (n.hints && n.hints["niri-window"] !== undefined) ? n.hints["niri-window"] : ""
-                const e = entry(n.appName, n.summary, wid)
-                e.notif = n
-                out.push(e)
-            }
-        }
-
-        const hist = history || []
-        const seen = {}
-        const histItems = []
-        for (let i = 0; i < hist.length; i++) {
-            const h = hist[i]
-            const key = (h.appName || "") + " " + (h.summary || "")
-            if (seen[key] || activeSummaries[h.summary || ""]) continue
-            seen[key] = true
-            histItems.push(entry(h.appName, h.summary, h.windowId))
-        }
-        if (histItems.length > 0) {
-            out.push({ divider: true, label: vals.length > 0 ? "earlier" : "history" })
-            for (let i = 0; i < histItems.length; i++) out.push(histItems[i])
+        for (let i = 0; i < vals.length; i++) {
+            if (i === 0) out.push({ divider: true, label: "current" })
+            else if (i === root.recentCount) out.push({ divider: true, label: "earlier" })
+            const n = vals[i]
+            const wid = (n.hints && n.hints["niri-window"] !== undefined) ? n.hints["niri-window"] : ""
+            out.push({
+                notif: n,
+                app: n.appName || "",
+                summary: n.summary || "",
+                windowId: wid,
+                label: n.summary || n.appName || "notification",
+                kind: n.appName || "",
+            })
         }
         return out
     }

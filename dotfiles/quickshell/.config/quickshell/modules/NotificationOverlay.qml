@@ -48,10 +48,24 @@ PanelWindow {
         Repeater {
             model: Notifications.tracked
 
-            Toast {
+            // Notifications are never auto-dismissed (the Super+i picker keeps
+            // them live), so the toast self-hides after a few seconds while the
+            // notification stays tracked.
+            delegate: Item {
                 required property var modelData
-                notification: modelData
+                property bool shown: true
                 width: 360
+                implicitHeight: shown ? toast.implicitHeight : 0
+                visible: shown
+                clip: true
+
+                Timer { interval: 6000; running: true; onTriggered: shown = false }
+
+                Toast {
+                    id: toast
+                    notification: modelData
+                    width: 360
+                }
             }
         }
     }
