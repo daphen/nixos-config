@@ -13,10 +13,12 @@ Item {
 
     readonly property var inboxCounts: {
         const _ = root._notifTick
+        const __ = Notifications.seenGen
         const model = Notifications.server ? Notifications.server.trackedNotifications : null
         const tracked = model ? model.values : []
         const counts = { slack: 0, endcord: 0 }
         for (let i = 0; i < tracked.length; i++) {
+            if (Notifications.isSeen(tracked[i])) continue
             const app = (tracked[i].appName || "").toLowerCase()
             if (app === "slack" || app === "slk") counts.slack++
             else if (app === "endcord") counts.endcord++
