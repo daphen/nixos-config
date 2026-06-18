@@ -48,24 +48,14 @@ PanelWindow {
         Repeater {
             model: Notifications.tracked
 
-            // Notifications are never auto-dismissed (the Super+i picker keeps
-            // them live), so the toast self-hides after a few seconds while the
-            // notification stays tracked.
-            delegate: Item {
+            // Toast.qml owns the toast lifecycle: after its timeout it
+            // collapses inbox-app toasts (slack/slk/endcord/kitty) while
+            // keeping them tracked for the Super+i picker, and dismisses
+            // others. No wrapper needed.
+            Toast {
                 required property var modelData
-                property bool shown: true
+                notification: modelData
                 width: 360
-                implicitHeight: shown ? toast.implicitHeight : 0
-                visible: shown
-                clip: true
-
-                Timer { interval: 6000; running: true; onTriggered: shown = false }
-
-                Toast {
-                    id: toast
-                    notification: modelData
-                    width: 360
-                }
             }
         }
     }
