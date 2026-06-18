@@ -13,8 +13,8 @@ buildGoModule rec {
   src = fetchFromGitHub {
     owner = "daphen";
     repo = "slk-fork";
-    rev = "71aea1133675732a418a45adf0d31b4e488111a3";
-    hash = "sha256-pqHFOHkApvhH1RJl/B3TpQL1Ym/usuDYjcx5NQvtcx8=";
+    rev = "9587f8f0edc0e74cf9ff21c1ace3dfcf9b10bf2a";
+    hash = "sha256-FPt76pFFDMSRY7gA66DUEtDwqYyQ8VZMgsz7GkYt08I=";
   };
 
   vendorHash = "sha256-dPa469oNv6eYyDdly3uhc273DAGz+erc0E3K/am7WoY=";
