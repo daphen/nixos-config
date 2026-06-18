@@ -4,9 +4,11 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Permanent quick-todo list, backed by a single vault note (todos.md).
-// FileView reads + parses it live (so external edits in nvim show up);
-// mutations route through the `todos` helper, then the watch re-reads.
+// Permanent quick-todo list, backed by ~/.local/state/quickshell/todos.md.
+// Kept OUT of the synced notes vault: a `notes-cli -pull` overwrites local
+// vault files with the backend copy and silently reverted this list. FileView
+// still reads + parses it live (nvim edits show up); mutations route through
+// the `todos` helper.
 Singleton {
     id: root
 
@@ -21,7 +23,7 @@ Singleton {
     }
 
     readonly property string path:
-        Quickshell.env("HOME") + "/personal/notes/storage/todos.md"
+        Quickshell.env("HOME") + "/.local/state/quickshell/todos.md"
     readonly property string script:
         Quickshell.env("HOME") + "/.config/quickshell/scripts/todos"
 
@@ -49,7 +51,7 @@ Singleton {
         Quickshell.execDetached([
             "env", "FS_MONITOR_DISABLED=1",
             "kitty", "--class", "notes_capture",
-            "--working-directory", Quickshell.env("HOME") + "/personal/notes/storage",
+            "--working-directory", Quickshell.env("HOME") + "/.local/state/quickshell",
             "--", "nvim", root.path,
         ])
         root.open = false

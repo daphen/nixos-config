@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Manage the permanent quick-todo list — a single vault note. Mutation lives
-# here (not in QML); the QS TodoListPicker reads the file directly and calls
-# this to add/toggle. Toggle is by 1-based line number (the picker tracks it).
+# Manage the permanent quick-todo list. Mutation lives here (not in QML); the
+# QS TodoListPicker reads the file directly and calls this to add/toggle.
+# Toggle is by 1-based line number (the picker tracks it).
+#
+# Stored in ~/.local/state (NOT the synced notes vault): a `notes-cli -pull`
+# overwrites local vault files with the backend copy, which silently reverted
+# this list. Keeping it outside the vault means a pull can never touch it.
 set -euo pipefail
 
-F="$HOME/personal/notes/storage/todos.md"
+F="$HOME/.local/state/quickshell/todos.md"
 
 ensure() {
   [ -f "$F" ] && return
