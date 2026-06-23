@@ -88,9 +88,41 @@
     wantedBy = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
     serviceConfig = { Type = "oneshot"; ExecStart = "${pkgs.util-linux}/bin/rfkill unblock all"; };
   };
-  # NOTE: kbd-backlight-resume service removed — running asusctl during early
-  # resume interfered with GPU initialization and caused amdgpu crashes.
-  # The keyboard backlight pulse on resume remains an open issue.
+  # After S4 resume the ITE 8910 keyboard-backlight controller (USB 0b05:19b6)
+  # comes back stuck in its firmware "breathe" animation AND deaf to brightness
+  # control — the Fn backlight key and asusd are both ignored (asusd reports
+  # "off" but the WMI/Aura path doesn't govern the controller in this state). A
+  # cold boot fixes it because it re-enumerates the USB device; hibernate doesn't.
+  # The fix: deauthorize+reauthorize the USB device, which re-inits it exactly
+  # like a cold boot (verified 2026-06-23 — pulse stops, Fn key returns).
+  #
+  # Must NOT run inline during early resume: a prior asusctl-on-resume attempt
+  # raced amdgpu init and crashed the GPU. So the resume unit only *schedules* a
+  # detached one-shot ~12s later, well after the GPU is back. Decoupled from the
+  # sleep transition: it can neither block nor loop hibernate. Match the device
+  # by vendor/product, not the 3-4 bus path, which can shift across boots.
+  systemd.services.kbd-backlight-resume = {
+    description = "Re-init ASUS keyboard backlight controller after resume";
+    after = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
+    wantedBy = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.systemd}/bin/systemd-run --on-active=12 --timer-property=AccuracySec=1s ${pkgs.writeShellScript "kbd-backlight-reinit" ''
+        for dev in /sys/bus/usb/devices/*; do
+          [ -e "$dev/idVendor" ] || continue
+          if [ "$(${pkgs.coreutils}/bin/cat "$dev/idVendor")" = "0b05" ] && \
+             [ "$(${pkgs.coreutils}/bin/cat "$dev/idProduct")" = "19b6" ]; then
+            echo 0 > "$dev/authorized"
+            ${pkgs.coreutils}/bin/sleep 1
+            echo 1 > "$dev/authorized"
+            break
+          fi
+        done
+        ${pkgs.coreutils}/bin/sleep 2
+        ${pkgs.asusctl}/bin/asusctl leds set off || true
+      ''}";
+    };
+  };
 
   # Lid switch fires spurious "open" events during hibernate image write,
   # aborting hibernate and leaving the GPU in a crashed state. Disable lid
