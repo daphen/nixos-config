@@ -273,10 +273,17 @@
     enable = true;
     extraPortals = with pkgs; [
       xdg-desktop-portal-gtk
+      # Provides the ScreenCast/RemoteDesktop impl on niri (talks to
+      # niri's org.gnome.Mutter.ScreenCast). gtk has no ScreenCast, so
+      # without this — and with the routing below sending ScreenCast to
+      # gnome — full-screen/window sharing in browsers is impossible.
+      xdg-desktop-portal-gnome
     ];
     config.niri = {
-      default = [ "gtk" ];
+      default = [ "gnome" "gtk" ];
       "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
+      "org.freedesktop.impl.portal.ScreenCast" = [ "gnome" ];
+      "org.freedesktop.impl.portal.RemoteDesktop" = [ "gnome" ];
     };
   };
 

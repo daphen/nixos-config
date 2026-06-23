@@ -50,6 +50,12 @@ BROWSER_PROCESS_NAME="helium"
 # adds it via RFC 6761 and pays a Happy Eyeballs penalty per fetch.
 BROWSER_FLAGS=(
     --disable-features=AsyncDns
+    # Run natively on Wayland (niri) instead of XWayland. Without this
+    # Chromium defaults to X11 ozone, so getDisplayMedia uses the X11
+    # capturer — which has no real desktop to grab under niri, breaking
+    # full-screen/window share. Wayland ozone routes capture through the
+    # xdg-desktop-portal ScreenCast picker instead.
+    --ozone-platform-hint=auto
 )
 
 # Point GLib at gsettings-desktop-schemas so Chromium's GTK theme code
