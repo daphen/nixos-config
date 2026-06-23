@@ -78,7 +78,7 @@ end
 -- Windows
 hl("Normal", { fg = c.fg, bg = c.bg })
 hl("NormalFloat", { fg = c.fg, bg = c.bg_surface })
-hl("FloatBorder", { fg = c.bg_overlay, bg = c.bg_surface })
+hl("FloatBorder", { fg = c.fg_muted, bg = c.bg_surface })
 hl("FloatTitle", { fg = c.blue, bg = c.bg_surface })
 hl("WinSeparator", { fg = c.bg_secondary })
 
