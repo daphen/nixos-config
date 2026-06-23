@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Launch the native QML Slack client (replaces slk). Ensures the slqs daemon is
+# running (it serves data + fires notifications even when the window is closed),
+# then opens the Quickshell UI. niri-jump-or-exec focuses an existing window
+# instead of calling this when one is already open.
+pgrep -x slqs >/dev/null 2>&1 || \
+    setsid nohup "$HOME/personal/slqs/slqs" >/tmp/slqs.log 2>&1 </dev/null &
+exec qs -p "$HOME/personal/slk-gui-proto"

@@ -328,6 +328,15 @@ PYEOF
                 log_success "Applied Quickshell theme (managed)"
             fi
             ;;
+        "quickshell-client")
+            # Native QML Slack/Discord client. Dual-theme like the bar: the
+            # generated Theme.qml inlines both palettes and picks at runtime.
+            local client_path="$HOME/personal/slk-gui-proto/Theme.qml"
+            if [[ -d "$HOME/personal/slk-gui-proto" ]]; then
+                cp "$generated_file" "$client_path"
+                log_success "Applied native client theme"
+            fi
+            ;;
         "kitty")
             local target_dir is_managed
             if get_tool_target "$tool"; then

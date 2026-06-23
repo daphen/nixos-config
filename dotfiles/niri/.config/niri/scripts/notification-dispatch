@@ -35,7 +35,7 @@ focus_worktree_from_summary() {
 if [ "$1" = "--past" ]; then
     app="$2"; summary="$3"; winid="$4"
     case "$app" in
-        endcord)     exec "$DIR/endcord-jump-inbox" ;;
+        endcord|Discord|discord)     exec "$DIR/niri-jump-or-exec" "title:discord-client" "$DIR/launch-discord-client" ;;
         kitty)
             if [ -n "$winid" ] && [ "$winid" != "null" ]; then
                 niri msg action focus-window --id "$winid" >/dev/null 2>&1 || true
@@ -43,6 +43,7 @@ if [ "$1" = "--past" ]; then
                 focus_worktree_from_summary "$summary"
             fi
             exit 0 ;;
+        slk)         focus_app_window "org.quickshell"; exit 0 ;;
         *)           focus_app_window "$app"; exit 0 ;;
     esac
 fi
@@ -58,11 +59,21 @@ data=$(qs ipc call notifications list 2>/dev/null \
 app=$(printf '%s' "$data" | jq -r '.app_name // empty')
 
 case "$app" in
-    endcord)
-        exec "$DIR/endcord-jump-inbox"
+    endcord|Discord|discord)
+        # invoke → dsqrd's notifier opens the channel; then focus/launch the client
+        qs ipc call notifications invoke "$id" >/dev/null 2>&1 || true
+        qs ipc call notifications dismiss "$id" >/dev/null 2>&1 || true
+        exec "$DIR/niri-jump-or-exec" "title:discord-client" "$DIR/launch-discord-client"
         ;;
     Slack|slack)
         exec "$DIR/slack-jump-inbox"
+        ;;
+    slk)
+        # Native client (slkd): its notification's default action opens the
+        # channel/thread and raises the org.quickshell window. Invoke + focus it.
+        qs ipc call notifications invoke "$id" >/dev/null 2>&1 || true
+        qs ipc call notifications dismiss "$id" >/dev/null 2>&1 || true
+        focus_app_window "org.quickshell"
         ;;
     kitty)
         exec "$DIR/kitty-osc-jump" "$id"

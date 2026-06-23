@@ -3,12 +3,13 @@ import Quickshell
 import Quickshell.Io
 import "."
 
-// Super+i notification center. Every entry is a LIVE notification (we never
-// auto-dismiss them), split by whether you've looked at its source: unseen
-// ones under "current", seen ones under "earlier". Selecting any of them fires
-// its live default action (e.g. slk opens the channel/thread) and focuses the
-// window — so even "earlier" entries open their channel, because they're still
-// live. The list is bounded by Notifications.liveMax, so it doesn't pile up.
+// Super+i notification center. Shows only the apps worth keeping — Slack,
+// Discord, Claude (Notifications.trayApps); screenshots and other system
+// notifs toast once and never land here. Entries split by whether you've
+// looked at the source: unseen under "current", seen under "earlier".
+// Selecting one fires its live default action (e.g. slk opens the
+// channel/thread) and focuses the window. Slack/Discord messages stay as
+// history; Claude prompts clear when you act on them.
 Picker {
     id: root
 
@@ -23,14 +24,21 @@ Picker {
     onEnter: item => {
         if (!item || item.divider) return
         NotificationJumpPickerState.open = false
-        if (item.notif) Notifications.markSeen(item.notif)
-        // Fire the live default action synchronously (slk opens the
-        // channel/thread). Works for "earlier" too — they're still live.
-        if (item.notif && item.notif.actions) {
-            const acts = item.notif.actions
+        const n = item.notif
+        // Fire the live default action first (slk opens the channel/thread) —
+        // it must run before any dismiss, which tears the action down. Works
+        // for "earlier" too: they're still live.
+        if (n && n.actions) {
+            const acts = n.actions
             for (let i = 0; i < acts.length; i++) {
                 if (acts[i].identifier === "default") { acts[i].invoke(); break }
             }
+        }
+        // Acting on a Claude prompt clears it; Slack/Discord messages stay as
+        // history (just marked read).
+        if (n) {
+            if (Notifications.isMessageApp(n)) Notifications.markSeen(n)
+            else Notifications.clearOne(n)
         }
         // Focus the window/app.
         Quickshell.execDetached([
@@ -52,7 +60,10 @@ Picker {
     }
 
     function buildItems(tracked, gen) {
-        const vals = (tracked && tracked.values) ? tracked.values.slice() : []
+        const all = (tracked && tracked.values) ? tracked.values.slice() : []
+        // Only tray apps ever show here — a non-tray notif briefly tracked
+        // during its toast window must not leak into the center.
+        const vals = all.filter(n => Notifications.isTrayApp(n))
         vals.sort((a, b) => (b.id || 0) - (a.id || 0))   // newest first
         const unseen = vals.filter(n => !Notifications.isSeen(n))
         const seen = vals.filter(n => Notifications.isSeen(n))

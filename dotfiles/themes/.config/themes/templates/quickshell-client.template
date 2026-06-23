@@ -1,0 +1,104 @@
+// AUTO-GENERATED — edit the template, not this file.
+// Driver: themes/.config/themes/theme-processor.py
+// Theme for the native QML Slack/Discord client (~/personal/slk-gui-proto).
+// Both palettes are inlined; the active one is selected at runtime by watching
+// ~/.config/theme_mode, so light/dark toggles reflow the client without a
+// restart (same mechanism as the quickshell bar Theme).
+pragma Singleton
+
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+Singleton {
+    id: theme
+
+    property string mode: "dark"
+
+    readonly property var palettes: ({
+        "light": {
+            "bg":          "{{light.background.primary}}",
+            "bg_alt":      "{{light.background.secondary}}",
+            "selection":   "{{light.background.selection}}",
+            "surface":     "{{light.background.surface}}",
+            "overlay":     "{{light.background.overlay}}",
+            "prompt":      "{{light.background.prompt}}",
+            "fg":          "{{light.foreground.primary}}",
+            "fg_secondary":"{{light.foreground.secondary}}",
+            "fg_muted":    "{{light.foreground.muted}}",
+            "red":         "{{light.accent.red}}",
+            "orange":      "{{light.accent.orange}}",
+            "yellow":      "{{light.accent.yellow}}",
+            "green":       "{{light.accent.green}}",
+            "sky":         "{{light.accent.sky}}",
+            "cursor":      "{{light.semantic.cursor}}",
+            "hairlineAlpha": {{light.semantic.hairpin_alpha}},
+            "dimmedFgAlpha": 0.55
+        },
+        "dark": {
+            "bg":          "{{dark.background.primary}}",
+            "bg_alt":      "{{dark.background.secondary}}",
+            "selection":   "{{dark.background.selection}}",
+            "surface":     "{{dark.background.surface}}",
+            "overlay":     "{{dark.background.overlay}}",
+            "prompt":      "{{dark.background.prompt}}",
+            "fg":          "{{dark.foreground.primary}}",
+            "fg_secondary":"{{dark.foreground.secondary}}",
+            "fg_muted":    "{{dark.foreground.muted}}",
+            "red":         "{{dark.accent.red}}",
+            "orange":      "{{dark.accent.orange}}",
+            "yellow":      "{{dark.accent.yellow}}",
+            "green":       "{{dark.accent.green}}",
+            "sky":         "{{dark.accent.sky}}",
+            "cursor":      "{{dark.semantic.cursor}}",
+            "hairlineAlpha": {{dark.semantic.hairpin_alpha}},
+            "dimmedFgAlpha": 0.7
+        }
+    })
+
+    readonly property color bg:           palettes[mode].bg
+    readonly property color bg_alt:       palettes[mode].bg_alt
+    readonly property color selection:    palettes[mode].selection
+    readonly property color surface:      palettes[mode].surface
+    readonly property color overlay:      palettes[mode].overlay
+    readonly property color prompt:       palettes[mode].prompt
+    readonly property color fg:           palettes[mode].fg
+    readonly property color fg_secondary: palettes[mode].fg_secondary
+    readonly property color fg_muted:     palettes[mode].fg_muted
+    readonly property color red:          palettes[mode].red
+    readonly property color orange:       palettes[mode].orange
+    readonly property color yellow:       palettes[mode].yellow
+    readonly property color green:        palettes[mode].green
+    readonly property color sky:          palettes[mode].sky
+    readonly property color cursor:       palettes[mode].cursor
+
+    readonly property real hairlineAlpha: palettes[mode].hairlineAlpha
+    readonly property real dimmedFgAlpha: palettes[mode].dimmedFgAlpha
+    readonly property color hairline: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha)
+    readonly property color dimmedFg: Qt.rgba(fg.r, fg.g, fg.b, dimmedFgAlpha)
+
+    readonly property int radius:    12
+    readonly property int radiusSm:  7
+    readonly property int padding:   12
+    readonly property int paddingSm: 6
+    readonly property int fontSize:  14
+    readonly property string fontFamily: "JetBrainsMono Nerd Font"
+    readonly property int fontWeight: 500
+
+    readonly property var avatarColors: [
+        "#FF570D", "#97B5A6", "#7DD3FC", "#8A92A7",
+        "#ff8a31", "#CCD5E4", "#FF7B72", "#8A9AA6"
+    ]
+
+    // Follow the system light/dark toggle (same file the bar watches).
+    FileView {
+        id: themeFile
+        path: Quickshell.env("HOME") + "/.config/theme_mode"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            const v = (text() || "").trim()
+            if (v === "light" || v === "dark") theme.mode = v
+        }
+    }
+}

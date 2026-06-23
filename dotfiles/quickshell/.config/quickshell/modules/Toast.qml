@@ -120,8 +120,12 @@ Rectangle {
     Timer {
         running: effectiveTimeout > 0 && !root.dismissing && !root.collapsed
         interval: effectiveTimeout
-        // Nothing auto-dismisses: the toast collapses (invisible, height 0) but
-        // stays tracked so the Super+i center keeps it as history.
-        onTriggered: root.collapsed = true
+        // Tray apps (Slack/Discord/Claude) collapse but stay tracked, so the
+        // Super+i center keeps them as history. Everything else (screenshots,
+        // system notifs) drops once its toast times out — never kept.
+        onTriggered: {
+            if (Notifications.isTrayApp(root.notification)) root.collapsed = true
+            else root.beginDismiss()
+        }
     }
 }
