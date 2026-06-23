@@ -64,19 +64,19 @@ function M.resolve_base(repo_root)
 	local env = vim.fn.getenv("HUNK_SIGNS_BASE")
 	if env and env ~= vim.NIL and env ~= "" then return env end
 
-	-- 2. LoL true-root init commit. Search HEAD's ancestry only (no --all)
-	-- so orphan LoL init commits fetched from other sandboxes into the
-	-- monorepo don't masquerade as this branch's root.
-	local lines = git_exec({
-		"git", "-C", repo_root, "log",
-		"--grep=\\[skip lovable\\] Initialize Lovable project", "--format=%H", "HEAD",
-	})
-	if lines and #lines > 0 then
-		local candidate = lines[#lines]
-		local parents = git_exec({
-			"git", "-C", repo_root, "rev-parse", candidate .. "^@",
-		})
-		if not parents or #parents == 0 then return candidate end
+	-- 2. LoL true-root init commit. It is always a parentless root, so scan
+	-- roots reachable from HEAD instead of grepping full history (~0.5s in a
+	-- large repo vs ~30ms for roots). Restricting to roots also skips the same
+	-- subject in monorepo test fixtures, which aren't roots.
+	local roots = git_exec({ "git", "-C", repo_root, "rev-list", "--max-parents=0", "HEAD" })
+	if roots then
+		for _, root in ipairs(roots) do
+			local subj = git_exec({ "git", "-C", repo_root, "log", "-1", "--format=%s", root })
+			if subj and subj[1]
+				and subj[1]:find("[skip lovable] Initialize Lovable project", 1, true) then
+				return root
+			end
+		end
 	end
 
 	-- 3. Branch fork point
@@ -103,6 +103,23 @@ function M.resolve_base(repo_root)
 	return "HEAD"
 end
 
+-- Cheap accessor for the cached base, shared by the gutter, the changed-files
+-- picker, and diffview so all three read one identical value. resolve_base
+-- scans history (~hundreds of ms in a large repo), so gate it behind a
+-- rev-parse: only re-resolve when HEAD actually moved (rebase/commit/checkout).
+function M.current_base()
+	if not state.repo_root then return M.resolve_base() end
+	local head = git_exec({ "git", "-C", state.repo_root, "rev-parse", "HEAD" })
+	head = head and head[1]
+	if head and head ~= state.head_sha then
+		state.head_sha = head
+		state.base_sha = M.resolve_base(state.repo_root)
+	elseif not state.base_sha then
+		state.base_sha = M.resolve_base(state.repo_root)
+	end
+	return state.base_sha
+end
+
 local function fetch_diff(relpath)
 	if not state.base_sha then return nil end
 	local lines = vim.fn.systemlist({
@@ -110,6 +127,20 @@ local function fetch_diff(relpath)
 		state.base_sha, "--", relpath,
 	})
 	if vim.v.shell_error ~= 0 then return nil end
+	if #lines == 0 then
+		-- Untracked files never appear in `git diff <base>`; render them
+		-- fully-added so the gutter matches the changed-files picker, which
+		-- lists them. --no-index exits 1 on difference, which is expected.
+		local tracked = vim.fn.systemlist({
+			"git", "-C", state.repo_root, "ls-files", "--", relpath,
+		})
+		if vim.v.shell_error == 0 and #tracked == 0 then
+			lines = vim.fn.systemlist({
+				"git", "-C", state.repo_root, "diff", "--no-color",
+				"--no-index", "--", "/dev/null", relpath,
+			})
+		end
+	end
 	return table.concat(lines, "\n")
 end
 
@@ -245,6 +276,27 @@ local function debounced_refresh(bufnr)
 	end, M.config.debounce_ms)
 end
 
+-- On external changes (rebase, agent edits) signalled by file-watcher, refresh
+-- the cached base if HEAD moved and repaint every visible buffer. No polling.
+-- M.current_base gates the expensive resolve behind a rev-parse, so an ordinary
+-- save pays ~3ms here, not the full history scan.
+local function on_external_change()
+	if not state.enabled then return end
+	if state.external_timer then state.external_timer:stop() end
+	state.external_timer = vim.defer_fn(function()
+		state.external_timer = nil
+		M.current_base()
+		local seen = {}
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			local b = vim.api.nvim_win_get_buf(win)
+			if not seen[b] and vim.api.nvim_buf_is_loaded(b) then
+				seen[b] = true
+				M.refresh(b)
+			end
+		end
+	end, M.config.debounce_ms)
+end
+
 local function get_hunk_starts(bufnr)
 	local extmarks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, {})
 	local lines = {}
@@ -303,6 +355,7 @@ function M.setup(opts)
 	if not out or #out == 0 then return end
 	state.repo_root = out[1]
 
+	state.head_sha = (git_exec({ "git", "-C", state.repo_root, "rev-parse", "HEAD" }) or {})[1]
 	state.base_sha = M.resolve_base(state.repo_root)
 	if not state.base_sha then return end
 	state.enabled = true
@@ -312,13 +365,16 @@ function M.setup(opts)
 		group = group,
 		callback = function(ev) debounced_refresh(ev.buf) end,
 	})
+	vim.api.nvim_create_autocmd("User", {
+		group = group,
+		pattern = "FileWatcherChanged",
+		callback = on_external_change,
+	})
 
 	vim.api.nvim_create_user_command("HunkSignsRefresh", function() M.refresh() end, {})
 	vim.api.nvim_create_user_command("HunkSignsToggleLinehl", function() M.toggle_linehl() end, {})
 	vim.api.nvim_create_user_command("HunkSignsToggleDeleted", function() M.toggle_deleted() end, {})
 
-	vim.keymap.set("n", "]h", function() M.next_hunk() end, { desc = "Next hunk (git-signs)" })
-	vim.keymap.set("n", "[h", function() M.prev_hunk() end, { desc = "Prev hunk (git-signs)" })
 
 	debounced_refresh(vim.api.nvim_get_current_buf())
 end

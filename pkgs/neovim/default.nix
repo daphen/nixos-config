@@ -191,7 +191,6 @@ let
             p.obsidian-nvim          # vault editing (daily notes, wikilinks)
 
             # Git
-            p.gitsigns-nvim
             p.diffview-nvim
 
             # LSP / Mason / formatting / linting

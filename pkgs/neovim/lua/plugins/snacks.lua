@@ -1,11 +1,11 @@
 -- Picker for files changed vs hunk-nvim/signs.lua's base. <leader>gC and <C-f>.
 local function open_changed_files_picker()
 	local ok, signs = pcall(require, "hunk-nvim.signs")
-	if not ok or not signs.resolve_base then
+	if not ok or not signs.current_base then
 		vim.notify("hunk-nvim.signs unavailable", vim.log.levels.ERROR)
 		return
 	end
-	local base = signs.resolve_base()
+	local base = signs.current_base()
 	if not base or base == "" then
 		vim.notify("Couldn't infer base commit", vim.log.levels.ERROR)
 		return

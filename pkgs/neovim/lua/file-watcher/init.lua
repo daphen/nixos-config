@@ -183,6 +183,10 @@ local function queue_nav(fullpath)
 		local p = state.pending_nav
 		state.pending_nav = nil
 		if p then
+			-- Decoupled from the nav gates below: subscribers (hunk-nvim) want
+			-- the signal even when the cursor jump is suppressed.
+			pcall(vim.api.nvim_exec_autocmds, "User",
+				{ pattern = "FileWatcherChanged", data = { path = p } })
 			navigate_to_path(p)
 			trace((state.last_skip and ("skip: " .. state.last_skip) or "JUMP") .. " " .. p)
 		end
