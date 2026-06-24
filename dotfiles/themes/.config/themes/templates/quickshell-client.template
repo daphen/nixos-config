@@ -32,6 +32,9 @@ Singleton {
             "green":       "{{light.accent.green}}",
             "sky":         "{{light.accent.sky}}",
             "cursor":      "{{light.semantic.cursor}}",
+            "ink":         "{{light.terminal.black}}",
+            "warning":     "{{light.background.warning}}",
+            "brightWhite": "{{light.foreground.bright_white}}",
             "hairlineAlpha": {{light.semantic.hairpin_alpha}},
             "dimmedFgAlpha": 0.55
         },
@@ -51,6 +54,9 @@ Singleton {
             "green":       "{{dark.accent.green}}",
             "sky":         "{{dark.accent.sky}}",
             "cursor":      "{{dark.semantic.cursor}}",
+            "ink":         "{{dark.terminal.black}}",
+            "warning":     "{{dark.background.warning}}",
+            "brightWhite": "{{dark.foreground.bright_white}}",
             "hairlineAlpha": {{dark.semantic.hairpin_alpha}},
             "dimmedFgAlpha": 0.7
         }
@@ -71,11 +77,20 @@ Singleton {
     readonly property color green:        palettes[mode].green
     readonly property color sky:          palettes[mode].sky
     readonly property color cursor:       palettes[mode].cursor
+    // Exposed existing palette colors (no new colors.json entries): near-black for
+    // text on bright accents/badges + the modal scrim, the warning bg + yellow for
+    // the self-mention highlight, and a near-white for text on dark accent chips.
+    readonly property color ink:          palettes[mode].ink
+    readonly property color warning:      palettes[mode].warning
+    readonly property color brightWhite:  palettes[mode].brightWhite
 
     readonly property real hairlineAlpha: palettes[mode].hairlineAlpha
     readonly property real dimmedFgAlpha: palettes[mode].dimmedFgAlpha
     readonly property color hairline: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha)
     readonly property color dimmedFg: Qt.rgba(fg.r, fg.g, fg.b, dimmedFgAlpha)
+    // Hover/selection tint derived from fg, so it shows in light mode (the old
+    // hardcoded white-alpha overlays were invisible on light backgrounds).
+    readonly property color hover:    Qt.rgba(fg.r, fg.g, fg.b, 0.06)
 
     readonly property int radius:    12
     readonly property int radiusSm:  7
