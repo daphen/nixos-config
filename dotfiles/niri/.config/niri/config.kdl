@@ -249,7 +249,7 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#2D4A3D"
+        active-color "#df9001"
 
         // Color of the ring on inactive monitors.
         //
@@ -279,10 +279,10 @@ layout {
         // If you enable the border, you probably want to disable the focus ring.
 
         width 4
-        active-color "#2D4A3D"
+        active-color "#df9001"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
-        active-gradient from="#2D4A3D" to="#C2C6CC" angle=180
+        active-gradient from="#df9001" to="#df9001" angle=180
         // Matches waybar-notch light theme hairline
         // (foreground.primary @ 50% alpha).
         inactive-color "#999999"
