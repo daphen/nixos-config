@@ -43,7 +43,7 @@ if [ "$1" = "--past" ]; then
                 focus_worktree_from_summary "$summary"
             fi
             exit 0 ;;
-        slk)         focus_app_window "org.quickshell"; exit 0 ;;
+        slk)         exec "$DIR/niri-jump-or-exec" "title:slk-client" "$DIR/launch-slack-client" ;;
         *)           focus_app_window "$app"; exit 0 ;;
     esac
 fi
