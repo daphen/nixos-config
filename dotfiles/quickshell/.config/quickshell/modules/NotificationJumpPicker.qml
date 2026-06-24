@@ -19,27 +19,30 @@ Picker {
     placeholder: "notification"
     iconField: "icon"
 
-    items: buildItems(Notifications.tracked, Notifications.seenGen)
+    items: buildItems(Notifications.tracked, Notifications.seenGen,
+                      Notifications.retained, Notifications.retainedGen)
 
     onEnter: item => {
         if (!item || item.divider) return
         NotificationJumpPickerState.open = false
-        const n = item.notif
-        // Fire the live default action first (slk opens the channel/thread) —
-        // it must run before any dismiss, which tears the action down. Works
-        // for "earlier" too: they're still live.
+        const n = item.notif   // live Notification, or null for a retained entry
+        const isMsg = Notifications.isMessageAppName(item.app)
+        // A message's open-channel action deletes the live notification, so
+        // retain its data first (and mark it read) — it stays in the center.
+        if (isMsg) {
+            Notifications.retain(item.id, item.app, item.summary, item.windowId)
+            Notifications.markSeenById(item.id)
+        }
+        // Fire the live default action (slk/dsqrd opens the channel/thread).
+        // Only present while the notification is still live.
         if (n && n.actions) {
             const acts = n.actions
             for (let i = 0; i < acts.length; i++) {
                 if (acts[i].identifier === "default") { acts[i].invoke(); break }
             }
         }
-        // Acting on a Claude prompt clears it; Slack/Discord messages stay as
-        // history (just marked read).
-        if (n) {
-            if (Notifications.isMessageApp(n)) Notifications.markSeen(n)
-            else Notifications.clearOne(n)
-        }
+        // Claude prompts clear on interact (no live action; just remove).
+        if (!isMsg && n) Notifications.clearOne(n)
         // Focus the window/app.
         Quickshell.execDetached([
             Quickshell.env("HOME") + "/.config/niri/scripts/notification-dispatch",
@@ -59,34 +62,42 @@ Picker {
         return ""
     }
 
-    function mkItem(n) {
-        const wid = (n.hints && n.hints["niri-window"] !== undefined) ? n.hints["niri-window"] : ""
+    function mkItemLive(n) {
+        const wid = (n.hints && n.hints["niri-window"] !== undefined) ? String(n.hints["niri-window"]) : ""
         return {
-            notif: n,
-            app: n.appName || "",
-            summary: n.summary || "",
-            windowId: wid,
-            label: n.summary || n.appName || "notification",
-            icon: _icon(n.appName),
+            id: n.id, notif: n, app: n.appName || "", summary: n.summary || "", windowId: wid,
+            label: n.summary || n.appName || "notification", icon: _icon(n.appName),
         }
     }
 
-    function buildItems(tracked, gen) {
-        const all = (tracked && tracked.values) ? tracked.values.slice() : []
-        // Only tray apps ever show here — a non-tray notif briefly tracked
-        // during its toast window must not leak into the center.
-        const vals = all.filter(n => Notifications.isTrayApp(n))
-        vals.sort((a, b) => (b.id || 0) - (a.id || 0))   // newest first
-        const unseen = vals.filter(n => !Notifications.isSeen(n))
-        const seen = vals.filter(n => Notifications.isSeen(n))
+    function mkItemRetained(e) {
+        return {
+            id: e.id, notif: null, app: e.app, summary: e.summary, windowId: e.windowId,
+            label: e.summary || e.app || "notification", icon: _icon(e.app),
+        }
+    }
+
+    function buildItems(tracked, sgen, retained, rgen) {
+        // Center contents = live tracked tray notifications ∪ retained (messages
+        // whose live notification was deleted when its channel was opened).
+        const live = (tracked && tracked.values) ? tracked.values.slice() : []
+        const liveTray = live.filter(n => Notifications.isTrayApp(n))
+        const liveIds = {}
+        const items = []
+        for (let i = 0; i < liveTray.length; i++) { liveIds[liveTray[i].id] = true; items.push(mkItemLive(liveTray[i])) }
+        const ret = retained || []
+        for (let i = 0; i < ret.length; i++) if (!liveIds[ret[i].id]) items.push(mkItemRetained(ret[i]))
+        items.sort((a, b) => (b.id || 0) - (a.id || 0))   // newest first
+        const unseen = items.filter(it => !Notifications.isSeenId(it.id))
+        const seen = items.filter(it => Notifications.isSeenId(it.id))
         const out = []
         if (unseen.length) {
             out.push({ divider: true, label: "current" })
-            for (let i = 0; i < unseen.length; i++) out.push(mkItem(unseen[i]))
+            for (let i = 0; i < unseen.length; i++) out.push(unseen[i])
         }
         if (seen.length) {
             out.push({ divider: true, label: "earlier" })
-            for (let i = 0; i < seen.length; i++) out.push(mkItem(seen[i]))
+            for (let i = 0; i < seen.length; i++) out.push(seen[i])
         }
         return out
     }

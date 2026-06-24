@@ -20,11 +20,33 @@ Singleton {
     property var seenIds: ({})
     property int seenGen: 0
     function markSeen(n) {
-        if (n && !root.seenIds[n.id]) { root.seenIds[n.id] = true; root.seenGen++ }
+        if (n) root.markSeenById(n.id)
+    }
+    function markSeenById(id) {
+        if (id !== undefined && !root.seenIds[id]) { root.seenIds[id] = true; root.seenGen++ }
     }
     function isSeen(n) {
+        return !!(n && root.isSeenId(n.id))
+    }
+    function isSeenId(id) {
         const _ = root.seenGen
-        return !!(n && root.seenIds[n.id])
+        return !!root.seenIds[id]
+    }
+
+    // Opening a message's channel fires its default action, and quickshell
+    // deletes a notification the instant its action is invoked. To keep the
+    // Super+i center a real history, we retain a message's display data at that
+    // moment; the picker shows tracked (live) ∪ retained. Claude is never
+    // retained — it's meant to clear on interact.
+    property var retained: []      // newest-first: {id, app, summary, windowId}
+    property int retainedGen: 0
+    function retain(id, app, summary, windowId) {
+        if (id === undefined) return
+        root.retained = root.retained.filter(e => e.id !== id)
+        root.retained.unshift({ id: id, app: app || "", summary: summary || "", windowId: windowId || "" })
+        if (root.retained.length > root.messageMax)
+            root.retained = root.retained.slice(0, root.messageMax)
+        root.retainedGen++
     }
 
     // Only these apps persist in the Super+i tray. Everything else (screenshots,
@@ -39,7 +61,10 @@ Singleton {
     // transient — cleared the moment you act on the session that raised them.
     readonly property var messageApps: ["slack", "slk", "discord", "endcord"]
     function isMessageApp(n) {
-        return !!(n && root.messageApps.indexOf((n.appName || "").toLowerCase()) !== -1)
+        return !!(n && root.isMessageAppName(n.appName))
+    }
+    function isMessageAppName(app) {
+        return root.messageApps.indexOf((app || "").toLowerCase()) !== -1
     }
     function clearOne(n) {
         if (n) { delete root.seenIds[n.id]; n.dismiss() }
@@ -61,6 +86,40 @@ Singleton {
                 o.dismiss()
             }
         }
+    }
+
+    // Conversation key for a message notification: the channel/group/DM it came
+    // from, not the sender. dsqrd/slqs summaries are "author in #channel",
+    // "author in GroupName", or just "person" (1:1 DM) — so the part after the
+    // last " in " is the conversation, else the whole summary. App-name variants
+    // (slk↔slack, endcord↔discord) are normalised so one conversation is one key.
+    function _convKey(app, summary) {
+        const m = (summary || "").match(/^.* in (.+)$/)
+        const conv = m ? m[1] : (summary || "")
+        const a = (app || "").toLowerCase()
+        const na = (a === "slk") ? "slack" : (a === "endcord") ? "discord" : a
+        return na + "|" + conv
+    }
+
+    // One entry per conversation: a new message supersedes earlier ones from the
+    // same channel/group/DM (whoever sent them), dropping both the live tracked
+    // copies and any retained (already-opened) entry, so the center shows just
+    // the latest line per conversation.
+    function _collapseConversation(n) {
+        if (!n) return
+        const key = root._convKey(n.appName, n.summary)
+        const all = notifServer.trackedNotifications.values.slice()
+        for (let i = 0; i < all.length; i++) {
+            const o = all[i]
+            if (!o || o.id === n.id) continue
+            if (root.isMessageApp(o) && root._convKey(o.appName, o.summary) === key) {
+                delete root.seenIds[o.id]
+                o.dismiss()
+            }
+        }
+        const before = root.retained.length
+        root.retained = root.retained.filter(e => root._convKey(e.app, e.summary) !== key)
+        if (root.retained.length !== before) root.retainedGen++
     }
 
     // Keep the most recent messageMax Slack/Discord messages as history (seen or
@@ -169,9 +228,13 @@ Singleton {
             }
             delete root.seenIds[notification.id]
             notification.tracked = true
-            // One entry per source: this supersedes an older notification from
-            // the same channel / Claude session (same app + summary).
-            if (root.isTrayApp(notification)) root._dropDuplicatesOf(notification)
+            // One entry per source. Messages collapse by conversation (the
+            // channel/group/DM — latest line wins, regardless of sender); Claude
+            // collapses by session (latest prompt).
+            if (root.isMessageApp(notification))
+                root._collapseConversation(notification)
+            else if (root.isTrayApp(notification))
+                root._dropDuplicatesOf(notification)
             // Arrived while looking at its source: a message stays as history
             // (marked seen, skips the toast); a Claude prompt you're already on
             // top of just clears.
