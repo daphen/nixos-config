@@ -235,12 +235,14 @@ Singleton {
                 root._collapseConversation(notification)
             else if (root.isTrayApp(notification))
                 root._dropDuplicatesOf(notification)
-            // Arrived while looking at its source: a message stays as history
-            // (marked seen, skips the toast); a Claude prompt you're already on
-            // top of just clears.
-            if (root._matchesFocus(notification)) {
-                if (root.isMessageApp(notification)) root.markSeen(notification)
-                else { root.clearOne(notification); return }
+            // A Claude prompt arriving on the session you're focused on just
+            // clears. Messages are NOT suppressed here: slqs/dsqrd already
+            // withhold the channel you're actually viewing (should=false), so
+            // anything that reaches us is a different channel and should toast
+            // even while the client window is focused.
+            if (root._matchesFocus(notification) && !root.isMessageApp(notification)) {
+                root.clearOne(notification)
+                return
             }
             root.enforceCap()
         }
