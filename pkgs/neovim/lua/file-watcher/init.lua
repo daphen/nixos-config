@@ -53,6 +53,9 @@ local IGNORED_PATTERNS = {
 	"%.snap$",
 	"/%.git/",
 	"/%.wrangler/",
+	-- inlang/paraglide regenerates esbuild plugin bundles here on every dev
+	-- boot; static skip so it never depends on a git check winning the race.
+	"%.inlang/cache/",
 }
 
 local function should_skip(path)
