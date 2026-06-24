@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import "."
@@ -13,6 +14,10 @@ PanelWindow {
     property var items: []
     property string subtitleField: ""
     property string highlightField: ""
+    // Optional per-item field holding an image source; renders a theme-tinted
+    // monochrome icon at the right of the row (e.g. the notification center's
+    // app logos). Tinted to fg_muted so it follows light/dark automatically.
+    property string iconField: ""
     property var onEnter: function(item) {}
     property var onEnterText: function(text) {}
     property bool freeText: false
@@ -242,11 +247,35 @@ PanelWindow {
                         renderType: Text.NativeRendering
                     }
 
+                    Image {
+                        id: rowIcon
+                        readonly property bool active: !rowItem.isDivider && root.iconField.length > 0
+                            && rowItem.modelData
+                            && String(rowItem.modelData[root.iconField] || "").length > 0
+                        visible: false   // drawn by the MultiEffect below
+                        source: active ? rowItem.modelData[root.iconField] : ""
+                        width: 16
+                        height: 16
+                        sourceSize.width: 32
+                        sourceSize.height: 32
+                        fillMode: Image.PreserveAspectFit
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    MultiEffect {
+                        visible: rowIcon.active
+                        source: rowIcon
+                        anchors.fill: rowIcon
+                        colorization: 1.0
+                        colorizationColor: Theme.fg_muted
+                    }
+
                     Text {
                         visible: !rowItem.isDivider
                         anchors.left: parent.left
                         anchors.leftMargin: 10
-                        anchors.right: subtitleText.left
+                        anchors.right: rowIcon.active ? rowIcon.left : subtitleText.left
                         anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
                         text: rowItem.modelData ? String(rowItem.modelData.label || "?") : "?"
