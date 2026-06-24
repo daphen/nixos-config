@@ -593,15 +593,24 @@ apply_system_theme() {
         niri_config="$live_niri"
     fi
     if [[ -f "$niri_config" ]]; then
+        # Active focus-ring/border uses the theme foreground, so it contrasts
+        # with the background per mode: light fg in dark mode, dark fg in light.
+        # (tab-indicator is restored to cursor-orange below.)
         if [[ "$theme_mode" == "dark" ]]; then
-            local active_color=$(jq -r '.themes.dark.semantic.cursor' "$COLORS_FILE")
+            local active_color=$(jq -r '.themes.dark.foreground.primary' "$COLORS_FILE")
             local inactive_color="#3A3A3A"
+            # Equal stops → niri renders the border as a solid active color.
+            local grad_from="$active_color" grad_to="$active_color"
         else
-            local active_color=$(jq -r '.themes.light.semantic.cursor' "$COLORS_FILE")
+            local active_color=$(jq -r '.themes.light.foreground.primary' "$COLORS_FILE")
             local inactive_color="#999999"
+            # Light mode: border fades top-dark (fg) → bottom-light (highlight_high).
+            local grad_from="$active_color" grad_to=$(jq -r '.themes.light.semantic.highlight_high' "$COLORS_FILE")
         fi
         sed -i "s/active-color \"#[0-9a-fA-F]*\"/active-color \"${active_color}\"/g" "$niri_config"
         sed -i "s/inactive-color \"#[0-9a-fA-F]*\"/inactive-color \"${inactive_color}\"/g" "$niri_config"
+        # Only the border block carries an active-gradient line; rewrite its stops.
+        sed -i "/^    border {/,/^    }/ s/active-gradient from=\"#[0-9a-fA-F]*\" to=\"#[0-9a-fA-F]*\"/active-gradient from=\"${grad_from}\" to=\"${grad_to}\"/" "$niri_config"
         # Tab indicator stays cursor-orange + readable inactive across both
         # themes — restore after the global sed has overwritten them.
         sed -i '/tab-indicator {/,/^    }/ {
