@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Tell slqs + dsqrd whether you're active at the computer so they hold (active)
+# or resume (idle) phone notifications. Driven by swayidle on idle/resume:
+#   swayidle -w timeout 300 'set-presence idle' resume 'set-presence active'
+# Slack: active -> presence "auto" (holds mobile push), idle -> "away".
+# Discord: active -> gateway afk=false (holds push), idle -> afk=true (push to phone).
+state="${1:-active}"
+case "$state" in idle | active) ;; *) state=active ;; esac
+rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+for app in slqs dsqrd; do
+    sock="$rt/$app.sock"
+    [ -S "$sock" ] || continue
+    python3 - "$sock" "$state" <<'PY' 2>/dev/null
+import socket, sys, time
+sock, state = sys.argv[1], sys.argv[2]
+try:
+    s = socket.socket(socket.AF_UNIX)
+    s.connect(sock)
+    s.sendall(('{"type":"presence","state":"%s"}\n' % state).encode())
+    time.sleep(0.2)
+    s.close()
+except Exception:
+    pass
+PY
+done
