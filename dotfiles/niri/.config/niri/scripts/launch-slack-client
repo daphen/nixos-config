@@ -5,4 +5,20 @@
 # instead of calling this when one is already open.
 pgrep -x slqs >/dev/null 2>&1 || \
     setsid nohup "$HOME/personal/slqs/slqs" >/tmp/slqs.log 2>&1 </dev/null &
+
+# Reap windowless slqs UI orphans before launching. A failed config load leaves
+# quickshell alive without mapping a window; niri-jump-or-exec then can't focus
+# it, so each launch piled up another. We only get here when no slk-client window
+# was found to focus, so any slqs instance alive now is stale. Scoped to slqs
+# (SLK_SOCK unset) by env so it never touches the dsqrd window or the desktop bar.
+WIN_PIDS=" $(niri msg --json windows 2>/dev/null | python3 -c 'import json,sys;[print(w.get("pid")) for w in json.load(sys.stdin)]' 2>/dev/null | tr "\n" " ") "
+for p in /proc/[0-9]*; do
+    exe=$(readlink "$p/exe" 2>/dev/null) || continue
+    case "$exe" in *quickshell*) ;; *) continue ;; esac
+    case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in *slk-gui-proto*) ;; *) continue ;; esac
+    [ -n "$(tr '\0' '\n' < "$p/environ" 2>/dev/null | grep '^SLK_SOCK=')" ] && continue  # dsqrd, not ours
+    pid=${p#/proc/}
+    case "$WIN_PIDS" in *" $pid "*) ;; *) kill "$pid" 2>/dev/null ;; esac
+done
+
 exec qs -p "$HOME/personal/slk-gui-proto"
