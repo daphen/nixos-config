@@ -1,24 +1,35 @@
 #!/usr/bin/env bash
-# Launch the native QML Slack client (replaces slk). Ensures the slqs daemon is
-# running (it serves data + fires notifications even when the window is closed),
-# then opens the Quickshell UI. niri-jump-or-exec focuses an existing window
+# Launch the native QML Slack client (replaces slk). The packaged slqs-client
+# wrapper ensures the slqs daemon is running (it serves data + fires
+# notifications even when the window is closed), then opens the Quickshell UI
+# from the Nix store. Falls back to the ~/personal source tree when the package
+# isn't on PATH yet (pre-rebuild). niri-jump-or-exec focuses an existing window
 # instead of calling this when one is already open.
-pgrep -x slqs >/dev/null 2>&1 || \
-    setsid nohup "$HOME/personal/slqs/slqs" >/tmp/slqs.log 2>&1 </dev/null &
+export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
 
 # Reap windowless slqs UI orphans before launching. A failed config load leaves
 # quickshell alive without mapping a window; niri-jump-or-exec then can't focus
-# it, so each launch piled up another. We only get here when no slk-client window
-# was found to focus, so any slqs instance alive now is stale. Scoped to slqs
-# (SLK_SOCK unset) by env so it never touches the dsqrd window or the desktop bar.
+# it, so each launch piled up another. Scoped to slqs: the store UI path
+# (share/slqs/ui) or the fallback slk-gui-proto path with SLK_SOCK unset (set =>
+# dsqrd, not ours).
 WIN_PIDS=" $(niri msg --json windows 2>/dev/null | python3 -c 'import json,sys;[print(w.get("pid")) for w in json.load(sys.stdin)]' 2>/dev/null | tr "\n" " ") "
 for p in /proc/[0-9]*; do
     exe=$(readlink "$p/exe" 2>/dev/null) || continue
     case "$exe" in *quickshell*) ;; *) continue ;; esac
-    case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in *slk-gui-proto*) ;; *) continue ;; esac
-    [ -n "$(tr '\0' '\n' < "$p/environ" 2>/dev/null | grep '^SLK_SOCK=')" ] && continue  # dsqrd, not ours
+    case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in
+        *share/slqs/ui*) ;;
+        *slk-gui-proto*)
+            [ -n "$(tr '\0' '\n' < "$p/environ" 2>/dev/null | grep '^SLK_SOCK=')" ] && continue ;;
+        *) continue ;;
+    esac
     pid=${p#/proc/}
     case "$WIN_PIDS" in *" $pid "*) ;; *) kill "$pid" 2>/dev/null ;; esac
 done
 
+if command -v slqs-client >/dev/null 2>&1; then
+    exec slqs-client
+fi
+# Fallback (pre-rebuild): pre-package source path.
+pgrep -x slqs >/dev/null 2>&1 || \
+    setsid nohup "$HOME/personal/slqs/slqs" >/tmp/slqs.log 2>&1 </dev/null &
 exec qs -p "$HOME/personal/slk-gui-proto"

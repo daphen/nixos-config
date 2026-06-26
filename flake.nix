@@ -34,6 +34,18 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # slqs / dsqrd — native QML Slack/Discord clients (Go/Python daemon +
+    # vendored UI). git+ssh like palette-daemon so it works regardless of repo
+    # visibility (github: shorthand 404s on private repos without a token).
+    slqs = {
+      url = "git+ssh://git@github.com/daphen/slqs";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    dsqrd = {
+      url = "git+ssh://git@github.com/daphen/dsqrd";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Niri flake - provides proper niri build with all dependencies.
     # We use niri-unstable from this flake (tracks master, includes v26.04+).
     niri-flake.url = "github:sodiboo/niri-flake";

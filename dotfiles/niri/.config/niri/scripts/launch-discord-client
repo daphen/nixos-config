@@ -1,25 +1,33 @@
 #!/usr/bin/env bash
-# Launch the native QML Discord client. Ensures the dsqrd daemon is running
-# (it serves data + live gateway events), then opens the Quickshell UI pointed
-# at dsqrd's socket. niri-jump-or-exec focuses an existing window instead of
-# calling this when one is already open.
+# Launch the native QML Discord client. The packaged dsqrd-client wrapper ensures
+# the dsqrd daemon is running (it serves data + live gateway events), then opens
+# the Quickshell UI pointed at dsqrd's socket. Falls back to the ~/personal
+# source tree when the package isn't on PATH yet (pre-rebuild). niri-jump-or-exec
+# focuses an existing window instead of calling this when one is already open.
 export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
-pgrep -f 'dsqrd\.py' >/dev/null 2>&1 || \
-    setsid nohup "$HOME/personal/dsqrd/run-dsqrd.sh" >/tmp/dsqrd.log 2>&1 </dev/null &
 
 # Reap windowless dsqrd UI orphans before launching. A failed config load leaves
 # quickshell alive without mapping a window; niri-jump-or-exec then can't focus
-# it, so each launch piled up another. We only get here when no discord-client
-# window was found to focus, so any dsqrd instance alive now is stale. Scoped to
-# dsqrd (SLK_SOCK=dsqrd) so it never touches the slqs window or the desktop bar.
+# it, so each launch piled up another. Scoped to dsqrd: the store UI path
+# (share/dsqrd/ui) or the fallback slk-gui-proto path with SLK_SOCK=dsqrd.
 WIN_PIDS=" $(niri msg --json windows 2>/dev/null | python3 -c 'import json,sys;[print(w.get("pid")) for w in json.load(sys.stdin)]' 2>/dev/null | tr "\n" " ") "
 for p in /proc/[0-9]*; do
     exe=$(readlink "$p/exe" 2>/dev/null) || continue
     case "$exe" in *quickshell*) ;; *) continue ;; esac
-    case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in *slk-gui-proto*) ;; *) continue ;; esac
-    [ "$(tr '\0' '\n' < "$p/environ" 2>/dev/null | grep '^SLK_SOCK=' | cut -d= -f2)" = "dsqrd" ] || continue  # ours only
+    case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in
+        *share/dsqrd/ui*) ;;
+        *slk-gui-proto*)
+            [ "$(tr '\0' '\n' < "$p/environ" 2>/dev/null | grep '^SLK_SOCK=' | cut -d= -f2)" = "dsqrd" ] || continue ;;
+        *) continue ;;
+    esac
     pid=${p#/proc/}
     case "$WIN_PIDS" in *" $pid "*) ;; *) kill "$pid" 2>/dev/null ;; esac
 done
 
+if command -v dsqrd-client >/dev/null 2>&1; then
+    exec dsqrd-client
+fi
+# Fallback (pre-rebuild): pre-package source path.
+pgrep -f 'dsqrd\.py' >/dev/null 2>&1 || \
+    setsid nohup "$HOME/personal/dsqrd/run-dsqrd.sh" >/tmp/dsqrd.log 2>&1 </dev/null &
 exec env SLK_SOCK=dsqrd qs -p "$HOME/personal/slk-gui-proto"

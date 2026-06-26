@@ -15,6 +15,26 @@
         "type": "github"
       }
     },
+    "dsqrd": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782487808,
+        "narHash": "sha256-jIhvwnPFguDee4rbn3LIXX7gTKqDUykiGMm32LKS/sA=",
+        "ref": "refs/heads/main",
+        "rev": "f287478704893997b80e1c7fb1782687f8c94d3b",
+        "revCount": 21,
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/dsqrd"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/dsqrd"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -334,6 +354,7 @@
     },
     "root": {
       "inputs": {
+        "dsqrd": "dsqrd",
         "helium-nix": "helium-nix",
         "home-manager": "home-manager",
         "niri-flake": "niri-flake",
@@ -343,6 +364,7 @@
         "nixpkgs-latest": "nixpkgs-latest",
         "nixpkgs-neovim": "nixpkgs-neovim",
         "palette-daemon": "palette-daemon",
+        "slqs": "slqs",
         "worktrunk": "worktrunk",
         "wrapper-modules": "wrapper-modules"
       }
@@ -366,6 +388,26 @@
         "owner": "oxalica",
         "repo": "rust-overlay",
         "type": "github"
+      }
+    },
+    "slqs": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782487808,
+        "narHash": "sha256-zYhrC6rIYW+NXMqBT+nSXEWjSCc5ksRK9r33lGZNUWI=",
+        "ref": "refs/heads/main",
+        "rev": "955bd31ad9553ec59f2a8d02ac9f1bef07077e51",
+        "revCount": 18,
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/slqs"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/slqs"
       }
     },
     "systems": {

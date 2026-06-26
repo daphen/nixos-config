@@ -3,6 +3,14 @@
 { pkgs, inputs, nvimLocal, nvimBaked, ... }:
 let
   palette-daemon = inputs.palette-daemon.packages.${pkgs.system}.default;
+  # Native QML chat clients. Each input exposes the daemon (`slqs`/`dsqrd`) and
+  # the launch wrapper (`slqs-client`/`dsqrd-client`, which ensures the daemon
+  # then opens the Quickshell UI from the store). The niri launchers + the
+  # startup daemon line in config.kdl reference these.
+  slqsDaemon = inputs.slqs.packages.${pkgs.system}.slqs;
+  slqsClient = inputs.slqs.packages.${pkgs.system}.slqs-client;
+  dsqrdDaemon = inputs.dsqrd.packages.${pkgs.system}.dsqrd;
+  dsqrdClient = inputs.dsqrd.packages.${pkgs.system}.dsqrd-client;
   # nvim — the converged config (0.12, lz.n, native LSP), with the desktop
   # "full" profile (extras like pyright gated behind NVIM_PROFILE=full and
   # layered onto PATH). Lua lives in ~/dotfiles/nvim and is read live from
@@ -59,6 +67,11 @@ in
     # palette-daemon — WebKit command-palette overlay, replacing the
     # per-tab iframe prewarm. Service unit defined below.
     palette-daemon
+    # Native QML Slack/Discord clients (daemon + launch wrapper each).
+    slqsDaemon
+    slqsClient
+    dsqrdDaemon
+    dsqrdClient
   ];
 
   # wpm-daemon — burst-based WPM counter. Reads /dev/input/event* (needs
