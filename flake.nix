@@ -57,31 +57,9 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # endcord (Discord TUI, 1.4.2). Built from source via uv2nix because:
-    #   - not in nixpkgs (upstream #73 closed not-planned)
-    #   - the available NUR pins 1.4.1, missing hex theming, smart-paste,
-    #     toggle_tree, and using a now-replaced voice dep (Snazzah/davey →
-    #     DisnakeDev/dave.py).
-    # Derivation lives at pkgs/endcord/default.nix.
-    uv2nix = {
-      url = "github:pyproject-nix/uv2nix";
-      inputs.pyproject-nix.follows = "pyproject-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    pyproject-nix = {
-      url = "github:pyproject-nix/pyproject.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    pyproject-build-systems = {
-      url = "github:pyproject-nix/build-system-pkgs";
-      inputs.pyproject-nix.follows = "pyproject-nix";
-      inputs.uv2nix.follows = "uv2nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
   };
 
-  outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, nixpkgs-neovim, home-manager, niri-flake, worktrunk, palette-daemon, uv2nix, pyproject-nix, pyproject-build-systems, ... }@inputs:
+  outputs = { self, nixpkgs, nixpkgs-iwd, nixpkgs-apps, nixpkgs-neovim, home-manager, niri-flake, worktrunk, palette-daemon, ... }@inputs:
     let
       system = "x86_64-linux";
 
@@ -91,10 +69,6 @@
           allowUnfree = true;
           allowUnfreePredicate = (_: true);
         };
-      };
-
-      endcord = pkgs.callPackage ./pkgs/endcord {
-        inherit uv2nix pyproject-nix pyproject-build-systems;
       };
 
       nvimPkgs = import ./pkgs/neovim { inherit pkgs inputs; lib = nixpkgs.lib; };
@@ -184,7 +158,7 @@
             backupFileExtension = "backup";
             users.daphen = import ./common/home;
             extraSpecialArgs = {
-              inherit inputs endcord;
+              inherit inputs;
               nvimLocal = nvimPkgs.neovimLocal;
               nvimBaked = nvimPkgs.neovim;
             };

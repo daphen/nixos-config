@@ -1,6 +1,6 @@
 # User programs - only installation and Nix integration
 # All config files are handled by symlinks.nix
-{ pkgs, inputs, endcord, nvimLocal, nvimBaked, ... }:
+{ pkgs, inputs, nvimLocal, nvimBaked, ... }:
 let
   palette-daemon = inputs.palette-daemon.packages.${pkgs.system}.default;
   # nvim — the converged config (0.12, lz.n, native LSP), with the desktop
@@ -42,22 +42,20 @@ in
   # Editor — neovim installed directly rather than via programs.neovim, since HM's
   # module generates its own init.lua which conflicts with the dotfile-based config
   # symlinked through symlinks.nix.
-  home.packages = [ nvim nvim-next (pkgs.callPackage ../../pkgs/slk { }) ] ++ (with pkgs; [
+  home.packages = [ nvim nvim-next ] ++ (with pkgs; [
     # LSP/formatter tooling expected on PATH by the nvim config
     prettier
     black
     stylua
     eslint
     xclip
-    # mpv — used by ~/.config/endcord/media-viewer.sh to play gif-as-mp4
-    # attachments (Discord converts giphy gifv to mp4 server-side).
+    # mpv — used by the media-viewer.sh (in ~/.config/endcord/) that the native
+    # QML chat clients (slqs/dsqrd) call to play gif-as-mp4 attachments.
     mpv
   ]) ++ [
     # Helium browser via the upstream auto-bumped flake. Ships its own
     # .desktop and icon, so no xdg.desktopEntries needed.
     inputs.helium-nix.packages.${pkgs.system}.default
-    # endcord — Discord TUI 1.4.2, built from source. See pkgs/endcord/default.nix.
-    endcord
     # palette-daemon — WebKit command-palette overlay, replacing the
     # per-tab iframe prewarm. Service unit defined below.
     palette-daemon

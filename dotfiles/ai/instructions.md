@@ -163,8 +163,6 @@ For anything touching the desktop, look here before guessing:
   in `scripts/ws-*`. Window-jumping in `niri-jump-or-exec`.
 - **palette-daemon** (cmd-palette overlay, source) — `~/personal/palette-daemon/`.
 - **wpm-daemon** (bar WPM counter, source) — `~/personal/wpm-daemon/`.
-- **endcord fork** (Discord TUI) — `~/personal/endcord-fork/`. Built into the NixOS
-  package at `~/nixos/pkgs/endcord/`.
 - **Charybdis firmware fork** — `~/work/bastardkb-qmk/keyboards/bastardkb/charybdis/3x6/keymaps/daphen/`.
 
 # Memory routing

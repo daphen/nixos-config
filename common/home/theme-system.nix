@@ -17,7 +17,7 @@ in {
 
   # Regenerate + reapply themes on every activation. Pre-rebuild this hook
   # always applied `dark` regardless of state, which flipped any tool whose
-  # config is written *outside* a HM-managed directory (endcord, claude-code,
+  # config is written *outside* a HM-managed directory (claude-code,
   # starship.toml, etc.) to dark while HM-managed configs (kitty) kept
   # whatever was in dotfiles. Honor ~/.config/theme_mode so the
   # active mode wins on rebuild.

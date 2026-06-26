@@ -249,13 +249,13 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#df9001"
+        active-color "#EDEDED"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#999999"
+        inactive-color "#3A3A3A"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -279,13 +279,13 @@ layout {
         // If you enable the border, you probably want to disable the focus ring.
 
         width 4
-        active-color "#df9001"
+        active-color "#EDEDED"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
-        active-gradient from="#df9001" to="#df9001" angle=180
+        active-gradient from="#EDEDED" to="#EDEDED" angle=180
         // Matches waybar-notch light theme hairline
         // (foreground.primary @ 50% alpha).
-        inactive-color "#999999"
+        inactive-color "#3A3A3A"
 
         // Color of the border around windows that request your attention.
         urgent-color "#9b0000"
@@ -459,9 +459,10 @@ window-rule {
     open-floating true
 }
 
-// imv (images) and mpv (gif-as-mp4 + audio/video) are both launched by
-// endcord's media-viewer.sh. Float them so they overlay endcord without
-// reflowing the tile; niri centers floating windows on focus by default.
+// imv (images) and mpv (gif-as-mp4 + audio/video) are both launched by the
+// media-viewer.sh that the QML chat clients (slqs/dsqrd) call. Float them so
+// they overlay the client without reflowing the tile; niri centers floating
+// windows on focus by default.
 window-rule {
     match app-id=r#"^imv$"#
     match app-id=r#"^mpv$"#
@@ -596,17 +597,6 @@ window-rule {
     default-window-height { proportion 1.0; }
 }
 
-// Endcord (Discord TUI) - same sizing as kitty. Super+C now launches the
-// native QML Discord client (launch-discord-client) instead; endcord is still
-// launchable directly via `$HOME/.config/niri/scripts/launch-endcord`. Its
-// app-id is "endcord" (not "kitty") which keeps it out of the Super+d "general
-// terminal" cycle (ws-focus filters by app_id == "kitty").
-window-rule {
-    match app-id="endcord"
-    default-column-width { fixed 1500; }
-    default-window-height { proportion 1.0; }
-}
-
 // Devenv deps singleton: floats so it never claims a tiled column
 // slot. ws-tracker still drags it onto the active stack workspace
 // so Super+M shows it overlaid on whatever stack is in front, but
@@ -685,10 +675,8 @@ binds {
     // Jump-or-exec keybinds for quick app access
     Super+c { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:discord-client $HOME/.config/niri/scripts/launch-discord-client"; }
     Super+e { spawn-sh "$HOME/.config/niri/scripts/spawn-terminal-with-yazi"; }
-    // Press in response to any chat-app mako notification. Reads the
-    // top notification's app_name and dispatches to the right handler:
-    // endcord → focus + N; Slack → focus + Alt+Shift+Down. Defaults
-    // to endcord if no notification is visible.
+    // Open the notification-center picker (active + recently-dismissed);
+    // pick one to jump to its window/app.
     Super+i { spawn-sh "$HOME/.config/niri/scripts/inbox-jump"; }
     // Super+Ctrl+g: resume an existing claude session (fzf picker)
     // Super+Shift+g: start a NEW claude session, picking a working dir via zoxide+fzf

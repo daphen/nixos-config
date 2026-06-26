@@ -29,7 +29,6 @@ nixos/
 │   └── zenbook/           #   default.nix only (commented out in flake.nix)
 ├── pkgs/                  # in-repo derivations
 │   ├── neovim/            #   nvim wrapper (config baked in)
-│   ├── endcord/           #   Discord TUI, built from a pinned fork rev via uv2nix
 │   └── daphen-env/        #   the `#dev-env` portable shell for remote sandboxes
 └── dotfiles/              # app configs, scripts, themes — symlinked in by home-manager
 ```
@@ -164,9 +163,9 @@ things are intentionally *not* in git.
    - `~/personal/notes/cli/` — the `notes-sync` user service runs
      `notes-cli -watch` from here.
    - `~/personal/palette-daemon`, `~/personal/wpm-daemon`,
-     `~/personal/endcord-fork`, `~/personal/chromium-palette` — source for the
-     daemons (the *built* artifacts come from the flake input / pinned pkg revs,
-     so these are only for editing/rebuilding them).
+     `~/personal/chromium-palette` — source for the daemons (the *built*
+     artifacts come from the flake input / pinned pkg revs, so these are only
+     for editing/rebuilding them).
    - `~/work/bastardkb-qmk` — Charybdis firmware fork.
 
 8. **Reboot.** Auto-login to niri on TTY1; TTY2 is kept enabled for emergency

@@ -42,7 +42,6 @@ and trying to figure out what to touch for a given task.
 | `palette-daemon` | `~/personal/palette-daemon` | Rust + webkit6 |
 | `chromium-palette` | `~/personal/chromium-palette` | Solid app served by palette-daemon |
 | `wpm-daemon` | `~/personal/wpm-daemon` | Rust evdev daemon |
-| `endcord-fork` | `~/personal/endcord-fork` | Discord TUI fork |
 | `bastardkb-qmk` | `~/work/bastardkb-qmk` | Charybdis firmware fork |
 
 ## Quickshell architecture
@@ -172,6 +171,5 @@ VIA layout backup: `~/nixos/dotfiles/via/charybdis-mini-via.json`.
 - **Niri keybind** → `~/.config/niri/config.kdl` (auto-reloads).
 - **Niri spawn script** → `~/.config/niri/scripts/<name>`.
 - **Notification routing** → `Notifications.qml` `onNotification` handler + the `appIdToNotifAppName` map.
-- **Endcord behaviour change** → `~/personal/endcord-fork/`, commit + push, bump `rev`/`hash` in `~/nixos/pkgs/endcord/default.nix`, rebuild.
 - **Charybdis firmware** → `~/work/bastardkb-qmk/...`, build with `nix-shell -p qmk --run 'qmk compile -kb bastardkb/charybdis/3x6 -km daphen'`, flash both halves separately.
 - **WPM tuning** → `~/personal/wpm-daemon/src/main.rs` — knobs at the top (`PAUSE_THRESHOLD`, `MIN_BURST_CHARS`, `DISPLAY_HOLD`). Rebuild + restart service.
