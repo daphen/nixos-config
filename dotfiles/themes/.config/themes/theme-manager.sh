@@ -342,12 +342,18 @@ PYEOF
             if get_tool_target "$tool"; then
                 mkdir -p "$target_dir"
                 cp "$generated_file" "$target_dir/theme.conf"
-                # Reload all kitty instances
-                if pgrep kitty > /dev/null; then
-                    for socket in /tmp/kitty-*; do
-                        kitty @ --to "unix:$socket" set-colors -a -c "$generated_file" 2>/dev/null || true
-                    done
-                fi
+                # Retheme live kitty instances in parallel; skip + clean up stale
+                # sockets (closed instances leave /tmp/kitty-<pid> behind, and firing
+                # kitty @ at each dead one is what made theme toggles slow).
+                for socket in /tmp/kitty-*; do
+                    [ -S "$socket" ] || continue
+                    if [ -d "/proc/${socket##*/kitty-}" ]; then
+                        kitty @ --to "unix:$socket" set-colors -a -c "$generated_file" 2>/dev/null &
+                    else
+                        rm -f "$socket"
+                    fi
+                done
+                wait
                 local label=$([[ "$is_managed" == true ]] && echo "managed" || echo "local")
                 log_success "Applied kitty theme ($label)"
             fi
@@ -661,9 +667,6 @@ switch_theme() {
         return 1
     fi
 
-    local previous_theme
-    previous_theme=$(get_current_theme)
-
     log_info "Switching to $theme_mode theme..."
 
     # Write theme mode to file (this triggers file watchers like Neovim)
@@ -679,43 +682,7 @@ switch_theme() {
     # Swap the paired wallpaper (symlink-driven; no-op if unset)
     apply_wallpaper "$theme_mode"
 
-    # Some Electron apps (Vesktop, Slack) detect the theme change live
-    # but instantly revert to their cached value, so they need a full
-    # restart to pick up the new theme. Only restart on an actual flip
-    # — re-applying the active theme shouldn't disrupt chats.
-    if [[ "$previous_theme" != "$theme_mode" ]]; then
-        restart_electron_apps
-    fi
-
     log_success "Theme switched to $theme_mode mode"
-}
-
-# Restart Electron apps that don't honor live theme changes. Only
-# restarts the apps that are *currently running* so a toggle when
-# they're closed doesn't surprise-spawn them.
-restart_electron_apps() {
-    # Vesktop (Discord) — comm is `electron`, but cmdline contains
-    # "Vesktop" / "vesktop" via its path/data-dir, so match that.
-    if pgrep -if vesktop >/dev/null 2>&1; then
-        log_info "Restarting Vesktop…"
-        pkill -if vesktop 2>/dev/null
-        sleep 1
-        pkill -KILL -if vesktop 2>/dev/null
-        sleep 0.3
-        setsid -f vesktop </dev/null >/dev/null 2>&1 &
-        disown 2>/dev/null || true
-    fi
-
-    # Slack — comm is exactly `slack`.
-    if pgrep -x slack >/dev/null 2>&1; then
-        log_info "Restarting Slack…"
-        pkill -x slack 2>/dev/null
-        sleep 1
-        pkill -KILL -x slack 2>/dev/null
-        sleep 0.3
-        setsid -f slack </dev/null >/dev/null 2>&1 &
-        disown 2>/dev/null || true
-    fi
 }
 
 

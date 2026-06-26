@@ -14,6 +14,7 @@ Item {
     readonly property var inboxCounts: {
         const _ = root._notifTick
         const __ = Notifications.seenGen
+        const ___ = Notifications.focusedApp   // re-evaluate when window focus changes
         const model = Notifications.server ? Notifications.server.trackedNotifications : null
         const tracked = model ? model.values : []
         const counts = { slack: 0, discord: 0 }
@@ -23,6 +24,11 @@ Item {
             if (app === "slack" || app === "slk") counts.slack++
             else if (app === "discord" || app === "endcord") counts.discord++
         }
+        // Don't badge the client you're focused on — you're already in it. The
+        // toast still flashes and history is untouched; only the bar badge is hidden.
+        const covers = Notifications.focusedAppCovers[Notifications.focusedApp] || []
+        if (covers.indexOf("slack") !== -1 || covers.indexOf("slk") !== -1) counts.slack = 0
+        if (covers.indexOf("discord") !== -1 || covers.indexOf("endcord") !== -1) counts.discord = 0
         return counts
     }
     readonly property int total: inboxCounts.slack + inboxCounts.discord
