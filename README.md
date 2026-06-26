@@ -1,322 +1,196 @@
 # NixOS Configuration
 
-This is a complete NixOS configuration migrated from Arch Linux, featuring:
-- Niri window manager
-- Comprehensive theme system
-- 125+ packages
-- Full dotfiles management via home-manager
+Multi-machine NixOS flake. System + home-manager + dotfiles all live in this
+one repo. Niri (Wayland), a centralized theme system, Quickshell bar/pickers,
+and a portable dev-env flake output for remote sandboxes.
 
-## Directory Structure
+For the desktop architecture (Quickshell, theme system, niri stacks, daemons),
+see [`dotfiles/SYSTEM.md`](dotfiles/SYSTEM.md). This file is about the Nix
+plumbing: how the repo is laid out, how dotfiles get linked, and how to bring
+up a new machine.
+
+## Repo layout
 
 ```
 nixos/
-├── flake.nix                    # Main flake configuration
-├── flake.lock                   # Flake lock file (generated)
-├── configuration.nix            # System configuration
-├── hardware-configuration.nix   # Hardware-specific config (to be generated)
-├── modules/                     # System modules
-│   ├── niri.nix                # Niri window manager
-│   ├── audio.nix               # PipeWire audio
-│   ├── bluetooth.nix           # Bluetooth
-│   └── networking.nix          # Network configuration
-├── home/                        # Home Manager configuration
-│   ├── home.nix                # Main home config
-│   ├── programs/               # Program configurations
-│   │   ├── git.nix
-│   │   ├── fish.nix
-│   │   ├── neovim.nix
-│   │   ├── terminals.nix
-│   │   └── niri-scripts.nix
-│   └── dotfiles/               # Dotfiles configurations
-│       ├── theme-system.nix
-│       ├── waybar.nix
-│       ├── mako.nix
-│       └── misc.nix
-└── dotfiles-source/            # Symlink to your actual dotfiles
+├── flake.nix              # inputs, overlays, mkHost helper, nixosConfigurations, #dev-env output
+├── flake.lock
+├── secrets.nix            # gitignored; only sets the password-hash file path (see Secrets)
+├── common/                # shared across all machines
+│   ├── default.nix        #   system: bootloader, locale, users, system packages, services
+│   ├── niri.nix audio.nix bluetooth.nix networking.nix
+│   └── home/              # home-manager (imported per-user in flake.nix)
+│       ├── default.nix    #   session vars, xdg, desktop entries; imports the rest
+│       ├── symlinks.nix   #   ← the dotfiles wiring (mkOutOfStoreSymlink)
+│       ├── programs.nix theme-system.nix notes-sync.nix niri-scripts.nix
+├── machines/              # one dir per host
+│   ├── proart/            #   default.nix + hardware-configuration.nix (committed)
+│   ├── thinkpad/          #   default.nix + hardware-configuration.nix (committed)
+│   └── zenbook/           #   default.nix only (commented out in flake.nix)
+├── pkgs/                  # in-repo derivations
+│   ├── neovim/            #   nvim wrapper (config baked in)
+│   ├── endcord/           #   Discord TUI, built from a pinned fork rev via uv2nix
+│   └── daphen-env/        #   the `#dev-env` portable shell for remote sandboxes
+└── dotfiles/              # app configs, scripts, themes — symlinked in by home-manager
 ```
 
-## Prerequisites
+There is **no** `configuration.nix`, `modules/`, `home/home.nix`, or
+`dotfiles-source` symlink — that was the original Arch-migration layout and is
+long gone. `/etc/nixos/` is unused; always build from this flake.
 
-None beyond a clone of this repo. The dotfiles live in-repo under
-`dotfiles/` and home-manager symlinks them into `~/.config/` directly —
-there is no longer an external `~/dotfiles` repo or a `dotfiles-source`
-symlink to set up.
+## How dotfiles get linked
 
-## Installation in VM
+`common/home/symlinks.nix` is the single place that maps repo files into
+`$HOME`. It uses `config.lib.file.mkOutOfStoreSymlink`, so the files are **not
+copied into the Nix store** — instead you get a two-hop chain:
 
-### Step 1: Clone this repository in the VM
+```
+~/.config/niri/config.kdl
+  → /nix/store/…-home-manager-files/.config/niri/config.kdl   (home-manager's store dir)
+    → ~/nixos/dotfiles/niri/.config/niri/config.kdl            (the live, editable file)
+```
+
+Consequences:
+
+- **Editing a file under `~/nixos/dotfiles/` takes effect immediately** — no
+  rebuild. You only `rebuild` when changing *which* files are linked (i.e. when
+  you edit `symlinks.nix` itself), or any other `.nix`.
+- The nested `dotfiles/<tool>/.config/<tool>/…` layout *looks* like GNU Stow,
+  but **home-manager does the linking, not stow**. Adding a new dotfile means
+  adding a line to `xdg.configFile` (for `~/.config/…`) or `home.file` (for
+  `$HOME`) in `symlinks.nix`, then rebuilding once.
+
+Two known files are deliberately **not** symlinked (their apps rewrite them),
+so they must be copied by hand on a fresh install:
+
+- `~/.config/fish/fish_variables` — fish rewrites it constantly.
+- 1Password / browser / Claude local state — per-machine, gitignored.
+
+## How a build is assembled
+
+`flake.nix`:
+
+- defines overlays (`iwd` pin, `neovim` 0.11.6 pin, widevine, asusctl patch,
+  and an `appsOverlay` that routes fast-moving apps through the `nixpkgs-apps`
+  channel);
+- `commonModules` applies those overlays, the niri flake module, the `common/`
+  system modules, and wires home-manager in-process
+  (`home-manager.nixosModules.home-manager`, `users.daphen = import ./common/home`);
+- `mkHost` = `commonModules ++ [ ./machines/<host> ]`;
+- `nixosConfigurations` currently exports **`proart`** and **`thinkpad`**
+  (`zenbook` is commented out).
+
+Home-manager is **integrated into the system build** — there is no standalone
+`homeConfigurations` to switch separately. `nixos-rebuild switch` applies both.
+
+## Building / updating
+
+Always use `--flake` and the right host name:
 
 ```bash
-# In the VM
-git clone <your-repo-url> ~/nixos
-cd ~/nixos
+sudo nixos-rebuild switch --flake ~/nixos#proart    # or #thinkpad
+# fish abbreviation `rebuild` expands to this
 ```
 
-### Step 2: Generate hardware configuration
+Update inputs:
 
 ```bash
-# Generate hardware config for your VM
-sudo nixos-generate-config --show-hardware-config > hardware-configuration.nix
+nix flake update                       # everything
+nix flake update nixpkgs-apps          # just the fast-moving apps channel
 ```
 
-### Step 3: Review and customize
+## Bootstrapping a new machine → 1:1 parity
 
-1. **Edit `configuration.nix`**:
-   - Update timezone
-   - Verify username matches
-   - Review package list
+Assuming a fresh NixOS install (any minimal ISO, user `daphen` created, network
+up). The steps below are what's needed beyond the repo itself, because some
+things are intentionally *not* in git.
 
-2. **Edit `home/programs/git.nix`**:
-   - Update email address
+1. **Clone the repo.**
+   ```bash
+   git clone <repo-url> ~/nixos
+   ```
 
-3. **Check hostname** in `configuration.nix`:
-   - Default is "nixos", change if desired
+2. **Add an SSH key that can read the private flake input.** `flake.nix` pulls
+   `palette-daemon` over `git+ssh://git@github.com/daphen/palette-daemon`. Nix
+   can't evaluate the flake without an SSH key that has access to that repo, so
+   set up `~/.ssh` and add the key to GitHub *before* the first build. (On a
+   machine that won't run the desktop, you can instead drop the
+   `palette-daemon` input + its uses.)
 
-### Step 4: Build and switch
+3. **Create the machine entry.** If it's a brand-new host (not proart/thinkpad):
+   ```bash
+   sudo nixos-generate-config --show-hardware-config \
+     > ~/nixos/machines/<host>/hardware-configuration.nix
+   ```
+   Add `machines/<host>/default.nix` (copy an existing one; set
+   `networking.hostName`, hardware/GPU/sleep quirks), then register it in
+   `flake.nix` under `nixosConfigurations`. Existing hosts already have their
+   `hardware-configuration.nix` committed — reuse only on the same physical
+   machine.
 
-```bash
-# Build the configuration (doesn't activate)
-sudo nixos-rebuild build --flake .#nixos
+4. **Provision secrets** (gitignored, so they don't come from the clone):
+   - `~/nixos/secrets.nix` — recreate it; it only points at the password hash
+     file:
+     ```nix
+     { ... }: {
+       users.users.daphen.hashedPasswordFile = "/etc/secrets/daphen-password-hash";
+     }
+     ```
+   - `/etc/secrets/daphen-password-hash` — create it:
+     ```bash
+     mkpasswd -m sha-512 | sudo tee /etc/secrets/daphen-password-hash
+     ```
+     (Or drop `secrets.nix` and set a password with `passwd` — secrets aren't
+     managed by sops/agenix here, just a plain root-owned file.)
 
-# If build succeeds, switch to new configuration
-sudo nixos-rebuild switch --flake .#nixos
-```
+5. **Build & switch.**
+   ```bash
+   sudo nixos-rebuild switch --flake ~/nixos#<host>
+   ```
+   This activates the system *and* home-manager (dotfiles get symlinked).
 
-### Step 5: Reboot
+6. **Copy the hand-managed, gitignored bits** for full parity:
+   - `~/.config/fish/fish_variables` (copy from the old machine / the repo's
+     reference copy).
+   - Sign in to **1Password**, then the browsers (Vivaldi/Helium profiles,
+     Chrome) — profile data is per-machine and not in git.
+   - **Claude Code** state lives under `~/.claude` (symlinked from
+     `dotfiles/claude/.claude`); only `themes/` is tracked — re-auth and let
+     transcripts/credentials regenerate.
 
-```bash
-sudo reboot
-```
+7. **Clone the dev-source repos** that runtime services or your workflow expect
+   (separate repos, not needed for the *system* to build but needed for parity
+   of behavior):
+   - `~/personal/notes/cli/` — the `notes-sync` user service runs
+     `notes-cli -watch` from here.
+   - `~/personal/palette-daemon`, `~/personal/wpm-daemon`,
+     `~/personal/endcord-fork`, `~/personal/chromium-palette` — source for the
+     daemons (the *built* artifacts come from the flake input / pinned pkg revs,
+     so these are only for editing/rebuilding them).
+   - `~/work/bastardkb-qmk` — Charybdis firmware fork.
 
-## Dotfiles Setup
+8. **Reboot.** Auto-login to niri on TTY1; TTY2 is kept enabled for emergency
+   access.
 
-After first boot, you need to set up your dotfiles:
-
-### Option 1: Clone your dotfiles repo
-
-```bash
-# Clone your existing dotfiles
-git clone <your-dotfiles-repo> ~/dotfiles
-
-# Create the symlink
-cd ~/nixos
-ln -s ~/dotfiles dotfiles-source
-
-# Rebuild to activate dotfiles
-sudo nixos-rebuild switch --flake .#nixos
-```
-
-### Option 2: Copy from Arch system
-
-```bash
-# On your Arch system, create a git repo of dotfiles
-cd ~/dotfiles
-git init
-git add .
-git commit -m "Initial dotfiles"
-git remote add origin <your-repo-url>
-git push -u origin main
-
-# Then follow Option 1 in the VM
-```
-
-## Updating the Configuration
-
-### Update packages
-
-```bash
-# Update flake inputs
-nix flake update
-
-# Rebuild with updated packages
-sudo nixos-rebuild switch --flake .#nixos
-```
-
-### Modify configuration
-
-1. Edit the relevant `.nix` files
-2. Commit changes (optional but recommended)
-3. Rebuild:
-
-```bash
-sudo nixos-rebuild switch --flake .#nixos
-```
-
-### Test before switching
-
-```bash
-# Build without activating
-sudo nixos-rebuild build --flake .#nixos
-
-# Test in a VM
-sudo nixos-rebuild build-vm --flake .#nixos
-./result/bin/run-nixos-vm
-```
-
-## Home Manager
-
-Home Manager is integrated into the system configuration (via
-`home-manager.nixosModules`), so its configs are applied by
-`nixos-rebuild switch` — there is no standalone `homeConfigurations`
-output to switch separately.
-
-For a non-NixOS host (remote/sandbox), the portable dev environment is a
-flake output instead:
-
-```bash
-nix run github:daphen/nixos-config#dev-env
-```
-
-## Theme System
-
-The theme system is activated automatically via home-manager activation scripts.
-
-Manual theme management:
-
-```bash
-# Generate themes
-cd ~/.config/themes
-./theme-manager.sh generate dark
-
-# Apply themes
-./theme-manager.sh apply dark
-
-# Toggle between light/dark
-./theme-manager.sh toggle
-```
+What you get "for free" from the rebuild (no manual step): every package, all
+dotfiles, the theme system (activated via home-manager), niri + Quickshell,
+kanata, the systemd-user services (notes-sync, etc.), and fonts.
 
 ## Troubleshooting
 
-### ⚠️ IMPORTANT: Always use the flake!
-
-**NEVER run `sudo nixos-rebuild switch` without `--flake`!**
-
-This system uses a flake-based configuration in `/home/daphen/nixos/`. The file `/etc/nixos/configuration.nix` is NOT used and should be ignored.
-
-**Always use:**
-```bash
-sudo nixos-rebuild switch --flake /home/daphen/nixos#nixos
-```
-
-Or use the fish abbreviation:
-```bash
-rebuild  # Expands to the full flake command
-```
-
-**Why this matters:**
-- Running `nixos-rebuild switch` without `--flake` will use `/etc/nixos/configuration.nix` instead of your flake
-- This can break your system by enabling conflicting services (like Sway vs Niri)
-- Always rebuild from the flake to ensure consistency
-
-### Build errors
-
-```bash
-# Check flake inputs
-nix flake show
-
-# Validate flake
-nix flake check
-```
-
-### Missing packages
-
-Some AUR packages from Arch might not have direct Nix equivalents:
-- Check [search.nixos.org](https://search.nixos.org)
-- Check nixpkgs unstable
-- May need to package yourself or find alternatives
-
-### Hardware issues
-
-If hardware isn't detected properly:
-```bash
-# Regenerate hardware config
-sudo nixos-generate-config
-# Compare with your hardware-configuration.nix
-```
-
-### Niri not starting
-
-1. Check that niri is enabled in `modules/niri.nix`
-2. Verify greetd service: `systemctl status greetd`
-3. Check logs: `journalctl -u greetd`
-
-### Dotfiles not appearing
-
-1. Verify symlink: `ls -la ~/nixos/dotfiles-source`
-2. Check home-manager: `home-manager packages | grep -i config`
-3. Rebuild: `sudo nixos-rebuild switch --flake .#nixos`
-
-### Emergency Access
-
-If you need to recover your system:
-- Press `Ctrl+Alt+F2` to access TTY2 (may not work in Wayland)
-- Force reboot and select a previous generation from boot menu
-- **Avoid Generation 27** (has Sway enabled, known broken)
-
-## Screen Locking
-
-This system uses **swaylock** with a custom dark theme:
-- Theme is integrated with the centralized theme system
-- Updates automatically when you change `~/.config/themes/colors.json`
-- Lock screen: `swaylock` (or use your Niri keybinding)
-
-**Theme customization:**
-```bash
-cd ~/.config/themes
-# Edit colors.json to change colors
-./theme-manager.sh generate dark
-./theme-manager.sh apply dark
-# swaylock theme updates automatically
-```
-
-## User Authentication
-
-- **User password**: Set with `sudo passwd daphen`
-  - Used for: swaylock, manual login, SSH
-  - **Not used for**: sudo (wheel group has passwordless sudo)
-- **Auto-login**: Enabled on TTY1 (main session)
-- **Emergency TTY**: TTY2 available with auto-login for emergencies
-
-## Key Files to Review
-
-Before first build, review and customize:
-
-1. **`home/programs/git.nix`** - Update your email
-2. **`configuration.nix`** - Timezone, locale, username
-3. **`hardware-configuration.nix`** - Generate for your hardware
-4. **`flake.nix`** - System name (currently "nixos")
-
-## Migration Notes
-
-This configuration was migrated from Arch Linux with:
-- 125+ explicitly installed packages
-- Custom Niri window manager setup with 19 custom scripts
-- Centralized theme system supporting multiple tools (kitty, waybar, mako, swaylock, etc.)
-- Swaylock with custom dark theme integration
-- Comprehensive Neovim configuration with lazy.nvim
-- Fish shell with custom functions and theme integration
-- Emergency TTY2 access for system recovery
+- **Never run `nixos-rebuild` without `--flake`.** Bare `nixos-rebuild` reads
+  `/etc/nixos/configuration.nix`, which this system does not use.
+- **First build fails on `palette-daemon`** → missing/insufficient SSH key for
+  the private input (step 2).
+- **Dotfiles not appearing** → check `readlink -f ~/.config/<tool>`; it should
+  resolve through the store into `~/nixos/dotfiles/...`. If not, the entry is
+  missing from `symlinks.nix` or the rebuild didn't run.
+- **Validate / inspect**: `nix flake check`, `nix flake show`.
+- **Recover**: pick a previous generation from the systemd-boot menu.
 
 ## Resources
 
 - [NixOS Manual](https://nixos.org/manual/nixos/stable/)
 - [Home Manager Manual](https://nix-community.github.io/home-manager/)
-- [Nix Flakes](https://nixos.wiki/wiki/Flakes)
+- [Niri](https://github.com/YaLTeR/niri)
 - [Search Packages](https://search.nixos.org)
-- [Niri Documentation](https://github.com/YaLTeR/niri)
-
-## Contributing Back
-
-If you make improvements to this configuration, consider:
-1. Committing changes to git
-2. Pushing to your repository
-3. Creating reusable modules for others
-
----
-
-**Next Steps**:
-1. Generate hardware-configuration.nix
-2. Set up dotfiles-source symlink
-3. Build and test in VM
-4. Iterate and refine
-5. Migrate main system when ready

@@ -47,7 +47,7 @@ and trying to figure out what to touch for a given task.
 
 ## Quickshell architecture
 
-`~/dotfiles/quickshell/.config/quickshell/`
+`~/nixos/dotfiles/quickshell/.config/quickshell/`
 
 - `shell.qml` — root. Uses `Variants { model: Quickshell.screens }` so
   bar + NotificationOverlay reconcile across monitor docks/undocks
@@ -75,7 +75,7 @@ and trying to figure out what to touch for a given task.
 
 ## Theme system
 
-`~/dotfiles/themes/.config/themes/`
+`~/nixos/dotfiles/themes/.config/themes/`
 
 - `colors.json` — single source of truth, two palettes (dark + light).
 - `templates/<tool>.template` — Mustache-ish placeholders like
@@ -105,7 +105,7 @@ unsets any inherited `FZF_DEFAULT_OPTS` (which would override the file).
 
 ## Niri workspace stacks
 
-`~/dotfiles/niri/.config/niri/scripts/`
+`~/nixos/dotfiles/niri/.config/niri/scripts/`
 
 The `ws-*` family orchestrates niri workspace + window spawns to match
 the chosen development flow. See `ai/instructions.md` for the
@@ -150,7 +150,7 @@ Firmware-level patches in `charybdis.c` (our fork at
   pointing-device reinit (USB resume etc), fixes the "trackball
   resets to 1600 CPI after suspend" symptom.
 
-VIA layout backup: `~/dotfiles/via/charybdis-mini-via.json`.
+VIA layout backup: `~/nixos/dotfiles/via/charybdis-mini-via.json`.
 
 ## Daemons running on this machine
 
@@ -167,8 +167,8 @@ VIA layout backup: `~/dotfiles/via/charybdis-mini-via.json`.
 
 ## Where to look for a given task
 
-- **Bar widget change** → `~/dotfiles/quickshell/.config/quickshell/modules/Bar.qml` + new `Foo.qml` and `FooState.qml`, register in `qmldir`.
-- **Theme tweak** → `~/dotfiles/themes/.config/themes/colors.json` or `templates/<tool>.template`. Then `theme-manager.sh apply <mode>`.
+- **Bar widget change** → `~/nixos/dotfiles/quickshell/.config/quickshell/modules/Bar.qml` + new `Foo.qml` and `FooState.qml`, register in `qmldir`.
+- **Theme tweak** → `~/nixos/dotfiles/themes/.config/themes/colors.json` or `templates/<tool>.template`. Then `theme-manager.sh apply <mode>`.
 - **Niri keybind** → `~/.config/niri/config.kdl` (auto-reloads).
 - **Niri spawn script** → `~/.config/niri/scripts/<name>`.
 - **Notification routing** → `Notifications.qml` `onNotification` handler + the `appIdToNotifAppName` map.

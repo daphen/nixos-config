@@ -152,13 +152,14 @@ When you DO write one, one line. Two lines max.
 For anything touching the desktop, look here before guessing:
 
 - **NixOS config** — `~/nixos/` (flake). System + home-manager.
-- **Dotfiles** — `~/dotfiles/` (stow-style; many paths home-manager-symlinked).
-  See `~/dotfiles/SYSTEM.md` for the full architecture overview.
-- **Quickshell (bar / pickers / notifications)** — `~/dotfiles/quickshell/.config/quickshell/`.
+- **Dotfiles** — `~/nixos/dotfiles/` (stow-style layout, but home-manager does the
+  symlinking, not stow; an in-repo subtree of nixos-config, not a standalone repo).
+  See `~/nixos/dotfiles/SYSTEM.md` for the full architecture overview.
+- **Quickshell (bar / pickers / notifications)** — `~/nixos/dotfiles/quickshell/.config/quickshell/`.
   Singletons in `modules/*State.qml`, pickers in `modules/*Picker.qml`, bar in `Bar.qml`.
-- **Theme system** — `~/dotfiles/themes/.config/themes/`. `colors.json` → templates →
+- **Theme system** — `~/nixos/dotfiles/themes/.config/themes/`. `colors.json` → templates →
   `generated/<tool>/<mode>.theme` → `theme-manager.sh apply`.
-- **Niri config + scripts** — `~/dotfiles/niri/.config/niri/`. Workspace stack scripts
+- **Niri config + scripts** — `~/nixos/dotfiles/niri/.config/niri/`. Workspace stack scripts
   in `scripts/ws-*`. Window-jumping in `niri-jump-or-exec`.
 - **palette-daemon** (cmd-palette overlay, source) — `~/personal/palette-daemon/`.
 - **wpm-daemon** (bar WPM counter, source) — `~/personal/wpm-daemon/`.
