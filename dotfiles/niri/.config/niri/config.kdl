@@ -368,9 +368,8 @@ blur {
 spawn-at-startup "qs"
 
 // Native Slack client daemon — serves data and fires desktop notifications
-// even when the window is closed. Packaged as `slqs`; falls back to the
-// ~/personal source path until the next rebuild puts the package on PATH.
-spawn-sh-at-startup "if command -v slqs >/dev/null 2>&1; then slqs; else $HOME/personal/slqs/slqs; fi >/tmp/slqs.log 2>&1"
+// even when the window is closed.
+spawn-sh-at-startup "slqs >/tmp/slqs.log 2>&1"
 
 // Auto-restore wallpaper on startup with waypaper
 spawn-at-startup "waypaper" "--restore"
