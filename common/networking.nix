@@ -95,12 +95,19 @@
     "ipv6.method" = "disabled";
   };
 
-  # Belt-and-suspenders for any interface NM doesn't manage (docker bridges,
-  # virtual ifs, etc.). Loopback stays enabled so ::1 works.
+  # IPv6 must stay ENABLED globally. The internal Lovable estate is IPv6-only
+  # over the tailnet (internal.lovable.net + ClickHouse PSC went v6-only
+  # ~2026-06-15), so tailscale0 must carry global v6. A master all/default
+  # disable_ipv6=1 blocks global v6 on EVERY interface (only link-local
+  # survives) and silently breaks the tailnet (that was the trap). External
+  # wifi v6 stays off via NetworkManager (above) plus the explicit wlan0 sysctl
+  # here, preserving the Go/Happy-Eyeballs fix. tailscale0 is born v6-capable at
+  # boot (default=0), so tailscaled assigns its ULA + the internal v6 subnet
+  # routes with no extra unit.
   boot.kernel.sysctl = {
-    "net.ipv6.conf.default.disable_ipv6" = 1;
-    "net.ipv6.conf.all.disable_ipv6" = 1;
-    "net.ipv6.conf.lo.disable_ipv6" = 0;
+    "net.ipv6.conf.all.disable_ipv6" = 0;
+    "net.ipv6.conf.default.disable_ipv6" = 0;
+    "net.ipv6.conf.wlan0.disable_ipv6" = 1;
   };
 
   # Block link-local (169.254.0.0/16) from being routed off-link.
