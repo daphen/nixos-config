@@ -247,9 +247,10 @@
     nodejs
     python3
     python3Packages.pip
-    # mdformat-gfm teaches mdformat about GFM tables so `--wrap 80` (conform)
-    # wraps prose but leaves table rows intact instead of shredding them.
-    (python3Packages.mdformat.withPlugins (ps: [ ps.mdformat-gfm ]))
+    # mdformat-gfm: GFM tables survive `--wrap 80` (conform) instead of being
+    # shredded into prose. mdformat-frontmatter: leave YAML frontmatter alone
+    # rather than mangling `---` blocks into rules/headings (vault notes have it).
+    (mdformat.withPlugins (ps: [ ps.mdformat-gfm ps.mdformat-frontmatter ]))
     cargo
     rustc
     go

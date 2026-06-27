@@ -211,6 +211,87 @@ function M.approve()
 	vim.notify("plan: approved — status planned. `--go` is unlocked.")
 end
 
+-- Multi-line compose float (styled). on_submit(text) fires on send; cancel
+-- discards. Type in insert; <C-s> sends; <Esc> to normal then <CR> sends, q cancels.
+local function compose(title, on_submit)
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].filetype = "markdown"
+	local width = math.min(76, vim.o.columns - 8)
+	local height = 5
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		width = width,
+		height = height,
+		row = math.floor((vim.o.lines - height) / 2 - 1),
+		col = math.floor((vim.o.columns - width) / 2),
+		style = "minimal",
+		border = "rounded",
+		title = " " .. title .. "  ·  ⏎ send · q cancel ",
+		title_pos = "center",
+	})
+	vim.wo[win].wrap = true
+	vim.cmd("startinsert")
+	local done = false
+	local function finish(submit)
+		if done then return end
+		done = true
+		local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+		text = text:gsub("^%s+", ""):gsub("%s+$", "")
+		if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+		if submit and text ~= "" then on_submit(text) end
+	end
+	local o = { buffer = buf, nowait = true, silent = true }
+	vim.keymap.set("n", "<CR>", function() finish(true) end, o)
+	vim.keymap.set("i", "<C-s>", function() finish(true) end, o)
+	vim.keymap.set("n", "q", function() finish(false) end, o)
+	vim.keymap.set("n", "<Esc>", function() finish(false) end, o)
+end
+
+-- Render multi-line text as a markdown blockquote tagged with an emoji on line 1.
+local function quote_block(emoji, text)
+	local out = {}
+	for i, line in ipairs(vim.split(text, "\n", { plain = true })) do
+		out[#out + 1] = "> " .. (i == 1 and (emoji .. " ") or "") .. line
+	end
+	return out
+end
+
+local function insert_after_cursor(lines)
+	local buf = vim.api.nvim_get_current_buf()
+	local row = vim.api.nvim_win_get_cursor(0)[1]
+	local block = { "" }
+	vim.list_extend(block, lines)
+	vim.api.nvim_buf_set_lines(buf, row, row, false, block)
+	vim.cmd("silent write")
+end
+
+-- Best-effort: if the cwd is a worktree, ask that worktree's claude to answer the
+-- plan's open questions inline. wt-send types + submits into the running TUI.
+local function dispatch_questions()
+	local name = vim.fn.getcwd():match("/work/lovable%.daphen%-([^/]+)")
+	if not name then
+		vim.notify("plan: question saved (no worktree claude to dispatch to from here)", vim.log.levels.INFO)
+		return
+	end
+	local msg = ("Answer the open `> ❓` questions in %s — write each answer inline "
+		.. "directly below its question as `> 💬 <answer>`, reading the repo as needed. "
+		.. "Don't change code."):format(state.plan_path or "the open plan")
+	vim.system({ "wt-send", "--wait", "8", name, msg })
+	vim.notify("plan: dispatched to the " .. name .. " session — answers land inline")
+end
+
+function M.add_note()
+	compose("📝 note", function(text) insert_after_cursor(quote_block("📝", text)) end)
+end
+
+function M.ask()
+	compose("❓ ask the agent", function(text)
+		insert_after_cursor(quote_block("❓", text))
+		dispatch_questions()
+	end)
+end
+
 -- Worktree-stack entry: wait for the agent's /plan-ticket to write the plan, then
 -- open it. Bounded poll (readdir is cheap, .plans/ may not exist yet at startup),
 -- so it works whether the plan lands in 2s or two minutes.
@@ -239,6 +320,8 @@ function M.setup()
 	vim.api.nvim_create_user_command("PlanDecide", M.resolve_decision, {})
 	vim.api.nvim_create_user_command("PlanApprove", M.approve, {})
 	vim.api.nvim_create_user_command("PlanReload", function() read_status() end, {})
+	vim.api.nvim_create_user_command("PlanAsk", M.ask, {})
+	vim.api.nvim_create_user_command("PlanNote", M.add_note, {})
 
 	-- Buffer-local maps only inside a plan file, so they never clobber normal
 	-- markdown editing elsewhere.
@@ -255,6 +338,8 @@ function M.setup()
 			map("<CR>", M.goto_file, "plan: open file under cursor")
 			map("<leader>pd", M.resolve_decision, "plan: resolve decision")
 			map("<leader>pa", M.approve, "plan: approve (draft→planned)")
+			map("<leader>pq", M.ask, "plan: ask the agent (inline)")
+			map("<leader>pn", M.add_note, "plan: add a note")
 		end,
 	})
 
