@@ -257,13 +257,20 @@ local function quote_block(emoji, text)
 	return out
 end
 
-local function insert_after_cursor(lines)
-	local buf = vim.api.nvim_get_current_buf()
-	local row = vim.api.nvim_win_get_cursor(0)[1]
+local function insert_after(row, lines)
 	local block = { "" }
 	vim.list_extend(block, lines)
-	vim.api.nvim_buf_set_lines(buf, row, row, false, block)
+	vim.api.nvim_buf_set_lines(0, row, row, false, block)
 	vim.cmd("silent write")
+end
+
+-- One-line reference to a visual selection, so a note/question reads unambiguously
+-- even out of context ("re: ...").
+local function selection_ref(s, e)
+	local t = table.concat(vim.api.nvim_buf_get_lines(0, s - 1, e, false), " ")
+	t = t:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+	if #t > 80 then t = t:sub(1, 79) .. "…" end
+	return t
 end
 
 -- Best-effort: if the cwd is a worktree, ask that worktree's claude to answer the
@@ -281,15 +288,33 @@ local function dispatch_questions()
 	vim.notify("plan: dispatched to the " .. name .. " session — answers land inline")
 end
 
+-- emoji ❓ dispatches to the agent, 📝 is a local note. ref (optional) quotes the
+-- visual selection; anchor is the line to insert the block after.
+local function annotate(title, emoji, anchor, ref, dispatch)
+	compose(title, function(text)
+		local body = ref and ('re: "' .. ref .. '" — ' .. text) or text
+		insert_after(anchor, quote_block(emoji, body))
+		if dispatch then dispatch_questions() end
+	end)
+end
+
 function M.add_note()
-	compose("📝 note", function(text) insert_after_cursor(quote_block("📝", text)) end)
+	annotate("📝 note", "📝", vim.api.nvim_win_get_cursor(0)[1], nil, false)
 end
 
 function M.ask()
-	compose("❓ ask the agent", function(text)
-		insert_after_cursor(quote_block("❓", text))
-		dispatch_questions()
-	end)
+	annotate("❓ ask the agent", "❓", vim.api.nvim_win_get_cursor(0)[1], nil, true)
+end
+
+-- Visual variants: the x-mode maps press <Esc> first, so '< / '> hold the range.
+function M.add_note_visual()
+	local s, e = vim.fn.line("'<"), vim.fn.line("'>")
+	annotate("📝 note on selection", "📝", e, selection_ref(s, e), false)
+end
+
+function M.ask_visual()
+	local s, e = vim.fn.line("'<"), vim.fn.line("'>")
+	annotate("❓ ask about selection", "❓", e, selection_ref(s, e), true)
 end
 
 -- Worktree-stack entry: wait for the agent's /plan-ticket to write the plan, then
@@ -340,6 +365,10 @@ function M.setup()
 			map("<leader>pa", M.approve, "plan: approve (draft→planned)")
 			map("<leader>pq", M.ask, "plan: ask the agent (inline)")
 			map("<leader>pn", M.add_note, "plan: add a note")
+			vim.keymap.set("x", "<C-g><C-g>", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
+				{ buffer = ev.buf, desc = "plan: ask about selection" })
+			vim.keymap.set("x", "<C-g>g", "<Esc><cmd>lua require('plan-nvim').add_note_visual()<CR>",
+				{ buffer = ev.buf, desc = "plan: note on selection" })
 		end,
 	})
 
