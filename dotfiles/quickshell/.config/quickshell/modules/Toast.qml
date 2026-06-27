@@ -21,8 +21,9 @@ Rectangle {
     height: (collapsed && opacity === 0) ? 0 : implicitHeight
     clip: true
 
-    // Already seen (arrived while focused on its source) — never flash a toast.
-    Component.onCompleted: { shown = true; if (Notifications.isSeen(notification)) collapsed = true }
+    // Never flash a toast for one that's already seen (arrived while focused on
+    // its source) or restored across a Quickshell reload (rebuild/theme switch).
+    Component.onCompleted: { shown = true; if (Notifications.isSeen(notification) || Notifications.isRestored(notification)) collapsed = true }
 
     Connections {
         target: Notifications

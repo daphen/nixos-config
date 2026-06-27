@@ -26,7 +26,13 @@ local function git_root()
 	return out[1]
 end
 
+-- Vault when present (durable, synced by notes-cli, searchable via notes-memory);
+-- else the worktree's .plans/ (lovbox sandboxes have no vault). Surface-area paths
+-- still resolve against the cwd's git root, so goto_file works wherever the plan lives.
 local function plans_dir(root)
+	if vim.fn.isdirectory(vim.fn.expand("~/personal/notes/storage")) == 1 then
+		return vim.fn.expand("~/personal/notes/storage/plans")
+	end
 	return (root or state.root or git_root() or vim.fn.getcwd()) .. "/.plans"
 end
 
@@ -237,7 +243,7 @@ function M.setup()
 	-- Buffer-local maps only inside a plan file, so they never clobber normal
 	-- markdown editing elsewhere.
 	vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
-		pattern = "*/.plans/*.md",
+		pattern = { "*/.plans/*.md", "*/personal/notes/storage/plans/*.md" },
 		callback = function(ev)
 			state.plan_path = vim.api.nvim_buf_get_name(ev.buf)
 			state.root = git_root()

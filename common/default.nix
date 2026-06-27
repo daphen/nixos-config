@@ -247,7 +247,9 @@
     nodejs
     python3
     python3Packages.pip
-    python3Packages.mdformat
+    # mdformat-gfm teaches mdformat about GFM tables so `--wrap 80` (conform)
+    # wraps prose but leaves table rows intact instead of shredding them.
+    (python3Packages.mdformat.withPlugins (ps: [ ps.mdformat-gfm ]))
     cargo
     rustc
     go

@@ -33,6 +33,20 @@ Singleton {
         return !!root.seenIds[id]
     }
 
+    // keepOnReload restores tracked notifications across a Quickshell reload
+    // (home-manager rebuild, theme switch). seenIds is in-memory and resets on
+    // reload, so without this every restored notification re-pops as a fresh
+    // toast. Snapshot the IDs present at startup and suppress their toast
+    // entrance — they belong in the Super+i history, not a flash. New
+    // notifications arrive after startup via onNotification, so they're never
+    // in this set and pop normally.
+    property var restoredIds: ({})
+    function isRestored(n) { return !!(n && root.restoredIds[n.id]) }
+    Component.onCompleted: {
+        const vals = notifServer.trackedNotifications.values
+        for (let i = 0; i < vals.length; i++) root.restoredIds[vals[i].id] = true
+    }
+
     // Opening a message's channel fires its default action, and quickshell
     // deletes a notification the instant its action is invoked. To keep the
     // Super+i center a real history, we retain a message's display data at that
