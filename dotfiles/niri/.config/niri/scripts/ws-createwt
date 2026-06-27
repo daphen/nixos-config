@@ -146,6 +146,10 @@ def main() -> int:
                          "session if one exists, else start fresh")
     ap.add_argument("--session-id", default=None,
                     help="claude session id for resume/fork")
+    ap.add_argument("--plan", action="store_true",
+                    help="plan mode: open the worktree's nvim ready to manage the "
+                         "ticket's plan (auto-opens .plans/<ticket>.md when it "
+                         "lands). Default is bare mode — an ordinary stack.")
     args = ap.parse_args()
 
     name = args.name
@@ -228,9 +232,13 @@ def main() -> int:
         "-e", *claude_cmd,
     ])
 
-    print("==> spawning nvim")
+    print("==> spawning nvim" + (" (plan mode)" if args.plan else ""))
+    # Plan mode only: plan-nvim auto-opens the ticket's plan once the agent's
+    # /plan-ticket writes it. Bare worktrees get an ordinary nvim.
+    nvim_env = ["--env", "PLAN_NVIM_OPEN=1"] if args.plan else []
     nvim_id = spawn_and_wait([
         "kitty",
+        *nvim_env,
         "--working-directory", str(worktree_path),
         # Launch nvim through `direnv exec` so it inherits the devenv's
         # toolchain PATH (Go, Node, etc.). Without this, gopls/tsserver

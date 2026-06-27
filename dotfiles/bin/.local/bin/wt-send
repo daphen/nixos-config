@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""
+wt-send <name> <message...>
+
+Inject a prompt into a worktree's running Claude TUI as if the user
+typed it. The receiving Claude has no way to tell the prompt didn't
+come from the keyboard.
+
+Mechanism: each kitty process listens on /tmp/kitty-<pid>. We iterate
+every socket, `kitten @ ls` each one, and pick the window whose
+foreground process is `claude` with cwd inside
+`~/work/lovable.daphen-<name>`. Then we `send-text` to that window's id
+followed by a carriage return to submit.
+
+No daemon, no per-session state, no special kitty config beyond
+`allow_remote_control yes` (already set).
+
+Usage:
+  wt-send 1234              # read message from stdin
+  wt-send 1234 "review pr"  # message as args
+  wt-send --list            # list active worktree claude windows
+
+Exit codes:
+  0  delivered
+  1  no matching window found (worktree's kitty isn't running, or
+     claude isn't the foreground process)
+  2  usage error
+"""
+from __future__ import annotations
+import argparse
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path(os.environ["HOME"])
+WORKTREE_ROOT = HOME / "work"
+
+
+def list_kitty_sockets() -> list[str]:
+    return sorted(glob.glob("/tmp/kitty-*"))
+
+
+def kitten_ls(sock: str) -> list | None:
+    """Run `kitten @ --to unix:<sock> ls`. Returns the parsed JSON or
+    None on any failure (socket dead, no permission, kitty restarted)."""
+    try:
+        out = subprocess.run(
+            ["kitten", "@", "--to", f"unix:{sock}", "ls"],
+            capture_output=True, text=True, timeout=1.5,
+        )
+        if out.returncode != 0 or not out.stdout.strip():
+            return None
+        return json.loads(out.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+        return None
+
+
+def is_claude(fp: dict) -> bool:
+    cmd = fp.get("cmdline") or []
+    if not cmd:
+        return False
+    return Path(cmd[0]).name == "claude"
+
+
+def find_claude_window(worktree_prefix: str) -> tuple[str, int] | None:
+    """Return (socket_path, window_id) for the first kitty window whose
+    foreground process is `claude` running under `worktree_prefix`."""
+    for sock in list_kitty_sockets():
+        data = kitten_ls(sock)
+        if not data:
+            continue
+        for ow in data:
+            for tab in ow.get("tabs", []):
+                for w in tab.get("windows", []):
+                    for fp in w.get("foreground_processes", []):
+                        cwd = fp.get("cwd", "")
+                        if is_claude(fp) and cwd.startswith(worktree_prefix):
+                            return (sock, w["id"])
+    return None
+
+
+def list_active_worktrees() -> list[tuple[str, str, int]]:
+    """Scan every kitty socket and report any window that looks like a
+    worktree claude session. Returns [(name, socket, window_id)]."""
+    out: list[tuple[str, str, int]] = []
+    pat = re.compile(
+        rf"^{re.escape(str(WORKTREE_ROOT))}/lovable\.daphen-([^/]+)"
+    )
+    for sock in list_kitty_sockets():
+        data = kitten_ls(sock)
+        if not data:
+            continue
+        for ow in data:
+            for tab in ow.get("tabs", []):
+                for w in tab.get("windows", []):
+                    for fp in w.get("foreground_processes", []):
+                        if not is_claude(fp):
+                            continue
+                        m = pat.match(fp.get("cwd", "") or "")
+                        if m:
+                            out.append((m.group(1), sock, w["id"]))
+                            break
+    return out
+
+
+def send_text(sock: str, window_id: int, text: str) -> int:
+    """send-text to the matched window, then submit by sending Enter as
+    a key event. Splitting text and key avoids any bracketed-paste
+    handling: Claude treats key events as a real keypress."""
+    text_rc = subprocess.run(
+        ["kitten", "@", "--to", f"unix:{sock}",
+         "send-text", "--match", f"id:{window_id}", "--", text],
+        capture_output=True, text=True, timeout=3,
+    ).returncode
+    if text_rc != 0:
+        return text_rc
+    return subprocess.run(
+        ["kitten", "@", "--to", f"unix:{sock}",
+         "send-key", "--match", f"id:{window_id}", "enter"],
+        capture_output=True, text=True, timeout=3,
+    ).returncode
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("name", nargs="?",
+                    help="worktree name (e.g. 1234-fix-button)")
+    ap.add_argument("message", nargs="*",
+                    help="message text; if omitted, read from stdin")
+    ap.add_argument("--list", action="store_true",
+                    help="list active worktree claude windows and exit")
+    ap.add_argument("--no-submit", action="store_true",
+                    help="send the text but don't press Enter")
+    ap.add_argument("--wait", type=float, default=0.0, metavar="SEC",
+                    help="retry until the worktree's claude window appears, "
+                         "up to SEC seconds (use right after ws-createwt, while "
+                         "claude is still booting)")
+    ap.add_argument("--settle", type=float, default=0.0, metavar="SEC",
+                    help="after the window is found, wait SEC before sending so "
+                         "the TUI is ready for input (avoids dropping an early send)")
+    args = ap.parse_args()
+
+    if args.list:
+        actives = list_active_worktrees()
+        if not actives:
+            print("(no active worktree claude windows found)")
+            return 0
+        for name, sock, wid in actives:
+            print(f"{name:<40} {sock}  window={wid}")
+        return 0
+
+    if not args.name:
+        ap.error("worktree name required (or pass --list)")
+
+    if args.message:
+        text = " ".join(args.message)
+    else:
+        text = sys.stdin.read().rstrip("\n")
+
+    if not text:
+        print("wt-send: empty message; nothing to send", file=sys.stderr)
+        return 2
+
+    worktree_prefix = str(WORKTREE_ROOT / f"lovable.daphen-{args.name}")
+    if not Path(worktree_prefix).is_dir():
+        print(f"wt-send: worktree dir does not exist: {worktree_prefix}",
+              file=sys.stderr)
+        return 1
+
+    match = find_claude_window(worktree_prefix)
+    if match is None and args.wait > 0:
+        deadline = time.time() + args.wait
+        while match is None and time.time() < deadline:
+            time.sleep(0.5)
+            match = find_claude_window(worktree_prefix)
+    if match is None:
+        print(f"wt-send: no running claude window for worktree '{args.name}'",
+              file=sys.stderr)
+        print("  (is the worktree's niri stack open? "
+              "use --list to see active ones)", file=sys.stderr)
+        return 1
+
+    if args.settle > 0:
+        time.sleep(args.settle)
+
+    sock, window_id = match
+    if args.no_submit:
+        rc = subprocess.run(
+            ["kitten", "@", "--to", f"unix:{sock}",
+             "send-text", "--match", f"id:{window_id}", "--", text],
+            capture_output=True, text=True, timeout=3,
+        ).returncode
+    else:
+        rc = send_text(sock, window_id, text)
+
+    if rc == 0:
+        print(f"wt-send: delivered to '{args.name}' "
+              f"(kitty {sock} window {window_id})")
+    else:
+        print(f"wt-send: send-text failed (rc={rc})", file=sys.stderr)
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

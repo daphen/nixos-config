@@ -10,6 +10,7 @@ vim.filetype.add({ extension = { mdx = "mdx" } })
 if vim.env.KITTY_SCROLLBACK_NVIM ~= "true" then
   require("hunk-nvim").setup()
   require("file-watcher").setup()
+  require("plan-nvim").setup()
 
   -- Eager: session restore must hook VimEnter before it fires.
   vim.opt.sessionoptions:remove("terminal")

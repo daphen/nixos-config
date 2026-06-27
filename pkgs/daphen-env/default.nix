@@ -46,6 +46,13 @@ let
       cp -r "${dotfiles}/claude/.claude/themes"/* "$out/claude/themes/" 2>/dev/null || true
     fi
 
+    # Personal skills (e.g. plan-ticket) — shipped the same way as themes so
+    # the sandbox's pre-installed claude finds them under ~/.claude/skills/.
+    if [ -d "${dotfiles}/claude/.claude/skills" ]; then
+      mkdir -p "$out/claude/skills"
+      cp -r "${dotfiles}/claude/.claude/skills"/* "$out/claude/skills/" 2>/dev/null || true
+    fi
+
     # Starship + nvim colorschemes: generated from the dotfiles' single
     # source of truth (themes/colors.json + per-tool templates), driven by
     # the same theme-processor.py used on proart. Means: edit colors.json,
@@ -241,6 +248,14 @@ in pkgs.writeShellApplication {
     if [ -d "${configRoot}/claude/themes" ]; then
       mkdir -p "$HOME/.claude/themes"
       cp -fL "${configRoot}/claude/themes"/* "$HOME/.claude/themes/" 2>/dev/null || true
+    fi
+
+    # Same for personal skills, so /plan-ticket et al. work on the sandbox.
+    # -r since each skill is a directory; copy (not symlink) so the read-only
+    # nix store path isn't in claude's writable config tree.
+    if [ -d "${configRoot}/claude/skills" ]; then
+      mkdir -p "$HOME/.claude/skills"
+      cp -rfL "${configRoot}/claude/skills"/* "$HOME/.claude/skills/" 2>/dev/null || true
     fi
 
     # Default Claude Code to auto mode + the custom dotfiles theme (whose

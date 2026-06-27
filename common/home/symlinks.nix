@@ -66,6 +66,11 @@ in {
     # keep working when niri's Wayland↔X11 selection bridge wedges after
     # suspend/wake. No-op when the bridge is healthy.
     ".local/bin/xclip".source = link "${dotfiles}/bin/.local/bin/xclip-shim";
+    # Worktree plan-dispatch tooling. wt-send injects a prompt into a worktree's
+    # running claude TUI; wt-plan chains ws-createwt --plan + wt-send to spawn a
+    # plan-mode stack and fire /plan-ticket once claude is up.
+    ".local/bin/wt-send".source = link "${dotfiles}/bin/.local/bin/wt-send";
+    ".local/bin/wt-plan".source = link "${dotfiles}/bin/.local/bin/wt-plan";
   };
 
   # Claude Code lives at ~/.claude, now sourced from the in-repo dotfiles
