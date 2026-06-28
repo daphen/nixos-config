@@ -317,6 +317,28 @@ function M.ask_visual()
 	annotate("❓ ask about selection", "❓", vim.fn.line("'>"), true)
 end
 
+-- Is the cursor inside a `### D#` decision block (vs past it under a later heading)?
+local function in_decision()
+	local cur = vim.api.nvim_win_get_cursor(0)[1]
+	local lines = vim.api.nvim_buf_get_lines(0, 0, cur, false)
+	for i = #lines, 1, -1 do
+		if lines[i]:match("^### D") then return true end
+		if lines[i]:match("^#") then return false end
+	end
+	return false
+end
+
+-- Context-aware primary action (<CR>): do the obvious thing for the object the
+-- cursor is on — open a file, answer a question, approve, or resolve a decision.
+function M.act()
+	local line = vim.api.nvim_get_current_line()
+	if line:match("^%s*|") and path_on_line(line) then return M.goto_file() end
+	if line:match("^>%s*❓") then return dispatch_questions() end
+	if line:match("^> Status:") then return M.approve() end
+	if in_decision() then return M.resolve_decision() end
+	vim.notify("plan: nothing to act on here — <C-p>q ask · <C-p>n note", vim.log.levels.INFO)
+end
+
 -- Worktree-stack entry: wait for the agent's /plan-ticket to write the plan, then
 -- open it. Bounded poll (readdir is cheap, .plans/ may not exist yet at startup),
 -- so it works whether the plan lands in 2s or two minutes.
@@ -360,9 +382,7 @@ function M.setup()
 			local map = function(lhs, fn, desc)
 				vim.keymap.set("n", lhs, fn, { buffer = ev.buf, desc = desc })
 			end
-			map("<CR>", M.goto_file, "plan: open file under cursor")
-			map("<C-p>d", M.resolve_decision, "plan: resolve decision")
-			map("<C-p>a", M.approve, "plan: approve (draft→planned)")
+			map("<CR>", M.act, "plan: act on object under cursor")
 			map("<C-p>q", M.ask, "plan: ask the agent")
 			map("<C-p>n", M.add_note, "plan: add a note")
 			vim.keymap.set("x", "<C-p>q", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
