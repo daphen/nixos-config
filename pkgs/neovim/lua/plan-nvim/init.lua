@@ -264,21 +264,23 @@ local function insert_after(row, lines)
 	vim.cmd("silent write")
 end
 
--- One-line reference to a visual selection, so a note/question reads unambiguously
--- even out of context ("re: ...").
-local function selection_ref(s, e)
-	local t = table.concat(vim.api.nvim_buf_get_lines(0, s - 1, e, false), " ")
-	t = t:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-	if #t > 80 then t = t:sub(1, 79) .. "…" end
-	return t
+-- The worktree bound to this plan, read from its `worktree: <branch>` header — NOT
+-- the nvim cwd (plans live in the vault, so cwd is usually not a worktree). Strips
+-- the daphen/ branch prefix to the wt-send short name; nil for non-worktree branches.
+local function plan_worktree()
+	for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, 40, false)) do
+		local b = l:match("worktree:%s*`([^`]+)`")
+		if b then return (b:match("^daphen/(.+)") or b) end
+	end
+	return nil
 end
 
--- Best-effort: if the cwd is a worktree, ask that worktree's claude to answer the
--- plan's open questions inline. wt-send types + submits into the running TUI.
+-- Ask the plan's worktree claude to answer the open questions inline. wt-send types
+-- + submits into that running TUI; answers land back in the file (watcher reloads).
 local function dispatch_questions()
-	local name = vim.fn.getcwd():match("/work/lovable%.daphen%-([^/]+)")
-	if not name then
-		vim.notify("plan: question saved (no worktree claude to dispatch to from here)", vim.log.levels.INFO)
+	local name = plan_worktree()
+	if not name or name == "main" then
+		vim.notify("plan: question saved — no worktree session bound to this plan", vim.log.levels.INFO)
 		return
 	end
 	local msg = ("Answer the open `> ❓` questions in %s — write each answer inline "
@@ -288,33 +290,31 @@ local function dispatch_questions()
 	vim.notify("plan: dispatched to the " .. name .. " session — answers land inline")
 end
 
--- emoji ❓ dispatches to the agent, 📝 is a local note. ref (optional) quotes the
--- visual selection; anchor is the line to insert the block after.
-local function annotate(title, emoji, anchor, ref, dispatch)
+-- emoji ❓ dispatches to the plan's worktree agent, 📝 is a local note. The block is
+-- anchored after `anchor` — for visual variants that's the selection end, so it sits
+-- right under the lines it's about (position carries the context; no quoting needed).
+local function annotate(title, emoji, anchor, dispatch)
 	compose(title, function(text)
-		local body = ref and ('re: "' .. ref .. '" — ' .. text) or text
-		insert_after(anchor, quote_block(emoji, body))
+		insert_after(anchor, quote_block(emoji, text))
 		if dispatch then dispatch_questions() end
 	end)
 end
 
 function M.add_note()
-	annotate("📝 note", "📝", vim.api.nvim_win_get_cursor(0)[1], nil, false)
+	annotate("📝 note", "📝", vim.api.nvim_win_get_cursor(0)[1], false)
 end
 
 function M.ask()
-	annotate("❓ ask the agent", "❓", vim.api.nvim_win_get_cursor(0)[1], nil, true)
+	annotate("❓ ask the agent", "❓", vim.api.nvim_win_get_cursor(0)[1], true)
 end
 
--- Visual variants: the x-mode maps press <Esc> first, so '< / '> hold the range.
+-- Visual variants: the x-mode maps press <Esc> first, so '> holds the selection end.
 function M.add_note_visual()
-	local s, e = vim.fn.line("'<"), vim.fn.line("'>")
-	annotate("📝 note on selection", "📝", e, selection_ref(s, e), false)
+	annotate("📝 note on selection", "📝", vim.fn.line("'>"), false)
 end
 
 function M.ask_visual()
-	local s, e = vim.fn.line("'<"), vim.fn.line("'>")
-	annotate("❓ ask about selection", "❓", e, selection_ref(s, e), true)
+	annotate("❓ ask about selection", "❓", vim.fn.line("'>"), true)
 end
 
 -- Worktree-stack entry: wait for the agent's /plan-ticket to write the plan, then
@@ -361,13 +361,13 @@ function M.setup()
 				vim.keymap.set("n", lhs, fn, { buffer = ev.buf, desc = desc })
 			end
 			map("<CR>", M.goto_file, "plan: open file under cursor")
-			map("<leader>pd", M.resolve_decision, "plan: resolve decision")
-			map("<leader>pa", M.approve, "plan: approve (draft→planned)")
-			map("<leader>pq", M.ask, "plan: ask the agent (inline)")
-			map("<leader>pn", M.add_note, "plan: add a note")
-			vim.keymap.set("x", "<C-g><C-g>", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
+			map("<C-p>d", M.resolve_decision, "plan: resolve decision")
+			map("<C-p>a", M.approve, "plan: approve (draft→planned)")
+			map("<C-p>q", M.ask, "plan: ask the agent")
+			map("<C-p>n", M.add_note, "plan: add a note")
+			vim.keymap.set("x", "<C-p>q", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
 				{ buffer = ev.buf, desc = "plan: ask about selection" })
-			vim.keymap.set("x", "<C-g>g", "<Esc><cmd>lua require('plan-nvim').add_note_visual()<CR>",
+			vim.keymap.set("x", "<C-p>n", "<Esc><cmd>lua require('plan-nvim').add_note_visual()<CR>",
 				{ buffer = ev.buf, desc = "plan: note on selection" })
 		end,
 	})

@@ -215,6 +215,5 @@ return {
 		{ "<C-f>", open_changed_files_picker, desc = "Changed files (daphen vs base)", mode = "n" },
 		{ "<leader>u", function() Snacks.picker.undo() end, desc = "Undo History" },
 		{ "<C-n>", function() Snacks.words.jump(vim.v.count1) end, desc = "Next Reference", mode = { "n", "t" } },
-		{ "<C-p>", function() Snacks.words.jump(-vim.v.count1) end, desc = "Prev Reference", mode = { "n", "t" } },
 	},
 }
