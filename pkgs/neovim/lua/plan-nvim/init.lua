@@ -705,7 +705,12 @@ function M.steps()
 	end, o)
 	vim.keymap.set("n", "<CR>", function()
 		local rel = state.steps_paths[vim.api.nvim_win_get_cursor(win)[1]]
-		if not rel then return end
+		if not rel then
+			-- not on a file row (header, section, flow step) → open the full plan
+			close()
+			if state.plan_path then vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path)) end
+			return
+		end
 		local root = state.root or git_root() or vim.fn.getcwd()
 		local abs = rel:match("^/") and rel or (root .. "/" .. rel)
 		if state.steps_prev_win and vim.api.nvim_win_is_valid(state.steps_prev_win) then
