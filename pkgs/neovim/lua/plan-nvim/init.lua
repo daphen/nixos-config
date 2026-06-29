@@ -622,7 +622,7 @@ render_steps = function(buf)
 	add("")
 	hl(add(string.format("  %s new · %s modify · %s touch",
 		action_icon("create"), action_icon("modify"), action_icon("touch"))), 0, -1, "Comment")
-	hl(add("  ⏎ open · a amend · r refresh · q close"), 0, -1, "Comment")
+	hl(add("  ⏎ open · p plan · a amend · r refresh · q close"), 0, -1, "Comment")
 	add("") -- bottom padding
 
 	vim.bo[buf].modifiable = true
@@ -699,6 +699,10 @@ function M.steps()
 	vim.keymap.set("n", "<Esc>", close, o)
 	vim.keymap.set("n", "r", function() read_progress(); render_steps(buf) end, o)
 	vim.keymap.set("n", "a", function() close(); M.amend() end, o)
+	vim.keymap.set("n", "p", function()
+		close()
+		if state.plan_path then vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path)) end
+	end, o)
 	vim.keymap.set("n", "<CR>", function()
 		local rel = state.steps_paths[vim.api.nvim_win_get_cursor(win)[1]]
 		if not rel then return end
