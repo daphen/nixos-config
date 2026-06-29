@@ -490,22 +490,14 @@ local function parse_plan()
 	return res
 end
 
--- Cut to a display width, breaking on a space so we never split a word, and tag
--- with … so the truncation is visible. Char-based so multibyte glyphs survive.
-local function elide(s, max)
-	if vim.fn.strchars(s) <= max then return s end
-	local cut = vim.fn.strcharpart(s, 0, max)
-	return (cut:match("^(.*)%s%S*$") or cut) .. "…"
-end
-
 -- ○ pending · ◐ touched · ● done · – deliberately skipped (pending but with a note
--- explaining no change was needed) · ⚠ unplanned. One line per item (elided to the
--- panel width, never wrapped); extmarks carry the hierarchy — bold headers, dim
--- details, status-colored glyphs — instead of markdown syntax highlighting.
+-- explaining no change was needed) · ⚠ unplanned. Full text per item; the window wraps
+-- with breakindent so long details flow with a hanging indent instead of dropping to
+-- column 0. Extmarks carry the hierarchy — bold headers, dim details, status-colored
+-- glyphs — instead of markdown syntax highlighting.
 render_steps = function(buf)
 	local p = state.progress or {}
 	local plan = parse_plan()
-	local w = state.steps_width or 88
 	local function rank(f)
 		if f.status == "done" then return 0 end
 		if f.status == "touched" then return 1 end
@@ -544,7 +536,7 @@ render_steps = function(buf)
 	if #plan.flow > 0 then
 		hl(add(" THE WORK"), 0, -1, "Title")
 		for _, s in ipairs(plan.flow) do
-			hl(add("   ◆ " .. elide(s, w - 6)), 3, 6, "Special")
+			hl(add("   ◆ " .. s), 3, 6, "Special")
 		end
 		add("")
 	end
@@ -559,13 +551,13 @@ render_steps = function(buf)
 		hl(li, 3, 6, glyph_hl(f))
 		state.steps_paths[li + 1] = f.file -- cursor line is 1-based
 		local detail = (f.note and f.note ~= "") and f.note or plan.why[f.file]
-		if detail and detail ~= "" then hl(add("            " .. elide(detail, w - 14)), 0, -1, "Comment") end
+		if detail and detail ~= "" then hl(add("            " .. detail), 0, -1, "Comment") end
 	end
 	for _, f in ipairs(p.unplanned or {}) do
 		local li = add(string.format("   ⚠ %-6s %s", "extra", f.file))
 		hl(li, 3, 6, "DiagnosticWarn")
 		state.steps_paths[li + 1] = f.file
-		if f.why and f.why ~= "" then hl(add("            " .. elide(f.why, w - 14)), 0, -1, "Comment") end
+		if f.why and f.why ~= "" then hl(add("            " .. f.why), 0, -1, "Comment") end
 	end
 	add("")
 	hl(add(" ⏎ open · r refresh · q close"), 0, -1, "Comment")
@@ -617,7 +609,6 @@ function M.steps()
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].bufhidden = "wipe"
 	local width = math.min(90, vim.o.columns - 8)
-	state.steps_width = width
 	render_steps(buf)
 	local n = #vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 	local height = math.min(n + 1, vim.o.lines - 6)
@@ -632,7 +623,8 @@ function M.steps()
 		title = " plan progress ",
 		title_pos = "center",
 	})
-	vim.wo[win].wrap = false
+	vim.wo[win].wrap = true
+	vim.wo[win].breakindent = true
 	vim.wo[win].cursorline = true
 	state.steps_buf, state.steps_win = buf, win
 	local function close()
