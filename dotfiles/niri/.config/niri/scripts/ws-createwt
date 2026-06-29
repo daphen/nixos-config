@@ -234,17 +234,17 @@ def main() -> int:
 
     print("==> spawning nvim" + (" (plan mode)" if args.plan else ""))
     # Plan mode only: plan-nvim auto-opens the ticket's plan once the agent's
-    # /plan-ticket writes it. Bare worktrees get an ordinary nvim.
-    nvim_env = ["--env", "PLAN_NVIM_OPEN=1"] if args.plan else []
+    # /plan-ticket writes it. The flag is set INSIDE the command, not via kitty
+    # --env (this kitty build has no such flag — it exits and the pane never opens).
+    # Launch nvim through `direnv exec` so it inherits the devenv toolchain PATH
+    # (Go, Node) instead of older system binaries.
+    nvim_cmd = "direnv exec . nvim; exec fish"
+    if args.plan:
+        nvim_cmd = "PLAN_NVIM_OPEN=1 " + nvim_cmd
     nvim_id = spawn_and_wait([
         "kitty",
-        *nvim_env,
         "--working-directory", str(worktree_path),
-        # Launch nvim through `direnv exec` so it inherits the devenv's
-        # toolchain PATH (Go, Node, etc.). Without this, gopls/tsserver
-        # pick up system binaries which may be older than what go.work
-        # / pnpm-lock requires.
-        "-e", "bash", "-c", "direnv exec . nvim; exec fish",
+        "-e", "bash", "-c", nvim_cmd,
     ])
 
     # Land focus on the new claude (col 3), so the user is at the prompt
