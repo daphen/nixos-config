@@ -375,20 +375,27 @@ function M.setup()
 	vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
 		pattern = { "*/.plans/*.md", "*/personal/notes/storage/plans/*.md" },
 		callback = function(ev)
-			state.plan_path = vim.api.nvim_buf_get_name(ev.buf)
+			local buf = ev.buf
+			state.plan_path = vim.api.nvim_buf_get_name(buf)
 			state.root = git_root()
 			read_status()
 			watch()
-			local map = function(lhs, fn, desc)
-				vim.keymap.set("n", lhs, fn, { buffer = ev.buf, desc = desc })
-			end
-			map("<CR>", M.act, "plan: act on object under cursor")
-			map("<C-p>q", M.ask, "plan: ask the agent")
-			map("<C-p>n", M.add_note, "plan: add a note")
-			vim.keymap.set("x", "<C-p>q", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
-				{ buffer = ev.buf, desc = "plan: ask about selection" })
-			vim.keymap.set("x", "<C-p>n", "<Esc><cmd>lua require('plan-nvim').add_note_visual()<CR>",
-				{ buffer = ev.buf, desc = "plan: note on selection" })
+			-- Defer so these land AFTER obsidian's FileType=markdown handler binds
+			-- <CR> (its checkbox cycle) — last writer wins, and we want to be last
+			-- in plan files. Obsidian keeps <CR> everywhere else.
+			vim.schedule(function()
+				if not vim.api.nvim_buf_is_valid(buf) then return end
+				local map = function(lhs, fn, desc)
+					vim.keymap.set("n", lhs, fn, { buffer = buf, desc = desc })
+				end
+				map("<CR>", M.act, "plan: act on object under cursor")
+				map("<C-p>q", M.ask, "plan: ask the agent")
+				map("<C-p>n", M.add_note, "plan: add a note")
+				vim.keymap.set("x", "<C-p>q", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
+					{ buffer = buf, desc = "plan: ask about selection" })
+				vim.keymap.set("x", "<C-p>n", "<Esc><cmd>lua require('plan-nvim').add_note_visual()<CR>",
+					{ buffer = buf, desc = "plan: note on selection" })
+			end)
 		end,
 	})
 
