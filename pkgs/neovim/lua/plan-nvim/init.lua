@@ -518,6 +518,14 @@ local function wrap(text, lead, indent, width)
 	return out
 end
 
+-- Action icons (Nerd Font):  new file ·  changed ·  light touch. Built via
+-- nr2char so the source stays plain ASCII.
+local function action_icon(a)
+	if a == "create" then return vim.fn.nr2char(0xf067) end
+	if a == "touch" then return vim.fn.nr2char(0xf0ad) end
+	return vim.fn.nr2char(0xf040)
+end
+
 -- ○ pending · ◐ touched · ● done · – deliberately skipped (pending but with a note
 -- explaining no change was needed) · ⚠ unplanned. Full text per item, hard-wrapped
 -- with a hanging indent. Extmarks carry the hierarchy — bold headers, dim details,
@@ -583,20 +591,26 @@ render_steps = function(buf)
 	local order = {}
 	for _, f in ipairs(p.planned or {}) do table.insert(order, f) end
 	table.sort(order, function(a, b) return rank(a) < rank(b) end)
-	for _, f in ipairs(order) do
-		local li = add(string.format("   %s %-6s %s", glyph(f), f.action or "", f.file))
-		hl(li, 3, 6, glyph_hl(f))
-		state.steps_paths[li + 1] = f.file -- cursor line is 1-based
-		local detail = (f.note and f.note ~= "") and f.note or plan.why[f.file]
+	local first = true
+	local function emit(g, ggroup, action, file, detail)
+		if not first then add("") end -- blank line between items
+		first = false
+		local li = add(string.format("   %s %s %s", g, action_icon(action), file))
+		hl(li, 3, 6, ggroup)     -- status glyph (done/touched/skip/extra)
+		hl(li, 7, 10, "Comment") -- action icon, dim (secondary to status)
+		state.steps_paths[li + 1] = file -- cursor line is 1-based
 		if detail and detail ~= "" then detail_lines(detail) end
 	end
+	for _, f in ipairs(order) do
+		local detail = (f.note and f.note ~= "") and f.note or plan.why[f.file]
+		emit(glyph(f), glyph_hl(f), f.action, f.file, detail)
+	end
 	for _, f in ipairs(p.unplanned or {}) do
-		local li = add(string.format("   ⚠ %-6s %s", "extra", f.file))
-		hl(li, 3, 6, "DiagnosticWarn")
-		state.steps_paths[li + 1] = f.file
-		if f.why and f.why ~= "" then detail_lines(f.why) end
+		emit("⚠", "DiagnosticWarn", f.action or "modify", f.file, f.why)
 	end
 	add("")
+	hl(add(string.format("  %s new · %s modify · %s touch",
+		action_icon("create"), action_icon("modify"), action_icon("touch"))), 0, -1, "Comment")
 	hl(add("  ⏎ open · r refresh · q close"), 0, -1, "Comment")
 	add("") -- bottom padding
 
