@@ -339,15 +339,20 @@ function M.act()
 	vim.notify("plan: nothing to act on here — <C-p>q ask · <C-p>n note", vim.log.levels.INFO)
 end
 
--- Worktree-stack entry: wait for the agent's /plan-ticket to write the plan, then
--- open it. Bounded poll (readdir is cheap, .plans/ may not exist yet at startup),
--- so it works whether the plan lands in 2s or two minutes.
+-- Worktree-stack entry: wait for the agent's /plan-ticket to write THIS ticket's
+-- plan, then open it. Plans live in a shared vault, so we must target the
+-- worktree's own ticket (from its branch/dir name) — "newest plan" would grab
+-- whatever ticket was touched last. Bounded poll so it works whether the plan
+-- lands in 2s or two minutes.
 function M.autostart()
 	state.root = git_root()
 	if not state.root then return end
+	local branch = (vim.fn.systemlist({ "git", "-C", state.root, "branch", "--show-current" })[1]) or ""
+	local num = branch:match("(%d%d+)") or state.root:match("(%d%d+)")
+	if not num then return end
+	local target = plans_dir() .. "/EVERY-" .. num .. ".md"
 	local function try_open()
-		local plans = list_plans(state.root)
-		if #plans > 0 then open_path(plans[1]); return true end
+		if vim.uv.fs_stat(target) then open_path(target); return true end
 		return false
 	end
 	if try_open() then return end
