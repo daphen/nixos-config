@@ -518,12 +518,29 @@ local function wrap(text, lead, indent, width)
 	return out
 end
 
--- Action icons (Nerd Font):  new file ·  changed ·  light touch. Built via
--- nr2char so the source stays plain ASCII.
+-- Action icons (Nerd Font): plus = new file · pencil = changed · feather = light
+-- touch. Built via nr2char so the source stays plain ASCII.
 local function action_icon(a)
 	if a == "create" then return vim.fn.nr2char(0xf067) end
-	if a == "touch" then return vim.fn.nr2char(0xf0ad) end
+	if a == "touch" then return vim.fn.nr2char(0xf52d) end
 	return vim.fn.nr2char(0xf040)
+end
+
+local function action_hl(a)
+	if a == "create" then return "PlanActionCreate" end -- green
+	if a == "touch" then return "PlanActionTouch" end   -- yellow
+	return "PlanActionModify"                            -- orange
+end
+
+-- Action-icon colors pulled from the active theme's exported palette
+-- (vim.g.theme_palette, set by the generated colorscheme) so they track light/dark
+-- switches. The dark-palette values are a fallback for before it's exported.
+local function set_action_hl()
+	local pal = vim.g.theme_palette or {}
+	vim.api.nvim_set_hl(0, "PlanActionCreate", { fg = pal.green or "#97B5A6" })
+	vim.api.nvim_set_hl(0, "PlanActionModify", { fg = pal.orange or "#FF570D" })
+	vim.api.nvim_set_hl(0, "PlanActionTouch", { fg = pal.yellow or "#ff8a31" })
+	vim.api.nvim_set_hl(0, "PlanActionDrift", { fg = pal.red or "#FF7B72" })
 end
 
 -- ○ pending · ◐ touched · ● done · – deliberately skipped (pending but with a note
@@ -534,23 +551,6 @@ render_steps = function(buf)
 	local p = state.progress or {}
 	local plan = parse_plan()
 	local width = state.steps_width or 88
-	local function rank(f)
-		if f.status == "done" then return 0 end
-		if f.status == "touched" then return 1 end
-		if f.note and f.note ~= "" then return 2 end
-		return 3
-	end
-	local function glyph(f)
-		if f.status == "done" then return "●" end
-		if f.status == "touched" then return "◐" end
-		if f.note and f.note ~= "" then return "–" end
-		return "○"
-	end
-	local function glyph_hl(f)
-		if f.status == "done" then return "DiagnosticOk" end
-		if f.status == "touched" then return "DiagnosticWarn" end
-		return "Comment"
-	end
 
 	local total, done, skipped = 0, 0, 0
 	for _, f in ipairs(p.planned or {}) do
@@ -588,25 +588,23 @@ render_steps = function(buf)
 
 	state.steps_paths = {}
 	hl(add("  FILES"), 0, -1, "Title")
-	local order = {}
-	for _, f in ipairs(p.planned or {}) do table.insert(order, f) end
-	table.sort(order, function(a, b) return rank(a) < rank(b) end)
+	-- One colored action icon per file (no status bullet — the icon is enough);
+	-- create/modify/touch carry their theme color, files shown in plan order.
 	local first = true
-	local function emit(g, ggroup, action, file, detail)
+	local function emit(icon, igroup, file, detail)
 		if not first then add("") end -- blank line between items
 		first = false
-		local li = add(string.format("   %s %s %s", g, action_icon(action), file))
-		hl(li, 3, 6, ggroup)     -- status glyph (done/touched/skip/extra)
-		hl(li, 7, 10, "Comment") -- action icon, dim (secondary to status)
+		local li = add("   " .. icon .. " " .. file)
+		hl(li, 3, 3 + #icon, igroup)
 		state.steps_paths[li + 1] = file -- cursor line is 1-based
 		if detail and detail ~= "" then detail_lines(detail) end
 	end
-	for _, f in ipairs(order) do
+	for _, f in ipairs(p.planned or {}) do
 		local detail = (f.note and f.note ~= "") and f.note or plan.why[f.file]
-		emit(glyph(f), glyph_hl(f), f.action, f.file, detail)
+		emit(action_icon(f.action), action_hl(f.action), f.file, detail)
 	end
 	for _, f in ipairs(p.unplanned or {}) do
-		emit("⚠", "DiagnosticWarn", f.action or "modify", f.file, f.why)
+		emit(vim.fn.nr2char(0xf071), "PlanActionDrift", f.file, f.why) -- ⚠ outside the plan
 	end
 	add("")
 	hl(add(string.format("  %s new · %s modify · %s touch",
@@ -823,6 +821,9 @@ local function apply_buffer_maps(buf)
 end
 
 function M.setup()
+	set_action_hl()
+	vim.api.nvim_create_autocmd("ColorScheme", { callback = set_action_hl })
+
 	vim.api.nvim_create_user_command("PlanOpen", function(o) M.open(o.args) end, { nargs = "?" })
 	vim.api.nvim_create_user_command("PlanGoto", M.goto_file, {})
 	vim.api.nvim_create_user_command("PlanDecide", M.resolve_decision, {})

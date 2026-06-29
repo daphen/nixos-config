@@ -68,6 +68,9 @@ local c = {
   cursor = "{{dark.semantic.cursor}}",
   none = "NONE",
 }
+-- Expose the palette so plugins (e.g. plan-nvim) can use theme colors directly.
+vim.g.theme_palette = c
+
 
 -- Helper to set highlights
 local function hl(group, opts)
