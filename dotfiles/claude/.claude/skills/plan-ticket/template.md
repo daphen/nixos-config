@@ -31,6 +31,8 @@ Real architectural forks only. If empty, the plan is hiding the architecture.
 Where files land and why. This list IS the boundary: `--go` will not touch anything
 outside it without asking, and `--reconcile` checks we held the line. One item per
 file — action + path on the first line, a short why beneath (it wraps; keep it tight).
+List items in **flow order** (the order their step runs), so the review walks
+top-to-bottom in execution order.
 
 - **modify** `path/to/file.go`
   Why this file changes.

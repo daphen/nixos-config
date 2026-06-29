@@ -459,13 +459,24 @@ end
 -- narrative of the work) and the surface-area "why" per file. Read from the file, not
 -- the buffer — the panel can be opened from a code buffer, not just the plan.
 local function parse_plan()
-	local res = { flow = {}, why = {} }
+	local res = { flow = {}, why = {}, order = {} }
 	if not state.plan_path then return res end
 	local ok, lines = pcall(vim.fn.readfile, state.plan_path)
 	if not ok then return res end
-	local in_flow, in_sa, cur, cur_file = false, false, nil, nil
+	local in_flow, in_sa, cur, cur_file, step = false, false, nil, nil, 0
 	local function flush()
-		if cur and cur:find("◆") then
+		if not cur then return end
+		step = step + 1
+		-- record the flow position of each file a step names via its _(files: `x`)_ tag,
+		-- keyed by basename (first mention wins) — drives flow-order sorting in the panel
+		local files = cur:match("_%(files:([^)]*)%)")
+		if files then
+			for fn in files:gmatch("`([^`]+)`") do
+				local base = fn:match("([^/]+%.%w+)$")
+				if base and not res.order[base] then res.order[base] = step end
+			end
+		end
+		if cur:find("◆") then
 			local s = cur:gsub("%*%*", ""):gsub("^%s*%d+%.%s*", "")
 			local title = s:match("◆%s*(.-)%s*—") or s:match("◆%s*(.-)%s*_%(files") or s:match("◆%s*(.+)")
 			if title then
@@ -623,7 +634,19 @@ render_steps = function(buf)
 		state.steps_paths[li + 1] = file -- cursor line is 1-based
 		if detail and detail ~= "" then detail_lines(detail) end
 	end
-	for _, f in ipairs(p.planned or {}) do
+	-- Order files by where their step appears in the flow, so the panel reads top-to-
+	-- bottom in execution order; files no step names fall to the end in plan order.
+	local ordered = {}
+	for i, f in ipairs(p.planned or {}) do
+		local base = f.file:match("([^/]+)$")
+		ordered[i] = { f = f, i = i, pos = (base and plan.order[base]) or math.huge }
+	end
+	table.sort(ordered, function(a, b)
+		if a.pos ~= b.pos then return a.pos < b.pos end
+		return a.i < b.i
+	end)
+	for _, o in ipairs(ordered) do
+		local f = o.f
 		local detail = (f.note and f.note ~= "") and f.note or plan.why[f.file]
 		emit(action_icon(f.action), action_hl(f.action), f.file, detail)
 	end

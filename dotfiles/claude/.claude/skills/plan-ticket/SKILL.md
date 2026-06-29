@@ -78,8 +78,9 @@ Quality bar:
   how the user sees the work is minimal and where it slots in.
 - **Decision points**: real forks with options + recommendation. None = you're
   hiding the architecture; find them.
-- **Surface area**: every file you intend to create/modify/touch, one-line why.
-  This is the containment boundary — keep it tight.
+- **Surface area**: every file you intend to create/modify/touch, one-line why,
+  listed in flow order (the order their step runs). This is the containment
+  boundary — keep it tight.
 
 ## PHASE 1.5 — FINALIZE (`--finalize`)
 
