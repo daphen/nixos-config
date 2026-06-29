@@ -36,13 +36,15 @@ worktree and resolve them against the current checkout, wherever the plan lives.
   "phase": "draft|planned|implementing|reconciled",
   "planned":   [{"file": "...", "action": "create|modify|touch", "status": "pending|touched|done", "note": "optional one line: what you did, or why no change was needed"}],
   "unplanned": [{"file": "...", "why": "..."}],
-  "updated_at": "<iso8601>"
+  "updated_at": "<iso8601>",
+  "amended_at": "<iso8601, set by --amend>"
 }
 ```
 
 ## Phase selection
 - no flag / `<ticket>` → **PLAN** (default)
 - `--finalize` → **FINALIZE** (clean the reviewed plan into an execution spec)
+- `--amend` → **AMEND** (fold new scope into the plan mid-ticket)
 - `--go` → **IMPLEMENT**
 - `--reconcile` → **RECONCILE**
 
@@ -101,6 +103,33 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
    `--go` implements literally.
 6. Set the plan's `> Status:` line to `finalized` (so the editor knows it's ready
    for `--go`). Leave `progress.json` otherwise unchanged.
+
+## PHASE 1.75 — AMEND (`--amend`)
+
+Scope changed mid-ticket: fold new work into the plan, on purpose and visibly. This
+is the deliberate-growth path — distinct from `unplanned[]` (a boundary crossed under
+pressure during `--go`). Runnable any time after PLAN. The prompt body (if any) is the
+new scope to add; also honor any manual edits the user already made to the artifact.
+
+1. Read `<plandir>/<ticket>.md`, `<plandir>/<ticket>.progress.json`, and the git diff
+   so far. Never undo or re-plan completed work — preserve it.
+2. Spawn read-only Explore agents only if the new scope needs mapping. NO code here.
+3. Integrate the new scope into the artifact:
+   - Add `◆` flow steps for the new work.
+   - Add surface-area rows (create/modify/touch) — this EXTENDS the containment
+     boundary; keep it as tight as the new scope honestly requires.
+   - If the new scope forks, add a `### D#` decision (re-opens the review gate).
+4. Log the growth in the artifact's **Amendments** section: one line per amendment —
+   `<date>: +<what> — <why>`. This keeps the "did it stay small?" review honest: the
+   boundary moved, and here's the record of when and why.
+5. Update `progress.json`: append the new files to `planned[]` (`status: pending`),
+   PRESERVE existing statuses/notes, set `amended_at`. Leave `phase` as is (work
+   already done stays done).
+6. Reset the review gate so the user re-approves the expanded plan before `--go`
+   continues: set `> Status:` to `draft` if you added a decision (resolve → approve),
+   else `planned` (re-finalize). STOP — print only the artifact path. The user's open
+   plan buffer reloads automatically; they review the additions and re-approve in
+   neovim. `--go` continues into the expanded boundary only after that.
 
 ## PHASE 2 — IMPLEMENT (`--go`)
 

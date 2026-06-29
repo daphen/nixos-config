@@ -609,7 +609,7 @@ render_steps = function(buf)
 	add("")
 	hl(add(string.format("  %s new · %s modify · %s touch",
 		action_icon("create"), action_icon("modify"), action_icon("touch"))), 0, -1, "Comment")
-	hl(add("  ⏎ open · r refresh · q close"), 0, -1, "Comment")
+	hl(add("  ⏎ open · a amend · r refresh · q close"), 0, -1, "Comment")
 	add("") -- bottom padding
 
 	vim.bo[buf].modifiable = true
@@ -685,6 +685,7 @@ function M.steps()
 	vim.keymap.set("n", "q", close, o)
 	vim.keymap.set("n", "<Esc>", close, o)
 	vim.keymap.set("n", "r", function() read_progress(); render_steps(buf) end, o)
+	vim.keymap.set("n", "a", function() close(); M.amend() end, o)
 	vim.keymap.set("n", "<CR>", function()
 		local rel = state.steps_paths[vim.api.nvim_win_get_cursor(win)[1]]
 		if not rel then return end
@@ -725,6 +726,39 @@ function M.go()
 	arm_surface_watches(state.root)
 	vim.system({ "wt-send", "--wait", "8", name, "/plan-ticket --go " .. ticket })
 	vim.notify("plan: dispatched --go to " .. name .. " — implementing", vim.log.levels.WARN)
+end
+
+-- The wt-send target for this plan's worktree, from the bound root's branch — works
+-- from any buffer (unlike plan_worktree, which reads the plan buffer's header).
+local function worktree_name()
+	local root = state.root or git_root()
+	if not root then return nil end
+	local branch = (vim.fn.systemlist({ "git", "-C", root, "branch", "--show-current" })[1]) or ""
+	local short = branch:match("^daphen/(.+)") or branch
+	if short == "" or short == "main" then return nil end
+	return short
+end
+
+-- Fold new scope into the plan mid-ticket. By --go time you've usually navigated off to
+-- the code (cwd is the worktree), so this works from any buffer: composes what to add,
+-- dispatches --amend, and re-opens the plan by its absolute vault path — cwd stays on
+-- the worktree so code keeps live-reloading — for you to review and re-approve.
+function M.amend()
+	if not resolve_plan_path() then
+		vim.notify("plan: no plan found for this worktree", vim.log.levels.INFO)
+		return
+	end
+	local name = worktree_name()
+	if not name then
+		vim.notify("plan: no worktree session bound — run /plan-ticket --amend there", vim.log.levels.INFO)
+		return
+	end
+	local ticket = vim.fn.fnamemodify(state.plan_path, ":t:r")
+	compose("▲ amend — what to add to the plan", function(text)
+		vim.system({ "wt-send", "--wait", "8", name, "/plan-ticket --amend " .. ticket .. "\n\n" .. text })
+		vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path)) -- bring the plan up to review/re-approve
+		vim.notify("plan: amend dispatched — the plan reloads here with the additions; review & re-approve")
+	end)
 end
 
 -- Is the cursor inside a `### D#` decision block (vs past it under a later heading)?
@@ -809,6 +843,7 @@ local function apply_buffer_maps(buf)
 		map("<C-p>n", M.add_note, "plan: add a note")
 		map("<C-p>f", M.finalize, "plan: finalize → execution spec")
 		map("<C-p>g", M.go, "plan: implement (--go)")
+		map("<C-p>a", M.amend, "plan: amend (add scope)")
 		map("<C-p>s", M.steps, "plan: progress panel")
 		-- In a plan buffer <C-p> stays the action prefix; a bare press is a no-op
 		-- (not the global progress panel — you're already looking at the plan).
@@ -833,6 +868,7 @@ function M.setup()
 	vim.api.nvim_create_user_command("PlanNote", M.add_note, {})
 	vim.api.nvim_create_user_command("PlanFinalize", M.finalize, {})
 	vim.api.nvim_create_user_command("PlanGo", M.go, {})
+	vim.api.nvim_create_user_command("PlanAmend", M.amend, {})
 	vim.api.nvim_create_user_command("PlanSteps", M.steps, {})
 
 	-- Bare <C-p> opens the progress panel from any ordinary buffer (e.g. while

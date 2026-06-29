@@ -54,6 +54,11 @@ How we'll know each piece works without reading the code:
 ## Out of scope
 Deliberately not touching — keeps the blast radius small and visible.
 
+## Amendments
+_(scope added after the initial plan, newest last; filled by `--amend` — the boundary
+moved on purpose, recorded here so the "did it stay small?" review stays honest)_
+- _none yet_
+
 ---
 ## Reconciliation
 _(filled by `--reconcile`; full detail in review.json)_
