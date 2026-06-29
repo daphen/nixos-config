@@ -452,7 +452,13 @@ local function parse_plan()
 		if cur and cur:find("◆") then
 			local s = cur:gsub("%*%*", ""):gsub("^%s*%d+%.%s*", "")
 			local title = s:match("◆%s*(.-)%s*—") or s:match("◆%s*(.-)%s*_%(files") or s:match("◆%s*(.+)")
-			if title then table.insert(res.flow, (title:gsub("%s+$", ""))) end
+			if title then
+				title = title:gsub("%s+$", "")
+				if #title > 100 then -- break on a space so we never split a word or multibyte glyph
+					title = (title:sub(1, 100):match("^(.*)%s%S*$") or title:sub(1, 99)) .. "…"
+				end
+				table.insert(res.flow, title)
+			end
 		end
 		cur = nil
 	end
@@ -734,6 +740,7 @@ function M.setup()
 			state.plan_path = vim.api.nvim_buf_get_name(ev.buf)
 			state.root = git_root()
 			read_status()
+			read_progress()
 			watch()
 			apply_buffer_maps(ev.buf)
 		end,
@@ -744,6 +751,7 @@ function M.setup()
 			state.plan_path = vim.api.nvim_buf_get_name(ev.buf)
 			state.root = git_root()
 			read_status()
+			read_progress()
 			apply_buffer_maps(ev.buf)
 		end,
 	})

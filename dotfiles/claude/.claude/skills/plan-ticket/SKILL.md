@@ -34,7 +34,7 @@ worktree and resolve them against the current checkout, wherever the plan lives.
   "ticket": "EVERY-1234",
   "branch": "<git branch --show-current>",
   "phase": "draft|planned|implementing|reconciled",
-  "planned":   [{"file": "...", "action": "create|modify|touch", "status": "pending|touched|done"}],
+  "planned":   [{"file": "...", "action": "create|modify|touch", "status": "pending|touched|done", "note": "optional one line: what you did, or why no change was needed"}],
   "unplanned": [{"file": "...", "why": "..."}],
   "updated_at": "<iso8601>"
 }
@@ -110,7 +110,9 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
 3. Implement strictly within the surface area. Before touching any file NOT in the
    table, STOP and ask — record approved additions under `unplanned[]` with a why.
 4. Keep `<plandir>/<ticket>.progress.json` current as you work: `phase: "implementing"`,
-   flip each planned file `pending → touched → done`. This is the plugin's live-watch feed.
+   flip each planned file `pending → touched → done`. Add a one-line `note` per file —
+   what you changed, or why a planned file needed no change (it stays `pending` with the
+   note, which the plugin renders as a deliberate skip). This is the plugin's live-watch feed.
 5. Run the verification strategy. Report results plainly.
 
 ## PHASE 3 — RECONCILE (`--reconcile`)
