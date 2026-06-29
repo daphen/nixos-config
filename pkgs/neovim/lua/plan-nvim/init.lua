@@ -470,7 +470,7 @@ local function parse_plan()
 	if not state.plan_path then return res end
 	local ok, lines = pcall(vim.fn.readfile, state.plan_path)
 	if not ok then return res end
-	local in_flow, cur = false, nil
+	local in_flow, in_sa, cur, cur_file = false, false, nil, nil
 	local function flush()
 		if cur and cur:find("◆") then
 			local s = cur:gsub("%*%*", ""):gsub("^%s*%d+%.%s*", "")
@@ -489,6 +489,8 @@ local function parse_plan()
 		if l:match("^## ") then
 			if in_flow then flush() end
 			in_flow = l:match("^##%s+The flow") ~= nil
+			in_sa = l:match("^##%s+Surface area") ~= nil
+			cur_file = nil
 		elseif in_flow then
 			if l:match("^%s*%d+%.") then
 				flush()
@@ -496,7 +498,20 @@ local function parse_plan()
 			elseif cur and l:match("%S") then
 				cur = cur .. " " .. l:gsub("^%s+", "")
 			end
+		elseif in_sa then
+			-- "- **action** `path`" starts an item; the indented lines under it are its why
+			local path = l:match("^%s*%-%s*%*%*%w+%*%*%s*`([^`]+)`")
+			if path then
+				cur_file = path
+				res.why[path] = ""
+			elseif cur_file and l:match("^%s+%S") then
+				local t = vim.trim(l)
+				res.why[cur_file] = (res.why[cur_file] == "") and t or (res.why[cur_file] .. " " .. t)
+			elseif not l:match("%S") then
+				cur_file = nil -- blank line ends the current item's why
+			end
 		end
+		-- legacy table format ("| file | action | why |"), so older plans still parse
 		if l:match("^%s*|") then
 			local cells = vim.split(l, "|")
 			if #cells >= 4 then
@@ -801,7 +816,10 @@ end
 -- cursor is on — open a file, answer a question, approve, or resolve a decision.
 function M.act()
 	local line = vim.api.nvim_get_current_line()
-	if line:match("^%s*|") and path_on_line(line) then return M.goto_file() end
+	-- a surface-area item: legacy table row, or "- **action** `path`" bullet
+	if (line:match("^%s*|") or line:match("^%s*%-%s*%*%*%w+%*%*%s*`")) and path_on_line(line) then
+		return M.goto_file()
+	end
 	if line:match("^>%s*❓") then return dispatch_questions() end
 	if line:match("^> Status:") then
 		-- the Status line is the "advance the plan" control: draft → approve,

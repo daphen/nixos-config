@@ -91,7 +91,7 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
 2. **Bake each decision into a directive.** Replace every `### D#` block with a
    one-line resolved instruction stating the chosen option (carry the rationale,
    trimmed). Drop the A/B options, the recommendation, and the `Your call:` line.
-   Where cleaner, fold the directive into the flow step / surface-area row it
+   Where cleaner, fold the directive into the flow step / surface-area item it
    governs instead of leaving a standalone line.
 3. **Fold notes in.** Each `> 📝` note becomes an instruction on the step/file it
    sits under; remove the `📝` marker.
@@ -116,15 +116,15 @@ new scope to add; also honor any manual edits the user already made to the artif
 2. Spawn read-only Explore agents only if the new scope needs mapping. NO code here.
 3. Update the plan `.md` — the human source of truth. Do NOT record the increment
    only in `progress.json` or the chat; the artifact itself MUST show it:
-   - **Surface area**: add a table row for EVERY new file (create/modify/touch) and
-     bump the `*New: N · Modified: N · Touched: N*` count line. This table IS the
-     containment boundary — a file not in it gets flagged as drift at `--reconcile`.
-     Don't rewrite or drop existing rows.
+   - **Surface area**: add a list item (`- **action** ` + `` `path` `` + a short why
+     beneath) for EVERY new file and bump the `*New: N · Modified: N · Touched: N*`
+     count line. This list IS the containment boundary — a file not in it gets flagged
+     as drift at `--reconcile`. Don't rewrite or drop existing items.
    - **Flow**: add `◆` steps for the new work.
    - **Decision**: if the new scope forks, add a `### D#` block (re-opens the gate).
    - **Amendments**: append one line — `<date>: +<what> — <why>`. Add the
      `## Amendments` heading (before `## Reconciliation`) if the plan predates it.
-4. Update `progress.json` to MATCH the surface-area table — the two must list the SAME
+4. Update `progress.json` to MATCH the surface-area list — the two must list the SAME
    files. Append the new files to `planned[]` (`status: pending`); KEEP every existing
    entry, including deliberately-skipped ones (`pending` + note — never drop them);
    set `amended_at`; leave `phase` as is (work already done stays done).
@@ -141,7 +141,7 @@ new scope to add; also honor any manual edits the user already made to the artif
    directives); honor the user's edits — their text wins.
 2. Refuse to start if any **Your call:** is `(unresolved)`; list them and stop.
 3. Implement strictly within the surface area. Before touching any file NOT in the
-   table, STOP and ask — record approved additions under `unplanned[]` with a why.
+   surface-area list, STOP and ask — record approved additions under `unplanned[]` with a why.
 4. Keep `<plandir>/<ticket>.progress.json` current as you work: `phase: "implementing"`,
    flip each planned file `pending → touched → done`. Add a one-line `note` per file —
    what you changed, or why a planned file needed no change (it stays `pending` with the

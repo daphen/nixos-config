@@ -28,13 +28,14 @@ Real architectural forks only. If empty, the plan is hiding the architecture.
 - **Your call:** _(unresolved)_
 
 ## Surface area — the containment boundary
-Where files land and why. This table IS the boundary: `--go` will not touch
-anything outside it without asking, and `--reconcile` checks we held the line.
+Where files land and why. This list IS the boundary: `--go` will not touch anything
+outside it without asking, and `--reconcile` checks we held the line. One item per
+file — action + path on the first line, a short why beneath (it wraps; keep it tight).
 
-| File | Action | Why (one line) |
-|------|--------|----------------|
-| path/to/file.go | modify | … |
-| path/to/new.go | create | … |
+- **modify** `path/to/file.go`
+  Why this file changes.
+- **create** `path/to/new.go`
+  Why this new file exists, kept minimal.
 
 *New: N · Modified: N · Touched: N*
 
