@@ -579,14 +579,38 @@ render_steps = function(buf)
 	end
 end
 
+-- The plan binds to the nvim session when a plan buffer opens (autostart, :PlanOpen).
+-- For an ordinary nvim that never opened it, resolve it on demand from the worktree's
+-- branch — the same EVERY-<num> derivation autostart uses — so <C-p> works anywhere in
+-- the worktree, not just the --plan stack pane.
+local function resolve_plan_path()
+	if state.plan_path and vim.uv.fs_stat(state.plan_path) then return state.plan_path end
+	local root = state.root or git_root()
+	if not root then return nil end
+	local branch = (vim.fn.systemlist({ "git", "-C", root, "branch", "--show-current" })[1]) or ""
+	local num = branch:match("(%d%d+)") or root:match("(%d%d+)")
+	if not num then return nil end
+	local target = plans_dir(root) .. "/EVERY-" .. num .. ".md"
+	if vim.uv.fs_stat(target) then
+		state.root = root
+		state.plan_path = target
+		return target
+	end
+	return nil
+end
+
 -- Read panel for implementation progress: the ◆ work, then every surface-area file
 -- with its live status + the agent's note (or the plan's why). <CR> opens the file
 -- under the cursor in the window the panel was opened from (panel keeps focus, so you
 -- can keep jumping). Refreshes live while open as the agent ticks progress.json.
 function M.steps()
+	if not resolve_plan_path() then
+		vim.notify("plan: no plan found for this worktree", vim.log.levels.INFO)
+		return
+	end
 	read_progress()
 	if not state.progress then
-		vim.notify("plan: no plan bound to this session", vim.log.levels.INFO)
+		vim.notify("plan: plan found but no progress.json yet", vim.log.levels.INFO)
 		return
 	end
 	state.steps_prev_win = vim.api.nvim_get_current_win()
