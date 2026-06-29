@@ -42,6 +42,7 @@ worktree and resolve them against the current checkout, wherever the plan lives.
 
 ## Phase selection
 - no flag / `<ticket>` → **PLAN** (default)
+- `--finalize` → **FINALIZE** (clean the reviewed plan into an execution spec)
 - `--go` → **IMPLEMENT**
 - `--reconcile` → **RECONCILE**
 
@@ -78,9 +79,31 @@ Quality bar:
 - **Surface area**: every file you intend to create/modify/touch, one-line why.
   This is the containment boundary — keep it tight.
 
+## PHASE 1.5 — FINALIZE (`--finalize`)
+
+Turn the reviewed plan into a clean execution spec — run after the decisions are
+resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
+
+1. Read `<plandir>/<ticket>.md`. Refuse if any **Your call:** is still
+   `(unresolved)` — list them and stop (can't bake an open decision).
+2. **Bake each decision into a directive.** Replace every `### D#` block with a
+   one-line resolved instruction stating the chosen option (carry the rationale,
+   trimmed). Drop the A/B options, the recommendation, and the `Your call:` line.
+   Where cleaner, fold the directive into the flow step / surface-area row it
+   governs instead of leaving a standalone line.
+3. **Fold notes in.** Each `> 📝` note becomes an instruction on the step/file it
+   sits under; remove the `📝` marker.
+4. **Strip the Q&A.** Delete every `> ❓` question and `> 💬` answer — they were
+   review scaffolding; the conclusion the user acted on already lives in the
+   decision / instruction.
+5. Result: a directive plan — shape, flow (decisions baked in), final surface area,
+   verification, out of scope — no menus, questions, or markers. This is what
+   `--go` implements literally. Leave `progress.json` / status unchanged.
+
 ## PHASE 2 — IMPLEMENT (`--go`)
 
-1. Read `<plandir>/<ticket>.md`; honor the user's edits — their text wins.
+1. Read `<plandir>/<ticket>.md` (normally already `--finalize`d into clean
+   directives); honor the user's edits — their text wins.
 2. Refuse to start if any **Your call:** is `(unresolved)`; list them and stop.
 3. Implement strictly within the surface area. Before touching any file NOT in the
    table, STOP and ask — record approved additions under `unplanned[]` with a why.
