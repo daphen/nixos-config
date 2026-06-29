@@ -490,14 +490,37 @@ local function parse_plan()
 	return res
 end
 
+-- Hard-wrap to `width` columns on word boundaries (never mid-word): the first line
+-- gets `lead`, continuation lines `indent`, so wrapped text hangs under lead's text.
+-- Done here rather than via 'breakindent' because the float doesn't honor it.
+local function wrap(text, lead, indent, width)
+	local out, line, prefix = {}, "", lead
+	local cap = function(pfx) return math.max(20, width - vim.fn.strdisplaywidth(pfx)) end
+	local avail = cap(lead)
+	for word in text:gmatch("%S+") do
+		if line == "" then
+			line = word
+		elseif vim.fn.strdisplaywidth(line .. " " .. word) <= avail then
+			line = line .. " " .. word
+		else
+			out[#out + 1] = prefix .. line
+			prefix, avail = indent, cap(indent)
+			line = word
+		end
+	end
+	if line ~= "" then out[#out + 1] = prefix .. line end
+	if #out == 0 then out[1] = lead end
+	return out
+end
+
 -- ○ pending · ◐ touched · ● done · – deliberately skipped (pending but with a note
--- explaining no change was needed) · ⚠ unplanned. Full text per item; the window wraps
--- with breakindent so long details flow with a hanging indent instead of dropping to
--- column 0. Extmarks carry the hierarchy — bold headers, dim details, status-colored
--- glyphs — instead of markdown syntax highlighting.
+-- explaining no change was needed) · ⚠ unplanned. Full text per item, hard-wrapped
+-- with a hanging indent. Extmarks carry the hierarchy — bold headers, dim details,
+-- status-colored glyphs — instead of markdown syntax highlighting.
 render_steps = function(buf)
 	local p = state.progress or {}
 	local plan = parse_plan()
+	local width = state.steps_width or 88
 	local function rank(f)
 		if f.status == "done" then return 0 end
 		if f.status == "touched" then return 1 end
@@ -529,20 +552,29 @@ render_steps = function(buf)
 		return #lines - 1 -- 0-based line index for extmarks
 	end
 	local function hl(line0, c0, c1, group) table.insert(hls, { line0, c0, c1, group }) end
+	local function detail_lines(text)
+		for _, dl in ipairs(wrap(text, "            ", "            ", width)) do
+			hl(add(dl), 0, -1, "Comment")
+		end
+	end
 
-	hl(add(string.format(" %s · %s · %d/%d done%s", p.ticket or "plan", p.phase or "?", done, total,
+	add("") -- top padding
+	hl(add(string.format("  %s · %s · %d/%d done%s", p.ticket or "plan", p.phase or "?", done, total,
 		skipped > 0 and string.format(" · %d skipped", skipped) or "")), 0, -1, "Title")
 	add("")
 	if #plan.flow > 0 then
-		hl(add(" THE WORK"), 0, -1, "Title")
+		hl(add("  THE WORK"), 0, -1, "Title")
 		for _, s in ipairs(plan.flow) do
-			hl(add("   ◆ " .. s), 3, 6, "Special")
+			for i, dl in ipairs(wrap(s, "   ◆ ", "     ", width)) do
+				local li = add(dl)
+				if i == 1 then hl(li, 3, 6, "Special") end
+			end
 		end
 		add("")
 	end
 
 	state.steps_paths = {}
-	hl(add(" FILES"), 0, -1, "Title")
+	hl(add("  FILES"), 0, -1, "Title")
 	local order = {}
 	for _, f in ipairs(p.planned or {}) do table.insert(order, f) end
 	table.sort(order, function(a, b) return rank(a) < rank(b) end)
@@ -551,16 +583,17 @@ render_steps = function(buf)
 		hl(li, 3, 6, glyph_hl(f))
 		state.steps_paths[li + 1] = f.file -- cursor line is 1-based
 		local detail = (f.note and f.note ~= "") and f.note or plan.why[f.file]
-		if detail and detail ~= "" then hl(add("            " .. detail), 0, -1, "Comment") end
+		if detail and detail ~= "" then detail_lines(detail) end
 	end
 	for _, f in ipairs(p.unplanned or {}) do
 		local li = add(string.format("   ⚠ %-6s %s", "extra", f.file))
 		hl(li, 3, 6, "DiagnosticWarn")
 		state.steps_paths[li + 1] = f.file
-		if f.why and f.why ~= "" then hl(add("            " .. f.why), 0, -1, "Comment") end
+		if f.why and f.why ~= "" then detail_lines(f.why) end
 	end
 	add("")
-	hl(add(" ⏎ open · r refresh · q close"), 0, -1, "Comment")
+	hl(add("  ⏎ open · r refresh · q close"), 0, -1, "Comment")
+	add("") -- bottom padding
 
 	vim.bo[buf].modifiable = true
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -608,10 +641,11 @@ function M.steps()
 	state.steps_prev_win = vim.api.nvim_get_current_win()
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].bufhidden = "wipe"
-	local width = math.min(90, vim.o.columns - 8)
+	local width = math.min(110, vim.o.columns - 6)
+	state.steps_width = width - 4 -- wrap text short of the right edge for padding
 	render_steps(buf)
 	local n = #vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-	local height = math.min(n + 1, vim.o.lines - 6)
+	local height = math.min(n, vim.o.lines - 4)
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
 		width = width,
@@ -623,8 +657,7 @@ function M.steps()
 		title = " plan progress ",
 		title_pos = "center",
 	})
-	vim.wo[win].wrap = true
-	vim.wo[win].breakindent = true
+	vim.wo[win].wrap = false
 	vim.wo[win].cursorline = true
 	state.steps_buf, state.steps_win = buf, win
 	local function close()
@@ -734,6 +767,17 @@ function M.autostart()
 	end))
 end
 
+-- Silently bind the session to the worktree's plan WITHOUT opening it — reads status
+-- + progress and starts the watcher — so the lualine component and <C-p> work in an
+-- ordinary code-editing nvim, not just the --plan stack pane. No-op outside a worktree
+-- that has a matching plan.
+function M.bind()
+	if state.plan_path or not resolve_plan_path() then return end
+	read_status()
+	read_progress()
+	watch()
+end
+
 -- Re-assert the buffer-local plan maps (deferred so they win over obsidian's
 -- <CR>, which obsidian re-binds whenever it re-attaches — e.g. when a picker
 -- float closes and BufEnter fires). Idempotent; safe to call on every entry.
@@ -808,12 +852,15 @@ function M.setup()
 	-- mid-init races plugin attach (markview, treesitter), leaving the buffer
 	-- unrendered with <CR> unbound. The defer puts the open in the same
 	-- post-init regime as a manual :e.
-	if vim.env.PLAN_NVIM_OPEN == "1" then
-		vim.api.nvim_create_autocmd("VimEnter", {
-			once = true,
-			callback = function() vim.defer_fn(M.autostart, 150) end,
-		})
-	end
+	vim.api.nvim_create_autocmd("VimEnter", {
+		once = true,
+		callback = function()
+			vim.defer_fn(function()
+				M.bind() -- silently bind so the statusline + <C-p> work in any worktree nvim
+				if vim.env.PLAN_NVIM_OPEN == "1" then M.autostart() end
+			end, 150)
+		end,
+	})
 end
 
 return M
