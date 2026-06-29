@@ -362,6 +362,22 @@ function M.finalize()
 	vim.notify("plan: dispatched --finalize to the " .. name .. " session")
 end
 
+-- Dispatch /plan-ticket --go to the plan's worktree claude. Confirms first — this
+-- one writes code.
+function M.go()
+	local name = plan_worktree()
+	if not name or name == "main" then
+		vim.notify("plan: no worktree session bound — run /plan-ticket --go there", vim.log.levels.INFO)
+		return
+	end
+	if vim.fn.confirm("Dispatch /plan-ticket --go? The agent will implement the plan.", "&Yes\n&No", 2) ~= 1 then
+		return
+	end
+	local ticket = vim.fn.fnamemodify(state.plan_path or "", ":t:r")
+	vim.system({ "wt-send", "--wait", "8", name, "/plan-ticket --go " .. ticket })
+	vim.notify("plan: dispatched --go to " .. name .. " — implementing", vim.log.levels.WARN)
+end
+
 -- Is the cursor inside a `### D#` decision block (vs past it under a later heading)?
 local function in_decision()
 	local cur = vim.api.nvim_win_get_cursor(0)[1]
@@ -432,6 +448,7 @@ local function apply_buffer_maps(buf)
 		map("<C-p>q", M.ask, "plan: ask the agent")
 		map("<C-p>n", M.add_note, "plan: add a note")
 		map("<C-p>f", M.finalize, "plan: finalize → execution spec")
+		map("<C-p>g", M.go, "plan: implement (--go)")
 		vim.keymap.set("x", "<C-p>q", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
 			{ buffer = buf, desc = "plan: ask about selection" })
 		vim.keymap.set("x", "<C-p>n", "<Esc><cmd>lua require('plan-nvim').add_note_visual()<CR>",
@@ -448,6 +465,7 @@ function M.setup()
 	vim.api.nvim_create_user_command("PlanAsk", M.ask, {})
 	vim.api.nvim_create_user_command("PlanNote", M.add_note, {})
 	vim.api.nvim_create_user_command("PlanFinalize", M.finalize, {})
+	vim.api.nvim_create_user_command("PlanGo", M.go, {})
 
 	-- Buffer-local maps only inside a plan file, so they never clobber normal
 	-- markdown editing elsewhere. Set on open AND re-assert on every BufEnter,
