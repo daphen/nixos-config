@@ -1,6 +1,6 @@
 ---
 name: plan-ticket
-description: Turn a Linear ticket into a reviewable plain-English plan artifact BEFORE any code, then implement strictly within it and reconcile. Hard-gates on the user's sign-off so they stay the architect even in unfamiliar languages (e.g. Go). The north star is CONTAINMENT — the work produced stays as small and bounded as possible. Triggers on "/plan-ticket", "plan EVERY-####", "build a plan for <ticket>", "implement the plan", "reconcile the plan".
+description: Turn a Linear ticket OR an ad-hoc task you describe in chat into a reviewable plain-English plan artifact BEFORE any code, then implement strictly within it and reconcile. Hard-gates on the user's sign-off so they stay the architect even in unfamiliar languages (e.g. Go). The north star is CONTAINMENT — the work produced stays as small and bounded as possible. Triggers on "/plan-ticket", "plan EVERY-####", "build a plan for <ticket>", "plan this: <task>", "implement the plan", "reconcile the plan".
 ---
 
 # plan-ticket
@@ -8,14 +8,19 @@ description: Turn a Linear ticket into a reviewable plain-English plan artifact 
 Three-phase workflow. North star: **containment** — the surface area is a hard
 boundary, and the artifact lets the user see and prove the work stayed small.
 
-Three artifacts, keyed to the ticket, are the seam between this skill, the neovim
+Three artifacts, keyed to the plan, are the seam between this skill, the neovim
 plugin, and the Quickshell board. Never duplicate their state elsewhere.
 
-- `<plandir>/<ticket>.md` — the human artifact (source of truth).
-- `<plandir>/<ticket>.progress.json` — machine state, read by the plugin (live-watch)
+- `<plandir>/<key>.md` — the human artifact (source of truth).
+- `<plandir>/<key>.progress.json` — machine state, read by the plugin (live-watch)
   and Quickshell. Always exists from PLAN onward.
-- `<plandir>/<ticket>.review.json` — produced by RECONCILE: hunk↔step correspondence,
+- `<plandir>/<key>.review.json` — produced by RECONCILE: hunk↔step correspondence,
   drift flags, verification results.
+
+`<key>` is the plan's identity, derived from the worktree branch so the editor can
+find it: a Linear branch (carries a ticket number) keys as `EVERY-<num>`; an ad-hoc
+branch (`daphen/refactor-foo`) keys as its short name (`refactor-foo`). The neovim
+plugin derives the same key — own-work plans need no ticket.
 
 **Plan location (`<plandir>`) — resolve once per run:**
 - If `~/personal/notes/storage/` exists (local) → **`~/personal/notes/storage/plans/`**.
@@ -56,16 +61,21 @@ Generate the COMPLETE plan in one shot and write it out. Do NOT discuss it step 
 step in chat — the user manages, edits, and approves the plan inside neovim, not by
 conversing with the agent. Your job here is the best full draft you can produce.
 
-1. Resolve the ticket id (e.g. `EVERY-1234`) and pull it with the Linear MCP
-   (`get_issue`). Pull adjacent context (Company Brain `search`) only if useful.
+1. **Identify the work and the key.** Two ways in:
+   - **Linear ticket** (`EVERY-1234`) → pull it with the Linear MCP (`get_issue`);
+     the key is the ticket id. Pull adjacent context (Company Brain `search`) if useful.
+   - **Ad-hoc task** (free text — your own work, no ticket) → the description IS the
+     task; skip Linear. The key is the worktree branch's short name (`daphen/refactor-foo`
+     → `refactor-foo`), or a slug of the task title if not on a feature branch yet.
 2. Spawn **read-only** Explore agents to map where this lands and what exists
    nearby. NO code is written in this or any planning step.
-3. Fill `~/.claude/skills/plan-ticket/template.md` COMPLETELY → `<plandir>/<ticket>.md`
-   (substitute `{{TICKET}}`, `{{TITLE}}`, `{{DATE}}` = `date -u +%Y-%m-%dT%H:%MZ`,
-   `{{BRANCH}}` = `git branch --show-current`). Every section filled: the shape, the
+3. Fill `~/.claude/skills/plan-ticket/template.md` COMPLETELY → `<plandir>/<key>.md`
+   (substitute `{{TICKET}}` = the key — ticket id or ad-hoc slug; `{{TITLE}}`;
+   `{{DATE}}` = `date -u +%Y-%m-%dT%H:%MZ`; `{{BRANCH}}` = `git branch --show-current`).
+   Every section filled: the shape, the
    flow with ◆ new steps, decision points (options + recommendation), surface area +
    tree, verification, out of scope.
-4. Write `<plandir>/<ticket>.progress.json` (`phase: "draft"`, branch, `planned[]` from
+4. Write `<plandir>/<key>.progress.json` (`phase: "draft"`, branch, `planned[]` from
    the surface area, all `status: "pending"`).
 5. **STOP.** Print only a one-line pointer to the artifact path. The user manages it
    from there in neovim — editing steps, resolving decisions, approving. Do not
@@ -87,7 +97,7 @@ Quality bar:
 Turn the reviewed plan into a clean execution spec — run after the decisions are
 resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
 
-1. Read `<plandir>/<ticket>.md`. Refuse if any **Your call:** is still
+1. Read `<plandir>/<key>.md`. Refuse if any **Your call:** is still
    `(unresolved)` — list them and stop (can't bake an open decision).
 2. **Bake each decision into a directive.** Replace every `### D#` block with a
    one-line resolved instruction stating the chosen option (carry the rationale,
@@ -110,7 +120,7 @@ is the deliberate-growth path — distinct from `unplanned[]` (a boundary crosse
 pressure during `--go`). Runnable any time after PLAN. The prompt body (if any) is the
 new scope to add; also honor any manual edits the user already made to the artifact.
 
-1. Read `<plandir>/<ticket>.md`, `<plandir>/<ticket>.progress.json`, and the git diff
+1. Read `<plandir>/<key>.md`, `<plandir>/<key>.progress.json`, and the git diff
    so far. Never undo or re-plan completed work — preserve it.
 2. Spawn read-only Explore agents only if the new scope needs mapping. NO code here.
 3. Update the plan `.md` — the human source of truth. Do NOT record the increment
@@ -136,12 +146,12 @@ new scope to add; also honor any manual edits the user already made to the artif
 
 ## PHASE 2 — IMPLEMENT (`--go`)
 
-1. Read `<plandir>/<ticket>.md` (normally already `--finalize`d into clean
+1. Read `<plandir>/<key>.md` (normally already `--finalize`d into clean
    directives); honor the user's edits — their text wins.
 2. Refuse to start if any **Your call:** is `(unresolved)`; list them and stop.
 3. Implement strictly within the surface area. Before touching any file NOT in the
    surface-area list, STOP and ask — record approved additions under `unplanned[]` with a why.
-4. Keep `<plandir>/<ticket>.progress.json` current as you work: `phase: "implementing"`,
+4. Keep `<plandir>/<key>.progress.json` current as you work: `phase: "implementing"`,
    flip each planned file `pending → touched → done`. Add a one-line `note` per file —
    what you changed, or why a planned file needed no change (it stays `pending` with the
    note, which the plugin renders as a deliberate skip). This is the plugin's live-watch feed.
@@ -153,7 +163,7 @@ Answers two questions for the user: did reality match the plan, and does it work
 The user reviews against the plan, not against raw Go — so correspondence and
 verification are the product here, not per-line explanation.
 
-1. Read `<plandir>/<ticket>.progress.json` and the actual git changes (`git status`, `git diff`).
+1. Read `<plandir>/<key>.progress.json` and the actual git changes (`git status`, `git diff`).
 2. **Correspondence (both directions):**
    - diff → plan: map each changed file/hunk to the plan step (`◆`) or decision
      (`D`) it implements.
@@ -164,7 +174,7 @@ verification are the product here, not per-line explanation.
 4. **Verification:** run each item from the plan's Verification strategy that has a
    command (tests, build, lint); record `pass|fail`. Mark manual checks `pending`.
    Never claim a check passed without running it.
-5. Emit `<plandir>/<ticket>.review.json`:
+5. Emit `<plandir>/<key>.review.json`:
    ```json
    {
      "correspondence": [{"step": "◆2", "files": ["service.go"], "hunks": ["service.go:40-58"], "status": "done|missing"}],

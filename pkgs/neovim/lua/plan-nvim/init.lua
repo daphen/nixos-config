@@ -668,18 +668,32 @@ render_steps = function(buf)
 	end
 end
 
+-- The artifact key for a worktree's plan, from its branch: a Linear branch (carries a
+-- ticket number) keys as `EVERY-<num>`; an ad-hoc branch (`daphen/refactor-foo`) keys
+-- as its short name (`refactor-foo`) — so own-work plans need no ticket. nil for
+-- main/master or no repo.
+local function plan_key(root)
+	root = root or state.root or git_root()
+	if not root then return nil end
+	local branch = (vim.fn.systemlist({ "git", "-C", root, "branch", "--show-current" })[1]) or ""
+	local name = branch:match("^daphen/(.+)")
+		or (branch ~= "" and branch)
+		or (vim.fn.fnamemodify(root, ":t"):gsub("^lovable%.daphen%-", ""))
+	if not name or name == "" or name == "main" or name == "master" then return nil end
+	local num = name:match("(%d%d+)")
+	return num and ("EVERY-" .. num) or name
+end
+
 -- The plan binds to the nvim session when a plan buffer opens (autostart, :PlanOpen).
 -- For an ordinary nvim that never opened it, resolve it on demand from the worktree's
--- branch — the same EVERY-<num> derivation autostart uses — so <C-p> works anywhere in
--- the worktree, not just the --plan stack pane.
+-- branch (via plan_key) — so <C-p> works anywhere in the worktree, ticket or ad-hoc.
 local function resolve_plan_path()
 	if state.plan_path and vim.uv.fs_stat(state.plan_path) then return state.plan_path end
 	local root = state.root or git_root()
 	if not root then return nil end
-	local branch = (vim.fn.systemlist({ "git", "-C", root, "branch", "--show-current" })[1]) or ""
-	local num = branch:match("(%d%d+)") or root:match("(%d%d+)")
-	if not num then return nil end
-	local target = plans_dir(root) .. "/EVERY-" .. num .. ".md"
+	local key = plan_key(root)
+	if not key then return nil end
+	local target = plans_dir(root) .. "/" .. key .. ".md"
 	if vim.uv.fs_stat(target) then
 		state.root = root
 		state.plan_path = target
@@ -877,10 +891,9 @@ end
 function M.autostart()
 	state.root = git_root()
 	if not state.root then return end
-	local branch = (vim.fn.systemlist({ "git", "-C", state.root, "branch", "--show-current" })[1]) or ""
-	local num = branch:match("(%d%d+)") or state.root:match("(%d%d+)")
-	if not num then return end
-	local target = plans_dir() .. "/EVERY-" .. num .. ".md"
+	local key = plan_key(state.root)
+	if not key then return end
+	local target = plans_dir() .. "/" .. key .. ".md"
 	local function try_open()
 		if vim.uv.fs_stat(target) then open_path(target); return true end
 		return false
