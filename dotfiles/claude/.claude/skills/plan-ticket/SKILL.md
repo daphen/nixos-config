@@ -17,10 +17,12 @@ plugin, and the Quickshell board. Never duplicate their state elsewhere.
 - `<plandir>/<key>.review.json` — produced by RECONCILE: hunk↔step correspondence,
   drift flags, verification results.
 
-`<key>` is the plan's identity, derived from the worktree branch so the editor can
-find it: a Linear branch (carries a ticket number) keys as `EVERY-<num>`; an ad-hoc
-branch (`daphen/refactor-foo`) keys as its short name (`refactor-foo`). The neovim
-plugin derives the same key — own-work plans need no ticket.
+`<key>` is the plan's identity: a Linear ticket id (`EVERY-1234`) — the default — or,
+for your own work, a short kebab-case slug of the task (`refactor-color-utils`). The
+whole flow runs from any claude session in any repo; no worktree or Linear required.
+(In a lovable worktree the neovim plugin derives the key from the branch to auto-open
+the plan; elsewhere, pass the key to `--finalize`/`--go`/`--reconcile` or open the
+`.md` directly.)
 
 **Plan location (`<plandir>`) — resolve once per run:**
 - If `~/personal/notes/storage/` exists (local) → **`~/personal/notes/storage/plans/`**.
@@ -65,8 +67,10 @@ conversing with the agent. Your job here is the best full draft you can produce.
    - **Linear ticket** (`EVERY-1234`) → pull it with the Linear MCP (`get_issue`);
      the key is the ticket id. Pull adjacent context (Company Brain `search`) if useful.
    - **Ad-hoc task** (free text — your own work, no ticket) → the description IS the
-     task; skip Linear. The key is the worktree branch's short name (`daphen/refactor-foo`
-     → `refactor-foo`), or a slug of the task title if not on a feature branch yet.
+     task; skip Linear. The key is a short kebab-case slug you derive from the task
+     ("Refactor the color utils" → `refactor-color-utils`). Works from any repo/cwd —
+     no worktree needed. (If you happen to be on a matching `daphen/<name>` worktree
+     branch, use that short name so the neovim plugin auto-opens it.)
 2. Spawn **read-only** Explore agents to map where this lands and what exists
    nearby. NO code is written in this or any planning step.
 3. Fill `~/.claude/skills/plan-ticket/template.md` COMPLETELY → `<plandir>/<key>.md`
