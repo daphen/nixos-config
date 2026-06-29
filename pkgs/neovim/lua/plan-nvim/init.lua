@@ -400,9 +400,15 @@ function M.setup()
 	})
 
 	-- Set by ws-createwt on the worktree's nvim pane only, so ordinary nvim
-	-- sessions never auto-open a plan.
+	-- sessions never auto-open a plan. Defer past VimEnter: opening the plan
+	-- mid-init races plugin attach (markview, treesitter), leaving the buffer
+	-- unrendered with <CR> unbound. The defer puts the open in the same
+	-- post-init regime as a manual :e.
 	if vim.env.PLAN_NVIM_OPEN == "1" then
-		vim.api.nvim_create_autocmd("VimEnter", { once = true, callback = function() M.autostart() end })
+		vim.api.nvim_create_autocmd("VimEnter", {
+			once = true,
+			callback = function() vim.defer_fn(M.autostart, 150) end,
+		})
 	end
 end
 
