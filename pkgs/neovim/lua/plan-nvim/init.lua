@@ -17,8 +17,17 @@ local state = {
 	root = nil,
 	plan_path = nil,
 	status = nil,
+	progress = nil,
 	watcher = nil,
+	file_watchers = {},
+	steps_buf = nil,
+	steps_win = nil,
+	steps_prev_win = nil,
+	steps_paths = {},
 }
+
+-- Assigned lower down; forward-declared so watch()'s closure captures the upvalue.
+local arm_surface_watches, render_steps
 
 local function git_root()
 	local out = vim.fn.systemlist({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })
@@ -60,8 +69,36 @@ local function read_status()
 	end
 end
 
+-- progress.json is the agent's live feed during --go/--reconcile: per-file status
+-- (pending|touched|done), an optional `note` (what it actually did / why skipped),
+-- and the phase. Read alongside the plan; drives the statusline and the panel.
+local function read_progress()
+	state.progress = nil
+	if not state.plan_path then return end
+	local pj = state.plan_path:gsub("%.md$", ".progress.json")
+	local ok, content = pcall(vim.fn.readfile, pj)
+	if not ok then return end
+	local ok2, data = pcall(vim.json.decode, table.concat(content, "\n"))
+	if ok2 and type(data) == "table" then state.progress = data end
+end
+
 -- lualine component: require("plan-nvim").statusline()
 function M.statusline()
+	local p = state.progress
+	if p and (p.phase == "implementing" or p.phase == "reconciled") then
+		local total, done, touched = 0, 0, 0
+		for _, f in ipairs(p.planned or {}) do
+			total = total + 1
+			if f.status == "done" then done = done + 1
+			elseif f.status == "touched" then touched = touched + 1 end
+		end
+		local mark
+		if p.phase == "reconciled" then mark = "✓"
+		elseif total > 0 and done == total then mark = "●"
+		elseif done + touched > 0 then mark = "◐"
+		else mark = "○" end
+		return string.format(" %s %s %d/%d", p.ticket or "plan", mark, done, total)
+	end
 	if not state.status then return "" end
 	local icon = state.status == "planned" and "" or "" -- planned vs draft
 	return icon .. " plan:" .. state.status
@@ -78,7 +115,15 @@ local function watch()
 		h:start(plans_dir(), {}, vim.schedule_wrap(function(err)
 			if err then return end
 			read_status()
+			read_progress()
 			pcall(vim.cmd, "checktime") -- reload the plan buffer when the agent rewrites it (answers, --finalize)
+			if state.progress and state.progress.phase == "implementing" then
+				arm_surface_watches(state.root) -- surface area can grow (unplanned files)
+			end
+			if state.steps_buf and vim.api.nvim_buf_is_valid(state.steps_buf)
+				and state.steps_win and vim.api.nvim_win_is_valid(state.steps_win) then
+				render_steps(state.steps_buf)
+			end
 			pcall(function() require("plan-nvim.review").refresh() end)
 		end))
 	end)
@@ -362,6 +407,197 @@ function M.finalize()
 	vim.notify("plan: dispatched --finalize to the " .. name .. " session")
 end
 
+-- The plugin's own fs_event watches the vault (where plan + progress.json live).
+-- During --go the *code* changes in the worktree, which that watcher never sees, so
+-- arm a second set of watches on the surface-area files' parent dirs — bounded to the
+-- containment boundary — firing checktime so open code buffers reload as the agent
+-- writes them. Parent dirs (not files) so newly-created files are caught too.
+arm_surface_watches = function(root)
+	for _, h in ipairs(state.file_watchers) do pcall(function() h:close() end) end
+	state.file_watchers = {}
+	if not root or not state.progress then return end
+	local dirs, seen = {}, {}
+	local function add(file)
+		local dir = vim.fn.fnamemodify(root .. "/" .. file, ":h")
+		if not seen[dir] and vim.fn.isdirectory(dir) == 1 then
+			seen[dir] = true
+			table.insert(dirs, dir)
+		end
+	end
+	for _, f in ipairs(state.progress.planned or {}) do add(f.file) end
+	for _, f in ipairs(state.progress.unplanned or {}) do add(f.file) end
+	for _, dir in ipairs(dirs) do
+		local h = vim.uv.new_fs_event()
+		if h then
+			pcall(function()
+				h:start(dir, {}, vim.schedule_wrap(function(err)
+					if not err then pcall(vim.cmd, "checktime") end
+				end))
+			end)
+			table.insert(state.file_watchers, h)
+		end
+	end
+end
+
+-- Pull the human-language scaffolding from the plan markdown: the ◆ flow steps (the
+-- narrative of the work) and the surface-area "why" per file. Read from the file, not
+-- the buffer — the panel can be opened from a code buffer, not just the plan.
+local function parse_plan()
+	local res = { flow = {}, why = {} }
+	if not state.plan_path then return res end
+	local ok, lines = pcall(vim.fn.readfile, state.plan_path)
+	if not ok then return res end
+	local in_flow, cur = false, nil
+	local function flush()
+		if cur and cur:find("◆") then
+			local s = cur:gsub("%*%*", ""):gsub("^%s*%d+%.%s*", "")
+			local title = s:match("◆%s*(.-)%s*—") or s:match("◆%s*(.-)%s*_%(files") or s:match("◆%s*(.+)")
+			if title then table.insert(res.flow, (title:gsub("%s+$", ""))) end
+		end
+		cur = nil
+	end
+	for _, l in ipairs(lines) do
+		if l:match("^## ") then
+			if in_flow then flush() end
+			in_flow = l:match("^##%s+The flow") ~= nil
+		elseif in_flow then
+			if l:match("^%s*%d+%.") then
+				flush()
+				cur = l
+			elseif cur and l:match("%S") then
+				cur = cur .. " " .. l:gsub("^%s+", "")
+			end
+		end
+		if l:match("^%s*|") then
+			local cells = vim.split(l, "|")
+			if #cells >= 4 then
+				local file = (vim.trim(cells[2]):gsub("`", ""))
+				if (file:match("/") or file:match("%.%w+$")) and file ~= "File" then
+					res.why[file] = vim.trim(cells[4])
+				end
+			end
+		end
+	end
+	if in_flow then flush() end
+	return res
+end
+
+-- ○ pending · ◐ touched · ● done · – deliberately skipped (pending but with a note
+-- explaining no change was needed) · ⚠ unplanned.
+render_steps = function(buf)
+	local p = state.progress or {}
+	local plan = parse_plan()
+	local function rank(f)
+		if f.status == "done" then return 0 end
+		if f.status == "touched" then return 1 end
+		if f.note and f.note ~= "" then return 2 end
+		return 3
+	end
+	local function glyph(f)
+		if f.status == "done" then return "●" end
+		if f.status == "touched" then return "◐" end
+		if f.note and f.note ~= "" then return "–" end
+		return "○"
+	end
+
+	local total, done, skipped = 0, 0, 0
+	for _, f in ipairs(p.planned or {}) do
+		total = total + 1
+		if f.status == "done" then done = done + 1
+		elseif f.status ~= "touched" and f.note and f.note ~= "" then skipped = skipped + 1 end
+	end
+
+	local lines = {}
+	local hdr = string.format(" %s · %s · %d/%d done", p.ticket or "plan", p.phase or "?", done, total)
+	if skipped > 0 then hdr = hdr .. string.format(" · %d skipped", skipped) end
+	table.insert(lines, hdr)
+	table.insert(lines, "")
+	if #plan.flow > 0 then
+		table.insert(lines, " THE WORK")
+		for _, s in ipairs(plan.flow) do table.insert(lines, "   ◆ " .. s) end
+		table.insert(lines, "")
+	end
+
+	state.steps_paths = {}
+	table.insert(lines, " FILES")
+	local order = {}
+	for _, f in ipairs(p.planned or {}) do table.insert(order, f) end
+	table.sort(order, function(a, b) return rank(a) < rank(b) end)
+	for _, f in ipairs(order) do
+		table.insert(lines, string.format("   %s %-6s %s", glyph(f), f.action or "", f.file))
+		state.steps_paths[#lines] = f.file
+		local detail = (f.note and f.note ~= "") and f.note or plan.why[f.file]
+		if detail and detail ~= "" then table.insert(lines, "            " .. detail) end
+	end
+	for _, f in ipairs(p.unplanned or {}) do
+		table.insert(lines, string.format("   ⚠ %-6s %s", "extra", f.file))
+		state.steps_paths[#lines] = f.file
+		if f.why and f.why ~= "" then table.insert(lines, "            " .. f.why) end
+	end
+	table.insert(lines, "")
+	table.insert(lines, " ⏎ open · r refresh · q close")
+
+	vim.bo[buf].modifiable = true
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.bo[buf].modifiable = false
+end
+
+-- Read panel for implementation progress: the ◆ work, then every surface-area file
+-- with its live status + the agent's note (or the plan's why). <CR> opens the file
+-- under the cursor in the window the panel was opened from (panel keeps focus, so you
+-- can keep jumping). Refreshes live while open as the agent ticks progress.json.
+function M.steps()
+	read_progress()
+	if not state.progress then
+		vim.notify("plan: no plan bound to this session", vim.log.levels.INFO)
+		return
+	end
+	state.steps_prev_win = vim.api.nvim_get_current_win()
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].filetype = "markdown"
+	render_steps(buf)
+	local width = math.min(90, vim.o.columns - 8)
+	local n = #vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	local height = math.min(n + 1, vim.o.lines - 6)
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		width = width,
+		height = height,
+		row = math.floor((vim.o.lines - height) / 2 - 1),
+		col = math.floor((vim.o.columns - width) / 2),
+		style = "minimal",
+		border = "rounded",
+		title = " plan progress ",
+		title_pos = "center",
+	})
+	vim.wo[win].wrap = true
+	vim.wo[win].cursorline = true
+	state.steps_buf, state.steps_win = buf, win
+	local function close()
+		if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+		state.steps_buf, state.steps_win = nil, nil
+	end
+	local o = { buffer = buf, nowait = true, silent = true }
+	vim.keymap.set("n", "q", close, o)
+	vim.keymap.set("n", "<Esc>", close, o)
+	vim.keymap.set("n", "r", function() read_progress(); render_steps(buf) end, o)
+	vim.keymap.set("n", "<CR>", function()
+		local rel = state.steps_paths[vim.api.nvim_win_get_cursor(win)[1]]
+		if not rel then return end
+		local root = state.root or git_root() or vim.fn.getcwd()
+		local abs = rel:match("^/") and rel or (root .. "/" .. rel)
+		if state.steps_prev_win and vim.api.nvim_win_is_valid(state.steps_prev_win) then
+			vim.api.nvim_win_call(state.steps_prev_win, function()
+				vim.cmd("edit " .. vim.fn.fnameescape(abs))
+			end)
+		else
+			close()
+			vim.cmd("edit " .. vim.fn.fnameescape(abs))
+		end
+	end, o)
+end
+
 -- Dispatch /plan-ticket --go to the plan's worktree claude. Confirms first — this
 -- one writes code.
 function M.go()
@@ -374,6 +610,16 @@ function M.go()
 		return
 	end
 	local ticket = vim.fn.fnamemodify(state.plan_path or "", ":t:r")
+	-- Move into the worktree so progress paths resolve and code buffers open there,
+	-- then watch the surface-area dirs so the agent's edits reload live.
+	local wt = vim.fn.expand("~/work/lovable.daphen-" .. name)
+	if vim.fn.isdirectory(wt) == 1 then
+		vim.fn.chdir(wt)
+		state.root = wt
+	end
+	vim.o.autoread = true
+	read_progress()
+	arm_surface_watches(state.root)
 	vim.system({ "wt-send", "--wait", "8", name, "/plan-ticket --go " .. ticket })
 	vim.notify("plan: dispatched --go to " .. name .. " — implementing", vim.log.levels.WARN)
 end
@@ -449,6 +695,10 @@ local function apply_buffer_maps(buf)
 		map("<C-p>n", M.add_note, "plan: add a note")
 		map("<C-p>f", M.finalize, "plan: finalize → execution spec")
 		map("<C-p>g", M.go, "plan: implement (--go)")
+		map("<C-p>s", M.steps, "plan: progress panel")
+		-- In a plan buffer <C-p> stays the action prefix; a bare press is a no-op
+		-- (not the global progress panel — you're already looking at the plan).
+		map("<C-p>", function() end, "plan: (prefix)")
 		vim.keymap.set("x", "<C-p>q", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
 			{ buffer = buf, desc = "plan: ask about selection" })
 		vim.keymap.set("x", "<C-p>n", "<Esc><cmd>lua require('plan-nvim').add_note_visual()<CR>",
@@ -466,6 +716,12 @@ function M.setup()
 	vim.api.nvim_create_user_command("PlanNote", M.add_note, {})
 	vim.api.nvim_create_user_command("PlanFinalize", M.finalize, {})
 	vim.api.nvim_create_user_command("PlanGo", M.go, {})
+	vim.api.nvim_create_user_command("PlanSteps", M.steps, {})
+
+	-- Bare <C-p> opens the progress panel from any ordinary buffer (e.g. while
+	-- reading the code the agent is touching). Plan buffers shadow this with their
+	-- own <C-p> prefix, so the panel there is <C-p>s.
+	vim.keymap.set("n", "<C-p>", M.steps, { desc = "plan: progress panel" })
 
 	-- Buffer-local maps only inside a plan file, so they never clobber normal
 	-- markdown editing elsewhere. Set on open AND re-assert on every BufEnter,
