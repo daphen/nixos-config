@@ -640,7 +640,7 @@ render_steps = function(buf)
 	add("")
 	hl(add(string.format("  %s new · %s modify · %s touch",
 		action_icon("create"), action_icon("modify"), action_icon("touch"))), 0, -1, "Comment")
-	hl(add("  ⏎ open · p plan · a amend · r refresh · q close"), 0, -1, "Comment")
+	hl(add("  ⏎ open · p plan · a amend · R reconcile · r refresh · q close"), 0, -1, "Comment")
 	add("") -- bottom padding
 
 	vim.bo[buf].modifiable = true
@@ -717,6 +717,7 @@ function M.steps()
 	vim.keymap.set("n", "<Esc>", close, o)
 	vim.keymap.set("n", "r", function() read_progress(); render_steps(buf) end, o)
 	vim.keymap.set("n", "a", function() close(); M.amend() end, o)
+	vim.keymap.set("n", "R", function() close(); M.reconcile() end, o)
 	vim.keymap.set("n", "p", function()
 		close()
 		if state.plan_path then vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path)) end
@@ -799,6 +800,24 @@ function M.amend()
 		vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path)) -- bring the plan up to review/re-approve
 		vim.notify("plan: amend dispatched — the plan reloads here with the additions; review & re-approve")
 	end)
+end
+
+-- The final step: dispatch /plan-ticket --reconcile to check plan vs outcome — maps
+-- changes to ◆ steps, flags drift + missing steps, runs the verification commands, and
+-- writes review.json + the Reconciliation section. Works from any buffer.
+function M.reconcile()
+	if not resolve_plan_path() then
+		vim.notify("plan: no plan found for this worktree", vim.log.levels.INFO)
+		return
+	end
+	local name = worktree_name()
+	if not name then
+		vim.notify("plan: no worktree session bound — run /plan-ticket --reconcile there", vim.log.levels.INFO)
+		return
+	end
+	local ticket = vim.fn.fnamemodify(state.plan_path, ":t:r")
+	vim.system({ "wt-send", "--wait", "8", name, "/plan-ticket --reconcile " .. ticket })
+	vim.notify("plan: dispatched --reconcile to " .. name .. " — checking plan vs outcome")
 end
 
 -- Is the cursor inside a `### D#` decision block (vs past it under a later heading)?
@@ -889,6 +908,7 @@ local function apply_buffer_maps(buf)
 		map("<C-p>f", M.finalize, "plan: finalize → execution spec")
 		map("<C-p>g", M.go, "plan: implement (--go)")
 		map("<C-p>a", M.amend, "plan: amend (add scope)")
+		map("<C-p>r", M.reconcile, "plan: reconcile (plan vs outcome)")
 		map("<C-p>s", M.steps, "plan: progress panel")
 		-- In a plan buffer <C-p> stays the action prefix; a bare press is a no-op
 		-- (not the global progress panel — you're already looking at the plan).
@@ -914,6 +934,7 @@ function M.setup()
 	vim.api.nvim_create_user_command("PlanFinalize", M.finalize, {})
 	vim.api.nvim_create_user_command("PlanGo", M.go, {})
 	vim.api.nvim_create_user_command("PlanAmend", M.amend, {})
+	vim.api.nvim_create_user_command("PlanReconcile", M.reconcile, {})
 	vim.api.nvim_create_user_command("PlanSteps", M.steps, {})
 
 	-- Bare <C-p> opens the progress panel from any ordinary buffer (e.g. while
