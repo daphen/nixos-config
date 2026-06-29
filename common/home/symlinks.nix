@@ -42,6 +42,7 @@ in {
     "opencode/themes".source = link "${dotfiles}/opencode/.config/opencode/themes";
     "fastfetch".source = link "${dotfiles}/fastfetch/.config/fastfetch";
     "waypaper".source = link "${dotfiles}/waypaper/.config/waypaper";
+    "imv".source = link "${dotfiles}/imv/.config/imv";
     "themes".source = link "${dotfiles}/themes/.config/themes";
     "clipse/custom_theme.json".source = link "${dotfiles}/clipse/.config/clipse/custom_theme.json";
     "spotify-player/theme.toml".source = link "${dotfiles}/spotify-player/.config/spotify-player/theme.toml";
