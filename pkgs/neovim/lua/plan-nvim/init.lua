@@ -379,7 +379,15 @@ function M.act()
 	local line = vim.api.nvim_get_current_line()
 	if line:match("^%s*|") and path_on_line(line) then return M.goto_file() end
 	if line:match("^>%s*❓") then return dispatch_questions() end
-	if line:match("^> Status:") then return M.approve() end
+	if line:match("^> Status:") then
+		-- the Status line is the "advance the plan" control: draft → approve,
+		-- planned → finalize, finalized → ready (don't auto-run --go).
+		if state.status == "planned" then return M.finalize() end
+		if state.status == "finalized" then
+			return vim.notify("plan: finalized — run /plan-ticket --go in the worktree", vim.log.levels.INFO)
+		end
+		return M.approve()
+	end
 	if in_decision() then return M.resolve_decision() end
 	vim.notify("plan: nothing to act on here — <C-p>q ask · <C-p>n note", vim.log.levels.INFO)
 end

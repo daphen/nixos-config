@@ -98,7 +98,9 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
    decision / instruction.
 5. Result: a directive plan — shape, flow (decisions baked in), final surface area,
    verification, out of scope — no menus, questions, or markers. This is what
-   `--go` implements literally. Leave `progress.json` / status unchanged.
+   `--go` implements literally.
+6. Set the plan's `> Status:` line to `finalized` (so the editor knows it's ready
+   for `--go`). Leave `progress.json` otherwise unchanged.
 
 ## PHASE 2 — IMPLEMENT (`--go`)
 
