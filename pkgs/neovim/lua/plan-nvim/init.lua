@@ -13,6 +13,8 @@ reaches the file-watcher's git-derived watch set.
 
 local M = {}
 
+local ns = vim.api.nvim_create_namespace("plan_steps")
+
 local state = {
 	root = nil,
 	plan_path = nil,
@@ -488,11 +490,22 @@ local function parse_plan()
 	return res
 end
 
+-- Cut to a display width, breaking on a space so we never split a word, and tag
+-- with … so the truncation is visible. Char-based so multibyte glyphs survive.
+local function elide(s, max)
+	if vim.fn.strchars(s) <= max then return s end
+	local cut = vim.fn.strcharpart(s, 0, max)
+	return (cut:match("^(.*)%s%S*$") or cut) .. "…"
+end
+
 -- ○ pending · ◐ touched · ● done · – deliberately skipped (pending but with a note
--- explaining no change was needed) · ⚠ unplanned.
+-- explaining no change was needed) · ⚠ unplanned. One line per item (elided to the
+-- panel width, never wrapped); extmarks carry the hierarchy — bold headers, dim
+-- details, status-colored glyphs — instead of markdown syntax highlighting.
 render_steps = function(buf)
 	local p = state.progress or {}
 	local plan = parse_plan()
+	local w = state.steps_width or 88
 	local function rank(f)
 		if f.status == "done" then return 0 end
 		if f.status == "touched" then return 1 end
@@ -505,6 +518,11 @@ render_steps = function(buf)
 		if f.note and f.note ~= "" then return "–" end
 		return "○"
 	end
+	local function glyph_hl(f)
+		if f.status == "done" then return "DiagnosticOk" end
+		if f.status == "touched" then return "DiagnosticWarn" end
+		return "Comment"
+	end
 
 	local total, done, skipped = 0, 0, 0
 	for _, f in ipairs(p.planned or {}) do
@@ -513,39 +531,52 @@ render_steps = function(buf)
 		elseif f.status ~= "touched" and f.note and f.note ~= "" then skipped = skipped + 1 end
 	end
 
-	local lines = {}
-	local hdr = string.format(" %s · %s · %d/%d done", p.ticket or "plan", p.phase or "?", done, total)
-	if skipped > 0 then hdr = hdr .. string.format(" · %d skipped", skipped) end
-	table.insert(lines, hdr)
-	table.insert(lines, "")
+	local lines, hls = {}, {}
+	local function add(text)
+		table.insert(lines, text)
+		return #lines - 1 -- 0-based line index for extmarks
+	end
+	local function hl(line0, c0, c1, group) table.insert(hls, { line0, c0, c1, group }) end
+
+	hl(add(string.format(" %s · %s · %d/%d done%s", p.ticket or "plan", p.phase or "?", done, total,
+		skipped > 0 and string.format(" · %d skipped", skipped) or "")), 0, -1, "Title")
+	add("")
 	if #plan.flow > 0 then
-		table.insert(lines, " THE WORK")
-		for _, s in ipairs(plan.flow) do table.insert(lines, "   ◆ " .. s) end
-		table.insert(lines, "")
+		hl(add(" THE WORK"), 0, -1, "Title")
+		for _, s in ipairs(plan.flow) do
+			hl(add("   ◆ " .. elide(s, w - 6)), 3, 6, "Special")
+		end
+		add("")
 	end
 
 	state.steps_paths = {}
-	table.insert(lines, " FILES")
+	hl(add(" FILES"), 0, -1, "Title")
 	local order = {}
 	for _, f in ipairs(p.planned or {}) do table.insert(order, f) end
 	table.sort(order, function(a, b) return rank(a) < rank(b) end)
 	for _, f in ipairs(order) do
-		table.insert(lines, string.format("   %s %-6s %s", glyph(f), f.action or "", f.file))
-		state.steps_paths[#lines] = f.file
+		local li = add(string.format("   %s %-6s %s", glyph(f), f.action or "", f.file))
+		hl(li, 3, 6, glyph_hl(f))
+		state.steps_paths[li + 1] = f.file -- cursor line is 1-based
 		local detail = (f.note and f.note ~= "") and f.note or plan.why[f.file]
-		if detail and detail ~= "" then table.insert(lines, "            " .. detail) end
+		if detail and detail ~= "" then hl(add("            " .. elide(detail, w - 14)), 0, -1, "Comment") end
 	end
 	for _, f in ipairs(p.unplanned or {}) do
-		table.insert(lines, string.format("   ⚠ %-6s %s", "extra", f.file))
-		state.steps_paths[#lines] = f.file
-		if f.why and f.why ~= "" then table.insert(lines, "            " .. f.why) end
+		local li = add(string.format("   ⚠ %-6s %s", "extra", f.file))
+		hl(li, 3, 6, "DiagnosticWarn")
+		state.steps_paths[li + 1] = f.file
+		if f.why and f.why ~= "" then hl(add("            " .. elide(f.why, w - 14)), 0, -1, "Comment") end
 	end
-	table.insert(lines, "")
-	table.insert(lines, " ⏎ open · r refresh · q close")
+	add("")
+	hl(add(" ⏎ open · r refresh · q close"), 0, -1, "Comment")
 
 	vim.bo[buf].modifiable = true
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 	vim.bo[buf].modifiable = false
+	vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+	for _, m in ipairs(hls) do
+		pcall(vim.api.nvim_buf_add_highlight, buf, ns, m[4], m[1], m[2], m[3])
+	end
 end
 
 -- Read panel for implementation progress: the ◆ work, then every surface-area file
@@ -561,9 +592,9 @@ function M.steps()
 	state.steps_prev_win = vim.api.nvim_get_current_win()
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].bufhidden = "wipe"
-	vim.bo[buf].filetype = "markdown"
-	render_steps(buf)
 	local width = math.min(90, vim.o.columns - 8)
+	state.steps_width = width
+	render_steps(buf)
 	local n = #vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 	local height = math.min(n + 1, vim.o.lines - 6)
 	local win = vim.api.nvim_open_win(buf, true, {
@@ -577,7 +608,7 @@ function M.steps()
 		title = " plan progress ",
 		title_pos = "center",
 	})
-	vim.wo[win].wrap = true
+	vim.wo[win].wrap = false
 	vim.wo[win].cursorline = true
 	state.steps_buf, state.steps_win = buf, win
 	local function close()
