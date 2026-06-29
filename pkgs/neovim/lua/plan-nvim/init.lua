@@ -78,6 +78,7 @@ local function watch()
 		h:start(plans_dir(), {}, vim.schedule_wrap(function(err)
 			if err then return end
 			read_status()
+			pcall(vim.cmd, "checktime") -- reload the plan buffer when the agent rewrites it (answers, --finalize)
 			pcall(function() require("plan-nvim.review").refresh() end)
 		end))
 	end)
@@ -341,6 +342,26 @@ function M.ask_visual()
 	annotate("❓ ask about selection", "❓", vim.fn.line("'>"), true)
 end
 
+-- Dispatch /plan-ticket --finalize to the plan's worktree claude: bake resolved
+-- decisions into directives, fold notes, strip the Q&A. The cleaned plan reloads
+-- via the watcher (checktime).
+function M.finalize()
+	for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+		if l:match("%*%*Your call:%*%*") and l:match("_%(unresolved%)_") then
+			vim.notify("plan: resolve all decisions before finalizing", vim.log.levels.WARN)
+			return
+		end
+	end
+	local name = plan_worktree()
+	if not name or name == "main" then
+		vim.notify("plan: no worktree session bound — run /plan-ticket --finalize there", vim.log.levels.INFO)
+		return
+	end
+	local ticket = vim.fn.fnamemodify(state.plan_path or "", ":t:r")
+	vim.system({ "wt-send", "--wait", "8", name, "/plan-ticket --finalize " .. ticket })
+	vim.notify("plan: dispatched --finalize to the " .. name .. " session")
+end
+
 -- Is the cursor inside a `### D#` decision block (vs past it under a later heading)?
 local function in_decision()
 	local cur = vim.api.nvim_win_get_cursor(0)[1]
@@ -402,6 +423,7 @@ local function apply_buffer_maps(buf)
 		map("<CR>", M.act, "plan: act on object under cursor")
 		map("<C-p>q", M.ask, "plan: ask the agent")
 		map("<C-p>n", M.add_note, "plan: add a note")
+		map("<C-p>f", M.finalize, "plan: finalize → execution spec")
 		vim.keymap.set("x", "<C-p>q", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
 			{ buffer = buf, desc = "plan: ask about selection" })
 		vim.keymap.set("x", "<C-p>n", "<Esc><cmd>lua require('plan-nvim').add_note_visual()<CR>",
@@ -417,6 +439,7 @@ function M.setup()
 	vim.api.nvim_create_user_command("PlanReload", function() read_status() end, {})
 	vim.api.nvim_create_user_command("PlanAsk", M.ask, {})
 	vim.api.nvim_create_user_command("PlanNote", M.add_note, {})
+	vim.api.nvim_create_user_command("PlanFinalize", M.finalize, {})
 
 	-- Buffer-local maps only inside a plan file, so they never clobber normal
 	-- markdown editing elsewhere. Set on open AND re-assert on every BufEnter,
