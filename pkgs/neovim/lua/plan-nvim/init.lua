@@ -257,7 +257,29 @@ local function quote_block(emoji, text)
 	return out
 end
 
+-- A blockquote inserted inside a table or fenced code block breaks it. If `row`
+-- lands in one, advance to the line after that block so the note/question sits
+-- below it instead of splitting it.
+local function safe_anchor(row)
+	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+	if (lines[row] or ""):match("^%s*|") then
+		while lines[row + 1] and lines[row + 1]:match("^%s*|") do row = row + 1 end
+		return row
+	end
+	local fenced = false
+	for i = 1, row do
+		if (lines[i] or ""):match("^%s*```") then fenced = not fenced end
+	end
+	if fenced then
+		for i = row + 1, #lines do
+			if (lines[i] or ""):match("^%s*```") then return i end
+		end
+	end
+	return row
+end
+
 local function insert_after(row, lines)
+	row = safe_anchor(row)
 	local block = { "" }
 	vim.list_extend(block, lines)
 	vim.api.nvim_buf_set_lines(0, row, row, false, block)
