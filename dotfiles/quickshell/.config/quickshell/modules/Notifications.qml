@@ -40,11 +40,23 @@ Singleton {
     // entrance — they belong in the Super+i history, not a flash. New
     // notifications arrive after startup via onNotification, so they're never
     // in this set and pop normally.
-    property var restoredIds: ({})
-    function isRestored(n) { return !!(n && root.restoredIds[n.id]) }
-    Component.onCompleted: {
-        const vals = notifServer.trackedNotifications.values
-        for (let i = 0; i < vals.length; i++) root.restoredIds[vals[i].id] = true
+    // A toast flashes only for a genuinely NEW notification — one delivered via
+    // onNotification, which marks it live below. Notifications restored across a
+    // reload (keepOnReload: rebuild, theme switch) are re-populated into
+    // trackedNotifications WITHOUT re-firing onNotification, so they never enter
+    // liveIds and their toast stays collapsed (they still live in the Super+i
+    // history). This is timing-independent — unlike snapshotting trackedNotifications
+    // at startup, which races the async restore and misses everything.
+    property var liveIds: ({})
+    function isLive(n) { return !!(n && root.liveIds[n.id]) }
+
+    // Backstop for the edge where a restore somehow re-fires onNotification:
+    // suppress every toast entrance for a short settle window after launch.
+    property bool startupSettled: false
+    Timer {
+        running: true
+        interval: 1500
+        onTriggered: root.startupSettled = true
     }
 
     // Opening a message's channel fires its default action, and quickshell
@@ -241,6 +253,7 @@ Singleton {
                 return
             }
             delete root.seenIds[notification.id]
+            root.liveIds[notification.id] = true
             notification.tracked = true
             // One entry per source. Messages collapse by conversation (the
             // channel/group/DM — latest line wins, regardless of sender); Claude

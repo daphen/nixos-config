@@ -23,7 +23,7 @@ Rectangle {
 
     // Never flash a toast for one that's already seen (arrived while focused on
     // its source) or restored across a Quickshell reload (rebuild/theme switch).
-    Component.onCompleted: { shown = true; if (Notifications.isSeen(notification) || Notifications.isRestored(notification)) collapsed = true }
+    Component.onCompleted: { shown = true; if (Notifications.isSeen(notification) || !Notifications.isLive(notification) || !Notifications.startupSettled) collapsed = true }
 
     Connections {
         target: Notifications
