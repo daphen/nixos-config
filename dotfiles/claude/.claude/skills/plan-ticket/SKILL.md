@@ -93,15 +93,13 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
    trimmed). Drop the A/B options, the recommendation, and the `Your call:` line.
    Where cleaner, fold the directive into the flow step / surface-area item it
    governs instead of leaving a standalone line.
-3. **Fold notes in.** Each `> 📝` note becomes an instruction on the step/file it
-   sits under; remove the `📝` marker.
-4. **Strip the Q&A.** Delete every `> ❓` question and `> 💬` answer — they were
+3. **Strip the Q&A.** Delete every `> ❓` question and `> 💬` answer — they were
    review scaffolding; the conclusion the user acted on already lives in the
-   decision / instruction.
-5. Result: a directive plan — shape, flow (decisions baked in), final surface area,
+   decision / the directives they edited into the plan.
+4. Result: a directive plan — shape, flow (decisions baked in), final surface area,
    verification, out of scope — no menus, questions, or markers. This is what
    `--go` implements literally.
-6. Set the plan's `> Status:` line to `finalized` (so the editor knows it's ready
+5. Set the plan's `> Status:` line to `finalized` (so the editor knows it's ready
    for `--go`). Leave `progress.json` otherwise unchanged.
 
 ## PHASE 1.75 — AMEND (`--amend`)

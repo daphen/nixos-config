@@ -383,31 +383,24 @@ local function dispatch_questions()
 	vim.notify("plan: dispatched to the " .. name .. " session — answers land inline")
 end
 
--- emoji ❓ dispatches to the plan's worktree agent, 📝 is a local note. The block is
--- anchored after `anchor` — for visual variants that's the selection end, so it sits
--- right under the lines it's about (position carries the context; no quoting needed).
-local function annotate(title, emoji, anchor, dispatch)
+-- ❓ ask: drop the question into the plan inline and dispatch it to the worktree agent,
+-- which answers right below it (`> 💬`). Anchored after `anchor` — for the visual
+-- variant that's the selection end, so it sits under the lines it's about. (To add a
+-- directive/constraint, just edit the plan text directly — there's no separate note.)
+local function ask_at(anchor, title)
 	compose(title, function(text)
-		insert_after(anchor, quote_block(emoji, text))
-		if dispatch then dispatch_questions() end
+		insert_after(anchor, quote_block("❓", text))
+		dispatch_questions()
 	end)
 end
 
-function M.add_note()
-	annotate("📝 note", "📝", vim.api.nvim_win_get_cursor(0)[1], false)
-end
-
 function M.ask()
-	annotate("❓ ask the agent", "❓", vim.api.nvim_win_get_cursor(0)[1], true)
+	ask_at(vim.api.nvim_win_get_cursor(0)[1], "❓ ask the agent")
 end
 
--- Visual variants: the x-mode maps press <Esc> first, so '> holds the selection end.
-function M.add_note_visual()
-	annotate("📝 note on selection", "📝", vim.fn.line("'>"), false)
-end
-
+-- Visual variant: the x-mode map presses <Esc> first, so '> holds the selection end.
 function M.ask_visual()
-	annotate("❓ ask about selection", "❓", vim.fn.line("'>"), true)
+	ask_at(vim.fn.line("'>"), "❓ ask about selection")
 end
 
 -- Dispatch /plan-ticket --finalize to the plan's worktree claude: bake resolved
@@ -850,7 +843,7 @@ function M.act()
 		return M.approve()
 	end
 	if in_decision() then return M.resolve_decision() end
-	vim.notify("plan: nothing to act on here — <C-p>q ask · <C-p>n note", vim.log.levels.INFO)
+	vim.notify("plan: nothing to act on here — <C-p>q ask", vim.log.levels.INFO)
 end
 
 -- Worktree-stack entry: wait for the agent's /plan-ticket to write THIS ticket's
@@ -904,7 +897,6 @@ local function apply_buffer_maps(buf)
 		end
 		map("<CR>", M.act, "plan: act on object under cursor")
 		map("<C-p>q", M.ask, "plan: ask the agent")
-		map("<C-p>n", M.add_note, "plan: add a note")
 		map("<C-p>f", M.finalize, "plan: finalize → execution spec")
 		map("<C-p>g", M.go, "plan: implement (--go)")
 		map("<C-p>a", M.amend, "plan: amend (add scope)")
@@ -915,8 +907,6 @@ local function apply_buffer_maps(buf)
 		map("<C-p>", function() end, "plan: (prefix)")
 		vim.keymap.set("x", "<C-p>q", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
 			{ buffer = buf, desc = "plan: ask about selection" })
-		vim.keymap.set("x", "<C-p>n", "<Esc><cmd>lua require('plan-nvim').add_note_visual()<CR>",
-			{ buffer = buf, desc = "plan: note on selection" })
 	end)
 end
 
@@ -930,7 +920,6 @@ function M.setup()
 	vim.api.nvim_create_user_command("PlanApprove", M.approve, {})
 	vim.api.nvim_create_user_command("PlanReload", function() read_status() end, {})
 	vim.api.nvim_create_user_command("PlanAsk", M.ask, {})
-	vim.api.nvim_create_user_command("PlanNote", M.add_note, {})
 	vim.api.nvim_create_user_command("PlanFinalize", M.finalize, {})
 	vim.api.nvim_create_user_command("PlanGo", M.go, {})
 	vim.api.nvim_create_user_command("PlanAmend", M.amend, {})
