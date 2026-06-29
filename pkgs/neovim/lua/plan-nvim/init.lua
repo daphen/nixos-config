@@ -268,11 +268,13 @@ end
 -- the nvim cwd (plans live in the vault, so cwd is usually not a worktree). Strips
 -- the daphen/ branch prefix to the wt-send short name; nil for non-worktree branches.
 local function plan_worktree()
-	for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, 40, false)) do
-		local b = l:match("worktree:%s*`([^`]+)`")
-		if b then return (b:match("^daphen/(.+)") or b) end
-	end
-	return nil
+	-- Join the header region first: mdformat (--wrap) can split `worktree:` from
+	-- its `value` across lines, which a per-line match would miss. Strip blockquote
+	-- markers so the wrapped pieces sit adjacent, then match.
+	local hdr = table.concat(vim.api.nvim_buf_get_lines(0, 0, 12, false), " "):gsub(">%s*", " ")
+	local b = hdr:match("worktree:%s*`([^`]+)`")
+	if not b then return nil end
+	return b:match("^daphen/(.+)") or b
 end
 
 -- Ask the plan's worktree claude to answer the open questions inline. wt-send types
