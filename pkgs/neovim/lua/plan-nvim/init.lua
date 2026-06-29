@@ -901,7 +901,6 @@ local function apply_buffer_maps(buf)
 		map("<C-p>g", M.go, "plan: implement (--go)")
 		map("<C-p>a", M.amend, "plan: amend (add scope)")
 		map("<C-p>r", M.reconcile, "plan: reconcile (plan vs outcome)")
-		map("<C-p>s", M.steps, "plan: progress panel")
 		-- In a plan buffer <C-p> stays the action prefix; a bare press is a no-op
 		-- (not the global progress panel — you're already looking at the plan).
 		map("<C-p>", function() end, "plan: (prefix)")
