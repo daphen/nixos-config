@@ -30,6 +30,9 @@ Singleton {
     }
     function isSeenId(id) {
         const _ = root.seenGen
+        // Not live = restored across a reload (keepOnReload); treat as seen so a
+        // rebuild doesn't resurface already-read messages (seenIds resets on reload).
+        if (id !== undefined && !root.liveIds[id]) return true
         return !!root.seenIds[id]
     }
 
@@ -255,6 +258,10 @@ Singleton {
             delete root.seenIds[notification.id]
             root.liveIds[notification.id] = true
             notification.tracked = true
+            // Arrivals during the post-reload settle window are restores re-fired
+            // by keepOnReload, not genuinely new — mark them seen so they land in
+            // "earlier"/off the badge (same gate the toast uses via startupSettled).
+            if (!root.startupSettled) root.markSeenById(notification.id)
             // One entry per source. Messages collapse by conversation (the
             // channel/group/DM — latest line wins, regardless of sender); Claude
             // collapses by session (latest prompt).

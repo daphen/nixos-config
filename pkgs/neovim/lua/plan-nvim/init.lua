@@ -357,30 +357,33 @@ end
 
 -- The worktree bound to this plan, read from its `worktree: <branch>` header — NOT
 -- the nvim cwd (plans live in the vault, so cwd is usually not a worktree). Strips
--- the daphen/ branch prefix to the wt-send short name; nil for non-worktree branches.
-local function plan_worktree()
-	-- Join the header region first: mdformat (--wrap) can split `worktree:` from
-	-- its `value` across lines, which a per-line match would miss. Strip blockquote
-	-- markers so the wrapped pieces sit adjacent, then match.
-	local hdr = table.concat(vim.api.nvim_buf_get_lines(0, 0, 12, false), " "):gsub(">%s*", " ")
-	local b = hdr:match("worktree:%s*`([^`]+)`")
-	if not b then return nil end
-	return b:match("^daphen/(.+)") or b
+-- Send a /plan-ticket prompt to the claude session running in the plan's repo
+-- (state.root) — repo-targeted via `wt-send --cwd`, so it drives whatever session you
+-- kicked the plan off in, worktree or not. Prompt goes on stdin to avoid arg-quoting.
+local function dispatch(prompt, wait)
+	local root = state.root or git_root()
+	if not root then
+		vim.notify("plan: no repo bound — open the plan from inside its repo", vim.log.levels.WARN)
+		return false
+	end
+	vim.system({ "wt-send", "--cwd", root, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
+		if res.code ~= 0 then
+			vim.schedule(function()
+				vim.notify("plan: no claude session in " .. root .. " to drive — start one there",
+					vim.log.levels.WARN)
+			end)
+		end
+	end)
+	return true
 end
 
--- Ask the plan's worktree claude to answer the open questions inline. wt-send types
--- + submits into that running TUI; answers land back in the file (watcher reloads).
+-- Ask the repo's claude to answer the open questions inline; answers land in the file
+-- and the watcher reloads it.
 local function dispatch_questions()
-	local name = plan_worktree()
-	if not name or name == "main" then
-		vim.notify("plan: question saved — no worktree session bound to this plan", vim.log.levels.INFO)
-		return
-	end
 	local msg = ("Answer the open `> ❓` questions in %s — write each answer inline "
 		.. "directly below its question as `> 💬 <answer>`, reading the repo as needed. "
 		.. "Don't change code."):format(state.plan_path or "the open plan")
-	vim.system({ "wt-send", "--wait", "8", name, msg })
-	vim.notify("plan: dispatched to the " .. name .. " session — answers land inline")
+	if dispatch(msg) then vim.notify("plan: dispatched — answers land inline") end
 end
 
 -- ❓ ask: drop the question into the plan inline and dispatch it to the worktree agent,
@@ -403,9 +406,8 @@ function M.ask_visual()
 	ask_at(vim.fn.line("'>"), "❓ ask about selection")
 end
 
--- Dispatch /plan-ticket --finalize to the plan's worktree claude: bake resolved
--- decisions into directives, fold notes, strip the Q&A. The cleaned plan reloads
--- via the watcher (checktime).
+-- Dispatch /plan-ticket --finalize to the repo's claude: bake resolved decisions into
+-- directives, strip the Q&A. The cleaned plan reloads via the watcher (checktime).
 function M.finalize()
 	for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
 		if l:match("%*%*Your call:%*%*") and l:match("_%(unresolved%)_") then
@@ -413,14 +415,12 @@ function M.finalize()
 			return
 		end
 	end
-	local name = plan_worktree()
-	if not name or name == "main" then
-		vim.notify("plan: no worktree session bound — run /plan-ticket --finalize there", vim.log.levels.INFO)
+	if not state.plan_path then
+		vim.notify("plan: no plan open", vim.log.levels.INFO)
 		return
 	end
-	local ticket = vim.fn.fnamemodify(state.plan_path or "", ":t:r")
-	vim.system({ "wt-send", "--wait", "8", name, "/plan-ticket --finalize " .. ticket })
-	vim.notify("plan: dispatched --finalize to the " .. name .. " session")
+	local ticket = vim.fn.fnamemodify(state.plan_path, ":t:r")
+	if dispatch("/plan-ticket --finalize " .. ticket) then vim.notify("plan: dispatched --finalize") end
 end
 
 -- The plugin's own fs_event watches the vault (where plan + progress.json live).
@@ -773,62 +773,41 @@ function M.steps()
 	end, o)
 end
 
--- Dispatch /plan-ticket --go to the plan's worktree claude. Confirms first — this
--- one writes code.
+-- Dispatch /plan-ticket --go to the repo's claude. Confirms first — this one writes
+-- code. cwd is moved to the repo root so progress paths resolve and the surface-area
+-- watcher catches the agent's edits.
 function M.go()
-	local name = plan_worktree()
-	if not name or name == "main" then
-		vim.notify("plan: no worktree session bound — run /plan-ticket --go there", vim.log.levels.INFO)
+	if not resolve_plan_path() then
+		vim.notify("plan: no plan found for this repo", vim.log.levels.INFO)
 		return
 	end
 	if vim.fn.confirm("Dispatch /plan-ticket --go? The agent will implement the plan.", "&Yes\n&No", 2) ~= 1 then
 		return
 	end
-	local ticket = vim.fn.fnamemodify(state.plan_path or "", ":t:r")
-	-- Move into the worktree so progress paths resolve and code buffers open there,
-	-- then watch the surface-area dirs so the agent's edits reload live.
-	local wt = vim.fn.expand("~/work/lovable.daphen-" .. name)
-	if vim.fn.isdirectory(wt) == 1 then
-		vim.fn.chdir(wt)
-		state.root = wt
-	end
+	local ticket = vim.fn.fnamemodify(state.plan_path, ":t:r")
+	if state.root then vim.fn.chdir(state.root) end
 	vim.o.autoread = true
 	read_progress()
 	arm_surface_watches(state.root)
-	vim.system({ "wt-send", "--wait", "8", name, "/plan-ticket --go " .. ticket })
-	vim.notify("plan: dispatched --go to " .. name .. " — implementing", vim.log.levels.WARN)
+	if dispatch("/plan-ticket --go " .. ticket) then
+		vim.notify("plan: dispatched --go — implementing", vim.log.levels.WARN)
+	end
 end
 
--- The wt-send target for this plan's worktree, from the bound root's branch — works
--- from any buffer (unlike plan_worktree, which reads the plan buffer's header).
-local function worktree_name()
-	local root = state.root or git_root()
-	if not root then return nil end
-	local branch = (vim.fn.systemlist({ "git", "-C", root, "branch", "--show-current" })[1]) or ""
-	local short = branch:match("^daphen/(.+)") or branch
-	if short == "" or short == "main" then return nil end
-	return short
-end
-
--- Fold new scope into the plan mid-ticket. By --go time you've usually navigated off to
--- the code (cwd is the worktree), so this works from any buffer: composes what to add,
--- dispatches --amend, and re-opens the plan by its absolute vault path — cwd stays on
--- the worktree so code keeps live-reloading — for you to review and re-approve.
+-- Fold new scope into the plan mid-ticket. Works from any buffer: composes what to add,
+-- dispatches --amend to the repo's claude, and re-opens the plan (absolute vault path,
+-- cwd left on the repo) for you to review and re-approve.
 function M.amend()
 	if not resolve_plan_path() then
-		vim.notify("plan: no plan found for this worktree", vim.log.levels.INFO)
-		return
-	end
-	local name = worktree_name()
-	if not name then
-		vim.notify("plan: no worktree session bound — run /plan-ticket --amend there", vim.log.levels.INFO)
+		vim.notify("plan: no plan found for this repo", vim.log.levels.INFO)
 		return
 	end
 	local ticket = vim.fn.fnamemodify(state.plan_path, ":t:r")
 	compose("▲ amend — what to add to the plan", function(text)
-		vim.system({ "wt-send", "--wait", "8", name, "/plan-ticket --amend " .. ticket .. "\n\n" .. text })
-		vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path)) -- bring the plan up to review/re-approve
-		vim.notify("plan: amend dispatched — the plan reloads here with the additions; review & re-approve")
+		if dispatch("/plan-ticket --amend " .. ticket .. "\n\n" .. text) then
+			vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path)) -- bring the plan up to review/re-approve
+			vim.notify("plan: amend dispatched — the plan reloads here; review & re-approve")
+		end
 	end)
 end
 
@@ -837,17 +816,13 @@ end
 -- writes review.json + the Reconciliation section. Works from any buffer.
 function M.reconcile()
 	if not resolve_plan_path() then
-		vim.notify("plan: no plan found for this worktree", vim.log.levels.INFO)
-		return
-	end
-	local name = worktree_name()
-	if not name then
-		vim.notify("plan: no worktree session bound — run /plan-ticket --reconcile there", vim.log.levels.INFO)
+		vim.notify("plan: no plan found for this repo", vim.log.levels.INFO)
 		return
 	end
 	local ticket = vim.fn.fnamemodify(state.plan_path, ":t:r")
-	vim.system({ "wt-send", "--wait", "8", name, "/plan-ticket --reconcile " .. ticket })
-	vim.notify("plan: dispatched --reconcile to " .. name .. " — checking plan vs outcome")
+	if dispatch("/plan-ticket --reconcile " .. ticket) then
+		vim.notify("plan: dispatched --reconcile — checking plan vs outcome")
+	end
 end
 
 -- Is the cursor inside a `### D#` decision block (vs past it under a later heading)?

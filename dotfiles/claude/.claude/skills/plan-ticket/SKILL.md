@@ -81,7 +81,12 @@ conversing with the agent. Your job here is the best full draft you can produce.
    tree, verification, out of scope.
 4. Write `<plandir>/<key>.progress.json` (`phase: "draft"`, branch, `planned[]` from
    the surface area, all `status: "pending"`).
-5. **STOP.** Print only a one-line pointer to the artifact path. The user manages it
+5. **Open it in neovim** so the user drives the rest from there: run
+   `plan-open "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" <plandir>/<key>.md`
+   (best-effort — pops the plan up in an nvim window, no-ops if one's already in the
+   repo or there's no GUI). The lifecycle keybinds in that nvim dispatch `--finalize`/
+   `--go`/`--reconcile` back to THIS claude session, so keep it open.
+6. **STOP.** Print only a one-line pointer to the artifact path. The user manages it
    from there in neovim — editing steps, resolving decisions, approving. Do not
    iterate on the plan in chat. `--go` runs only after the plan is approved
    (status `planned`) in the editor.

@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""
+plan-open <repo> <planfile>
+
+Open a plan artifact in neovim so the user can drive the lifecycle from there.
+Called by the plan-ticket skill after it writes the plan, so kicking off
+`/plan-ticket` in any claude session pops the plan up in nvim.
+
+Idempotent: if an nvim is already running under <repo> (e.g. the worktree
+stack's pane, which auto-opens the plan itself), do nothing. Otherwise spawn a
+kitty window with nvim editing the plan, cwd'd to <repo> so the plugin's
+dispatch targets that repo's claude.
+
+No-op (exit 0) when kitty isn't available (lovbox SSH, headless) — there's no
+GUI editor to open there.
+"""
+from __future__ import annotations
+import glob
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+def nvim_running_in(repo: str) -> bool:
+    for sock in glob.glob("/tmp/kitty-*"):
+        try:
+            out = subprocess.run(
+                ["kitten", "@", "--to", f"unix:{sock}", "ls"],
+                capture_output=True, text=True, timeout=1.5,
+            )
+            data = json.loads(out.stdout) if out.stdout.strip() else None
+        except Exception:
+            continue
+        if not data:
+            continue
+        for ow in data:
+            for tab in ow.get("tabs", []):
+                for w in tab.get("windows", []):
+                    for fp in w.get("foreground_processes", []):
+                        cmd = fp.get("cmdline") or []
+                        if not cmd:
+                            continue
+                        if Path(cmd[0]).name in ("nvim", "vim") \
+                                and (fp.get("cwd", "") or "").startswith(repo):
+                            return True
+    return False
+
+
+def main() -> int:
+    if len(sys.argv) < 3:
+        print("usage: plan-open <repo> <planfile>", file=sys.stderr)
+        return 2
+    if not shutil.which("kitty"):
+        return 0  # no GUI here (e.g. lovbox) — nothing to open
+    repo = str(Path(sys.argv[1]).expanduser().resolve())
+    plan = str(Path(sys.argv[2]).expanduser().resolve())
+    if nvim_running_in(repo):
+        return 0  # an nvim is already in the repo — it opens the plan itself
+    subprocess.Popen(
+        ["setsid", "kitty", "--working-directory", repo, "-e", "nvim", plan],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, start_new_session=True,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

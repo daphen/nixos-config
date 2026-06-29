@@ -134,6 +134,9 @@ def main() -> int:
                     help="message text; if omitted, read from stdin")
     ap.add_argument("--list", action="store_true",
                     help="list active worktree claude windows and exit")
+    ap.add_argument("--cwd", default=None, metavar="PATH",
+                    help="target the claude window running under PATH (any repo), "
+                         "instead of a worktree name — message via stdin")
     ap.add_argument("--no-submit", action="store_true",
                     help="send the text but don't press Enter")
     ap.add_argument("--wait", type=float, default=0.0, metavar="SEC",
@@ -154,8 +157,16 @@ def main() -> int:
             print(f"{name:<40} {sock}  window={wid}")
         return 0
 
-    if not args.name:
-        ap.error("worktree name required (or pass --list)")
+    if args.cwd:
+        worktree_prefix = str(Path(args.cwd).expanduser().resolve())
+    else:
+        if not args.name:
+            ap.error("worktree name required (or pass --cwd / --list)")
+        worktree_prefix = str(WORKTREE_ROOT / f"lovable.daphen-{args.name}")
+        if not Path(worktree_prefix).is_dir():
+            print(f"wt-send: worktree dir does not exist: {worktree_prefix}",
+                  file=sys.stderr)
+            return 1
 
     if args.message:
         text = " ".join(args.message)
@@ -166,12 +177,6 @@ def main() -> int:
         print("wt-send: empty message; nothing to send", file=sys.stderr)
         return 2
 
-    worktree_prefix = str(WORKTREE_ROOT / f"lovable.daphen-{args.name}")
-    if not Path(worktree_prefix).is_dir():
-        print(f"wt-send: worktree dir does not exist: {worktree_prefix}",
-              file=sys.stderr)
-        return 1
-
     match = find_claude_window(worktree_prefix)
     if match is None and args.wait > 0:
         deadline = time.time() + args.wait
@@ -179,10 +184,8 @@ def main() -> int:
             time.sleep(0.5)
             match = find_claude_window(worktree_prefix)
     if match is None:
-        print(f"wt-send: no running claude window for worktree '{args.name}'",
-              file=sys.stderr)
-        print("  (is the worktree's niri stack open? "
-              "use --list to see active ones)", file=sys.stderr)
+        target = args.cwd if args.cwd else f"worktree '{args.name}'"
+        print(f"wt-send: no running claude window for {target}", file=sys.stderr)
         return 1
 
     if args.settle > 0:
