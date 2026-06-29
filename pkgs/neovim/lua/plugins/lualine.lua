@@ -216,6 +216,17 @@ return {
 								},
 							},
 							lualine_x = {
+								{
+									function()
+										local ok, p = pcall(require, "plan-nvim")
+										return ok and p.statusline() or ""
+									end,
+									cond = function()
+										local ok, p = pcall(require, "plan-nvim")
+										return ok and p.statusline() ~= ""
+									end,
+									color = { gui = "bold" },
+								},
 								"filetype",
 								"fancy_diff",
 								{
