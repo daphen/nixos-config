@@ -127,7 +127,9 @@ local function watch()
 			-- An amend (from nvim OR the agent TUI) bumps amended_at; bring the plan up
 			-- so you review the additions and re-approve, even from a code buffer.
 			local amended = state.progress and state.progress.amended_at
-			if amended and amended ~= state.last_amended then
+			local signal = (amended and amended ~= state.last_amended)
+				or (state.status == "amended" and state.last_status ~= "amended")
+			if signal then
 				state.last_amended = amended
 				if state.plan_path and vim.api.nvim_buf_get_name(0) ~= state.plan_path then
 					if pcall(vim.cmd, "edit " .. vim.fn.fnameescape(state.plan_path)) then
@@ -137,6 +139,7 @@ local function watch()
 					end
 				end
 			end
+			state.last_status = state.status
 			if state.progress and state.progress.phase == "implementing" then
 				arm_surface_watches(state.root) -- surface area can grow (unplanned files)
 			end
@@ -848,7 +851,8 @@ function M.bind()
 	if state.plan_path or not resolve_plan_path() then return end
 	read_status()
 	read_progress()
-	state.last_amended = state.progress and state.progress.amended_at -- baseline; opens only on a later change
+	state.last_amended = state.progress and state.progress.amended_at -- baselines; open only on a later change
+	state.last_status = state.status
 	watch()
 end
 
@@ -912,6 +916,7 @@ function M.setup()
 			read_status()
 			read_progress()
 			state.last_amended = state.progress and state.progress.amended_at
+			state.last_status = state.status
 			watch()
 			apply_buffer_maps(ev.buf)
 		end,
@@ -924,6 +929,7 @@ function M.setup()
 			read_status()
 			read_progress()
 			state.last_amended = state.progress and state.progress.amended_at
+			state.last_status = state.status
 			apply_buffer_maps(ev.buf)
 		end,
 	})

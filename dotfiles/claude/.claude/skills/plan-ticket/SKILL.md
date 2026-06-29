@@ -114,18 +114,21 @@ new scope to add; also honor any manual edits the user already made to the artif
 1. Read `<plandir>/<ticket>.md`, `<plandir>/<ticket>.progress.json`, and the git diff
    so far. Never undo or re-plan completed work — preserve it.
 2. Spawn read-only Explore agents only if the new scope needs mapping. NO code here.
-3. Integrate the new scope into the artifact:
-   - Add `◆` flow steps for the new work.
-   - Add surface-area rows (create/modify/touch) — this EXTENDS the containment
-     boundary; keep it as tight as the new scope honestly requires.
-   - If the new scope forks, add a `### D#` decision (re-opens the review gate).
-4. Log the growth in the artifact's **Amendments** section: one line per amendment —
-   `<date>: +<what> — <why>`. This keeps the "did it stay small?" review honest: the
-   boundary moved, and here's the record of when and why.
-5. Update `progress.json`: append the new files to `planned[]` (`status: pending`),
-   PRESERVE existing statuses/notes, set `amended_at`. Leave `phase` as is (work
-   already done stays done).
-6. Reset the review gate so the user re-approves the expanded plan before `--go`
+3. Update the plan `.md` — the human source of truth. Do NOT record the increment
+   only in `progress.json` or the chat; the artifact itself MUST show it:
+   - **Surface area**: add a table row for EVERY new file (create/modify/touch) and
+     bump the `*New: N · Modified: N · Touched: N*` count line. This table IS the
+     containment boundary — a file not in it gets flagged as drift at `--reconcile`.
+     Don't rewrite or drop existing rows.
+   - **Flow**: add `◆` steps for the new work.
+   - **Decision**: if the new scope forks, add a `### D#` block (re-opens the gate).
+   - **Amendments**: append one line — `<date>: +<what> — <why>`. Add the
+     `## Amendments` heading (before `## Reconciliation`) if the plan predates it.
+4. Update `progress.json` to MATCH the surface-area table — the two must list the SAME
+   files. Append the new files to `planned[]` (`status: pending`); KEEP every existing
+   entry, including deliberately-skipped ones (`pending` + note — never drop them);
+   set `amended_at`; leave `phase` as is (work already done stays done).
+5. Reset the review gate so the user re-approves the expanded plan before `--go`
    continues: set `> Status:` to `draft` if you added a decision (the editor routes
    that to resolve → approve), else `amended` (routes to re-finalize). STOP — print
    only the artifact path. The user's plan buffer opens/reloads automatically; they
