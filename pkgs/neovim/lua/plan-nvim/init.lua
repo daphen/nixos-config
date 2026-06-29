@@ -124,6 +124,19 @@ local function watch()
 			read_status()
 			read_progress()
 			pcall(vim.cmd, "checktime") -- reload the plan buffer when the agent rewrites it (answers, --finalize)
+			-- An amend (from nvim OR the agent TUI) bumps amended_at; bring the plan up
+			-- so you review the additions and re-approve, even from a code buffer.
+			local amended = state.progress and state.progress.amended_at
+			if amended and amended ~= state.last_amended then
+				state.last_amended = amended
+				if state.plan_path and vim.api.nvim_buf_get_name(0) ~= state.plan_path then
+					if pcall(vim.cmd, "edit " .. vim.fn.fnameescape(state.plan_path)) then
+						vim.notify("plan: amended — review the additions & re-approve")
+					else
+						vim.notify("plan: amended — :PlanOpen to review", vim.log.levels.WARN)
+					end
+				end
+			end
 			if state.progress and state.progress.phase == "implementing" then
 				arm_surface_watches(state.root) -- surface area can grow (unplanned files)
 			end
@@ -780,8 +793,8 @@ function M.act()
 	if line:match("^>%s*❓") then return dispatch_questions() end
 	if line:match("^> Status:") then
 		-- the Status line is the "advance the plan" control: draft → approve,
-		-- planned → finalize, finalized → ready (don't auto-run --go).
-		if state.status == "planned" then return M.finalize() end
+		-- planned/amended → finalize, finalized → ready (don't auto-run --go).
+		if state.status == "planned" or state.status == "amended" then return M.finalize() end
 		if state.status == "finalized" then
 			return vim.notify("plan: finalized — run /plan-ticket --go in the worktree", vim.log.levels.INFO)
 		end
@@ -826,6 +839,7 @@ function M.bind()
 	if state.plan_path or not resolve_plan_path() then return end
 	read_status()
 	read_progress()
+	state.last_amended = state.progress and state.progress.amended_at -- baseline; opens only on a later change
 	watch()
 end
 
@@ -888,6 +902,7 @@ function M.setup()
 			state.root = git_root()
 			read_status()
 			read_progress()
+			state.last_amended = state.progress and state.progress.amended_at
 			watch()
 			apply_buffer_maps(ev.buf)
 		end,
@@ -899,6 +914,7 @@ function M.setup()
 			state.root = git_root()
 			read_status()
 			read_progress()
+			state.last_amended = state.progress and state.progress.amended_at
 			apply_buffer_maps(ev.buf)
 		end,
 	})

@@ -126,10 +126,11 @@ new scope to add; also honor any manual edits the user already made to the artif
    PRESERVE existing statuses/notes, set `amended_at`. Leave `phase` as is (work
    already done stays done).
 6. Reset the review gate so the user re-approves the expanded plan before `--go`
-   continues: set `> Status:` to `draft` if you added a decision (resolve → approve),
-   else `planned` (re-finalize). STOP — print only the artifact path. The user's open
-   plan buffer reloads automatically; they review the additions and re-approve in
-   neovim. `--go` continues into the expanded boundary only after that.
+   continues: set `> Status:` to `draft` if you added a decision (the editor routes
+   that to resolve → approve), else `amended` (routes to re-finalize). STOP — print
+   only the artifact path. The user's plan buffer opens/reloads automatically; they
+   review the additions and re-approve in neovim. `--go` continues into the expanded
+   boundary only after that.
 
 ## PHASE 2 — IMPLEMENT (`--go`)
 
