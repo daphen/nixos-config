@@ -88,18 +88,23 @@ end
 function M.statusline()
 	local p = state.progress
 	if p and (p.phase == "implementing" or p.phase == "reconciled") then
-		local total, done, touched = 0, 0, 0
+		-- A planned file is "resolved" when it's done OR deliberately skipped (left
+		-- pending with a note explaining no change was needed). The count is resolved/
+		-- total so a finished plan reads N/N even when some files needed no change —
+		-- not a misleading "6/8" next to the ✓.
+		local total, resolved, touched = 0, 0, 0
 		for _, f in ipairs(p.planned or {}) do
 			total = total + 1
-			if f.status == "done" then done = done + 1
-			elseif f.status == "touched" then touched = touched + 1 end
+			if f.status == "done" then resolved = resolved + 1
+			elseif f.status == "touched" then touched = touched + 1
+			elseif f.note and f.note ~= "" then resolved = resolved + 1 end
 		end
 		local mark
 		if p.phase == "reconciled" then mark = "✓"
-		elseif total > 0 and done == total then mark = "●"
-		elseif done + touched > 0 then mark = "◐"
+		elseif total > 0 and resolved == total then mark = "●"
+		elseif resolved + touched > 0 then mark = "◐"
 		else mark = "○" end
-		return string.format(" %s %s %d/%d", p.ticket or "plan", mark, done, total)
+		return string.format(" %s %s %d/%d", p.ticket or "plan", mark, resolved, total)
 	end
 	if not state.status then return "" end
 	local icon = state.status == "planned" and "" or "" -- planned vs draft
