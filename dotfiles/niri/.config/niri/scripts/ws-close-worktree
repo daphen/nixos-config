@@ -105,58 +105,52 @@ def main() -> int:
             stdin=subprocess.DEVNULL, start_new_session=True,
         )
 
-    # 2b. Reap orphan dev workers whose parent already exited and got
-    #     reparented to PID 1. Common with Next.js compile workers —
-    #     when `pnpm dev` restarts, its worker_threads / child_process
-    #     spawns aren't always reaped and survive `devenv kill`
-    #     indefinitely, pinning a core forever. Scope strictly to PIDs
-    #     whose cwd is inside this worktree so we never touch unrelated
-    #     processes.
+    # 2b. Forcibly reap the dev stack. devenv kill is best-effort, and the
+    #     old reap only caught PPID==1 orphans — so process-compose's live
+    #     children (next.js, temporal, clickhouse, redis) survived and kept
+    #     respawning, leaving a headless stack pinning the CPU. Kill every
+    #     process whose cwd is inside the worktree, sparing the interactive
+    #     windows (closed above), plus any process-compose that parents them.
     if not is_main and wt_path.is_dir():
         wt_str = str(wt_path)
-        for proc in Path("/proc").iterdir():
-            if not proc.name.isdigit():
-                continue
-            pid = int(proc.name)
-            try:
-                # Only orphaned processes (PPID == 1 = systemd).
-                ppid_line = (proc / "status").read_text().splitlines()
-                ppid = next(
-                    (int(l.split()[1]) for l in ppid_line if l.startswith("PPid:")),
-                    None,
-                )
-                if ppid != 1:
+        keep = {"claude", "nvim", "fish", "bash", "kitty", ".kitty-wrapped"}
+
+        def stack_pids() -> set[int]:
+            procs = {}
+            for proc in Path("/proc").iterdir():
+                if not proc.name.isdigit():
                     continue
-                cwd = os.readlink(proc / "cwd")
-            except (OSError, FileNotFoundError, PermissionError):
-                continue
-            if cwd == wt_str or cwd.startswith(wt_str + "/"):
                 try:
-                    os.kill(pid, 15)  # SIGTERM first
+                    ppid = next(
+                        int(l.split()[1])
+                        for l in (proc / "status").read_text().splitlines()
+                        if l.startswith("PPid:")
+                    )
+                    comm = (proc / "comm").read_text().strip()
+                    cwd = os.readlink(proc / "cwd")
+                except (OSError, ValueError, StopIteration):
+                    continue
+                procs[int(proc.name)] = (ppid, comm, cwd)
+            under = lambda c: c == wt_str or c.startswith(wt_str + "/")
+            targets = {pid for pid, (_, comm, cwd) in procs.items()
+                       if under(cwd) and comm not in keep}
+            kids: dict[int, list[int]] = {}
+            for pid, (ppid, _, _) in procs.items():
+                kids.setdefault(ppid, []).append(pid)
+            # A process-compose whose own cwd is elsewhere but which parents a
+            # worktree process must die too, else it respawns the stack.
+            for pid, (_, comm, _) in procs.items():
+                if comm == "process-compose" and set(kids.get(pid, [])) & targets:
+                    targets.add(pid)
+            return targets
+
+        for sig in (15, 9):
+            for pid in stack_pids():
+                try:
+                    os.kill(pid, sig)
                 except ProcessLookupError:
                     pass
-        # Escalate any survivors to SIGKILL after a short grace.
-        time.sleep(0.4)
-        for proc in Path("/proc").iterdir():
-            if not proc.name.isdigit():
-                continue
-            pid = int(proc.name)
-            try:
-                ppid_line = (proc / "status").read_text().splitlines()
-                ppid = next(
-                    (int(l.split()[1]) for l in ppid_line if l.startswith("PPid:")),
-                    None,
-                )
-                if ppid != 1:
-                    continue
-                cwd = os.readlink(proc / "cwd")
-            except (OSError, FileNotFoundError, PermissionError):
-                continue
-            if cwd == wt_str or cwd.startswith(wt_str + "/"):
-                try:
-                    os.kill(pid, 9)
-                except ProcessLookupError:
-                    pass
+            time.sleep(0.5)
 
     # 3. Unname the workspace so niri can garbage-collect it. Without
     #    this it lingers as an empty named workspace forever.
