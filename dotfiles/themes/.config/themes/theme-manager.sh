@@ -562,7 +562,15 @@ apply_system_theme() {
         else
             dconf_gtk_theme="Adwaita"
         fi
-        dconf write /org/gnome/desktop/interface/color-scheme "'${gtk_theme}'" 2>/dev/null || true
+        # color-scheme MUST go through `gsettings set`, not `dconf write`: only
+        # gsettings fires the "changed" signal that xdg-desktop-portal relays as
+        # SettingChanged, so Chromium/Helium live-switch instead of only picking it
+        # up on restart. dconf write updates the value but emits no such signal.
+        if command -v gsettings &> /dev/null; then
+            gsettings set org.gnome.desktop.interface color-scheme "${gtk_theme}" 2>/dev/null || true
+        else
+            dconf write /org/gnome/desktop/interface/color-scheme "'${gtk_theme}'" 2>/dev/null || true
+        fi
         dconf write /org/gnome/desktop/interface/gtk-theme "'${dconf_gtk_theme}'" 2>/dev/null || true
         # Update GTK_THEME for running fish shells, new processes, and systemd user services
         if command -v fish &> /dev/null; then
