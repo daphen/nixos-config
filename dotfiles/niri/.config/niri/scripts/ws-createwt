@@ -86,15 +86,17 @@ def focused_output() -> str | None:
     return None
 
 
-def ensure_workspace(name: str) -> int:
-    """Focus (or create-and-name) the workspace `name`. Returns its id.
+def ensure_workspace(name: str, focus: bool = True) -> int:
+    """Create-and-name the workspace `name` (and focus it unless focus=False).
+    Returns its id.
 
     Uses `set-workspace-name --workspace <idx>` to name the trailing
     empty workspace on the current output without focus races.
     """
     wid = workspace_id_by_name(name)
     if wid is not None:
-        niri_action("focus-workspace", name)
+        if focus:
+            niri_action("focus-workspace", name)
         return wid
 
     out = focused_output() or "DP-2"
@@ -109,8 +111,9 @@ def ensure_workspace(name: str) -> int:
         return -1
     niri_action("set-workspace-name", "--workspace", str(idx), name)
     time.sleep(0.15)
-    niri_action("focus-workspace", name)
-    time.sleep(0.1)
+    if focus:
+        niri_action("focus-workspace", name)
+        time.sleep(0.1)
     return workspace_id_by_name(name) or -1
 
 
@@ -138,6 +141,17 @@ def spawn_and_wait(cmd: list[str], timeout: float = 9.0) -> int | None:
     return None
 
 
+def place_window(win_id: int | None, workspace: str) -> None:
+    """Relocate a just-spawned window to `workspace` without following focus.
+    niri only spawns onto the focused workspace, so background mode lets each
+    window appear there briefly, then moves it off with `--focus false` — the
+    caller's focus never leaves its current window."""
+    if win_id is None:
+        return
+    niri_action("move-window-to-workspace", "--window-id", str(win_id),
+                "--focus", "false", workspace)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("name", help="worktree short name (creates branch daphen/<name>)")
@@ -150,6 +164,10 @@ def main() -> int:
                     help="plan mode: open the worktree's nvim ready to manage the "
                          "ticket's plan (auto-opens .plans/<ticket>.md when it "
                          "lands). Default is bare mode — an ordinary stack.")
+    ap.add_argument("--background", action="store_true",
+                    help="build the stack on its workspace without switching focus "
+                         "to it: the workspace is named but not focused, and each "
+                         "window is relocated with niri's --focus false.")
     args = ap.parse_args()
 
     name = args.name
@@ -178,9 +196,9 @@ def main() -> int:
             print("wt switch --create failed", file=sys.stderr)
             return rc
 
-    # 2. Focus / create the named workspace
-    print(f"==> focusing workspace {workspace}")
-    ensure_workspace(workspace)
+    # 2. Create the named workspace (focus it unless building in background)
+    print(f"==> {'building' if args.background else 'focusing'} workspace {workspace}")
+    ensure_workspace(workspace, focus=not args.background)
 
     # 3. Build the claude command. `auto` resumes the worktree's most
     #    recent session on reopen so the stack returns with its
@@ -204,33 +222,39 @@ def main() -> int:
             return 2
         claude_cmd = ["claude", "--resume", sid, "--fork-session"]
 
-    # 4. Spawn the 4 stack windows. Each one lands as its own column on
-    #    the (now-focused) workspace — no merge logic needed.
+    # 4. Spawn the 4 stack windows. They land as columns on the focused
+    #    workspace; in background mode each is relocated off it (--focus false).
     print("==> spawning devenv wt")
-    spawn_and_wait([
+    wid = spawn_and_wait([
         "kitty",
         "--working-directory", str(worktree_path),
         "-e", "bash", "-c", "direnv exec . devenv wt; exec fish",
     ])
+    if args.background:
+        place_window(wid, workspace)
 
     # Browser-agnostic: route through browser-dispatch with an explicit
     # work-profile + new-window override. Switching default browser later
     # only requires editing browser-dispatch.
     print(f"==> spawning work browser (via browser-dispatch) → {preview_url}")
-    spawn_and_wait([
+    wid = spawn_and_wait([
         "/home/daphen/.config/niri/scripts/browser-dispatch",
         "--profile=work",
         "--new-window",
         preview_url,
     ])
+    if args.background:
+        place_window(wid, workspace)
 
     print(f"==> spawning claude session ({mode})")
-    spawn_and_wait([
+    wid = spawn_and_wait([
         "kitty",
         "--class", "claude",
         "--working-directory", str(worktree_path),
         "-e", *claude_cmd,
     ])
+    if args.background:
+        place_window(wid, workspace)
 
     print("==> spawning nvim" + (" (plan mode)" if args.plan else ""))
     # Plan mode only: plan-nvim auto-opens the ticket's plan once the agent's
@@ -246,10 +270,12 @@ def main() -> int:
         "--working-directory", str(worktree_path),
         "-e", "bash", "-c", nvim_cmd,
     ])
+    if args.background:
+        place_window(nvim_id, workspace)
 
-    # Land focus on the new claude (col 3), so the user is at the prompt
-    if nvim_id is not None:
-        # Land focus on the new claude window in this stack workspace.
+    # Land focus on the new claude (col 3) so the user is at the prompt —
+    # skipped in background mode, which deliberately leaves focus put.
+    if not args.background and nvim_id is not None:
         target_ws_id = workspace_id_by_name(workspace)
         for w in (niri_json("windows") or []):
             if (w.get("app_id") == "claude"
