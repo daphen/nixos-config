@@ -26,10 +26,14 @@ local state = {
 	steps_win = nil,
 	steps_prev_win = nil,
 	steps_paths = {},
+	following = false, -- --go follow mode: open files as the agent touches them
+	follow_win = nil,
+	follow_cur = nil,
+	follow_seen = {},
 }
 
 -- Assigned lower down; forward-declared so watch()'s closure captures the upvalue.
-local arm_surface_watches, render_steps
+local arm_surface_watches, render_steps, follow_step
 
 local function git_root()
 	local out = vim.fn.systemlist({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })
@@ -142,6 +146,9 @@ local function watch()
 			state.last_status = state.status
 			if state.progress and state.progress.phase == "implementing" then
 				arm_surface_watches(state.root) -- surface area can grow (unplanned files)
+				follow_step() -- open the file the agent is currently touching
+			elseif state.progress and state.progress.phase == "reconciled" then
+				state.following = false -- implementation done; stop following
 			end
 			if state.steps_buf and vim.api.nvim_buf_is_valid(state.steps_buf)
 				and state.steps_win and vim.api.nvim_win_is_valid(state.steps_win) then
@@ -451,6 +458,37 @@ arm_surface_watches = function(root)
 				end))
 			end)
 			table.insert(state.file_watchers, h)
+		end
+	end
+end
+
+-- --go follow mode: as progress.json flips files, open the one the agent is currently
+-- touching (or just finished) in the follow window — so nvim tracks the agent even for
+-- files you never opened (checktime only reloads already-open buffers; this opens them).
+-- Opened via win_call so it never steals focus from where you're working.
+follow_step = function()
+	if not state.following then return end
+	local win = state.follow_win
+	if not (win and vim.api.nvim_win_is_valid(win)) then state.following = false; return end
+	local p = state.progress
+	if not p then return end
+	local active, fallback
+	for _, f in ipairs(p.planned or {}) do
+		if f.status ~= state.follow_seen[f.file] then
+			if f.status == "touched" then active = f.file
+			elseif f.status == "done" then fallback = f.file end
+		end
+		state.follow_seen[f.file] = f.status
+	end
+	local target = active or fallback -- prefer the in-progress file over a just-finished one
+	if target and target ~= state.follow_cur then
+		state.follow_cur = target
+		local root = state.root or git_root() or vim.fn.getcwd()
+		local abs = target:match("^/") and target or (root .. "/" .. target)
+		if vim.uv.fs_stat(abs) then
+			pcall(vim.api.nvim_win_call, win, function()
+				vim.cmd("edit " .. vim.fn.fnameescape(abs))
+			end)
 		end
 	end
 end
@@ -789,8 +827,15 @@ function M.go()
 	vim.o.autoread = true
 	read_progress()
 	arm_surface_watches(state.root)
+	-- follow the agent: this window now tracks whatever file it's editing. Baseline the
+	-- current statuses so only flips after --go open a file.
+	state.following = true
+	state.follow_win = vim.api.nvim_get_current_win()
+	state.follow_cur = nil
+	state.follow_seen = {}
+	for _, f in ipairs((state.progress or {}).planned or {}) do state.follow_seen[f.file] = f.status end
 	if dispatch("/plan-ticket --go " .. ticket) then
-		vim.notify("plan: dispatched --go — implementing", vim.log.levels.WARN)
+		vim.notify("plan: dispatched --go — implementing (this window follows the agent)", vim.log.levels.WARN)
 	end
 end
 
@@ -934,6 +979,14 @@ function M.setup()
 	vim.api.nvim_create_user_command("PlanGo", M.go, {})
 	vim.api.nvim_create_user_command("PlanAmend", M.amend, {})
 	vim.api.nvim_create_user_command("PlanReconcile", M.reconcile, {})
+	vim.api.nvim_create_user_command("PlanFollow", function()
+		state.following = not state.following
+		if state.following then
+			state.follow_win = vim.api.nvim_get_current_win()
+			state.follow_cur = nil
+		end
+		vim.notify("plan: follow mode " .. (state.following and "on (this window)" or "off"))
+	end, {})
 	vim.api.nvim_create_user_command("PlanSteps", M.steps, {})
 
 	-- Bare <C-p> opens the progress panel from any ordinary buffer (e.g. while
