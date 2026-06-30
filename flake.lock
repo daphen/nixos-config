@@ -22,11 +22,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782751866,
-        "narHash": "sha256-VRYzhyhwraj71UGjtXgyV3p3O4RqT+s4eZj6HzE6e4Q=",
+        "lastModified": 1782811992,
+        "narHash": "sha256-R2Md3BaBYORyVWdJQnMJnhjnFF4XGFSv+4pNrQqXCSE=",
         "ref": "refs/heads/main",
-        "rev": "88f4b018b5aeeb2cbf8a79f00d77e965ee1d28b7",
-        "revCount": 31,
+        "rev": "455acb7faa1616595d4890f07071aea324c3145b",
+        "revCount": 34,
         "type": "git",
         "url": "ssh://git@github.com/daphen/dsqrd"
       },
@@ -114,11 +114,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1779997040,
-        "narHash": "sha256-lAVg9lIgZmmsBZEZgsI9LkO6sRz6iQVDNo67R5eWCM8=",
+        "lastModified": 1782472279,
+        "narHash": "sha256-y8FjnKvdaMWq7MeQ+vIb+baVu7PmWGMl/r7zTZnGi8A=",
         "owner": "AlvaroParker",
         "repo": "helium-nix",
-        "rev": "a1d540d5b211897367eec8acd0ed189adbd48489",
+        "rev": "46dbd8424ea62f65a22358b83788e6d764611529",
         "type": "github"
       },
       "original": {
@@ -397,11 +397,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782741428,
-        "narHash": "sha256-pD6WreEeMYtW8pGyFaaURgcMG3afti0oIa/e40yu2cA=",
+        "lastModified": 1782811989,
+        "narHash": "sha256-ploNTTzZWK30LotQoKqeJgEcBR2rBiMi82V3v2gwnzc=",
         "ref": "refs/heads/main",
-        "rev": "f03250c265bfc4e7557f0bf8caf5cf5771acd10b",
-        "revCount": 24,
+        "rev": "b6cd53755fd1b6091507fc4aae304c216b825f54",
+        "revCount": 28,
         "type": "git",
         "url": "ssh://git@github.com/daphen/slqs"
       },
