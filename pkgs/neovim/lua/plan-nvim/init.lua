@@ -744,9 +744,17 @@ end
 -- with its live status + the agent's note (or the plan's why). <CR> opens the file
 -- under the cursor in the window the panel was opened from (panel keeps focus, so you
 -- can keep jumping). Refreshes live while open as the agent ticks progress.json.
-function M.steps()
+-- split=true → a persistent right-side sidebar (live dashboard alongside your work);
+-- else a centered float (quick glance). Either way it re-renders live as progress.json
+-- ticks. A second call toggles the open panel closed.
+function M.steps(split)
+	if state.steps_win and vim.api.nvim_win_is_valid(state.steps_win) then
+		vim.api.nvim_win_close(state.steps_win, true)
+		state.steps_buf, state.steps_win = nil, nil
+		return
+	end
 	if not resolve_plan_path() then
-		vim.notify("plan: no plan found for this worktree", vim.log.levels.INFO)
+		vim.notify("plan: no plan found for this repo", vim.log.levels.INFO)
 		return
 	end
 	read_progress()
@@ -757,22 +765,38 @@ function M.steps()
 	state.steps_prev_win = vim.api.nvim_get_current_win()
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].bufhidden = "wipe"
-	local width = math.min(110, vim.o.columns - 6)
-	state.steps_width = width - 4 -- wrap text short of the right edge for padding
-	render_steps(buf)
-	local n = #vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-	local height = math.min(n, vim.o.lines - 4)
-	local win = vim.api.nvim_open_win(buf, true, {
-		relative = "editor",
-		width = width,
-		height = height,
-		row = math.floor((vim.o.lines - height) / 2 - 1),
-		col = math.floor((vim.o.columns - width) / 2),
-		style = "minimal",
-		border = "rounded",
-		title = " plan progress ",
-		title_pos = "center",
-	})
+	local win
+	if split then
+		local width = math.max(44, math.min(64, math.floor(vim.o.columns * 0.4)))
+		state.steps_width = width - 3
+		render_steps(buf)
+		vim.cmd("botright vsplit")
+		win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(win, buf)
+		vim.api.nvim_win_set_width(win, width)
+		vim.wo[win].number = false
+		vim.wo[win].relativenumber = false
+		vim.wo[win].signcolumn = "no"
+		vim.wo[win].winfixwidth = true
+		vim.api.nvim_set_current_win(state.steps_prev_win) -- sidebar opens without stealing focus
+	else
+		local width = math.min(110, vim.o.columns - 6)
+		state.steps_width = width - 4 -- wrap text short of the right edge for padding
+		render_steps(buf)
+		local n = #vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		local height = math.min(n, vim.o.lines - 4)
+		win = vim.api.nvim_open_win(buf, true, {
+			relative = "editor",
+			width = width,
+			height = height,
+			row = math.floor((vim.o.lines - height) / 2 - 1),
+			col = math.floor((vim.o.columns - width) / 2),
+			style = "minimal",
+			border = "rounded",
+			title = " plan progress ",
+			title_pos = "center",
+		})
+	end
 	vim.wo[win].wrap = false
 	vim.wo[win].cursorline = true
 	state.steps_buf, state.steps_win = buf, win
@@ -834,6 +858,8 @@ function M.go()
 	state.follow_cur = nil
 	state.follow_seen = {}
 	for _, f in ipairs((state.progress or {}).planned or {}) do state.follow_seen[f.file] = f.status end
+	-- open the live progress sidebar alongside (follow shows code, sidebar shows the list)
+	if not (state.steps_win and vim.api.nvim_win_is_valid(state.steps_win)) then M.steps(true) end
 	if dispatch("/plan-ticket --go " .. ticket) then
 		vim.notify("plan: dispatched --go — implementing (this window follows the agent)", vim.log.levels.WARN)
 	end
@@ -987,7 +1013,8 @@ function M.setup()
 		end
 		vim.notify("plan: follow mode " .. (state.following and "on (this window)" or "off"))
 	end, {})
-	vim.api.nvim_create_user_command("PlanSteps", M.steps, {})
+	vim.api.nvim_create_user_command("PlanSteps", function() M.steps() end, {})
+	vim.api.nvim_create_user_command("PlanPanel", function() M.steps(true) end, {})
 
 	-- Bare <C-p> opens the progress panel from any ordinary buffer (e.g. while
 	-- reading the code the agent is touching). Plan buffers shadow this with their
