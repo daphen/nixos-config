@@ -896,6 +896,126 @@ function M.reconcile()
 	end
 end
 
+-- Jump to the first unresolved decision and open its resolve picker.
+local function resolve_next_decision()
+	for i, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+		if l:match("%*%*Your call:%*%*") and l:match("_%(unresolved%)_") then
+			vim.api.nvim_win_set_cursor(0, { i, 0 })
+			M.resolve_decision()
+			return
+		end
+	end
+	vim.notify("plan: no unresolved decisions", vim.log.levels.INFO)
+end
+
+-- Plan command center (<C-p> in a plan buffer): shows where the plan stands —
+-- decisions resolved, questions answered, files done, and what's left — then runs any
+-- lifecycle action by hotkey, so the whole plan is driven from one menu.
+function M.menu()
+	if not state.plan_path then
+		vim.notify("plan: no plan open", vim.log.levels.INFO)
+		return
+	end
+	read_progress()
+	local dtot, dun, qtot, qans = 0, 0, 0, 0
+	for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+		if l:match("^### D") then dtot = dtot + 1 end
+		if l:match("%*%*Your call:%*%*") and l:match("_%(unresolved%)_") then dun = dun + 1 end
+		if l:match("^>%s*❓") then qtot = qtot + 1 end
+		if l:match("^>%s*💬") then qans = qans + 1 end
+	end
+	local p = state.progress or {}
+	local ftot, fdone = 0, 0
+	for _, f in ipairs(p.planned or {}) do
+		ftot = ftot + 1
+		if f.status == "done" then fdone = fdone + 1
+		elseif f.status ~= "touched" and f.note and f.note ~= "" then fdone = fdone + 1 end
+	end
+	local st = state.status or p.phase or "?"
+
+	local rec, hint
+	if dun > 0 then rec, hint = "d", dun .. " decision" .. (dun > 1 and "s" or "") .. " to resolve"
+	elseif st == "draft" then rec, hint = "v", "review, then approve"
+	elseif st == "planned" or st == "amended" then rec, hint = "f", "ready to finalize"
+	elseif st == "finalized" then rec, hint = "g", "ready to implement (--go)"
+	elseif p.phase == "implementing" then rec, hint = "r", ("implementing — %d/%d done"):format(fdone, ftot)
+	elseif p.phase == "reconciled" or st == "reconciled" then rec, hint = nil, "reconciled ✓"
+	else hint = "" end
+
+	local actions = {
+		{ "a", "ask the agent", M.ask, true },
+		{ "d", "resolve decision" .. (dun > 0 and (" (" .. dun .. " left)") or ""), resolve_next_decision, true },
+		{ "v", "approve (draft → planned)", M.approve, true },
+		{ "f", "finalize", M.finalize, false },
+		{ "g", "go · implement", M.go, false },
+		{ "m", "amend (add scope)", M.amend, false },
+		{ "r", "reconcile (plan vs outcome)", M.reconcile, false },
+		{ "p", "progress panel", function() M.steps() end, false },
+	}
+
+	local L, hls = {}, {}
+	local function add(s) L[#L + 1] = s; return #L - 1 end
+	local function hl(line0, c0, c1, g) hls[#hls + 1] = { line0, c0, c1, g } end
+	add("")
+	hl(add(("  %s · %s"):format(vim.fn.fnamemodify(state.plan_path, ":t:r"), st)), 0, -1, "Title")
+	add("")
+	hl(add(("  Decisions   %d/%d resolved"):format(dtot - dun, dtot)), 0, 13, "Comment")
+	hl(add(("  Questions   %d/%d answered%s"):format(qans, qtot,
+		qtot - qans > 0 and ("  ·  " .. (qtot - qans) .. " open") or "")), 0, 13, "Comment")
+	if ftot > 0 then hl(add(("  Files       %d/%d done"):format(fdone, ftot)), 0, 13, "Comment") end
+	add("")
+	if hint ~= "" then hl(add("  → " .. hint), 0, -1, "WarningMsg") end
+	add("")
+	for _, a in ipairs(actions) do
+		local mark = (a[1] == rec) and "→ " or "  "
+		local li = add(mark .. a[1] .. "  " .. a[2])
+		if a[1] == rec then hl(li, 0, -1, "Title") else hl(li, 2, 3, "Special") end
+	end
+	add("")
+	hl(add("  press a key · q close"), 0, -1, "Comment")
+
+	local prev_win = vim.api.nvim_get_current_win()
+	local prev_cur = vim.api.nvim_win_get_cursor(0)
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, L)
+	vim.bo[buf].modifiable = false
+	local width = math.min(60, vim.o.columns - 8)
+	local height = #L
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		width = width,
+		height = height,
+		row = math.floor((vim.o.lines - height) / 2 - 1),
+		col = math.floor((vim.o.columns - width) / 2),
+		style = "minimal",
+		border = "rounded",
+		title = " plan ",
+		title_pos = "center",
+	})
+	for _, m in ipairs(hls) do pcall(vim.api.nvim_buf_add_highlight, buf, ns, m[4], m[1], m[2], m[3]) end
+
+	local function close()
+		if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+	end
+	-- context actions (ask/resolve/approve) act on the plan buffer, so restore the
+	-- pre-menu window + cursor before running them.
+	local function run(fn, restore)
+		close()
+		if restore and vim.api.nvim_win_is_valid(prev_win) then
+			vim.api.nvim_set_current_win(prev_win)
+			pcall(vim.api.nvim_win_set_cursor, prev_win, prev_cur)
+		end
+		fn()
+	end
+	local o = { buffer = buf, nowait = true, silent = true }
+	vim.keymap.set("n", "q", close, o)
+	vim.keymap.set("n", "<Esc>", close, o)
+	for _, a in ipairs(actions) do
+		vim.keymap.set("n", a[1], function() run(a[3], a[4]) end, o)
+	end
+end
+
 -- Is the cursor inside a `### D#` decision block (vs past it under a later heading)?
 local function in_decision()
 	local cur = vim.api.nvim_win_get_cursor(0)[1]
@@ -978,15 +1098,10 @@ local function apply_buffer_maps(buf)
 			vim.keymap.set("n", lhs, fn, { buffer = buf, desc = desc })
 		end
 		map("<CR>", M.act, "plan: act on object under cursor")
-		map("<C-p>q", M.ask, "plan: ask the agent")
-		map("<C-p>f", M.finalize, "plan: finalize → execution spec")
-		map("<C-p>g", M.go, "plan: implement (--go)")
-		map("<C-p>a", M.amend, "plan: amend (add scope)")
-		map("<C-p>r", M.reconcile, "plan: reconcile (plan vs outcome)")
-		-- In a plan buffer <C-p> stays the action prefix; a bare press is a no-op
-		-- (not the global progress panel — you're already looking at the plan).
-		map("<C-p>", function() end, "plan: (prefix)")
-		vim.keymap.set("x", "<C-p>q", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
+		-- <C-p> is the plan command center (status + every action by hotkey); <CR>
+		-- still does the smart thing for the object under the cursor.
+		map("<C-p>", M.menu, "plan: command menu")
+		vim.keymap.set("x", "<C-p>", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
 			{ buffer = buf, desc = "plan: ask about selection" })
 	end)
 end
