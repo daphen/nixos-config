@@ -497,7 +497,7 @@ end
 -- narrative of the work) and the surface-area "why" per file. Read from the file, not
 -- the buffer — the panel can be opened from a code buffer, not just the plan.
 local function parse_plan()
-	local res = { flow = {}, why = {}, order = {} }
+	local res = { flow = {}, why = {}, order = {}, flow_files = {} }
 	if not state.plan_path then return res end
 	local ok, lines = pcall(vim.fn.readfile, state.plan_path)
 	if not ok then return res end
@@ -505,13 +505,17 @@ local function parse_plan()
 	local function flush()
 		if not cur then return end
 		step = step + 1
-		-- record the flow position of each file a step names via its _(files: `x`)_ tag,
-		-- keyed by basename (first mention wins) — drives flow-order sorting in the panel
+		-- the files a step names via its _(files: `x`)_ tag, by basename — drives both
+		-- flow-order sorting and the per-step status glyph in the panel
 		local files = cur:match("_%(files:([^)]*)%)")
+		local bases = {}
 		if files then
 			for fn in files:gmatch("`([^`]+)`") do
 				local base = fn:match("([^/]+%.%w+)$")
-				if base and not res.order[base] then res.order[base] = step end
+				if base then
+					bases[#bases + 1] = base
+					if not res.order[base] then res.order[base] = step end
+				end
 			end
 		end
 		if cur:find("◆") then
@@ -523,6 +527,7 @@ local function parse_plan()
 					title = (title:sub(1, 100):match("^(.*)%s%S*$") or title:sub(1, 99)) .. "…"
 				end
 				table.insert(res.flow, title)
+				res.flow_files[#res.flow] = bases
 			end
 		end
 		cur = nil
@@ -649,11 +654,38 @@ render_steps = function(buf)
 		skipped > 0 and string.format(" · %d skipped", skipped) or "")), 0, -1, "Title")
 	add("")
 	if #plan.flow > 0 then
+		-- per-step status, derived from the files each step names: ● all done · ◐ in
+		-- progress / partial · ○ not started · ◆ no tracked files.
+		local sb = {}
+		for _, f in ipairs(p.planned or {}) do
+			local base = f.file:match("([^/]+)$")
+			if base then
+				sb[base] = {
+					done = f.status == "done" or (f.status ~= "touched" and f.note and f.note ~= ""),
+					active = f.status == "touched",
+				}
+			end
+		end
+		local function step_mark(files)
+			local tot, dn, act = 0, 0, false
+			for _, base in ipairs(files or {}) do
+				local s = sb[base]
+				if s then
+					tot = tot + 1
+					if s.done then dn = dn + 1 elseif s.active then act = true end
+				end
+			end
+			if tot == 0 then return "◆", "Special" end
+			if dn == tot then return "●", "PlanActionCreate" end
+			if act or dn > 0 then return "◐", "PlanActionTouch" end
+			return "○", "Comment"
+		end
 		hl(add("  THE WORK"), 0, -1, "Title")
-		for _, s in ipairs(plan.flow) do
-			for i, dl in ipairs(wrap(s, "   ◆ ", "     ", width)) do
+		for i, s in ipairs(plan.flow) do
+			local g, grp = step_mark(plan.flow_files[i])
+			for j, dl in ipairs(wrap(s, "   " .. g .. " ", "     ", width)) do
 				local li = add(dl)
-				if i == 1 then hl(li, 3, 6, "Special") end
+				if j == 1 then hl(li, 3, 3 + #g, grp) end
 			end
 		end
 		add("")
