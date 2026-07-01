@@ -213,7 +213,7 @@ in {
     imports = [ nvimWrapper ];
   };
 
-  # Dev mode — reads lua config from ~/nixos/packages/neovim/ so edits
+  # Dev mode — reads lua config from ~/nixos/pkgs/neovim/ so edits
   # take effect instantly without rebuilding. Binary is `vim` to coexist.
   devMode = inputs.wrapper-modules.wrappers.neovim.wrap {
     inherit pkgs;
@@ -228,7 +228,7 @@ in {
   neovimDynamic = pkgs.writeShellApplication {
     name = "nvim";
     text = ''
-      if [ -d "$HOME/nixos/packages/neovim/lua" ]; then
+      if [ -d "$HOME/nixos/pkgs/neovim/lua" ]; then
         exec ${lib.getExe (inputs.wrapper-modules.wrappers.neovim.wrap {
           inherit pkgs;
           imports = [ nvimWrapper { settings.test_mode = true; } ];

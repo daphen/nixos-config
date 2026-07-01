@@ -44,6 +44,35 @@ and trying to figure out what to touch for a given task.
 | `wpm-daemon` | `~/personal/wpm-daemon` | Rust evdev daemon |
 | `bastardkb-qmk` | `~/work/bastardkb-qmk` | Charybdis firmware fork |
 
+## Live vs baked — do I rebuild?
+
+Two mechanisms deliver config to the running system:
+
+- **Live** (`mkOutOfStoreSymlink`, in `common/home/symlinks.nix`) — the `~/.config`
+  entry points straight at the repo working tree. Edit → reload/restart the app.
+  **No `nixos-rebuild`.** Covers most app config: fish, kitty, git, yazi, qutebrowser,
+  quickshell, niri (`config.kdl` + scripts), themes, starship, kanata, opencode,
+  `~/.claude` (skills/commands → `dotfiles/claude`), `~/.local/bin/{wt-send,wt-plan}`.
+- **Baked** (copied into the Nix store) — needs `nixos-rebuild`. Packages + the system:
+  `home.packages`, module definitions, `configuration.nix`, flake inputs, and the Rust
+  daemons (palette/wpm — rebuild + restart the service).
+
+**neovim is the trap.** It lives at `~/nixos/pkgs/neovim/` (NOT `dotfiles/`) and is split:
+
+- `lua/`, `colors/`, `rules/`, `snippets/` → **live** (symlinked to `~/.config/nvim`;
+  proart's `nvim` runs the `nvimLocal`/`test_mode` wrapper that reads it off disk). Edit
+  → **just restart nvim.**
+- `default.nix` (the package — plugins, treesitter grammars, LSP/PATH tools, pinned
+  binary) → **baked.** Edit → `nixos-rebuild`.
+
+Portability is intact: `nix run github:daphen/nixos-config#neovim` runs the **baked**
+build (lua copied into the store) — same build sandboxes get (`daphen-env`) and what
+`nvim-next` runs locally. The baked copy updates on **push**, not a local rebuild
+(except `nvim-next`). proart's `nvim` is the live wrapper for zero-rebuild iteration.
+
+Rule of thumb: **a config file in a symlinked dir → reload the app; anything that
+defines a package or the system → rebuild.**
+
 ## Quickshell architecture
 
 `~/nixos/dotfiles/quickshell/.config/quickshell/`
@@ -164,6 +193,36 @@ VIA layout backup: `~/nixos/dotfiles/via/charybdis-mini-via.json`.
 | `blueman-applet` | (removed; deduped bluetooth notifs) | — |
 | `ws-tracker` | Active workspace pointer | systemd-user |
 
+## plan-ticket workflow (plan → review → implement → reconcile)
+
+Turn a Linear ticket OR an ad-hoc task into a reviewable plain-English plan BEFORE any
+code, drive the lifecycle from neovim, and reconcile plan vs outcome. North star:
+**containment** — the surface area is a hard boundary.
+
+Pieces:
+
+- **Skill** `~/.claude/skills/plan-ticket/` (`SKILL.md` + `template.md`) — the agent side.
+  Phases: PLAN (default) · `--finalize` · `--amend` · `--go` · `--reconcile`. Runs from
+  any claude session in any repo. Key = `EVERY-<num>` (Linear) or an ad-hoc slug.
+- **Artifacts** (the seam; never duplicate their state) in the vault at
+  `~/personal/notes/storage/plans/`: `<key>.md` (human source of truth), the vault-first
+  `.progress.json` (live per-file status/notes + phase), `.review.json` (reconcile output).
+- **plan-nvim plugin** `~/nixos/pkgs/neovim/lua/plan-nvim/` — the driver. `<C-p>` opens the
+  command center (a right-side split): status + what's-left, THE WORK (◆ steps with
+  ●/◐/○ status, cursor expands a step inline), FILES (action icons + notes). Action
+  hotkeys: `a` ask · `d` resolve · `v` approve · `f` finalize · `g` go · `m` amend ·
+  `r` reconcile. `<CR>` acts on the object under the cursor (open file / jump to step /
+  advance status). `--go` opens the panel as a live sidebar and follows the agent's file.
+- **Dispatch**: the plugin injects `/plan-ticket --<phase>` into the repo's running claude
+  TUI via `wt-send --cwd <repo>` (`dotfiles/bin/.local/bin/wt-send`); the skill's PLAN
+  opens the plan in nvim via `plan-open`. Both are live symlinks (no rebuild).
+
+Flow: `/plan-ticket <ticket-or-desc>` in a claude session → nvim opens the plan →
+review/resolve → `f` finalize → `g` go (drives the same session; sidebar follows) →
+`r` reconcile. Status colors come from the theme palette (`vim.g.theme_palette`; the
+"done" green is a vivid shade derived from it). All plan-nvim edits are lua → restart
+nvim, no rebuild.
+
 ## Where to look for a given task
 
 - **Bar widget change** → `~/nixos/dotfiles/quickshell/.config/quickshell/modules/Bar.qml` + new `Foo.qml` and `FooState.qml`, register in `qmldir`.
@@ -173,3 +232,5 @@ VIA layout backup: `~/nixos/dotfiles/via/charybdis-mini-via.json`.
 - **Notification routing** → `Notifications.qml` `onNotification` handler + the `appIdToNotifAppName` map.
 - **Charybdis firmware** → `~/work/bastardkb-qmk/...`, build with `nix-shell -p qmk --run 'qmk compile -kb bastardkb/charybdis/3x6 -km daphen'`, flash both halves separately.
 - **WPM tuning** → `~/personal/wpm-daemon/src/main.rs` — knobs at the top (`PAUSE_THRESHOLD`, `MIN_BURST_CHARS`, `DISPLAY_HOLD`). Rebuild + restart service.
+- **neovim config / lua** → `~/nixos/pkgs/neovim/lua/` (restart nvim, no rebuild). Plugins/grammars/tools → `~/nixos/pkgs/neovim/default.nix` (rebuild).
+- **plan workflow** → skill `~/.claude/skills/plan-ticket/` (agent) + plugin `~/nixos/pkgs/neovim/lua/plan-nvim/` (driver). See the plan-ticket section above.

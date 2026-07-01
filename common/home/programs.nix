@@ -13,9 +13,10 @@ let
   dsqrdClient = inputs.dsqrd.packages.${pkgs.system}.dsqrd-client;
   # nvim — the converged config (0.12, lz.n, native LSP), with the desktop
   # "full" profile (extras like pyright gated behind NVIM_PROFILE=full and
-  # layered onto PATH). Lua lives in ~/dotfiles/nvim and is read live from
-  # ~/.config/nvim, so lua edits apply with no rebuild. Old lazy config is
-  # archived under ~/dotfiles/nvim-lazy.
+  # layered onto PATH). Lua lives in ~/nixos/pkgs/neovim and is read live from
+  # ~/.config/nvim (out-of-store symlink), so lua edits apply on nvim restart
+  # with no rebuild; only pkgs/neovim/default.nix changes (plugins, grammars,
+  # PATH tools) need a rebuild.
   nvim = pkgs.writeShellScriptBin "nvim" ''
     export NVIM_PROFILE=full
     export PATH=${pkgs.lib.makeBinPath [ pkgs.pyright ]}:$PATH
