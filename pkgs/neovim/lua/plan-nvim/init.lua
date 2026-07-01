@@ -88,6 +88,18 @@ local function read_progress()
 	if ok2 and type(data) == "table" then state.progress = data end
 end
 
+-- review.json (from --reconcile): verification items with pass/fail/pending results.
+-- The pending, command-less ones are the manual steps left to run.
+local function read_review()
+	if not state.plan_path then return nil end
+	local rj = state.plan_path:gsub("%.md$", ".review.json")
+	local ok, content = pcall(vim.fn.readfile, rj)
+	if not ok then return nil end
+	local ok2, data = pcall(vim.json.decode, table.concat(content, "\n"))
+	if ok2 and type(data) == "table" then return data end
+	return nil
+end
+
 -- lualine component: require("plan-nvim").statusline()
 function M.statusline()
 	local p = state.progress
@@ -498,11 +510,11 @@ end
 -- the buffer — the panel can be opened from a code buffer, not just the plan.
 local function parse_plan()
 	local res = { flow = {}, flow_full = {}, why = {}, order = {}, flow_files = {}, flow_line = {},
-		dtotal = 0, dunres = 0, qtotal = 0, qans = 0 }
+		verify = {}, dtotal = 0, dunres = 0, qtotal = 0, qans = 0 }
 	if not state.plan_path then return res end
 	local ok, lines = pcall(vim.fn.readfile, state.plan_path)
 	if not ok then return res end
-	local in_flow, in_sa, cur, cur_file, step, cur_line = false, false, nil, nil, 0, 0
+	local in_flow, in_sa, in_verify, cur, cur_file, step, cur_line = false, false, false, nil, nil, 0, 0
 	local function flush()
 		if not cur then return end
 		step = step + 1
@@ -542,7 +554,15 @@ local function parse_plan()
 			if in_flow then flush() end
 			in_flow = l:match("^##%s+The flow") ~= nil
 			in_sa = l:match("^##%s+Surface area") ~= nil
+			in_verify = l:match("^##%s+Verification") ~= nil
 			cur_file = nil
+		elseif in_verify then
+			-- collect Verification bullets (fallback list before --reconcile writes results)
+			if l:match("^%s*%-") then
+				res.verify[#res.verify + 1] = vim.trim((l:gsub("^%s*%-%s*", ""):gsub("%*%*", "")))
+			elseif l:match("%S") and #res.verify > 0 then
+				res.verify[#res.verify] = res.verify[#res.verify] .. " " .. vim.trim((l:gsub("%*%*", "")))
+			end
 		elseif in_flow then
 			if l:match("^%s*%d+%.") then
 				flush()
@@ -791,7 +811,39 @@ render_steps = function(buf)
 	add("")
 	hl(add(string.format("  %s new · %s modify · %s touch",
 		action_icon("create"), action_icon("modify"), action_icon("touch"))), 0, -1, "Comment")
-	hl(add("  ⏎ open · p plan · a amend · R reconcile · r refresh · q close"), 0, -1, "Comment")
+
+	-- VERIFY: the test checklist (T1…Tx). From review.json (pass/fail/pending) after
+	-- --reconcile, else the plan's Verification bullets (all pending). ○ items are the
+	-- steps still to run; the agent flips them to ✓/✗ as they're checked.
+	local review = read_review()
+	local vitems = {}
+	if review and type(review.verification) == "table" then
+		for _, v in ipairs(review.verification) do vitems[#vitems + 1] = { text = v.check or "", result = v.result } end
+	else
+		for _, t in ipairs(plan.verify) do vitems[#vitems + 1] = { text = t, result = "pending" } end
+	end
+	if #vitems > 0 then
+		add("")
+		local vdone = 0
+		for _, v in ipairs(vitems) do if v.result == "pass" then vdone = vdone + 1 end end
+		hl(add(string.format("  VERIFY  ·  %d/%d checked", vdone, #vitems)), 0, -1, "Title")
+		local firstv = true
+		for i, v in ipairs(vitems) do
+			if not firstv then add("") end
+			firstv = false
+			local g, grp
+			if v.result == "pass" then g, grp = "✓", "PlanActionCreate"
+			elseif v.result == "fail" then g, grp = "✗", "PlanActionDrift"
+			else g, grp = "○", "Comment" end
+			for j, dl in ipairs(wrap(v.text, string.format("   %s T%d ", g, i), "        ", width)) do
+				local li = add(dl)
+				if j == 1 then hl(li, 3, 3 + #g, grp) end
+			end
+		end
+	end
+
+	add("")
+	hl(add("  ⏎ open · p plan · q close"), 0, -1, "Comment")
 	add("") -- bottom padding
 
 	vim.bo[buf].modifiable = true

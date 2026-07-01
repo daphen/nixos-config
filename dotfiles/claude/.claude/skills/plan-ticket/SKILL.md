@@ -180,9 +180,10 @@ verification are the product here, not per-line explanation.
      no corresponding change is flagged `missing` (silently dropped work).
 3. **Drift:** any file/hunk outside the surface-area boundary, or any change that
    maps to no step, is flagged. This is the containment check.
-4. **Verification:** run each item from the plan's Verification strategy that has a
-   command (tests, build, lint); record `pass|fail`. Mark manual checks `pending`.
-   Never claim a check passed without running it.
+4. **Verification → the test checklist.** The `verification[]` array IS the panel's
+   `T1…Tx` checklist (order = the T-number). Run each item that has a `command`
+   (tests, build, lint); record `pass|fail`. Leave manual checks `pending` — those are
+   the steps the user runs by hand. Never claim a check passed without running it.
 5. Emit `<plandir>/<key>.review.json`:
    ```json
    {
@@ -195,3 +196,10 @@ verification are the product here, not per-line explanation.
    missing steps, drift verdict, verification results), set `progress.json` `phase:
    "reconciled"`, **and flip the plan's `> Status:` line to `reconciled`** so `/cycle`
    and the plugin read the final state from the artifact itself.
+7. **Check off tests as they're run (ongoing, after reconcile).** As the user works
+   through the pending `T#` checks, update that item's `result` in
+   `<key>.review.json` (`pending` → `pass`/`fail`); the panel reflects it live. Infer
+   from the conversation — if the user says a check works, or a screenshot/description
+   clearly shows it passing or failing, flip the matching `T#` and tell them which one
+   you flipped and why. If it's ambiguous, ask rather than guess. Never mark `pass`
+   without evidence.
