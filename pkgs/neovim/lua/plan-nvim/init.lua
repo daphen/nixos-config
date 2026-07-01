@@ -815,27 +815,38 @@ render_steps = function(buf)
 	-- VERIFY: the test checklist (T1…Tx). From review.json (pass/fail/pending) after
 	-- --reconcile, else the plan's Verification bullets (all pending). ○ items are the
 	-- steps still to run; the agent flips them to ✓/✗ as they're checked.
+	-- AT# = automated (has a runnable command, agent checks it) · MT# = manual (a
+	-- behavior you verify by hand). The command field decides which.
 	local review = read_review()
 	local vitems = {}
 	if review and type(review.verification) == "table" then
-		for _, v in ipairs(review.verification) do vitems[#vitems + 1] = { text = v.check or "", result = v.result } end
+		for _, v in ipairs(review.verification) do
+			vitems[#vitems + 1] = { text = v.check or "", result = v.result,
+				auto = v.command ~= nil and v.command ~= false and v.command ~= "" }
+		end
 	else
-		for _, t in ipairs(plan.verify) do vitems[#vitems + 1] = { text = t, result = "pending" } end
+		for _, t in ipairs(plan.verify) do
+			vitems[#vitems + 1] = { text = t, result = "pending", auto = not t:lower():find("manual") }
+		end
 	end
 	if #vitems > 0 then
 		add("")
-		local vdone = 0
-		for _, v in ipairs(vitems) do if v.result == "pass" then vdone = vdone + 1 end end
-		hl(add(string.format("  VERIFY  ·  %d/%d checked", vdone, #vitems)), 0, -1, "Title")
-		local firstv = true
-		for i, v in ipairs(vitems) do
+		local mtot, mdone = 0, 0
+		for _, v in ipairs(vitems) do
+			if not v.auto then mtot = mtot + 1; if v.result == "pass" then mdone = mdone + 1 end end
+		end
+		hl(add(string.format("  VERIFY  ·  %d/%d manual checked", mdone, mtot)), 0, -1, "Title")
+		local firstv, atn, mtn = true, 0, 0
+		for _, v in ipairs(vitems) do
 			if not firstv then add("") end
 			firstv = false
 			local g, grp
 			if v.result == "pass" then g, grp = "✓", "PlanActionCreate"
 			elseif v.result == "fail" then g, grp = "✗", "PlanActionDrift"
 			else g, grp = "○", "Comment" end
-			for j, dl in ipairs(wrap(v.text, string.format("   %s T%d ", g, i), "        ", width)) do
+			local label
+			if v.auto then atn = atn + 1; label = "AT" .. atn else mtn = mtn + 1; label = "MT" .. mtn end
+			for j, dl in ipairs(wrap(v.text, string.format("   %s %s ", g, label), "         ", width)) do
 				local li = add(dl)
 				if j == 1 then hl(li, 3, 3 + #g, grp) end
 			end
