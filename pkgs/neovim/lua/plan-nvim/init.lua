@@ -616,12 +616,47 @@ local function action_hl(a)
 	return "PlanActionModify"                            -- orange
 end
 
--- Action-icon colors pulled from the active theme's exported palette
--- (vim.g.theme_palette, set by the generated colorscheme) so they track light/dark
--- switches. The dark-palette values are a fallback for before it's exported.
+local function hex2rgb(h) return tonumber(h:sub(2, 3), 16) / 255, tonumber(h:sub(4, 5), 16) / 255, tonumber(h:sub(6, 7), 16) / 255 end
+local function rgb2hex(r, g, b) return string.format("#%02x%02x%02x", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5)) end
+local function rgb2hsl(r, g, b)
+	local mx, mn = math.max(r, g, b), math.min(r, g, b)
+	local h, s, l, d = 0, 0, (mx + mn) / 2, mx - mn
+	if d > 0 then
+		s = l > 0.5 and d / (2 - mx - mn) or d / (mx + mn)
+		if mx == r then h = (g - b) / d + (g < b and 6 or 0)
+		elseif mx == g then h = (b - r) / d + 2
+		else h = (r - g) / d + 4 end
+		h = h / 6
+	end
+	return h, s, l
+end
+local function hue2rgb(p, q, t)
+	if t < 0 then t = t + 1 elseif t > 1 then t = t - 1 end
+	if t < 1 / 6 then return p + (q - p) * 6 * t end
+	if t < 1 / 2 then return q end
+	if t < 2 / 3 then return p + (q - p) * (2 / 3 - t) * 6 end
+	return p
+end
+local function hsl2rgb(h, s, l)
+	if s == 0 then return l, l, l end
+	local q = l < 0.5 and l * (1 + s) or l + s - l * s
+	local p = 2 * l - q
+	return hue2rgb(p, q, h + 1 / 3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1 / 3)
+end
+-- A vivid version of the theme's own green: keep its hue, boost saturation, and set a
+-- lightness that reads on the current background. Derived (not hardcoded), so it tracks
+-- the theme per light/dark — the palette's green is a desaturated sage that reads dull.
+local function vivid(hex, dark)
+	local h, s, l = rgb2hsl(hex2rgb(hex))
+	return rgb2hex(hsl2rgb(h, math.max(s, 0.6), dark and 0.62 or 0.38))
+end
+
+-- Action-icon colors from the active theme's palette (vim.g.theme_palette), per mode.
+-- Green is boosted to a vivid shade of the theme's green so "done"/"create" pop.
 local function set_action_hl()
 	local pal = vim.g.theme_palette or {}
-	vim.api.nvim_set_hl(0, "PlanActionCreate", { fg = pal.green or "#97B5A6" })
+	local dark = vim.o.background == "dark"
+	vim.api.nvim_set_hl(0, "PlanActionCreate", { fg = vivid(pal.green or (dark and "#97B5A6" or "#5E7270"), dark) })
 	vim.api.nvim_set_hl(0, "PlanActionModify", { fg = pal.orange or "#FF570D" })
 	vim.api.nvim_set_hl(0, "PlanActionTouch", { fg = pal.yellow or "#ff8a31" })
 	vim.api.nvim_set_hl(0, "PlanActionDrift", { fg = pal.red or "#FF7B72" })
