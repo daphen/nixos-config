@@ -72,6 +72,9 @@ in {
     # plan-mode stack and fire /plan-ticket once claude is up.
     ".local/bin/wt-send".source = link "${dotfiles}/bin/.local/bin/wt-send";
     ".local/bin/wt-plan".source = link "${dotfiles}/bin/.local/bin/wt-plan";
+    # plan-open: the plan-ticket skill runs this after PLAN to open the plan in nvim
+    # (no-ops if an nvim is already in the repo, e.g. the worktree stack's pane).
+    ".local/bin/plan-open".source = link "${dotfiles}/bin/.local/bin/plan-open";
   };
 
   # Claude Code lives at ~/.claude, now sourced from the in-repo dotfiles
