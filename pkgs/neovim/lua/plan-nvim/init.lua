@@ -497,12 +497,12 @@ end
 -- narrative of the work) and the surface-area "why" per file. Read from the file, not
 -- the buffer — the panel can be opened from a code buffer, not just the plan.
 local function parse_plan()
-	local res = { flow = {}, why = {}, order = {}, flow_files = {},
+	local res = { flow = {}, why = {}, order = {}, flow_files = {}, flow_line = {},
 		dtotal = 0, dunres = 0, qtotal = 0, qans = 0 }
 	if not state.plan_path then return res end
 	local ok, lines = pcall(vim.fn.readfile, state.plan_path)
 	if not ok then return res end
-	local in_flow, in_sa, cur, cur_file, step = false, false, nil, nil, 0
+	local in_flow, in_sa, cur, cur_file, step, cur_line = false, false, nil, nil, 0, 0
 	local function flush()
 		if not cur then return end
 		step = step + 1
@@ -529,11 +529,12 @@ local function parse_plan()
 				end
 				table.insert(res.flow, title)
 				res.flow_files[#res.flow] = bases
+				res.flow_line[#res.flow] = cur_line
 			end
 		end
 		cur = nil
 	end
-	for _, l in ipairs(lines) do
+	for ln, l in ipairs(lines) do
 		if l:match("^## ") then
 			if in_flow then flush() end
 			in_flow = l:match("^##%s+The flow") ~= nil
@@ -543,6 +544,7 @@ local function parse_plan()
 			if l:match("^%s*%d+%.") then
 				flush()
 				cur = l
+				cur_line = ln
 			elseif cur and l:match("%S") then
 				cur = cur .. " " .. l:gsub("^%s+", "")
 			end
@@ -737,11 +739,13 @@ render_steps = function(buf)
 			return "○", "Comment"
 		end
 		hl(add("  THE WORK"), 0, -1, "Title")
+		state.steps_flow = {}
 		for i, s in ipairs(plan.flow) do
 			local g, grp = step_mark(plan.flow_files[i])
 			for j, dl in ipairs(wrap(s, "   " .. g .. " ", "     ", width)) do
 				local li = add(dl)
 				if j == 1 then hl(li, 3, 3 + #g, grp) end
+				state.steps_flow[li + 1] = plan.flow_line[i] -- panel line → plan line (jump on <CR>)
 			end
 		end
 		add("")
@@ -897,11 +901,19 @@ function M.steps(focus)
 	vim.keymap.set("n", "r", function() act(M.reconcile, false) end, o)
 	vim.keymap.set("n", "p", function() act(function() end, true) end, o)
 	vim.keymap.set("n", "<CR>", function()
-		local rel = state.steps_paths[vim.api.nvim_win_get_cursor(win)[1]]
+		local ln = vim.api.nvim_win_get_cursor(win)[1]
+		local rel = state.steps_paths[ln]
 		if not rel then
-			-- not on a file row (header, section, flow step) → open the full plan
+			-- not a file row → open the plan; on a work step, jump to it (full text there)
+			local jump = state.steps_flow and state.steps_flow[ln]
 			close()
-			if state.plan_path then vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path)) end
+			if state.plan_path then
+				vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path))
+				if jump then
+					pcall(vim.api.nvim_win_set_cursor, 0, { jump, 0 })
+					vim.cmd("normal! zz")
+				end
+			end
 			return
 		end
 		local root = state.root or git_root() or vim.fn.getcwd()
