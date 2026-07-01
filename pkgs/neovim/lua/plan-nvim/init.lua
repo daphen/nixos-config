@@ -497,7 +497,7 @@ end
 -- narrative of the work) and the surface-area "why" per file. Read from the file, not
 -- the buffer — the panel can be opened from a code buffer, not just the plan.
 local function parse_plan()
-	local res = { flow = {}, why = {}, order = {}, flow_files = {}, flow_line = {},
+	local res = { flow = {}, flow_full = {}, why = {}, order = {}, flow_files = {}, flow_line = {},
 		dtotal = 0, dunres = 0, qtotal = 0, qans = 0 }
 	if not state.plan_path then return res end
 	local ok, lines = pcall(vim.fn.readfile, state.plan_path)
@@ -521,6 +521,8 @@ local function parse_plan()
 		end
 		if cur:find("◆") then
 			local s = cur:gsub("%*%*", ""):gsub("^%s*%d+%.%s*", "")
+			-- full step text (everything after ◆, minus the trailing _(files: …)_ tag)
+			local full = (s:match("◆%s*(.+)") or ""):gsub("%s*_%(files:.*$", ""):gsub("%s+$", "")
 			local title = s:match("◆%s*(.-)%s*—") or s:match("◆%s*(.-)%s*_%(files") or s:match("◆%s*(.+)")
 			if title then
 				title = title:gsub("%s+$", "")
@@ -528,6 +530,7 @@ local function parse_plan()
 					title = (title:sub(1, 100):match("^(.*)%s%S*$") or title:sub(1, 99)) .. "…"
 				end
 				table.insert(res.flow, title)
+				res.flow_full[#res.flow] = full
 				res.flow_files[#res.flow] = bases
 				res.flow_line[#res.flow] = cur_line
 			end
@@ -672,6 +675,7 @@ render_steps = function(buf)
 	local p = state.progress or {}
 	local plan = parse_plan()
 	local width = state.steps_width or 88
+	state.steps_paths, state.steps_flow, state.steps_stepidx, state.steps_firstline = {}, {}, {}, {}
 
 	local total, done, skipped = 0, 0, 0
 	for _, f in ipairs(p.planned or {}) do
@@ -739,19 +743,20 @@ render_steps = function(buf)
 			return "○", "Comment"
 		end
 		hl(add("  THE WORK"), 0, -1, "Title")
-		state.steps_flow = {}
 		for i, s in ipairs(plan.flow) do
 			local g, grp = step_mark(plan.flow_files[i])
-			for j, dl in ipairs(wrap(s, "   " .. g .. " ", "     ", width)) do
+			-- the step under the cursor grows to its full text; the rest stay truncated
+			local text = (state.steps_expand == i and plan.flow_full[i]) or s
+			for j, dl in ipairs(wrap(text, "   " .. g .. " ", "     ", width)) do
 				local li = add(dl)
-				if j == 1 then hl(li, 3, 3 + #g, grp) end
+				if j == 1 then hl(li, 3, 3 + #g, grp); state.steps_firstline[i] = li + 1 end
 				state.steps_flow[li + 1] = plan.flow_line[i] -- panel line → plan line (jump on <CR>)
+				state.steps_stepidx[li + 1] = i -- panel line → step index (cursor expand)
 			end
 		end
 		add("")
 	end
 
-	state.steps_paths = {}
 	hl(add("  FILES"), 0, -1, "Title")
 	-- One colored action icon per file (no status bullet — the icon is enough);
 	-- create/modify/touch carry their theme color, files shown in plan order.
@@ -856,6 +861,7 @@ function M.steps(focus)
 		return
 	end
 	state.steps_prev_win = vim.api.nvim_get_current_win()
+	state.steps_expand = nil -- start collapsed; the cursor expands a step
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].bufhidden = "wipe"
 	local width = math.max(48, math.min(72, math.floor(vim.o.columns * 0.42)))
@@ -927,6 +933,23 @@ function M.steps(focus)
 			vim.cmd("edit " .. vim.fn.fnameescape(abs))
 		end
 	end, o)
+	-- accordion: expand the work step under the cursor to its full text, collapse the
+	-- rest. Re-renders on move; the cursor is pinned to the expanded step's first line
+	-- (which maps back to the same step, so the re-render doesn't loop).
+	vim.api.nvim_create_autocmd("CursorMoved", {
+		buffer = buf,
+		callback = function()
+			if not (state.steps_win and vim.api.nvim_win_is_valid(state.steps_win)) then return end
+			local idx = state.steps_stepidx[vim.api.nvim_win_get_cursor(state.steps_win)[1]]
+			if idx ~= state.steps_expand then
+				state.steps_expand = idx
+				render_steps(buf)
+				if idx and state.steps_firstline[idx] then
+					pcall(vim.api.nvim_win_set_cursor, state.steps_win, { state.steps_firstline[idx], 0 })
+				end
+			end
+		end,
+	})
 end
 
 -- Dispatch /plan-ticket --go to the repo's claude. Confirms first — this one writes
