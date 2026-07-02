@@ -134,8 +134,11 @@
     serviceConfig = {
       Type = "oneshot";
       ExecStart = pkgs.writeShellScript "lid-wakeup-disable" ''
-        [ -f /sys/devices/LNXSYSTM:00/LNXSYBUS:00/PNP0C0D:00/power/wakeup ] && \
-          echo disabled > /sys/devices/LNXSYSTM:00/LNXSYBUS:00/PNP0C0D:00/power/wakeup
+        for w in /sys/devices/platform/PNP0C0D:*/power/wakeup \
+                 /sys/devices/LNXSYSTM:00/LNXSYBUS:00/PNP0C0D:*/power/wakeup; do
+          [ -f "$w" ] && echo disabled > "$w"
+        done
+        exit 0
       '';
     };
   };
