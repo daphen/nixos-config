@@ -68,6 +68,7 @@ abbr -a wtls 'wt list'
 
 # NixOS rebuild aliases (ALWAYS use flake!)
 abbr -a rebuild "sudo nixos-rebuild switch --flake /home/daphen/nixos#(hostname)"
+abbr -a rb "sudo nixos-rebuild switch --flake /home/daphen/nixos#(hostname)"
 abbr -a nixos-rebuild-test "sudo nixos-rebuild test --flake /home/daphen/nixos#(hostname)"
 abbr -a nixos-rebuild-boot "sudo nixos-rebuild boot --flake /home/daphen/nixos#(hostname)"
 
@@ -82,6 +83,7 @@ set -gx OP_SESSION_TIMEOUT 480 # 8 hours
 
 if command -v zoxide >/dev/null 2>&1
     zoxide init fish | source
+    abbr -a c z   # `c` mirrors `z` (zoxide jump)
 end
 
 if command -v wt >/dev/null 2>&1
