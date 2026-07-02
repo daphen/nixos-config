@@ -39,6 +39,9 @@ x = close
 f = fullscreen
 d = overlay
 p = exec echo $imv_current_file
+# y — copy the on-screen image to the Wayland clipboard. imv splits bind lines on
+# ';', so the logic (mime + wl-copy) lives in copy-image.sh instead of inline.
+y = exec sh "$HOME/.config/imv/copy-image.sh"
 c = center
 s = scaling next
 <Shift+S> = upscaling next
