@@ -41,12 +41,20 @@ worktree and resolve them against the current checkout, wherever the plan lives.
   "ticket": "EVERY-1234",
   "branch": "<git branch --show-current>",
   "phase": "draft|planned|implementing|reconciled",
+  "flow":      [{"step": "one line matching a ◆ step in the plan", "status": "pending|active|done"}],
   "planned":   [{"file": "...", "action": "create|modify|touch", "status": "pending|touched|done", "note": "optional one line: what you did, or why no change was needed"}],
   "unplanned": [{"file": "...", "why": "..."}],
   "updated_at": "<iso8601>",
   "amended_at": "<iso8601, set by --amend>"
 }
 ```
+
+`flow[]` is the headline progress axis — one entry per `◆` step in the plan, in order.
+The plugin's panel and statusline count **steps done / total steps** off it (the
+conceptual unit of work), and falls back to the `planned[]` file count only for plans
+written before `flow[]` existed. `planned[]` remains the containment boundary (drift is
+checked against it), not the progress metric. Keep `flow[]` entries aligned 1:1 with the
+`◆` steps in the `.md`, in the same order.
 
 ## Phase selection
 - no flag / `<ticket>` → **PLAN** (default)
@@ -80,7 +88,8 @@ conversing with the agent. Your job here is the best full draft you can produce.
    flow with ◆ new steps, decision points (options + recommendation), surface area +
    tree, verification, out of scope.
 4. Write `<plandir>/<key>.progress.json` (`phase: "draft"`, branch, `planned[]` from
-   the surface area, all `status: "pending"`).
+   the surface area, all `status: "pending"`; `flow[]` seeded from the `◆` steps — one
+   entry each, in flow order, all `status: "pending"`).
 5. **Open it in neovim** so the user drives the rest from there: run
    `plan-open "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" <plandir>/<key>.md`
    (best-effort — pops the plan up in an nvim window, no-ops if one's already in the
@@ -145,7 +154,9 @@ new scope to add; also honor any manual edits the user already made to the artif
 4. Update `progress.json` to MATCH the surface-area list — the two must list the SAME
    files. Append the new files to `planned[]` (`status: pending`); KEEP every existing
    entry, including deliberately-skipped ones (`pending` + note — never drop them);
-   set `amended_at`; leave `phase` as is (work already done stays done).
+   append a `flow[]` entry (`status: pending`) for each new `◆` step, KEEPING the
+   existing entries and their statuses (finished steps stay `done`); set `amended_at`;
+   leave `phase` as is (work already done stays done).
 5. Reset the review gate so the user re-approves the expanded plan before `--go`
    continues: set `> Status:` to `draft` if you added a decision (the editor routes
    that to resolve → approve), else `amended` (routes to re-finalize). STOP — print
@@ -161,10 +172,21 @@ new scope to add; also honor any manual edits the user already made to the artif
 3. Implement strictly within the surface area. Before touching any file NOT in the
    surface-area list, STOP and ask — record approved additions under `unplanned[]` with a why.
 4. Keep `<plandir>/<key>.progress.json` current as you work: `phase: "implementing"`,
-   flip each planned file `pending → touched → done`. Add a one-line `note` per file —
-   what you changed, or why a planned file needed no change (it stays `pending` with the
-   note, which the plugin renders as a deliberate skip). This is the plugin's live-watch feed.
-5. Run the verification strategy. Report results plainly.
+   and drive BOTH axes:
+   - **`flow[]` (the headline)** — flip each step `pending → active → done` as you start
+     and finish it. `active` when you're working it, `done` when that conceptual step is
+     complete. This is what the panel counts (steps done / total).
+   - **`planned[]` (containment)** — flip each file `pending → touched → done` with a
+     one-line `note` (what you changed, or why a planned file needed no change — it stays
+     `pending` with the note, rendered as a deliberate skip).
+   Both feed the plugin's live-watch; keep them in sync as you go.
+5. Run the verification strategy. Report results plainly — AND persist the automated
+   results so the panel shows them live, without waiting for `--reconcile`: write
+   `<plandir>/<key>.review.json` with a `verification[]` array (schema below), each
+   AT# item (one with a `command`) recorded `pass|fail` as you run it; leave the MT#
+   (command-less, manual) items `pending`. Create the file if absent; it's fine that
+   `correspondence`/`drift` stay empty until `--reconcile` fills them. Never mark an AT#
+   `pass` without actually running its command.
 
 ## PHASE 3 — RECONCILE (`--reconcile`)
 
@@ -182,10 +204,11 @@ verification are the product here, not per-line explanation.
    maps to no step, is flagged. This is the containment check.
 4. **Verification → the test checklist.** The `verification[]` array IS the panel's
    checklist: items WITH a `command` render as `AT#` (automated), items without as
-   `MT#` (manual). Run every `AT#` (tests, build, lint) and record `pass|fail`; leave
-   the `MT#` ones `pending` — those are the steps the user runs by hand. Never claim a
-   check passed without running it.
-5. Emit `<plandir>/<key>.review.json`:
+   `MT#` (manual). `--go` may have already written AT# results here; re-run every `AT#`
+   (tests, build, lint) to confirm and record the final `pass|fail`, and preserve any
+   MT# results the user has already reported. Leave the remaining `MT#` ones `pending` —
+   those are the steps the user runs by hand. Never claim a check passed without running it.
+5. Emit (or update, if `--go` already created it) `<plandir>/<key>.review.json`:
    ```json
    {
      "correspondence": [{"step": "◆2", "files": ["service.go"], "hunks": ["service.go:40-58"], "status": "done|missing"}],

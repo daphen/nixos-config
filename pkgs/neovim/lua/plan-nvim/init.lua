@@ -69,10 +69,20 @@ local function read_status()
 	if not state.plan_path then return end
 	local ok, lines = pcall(vim.fn.readfile, state.plan_path)
 	if not ok then return end
+	-- one pass: the status line + the count of still-unresolved decisions, so the
+	-- statusline can show the next action without re-parsing the file on every redraw.
+	local status, dunres = nil, 0
 	for _, line in ipairs(lines) do
-		local s = line:match("^> Status:%s*`([%w]+)`")
-		if s then state.status = s; return end
+		if not status then
+			local s = line:match("^> Status:%s*`([%w]+)`")
+			if s then status = s end
+		end
+		if line:match("%*%*Your call:%*%*") and line:match("_%(unresolved%)_") then
+			dunres = dunres + 1
+		end
 	end
+	if status then state.status = status end
+	state.dunres = dunres
 end
 
 -- progress.json is the agent's live feed during --go/--reconcile: per-file status
@@ -100,31 +110,93 @@ local function read_review()
 	return nil
 end
 
+-- Headline progress = conceptual work, not file count. Prefer first-class steps
+-- (progress.flow[]: one entry per ◆ step, status pending|active|done); a step is
+-- done when its status says so. Fall back to resolved surface-area files (done or
+-- deliberately skipped-with-note) for plans written before step tracking existed.
+-- Returns done, total, active, axis ("steps"|"files"|"none").
+local function step_progress()
+	local p = state.progress
+	if not p then return 0, 0, 0, "none" end
+	if type(p.flow) == "table" and #p.flow > 0 then
+		local done, active = 0, 0
+		for _, s in ipairs(p.flow) do
+			if s.status == "done" then done = done + 1
+			elseif s.status == "active" then active = active + 1 end
+		end
+		return done, #p.flow, active, "steps"
+	end
+	local total, resolved, touched = 0, 0, 0
+	for _, f in ipairs(p.planned or {}) do
+		total = total + 1
+		if f.status == "done" then resolved = resolved + 1
+		elseif f.status == "touched" then touched = touched + 1
+		elseif f.note and f.note ~= "" then resolved = resolved + 1 end
+	end
+	return resolved, total, touched, "files"
+end
+
+-- The single next action to take given the plan's state, as (label, keybind). Shown
+-- in both the panel header and the lualine statusline so it's glanceable without
+-- opening the panel. key is nil when there's nothing to press (mid-implement / done).
+-- Reads cached state (state.dunres from read_status) — cheap enough for the statusline.
+local function next_step()
+	local p = state.progress or {}
+	-- decisions gate everything before they're resolved
+	if (state.dunres or 0) > 0 then
+		local n = state.dunres
+		return string.format("resolve %d decision%s", n, n > 1 and "s" or ""), "d"
+	end
+	-- once work starts, progress.json phase is the current signal (the .md status line
+	-- lags at "finalized" through implementation) — check it before the review status
+	if p.phase == "reconciled" then return "done ✓", nil end
+	if p.phase == "implementing" then
+		local done, total = step_progress()
+		if total > 0 and done == total then return "reconcile", "r" end
+		return "implementing…", nil
+	end
+	-- pre-implementation: drive off the plan's review status
+	local st = state.status
+	if st == "finalized" then return "implement", "g" end
+	if st == "planned" or st == "amended" then return "finalize", "f" end
+	if st == "draft" then return "review & approve", "v" end
+	return nil, nil
+end
+
+-- The keys worth showing right now — only the actions that do something in the current
+-- phase, primary first, rather than the full 7-key list at all times. One short line.
+local function legend()
+	local p = state.progress or {}
+	if p.phase == "reconciled" then return "m amend" end
+	if p.phase == "implementing" then
+		local done, total = step_progress()
+		if total > 0 and done == total then return "r reconcile · m amend" end
+		return "m amend · r reconcile"
+	end
+	if (state.dunres or 0) > 0 then return "d resolve · a ask" end
+	local st = state.status
+	if st == "finalized" then return "g go · m amend · a ask" end
+	if st == "planned" or st == "amended" then return "f finalize · m amend · a ask" end
+	return "v approve · d resolve · a ask" -- draft, decisions resolved
+end
+
 -- lualine component: require("plan-nvim").statusline()
 function M.statusline()
 	local p = state.progress
+	if not p and not state.status then return "" end
+	local hint, key = next_step()
+	local nexttxt = key and (" → " .. key .. " " .. hint) or ""
 	if p and (p.phase == "implementing" or p.phase == "reconciled") then
-		-- A planned file is "resolved" when it's done OR deliberately skipped (left
-		-- pending with a note explaining no change was needed). The count is resolved/
-		-- total so a finished plan reads N/N even when some files needed no change —
-		-- not a misleading "6/8" next to the ✓.
-		local total, resolved, touched = 0, 0, 0
-		for _, f in ipairs(p.planned or {}) do
-			total = total + 1
-			if f.status == "done" then resolved = resolved + 1
-			elseif f.status == "touched" then touched = touched + 1
-			elseif f.note and f.note ~= "" then resolved = resolved + 1 end
-		end
+		local done, total, active = step_progress()
 		local mark
 		if p.phase == "reconciled" then mark = "✓"
-		elseif total > 0 and resolved == total then mark = "●"
-		elseif resolved + touched > 0 then mark = "◐"
+		elseif total > 0 and done == total then mark = "●"
+		elseif done + active > 0 then mark = "◐"
 		else mark = "○" end
-		return string.format(" %s %s %d/%d", p.ticket or "plan", mark, resolved, total)
+		return string.format(" %s %s %d/%d%s", p.ticket or "plan", mark, done, total, nexttxt)
 	end
-	if not state.status then return "" end
 	local icon = state.status == "planned" and "" or "" -- planned vs draft
-	return icon .. " plan:" .. state.status
+	return string.format("%s %s · %s%s", icon, (p and p.ticket) or "plan", state.status or "draft", nexttxt)
 end
 
 -- own fs_event on .plans/ so status (and a future review overlay) refresh when
@@ -222,8 +294,9 @@ function M.goto_file()
 end
 
 -- Resolve the decision block enclosing the cursor: pick an option (or custom)
--- and write it into the block's "Your call:" line.
-function M.resolve_decision()
+-- and write it into the block's "Your call:" line. then_fn (optional) runs after a
+-- successful write — used to chain straight into the next unresolved decision.
+function M.resolve_decision(then_fn)
 	local buf = vim.api.nvim_get_current_buf()
 	local cur = vim.api.nvim_win_get_cursor(0)[1]
 	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
@@ -242,9 +315,21 @@ function M.resolve_decision()
 
 	local options, call_ln = {}, nil
 	for i = start_ln, end_ln do
-		local letter, desc = lines[i]:match("^%-%s*%*%*(%w)%*%*%s*(.*)")
-		if letter then table.insert(options, { letter = letter, label = letter .. " — " .. (desc or "") }) end
-		if lines[i]:match("%*%*Your call:%*%*") then call_ln = i end
+		local line = lines[i]
+		if line:match("%*%*Your call:%*%*") then
+			call_ln = i
+		elseif not line:match("%*%*Recommendation") then
+			-- Option line — a single-letter label in bold, either form:
+			--   - **A** — desc      (letter alone in bold)
+			--   - **A — desc.**     (letter + desc bolded together)
+			-- The delimiter after the letter (**, space+dash, ., :, )) is what
+			-- distinguishes an option from "Recommendation"/"Your call".
+			local letter = line:match("^%s*%-%s*%*%*%s*(%w)%s*[%-—%*%.:)]")
+			if letter then
+				local label = vim.trim((line:gsub("^%s*%-%s*", ""):gsub("%*%*", "")))
+				table.insert(options, { letter = letter, label = label })
+			end
+		end
 	end
 	if not call_ln then vim.notify("plan: no 'Your call:' line in this block", vim.log.levels.INFO); return end
 
@@ -262,6 +347,7 @@ function M.resolve_decision()
 		end
 		vim.api.nvim_buf_set_lines(buf, call_ln - 1, call_ln, false, { "- **Your call:** " .. value })
 		vim.cmd("silent write")
+		if then_fn then vim.schedule(then_fn) end
 	end)
 end
 
@@ -428,14 +514,13 @@ end
 -- Dispatch /plan-ticket --finalize to the repo's claude: bake resolved decisions into
 -- directives, strip the Q&A. The cleaned plan reloads via the watcher (checktime).
 function M.finalize()
-	for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
-		if l:match("%*%*Your call:%*%*") and l:match("_%(unresolved%)_") then
-			vim.notify("plan: resolve all decisions before finalizing", vim.log.levels.WARN)
-			return
-		end
-	end
 	if not state.plan_path then
 		vim.notify("plan: no plan open", vim.log.levels.INFO)
+		return
+	end
+	read_status() -- refresh status + unresolved-decision count from the file, not buffer 0
+	if (state.dunres or 0) > 0 then
+		vim.notify("plan: resolve all decisions before finalizing", vim.log.levels.WARN)
 		return
 	end
 	local ticket = vim.fn.fnamemodify(state.plan_path, ":t:r")
@@ -697,11 +782,14 @@ render_steps = function(buf)
 	local width = state.steps_width or 88
 	state.steps_paths, state.steps_flow, state.steps_stepidx, state.steps_firstline = {}, {}, {}, {}
 
-	local total, done, skipped = 0, 0, 0
-	for _, f in ipairs(p.planned or {}) do
-		total = total + 1
-		if f.status == "done" then done = done + 1
-		elseif f.status ~= "touched" and f.note and f.note ~= "" then skipped = skipped + 1 end
+	local sdone, stotal, _, saxis = step_progress()
+	local skipped = 0
+	if saxis == "files" then
+		for _, f in ipairs(p.planned or {}) do
+			if f.status ~= "done" and f.status ~= "touched" and f.note and f.note ~= "" then
+				skipped = skipped + 1
+			end
+		end
 	end
 
 	local lines, hls = {}, {}
@@ -717,38 +805,47 @@ render_steps = function(buf)
 	end
 
 	add("") -- top padding
-	hl(add(string.format("  %s · %s · %d/%d done%s", p.ticket or "plan", p.phase or "?", done, total,
+	hl(add(string.format("  %s · %s · %d/%d %s%s", p.ticket or "plan", p.phase or "?", sdone, stotal,
+		saxis == "steps" and "steps" or "files",
 		skipped > 0 and string.format(" · %d skipped", skipped) or "")), 0, -1, "Title")
 	-- what's-left + decision/question tallies, then the action-key legend — so the
 	-- one panel both shows where the plan stands and drives every step.
-	local st = state.status or p.phase
-	local hint
-	if plan.dunres > 0 then hint = plan.dunres .. " decision" .. (plan.dunres > 1 and "s" or "") .. " to resolve"
-	elseif st == "draft" then hint = "review, then approve"
-	elseif st == "planned" or st == "amended" then hint = "ready to finalize"
-	elseif st == "finalized" then hint = "ready to implement"
-	elseif p.phase == "implementing" then hint = "implementing"
-	elseif p.phase == "reconciled" or st == "reconciled" then hint = "reconciled ✓"
-	else hint = nil end
+	-- next-action hint shares next_step() with the statusline; sync the freshly-parsed
+	-- decision count so both agree (parse_plan is authoritative here).
+	state.dunres = plan.dunres
+	local hint, key = next_step()
+	local hinttxt = hint and ("  ·  → " .. (key and (key .. " ") or "") .. hint) or ""
 	hl(add(string.format("  %d/%d decisions · %d/%d questions%s",
-		plan.dtotal - plan.dunres, plan.dtotal, plan.qans, plan.qtotal,
-		hint and ("  ·  → " .. hint) or "")), 0, -1, "Comment")
-	hl(add("  a ask · d resolve · v approve · f finalize · g go · m amend · r reconcile"), 0, -1, "Comment")
+		plan.dtotal - plan.dunres, plan.dtotal, plan.qans, plan.qtotal, hinttxt)), 0, -1, "Comment")
+	-- only the keys relevant to the current phase (primary first), one line — not the
+	-- full 7-key list, most of which does nothing in any given phase
+	hl(add("  " .. legend()), 0, -1, "Comment")
 	add("")
 	if #plan.flow > 0 then
-		-- per-step status, derived from the files each step names: ● all done · ◐ in
-		-- progress / partial · ○ not started · ◆ no tracked files.
+		-- Per-step status. First-class when progress.flow[] tracks it: ● done · ◐ active
+		-- · ○ pending, indexed to the ◆ steps. Else fall back to rolling up the files
+		-- each step names (● all done · ◐ partial · ○ none · ◆ no tracked files) for
+		-- plans written before step tracking.
+		local pflow = type(p.flow) == "table" and #p.flow > 0 and p.flow or nil
 		local sb = {}
-		for _, f in ipairs(p.planned or {}) do
-			local base = f.file:match("([^/]+)$")
-			if base then
-				sb[base] = {
-					done = f.status == "done" or (f.status ~= "touched" and f.note and f.note ~= ""),
-					active = f.status == "touched",
-				}
+		if not pflow then
+			for _, f in ipairs(p.planned or {}) do
+				local base = f.file:match("([^/]+)$")
+				if base then
+					sb[base] = {
+						done = f.status == "done" or (f.status ~= "touched" and f.note and f.note ~= ""),
+						active = f.status == "touched",
+					}
+				end
 			end
 		end
-		local function step_mark(files)
+		local function step_mark(i, files)
+			if pflow then
+				local st_ = pflow[i] and pflow[i].status
+				if st_ == "done" then return "●", "PlanActionCreate" end
+				if st_ == "active" then return "◐", "PlanActionTouch" end
+				return "○", "Comment"
+			end
 			local tot, dn, act = 0, 0, false
 			for _, base in ipairs(files or {}) do
 				local s = sb[base]
@@ -764,7 +861,7 @@ render_steps = function(buf)
 		end
 		hl(add("  THE WORK"), 0, -1, "Title")
 		for i, s in ipairs(plan.flow) do
-			local g, grp = step_mark(plan.flow_files[i])
+			local g, grp = step_mark(i, plan.flow_files[i])
 			-- the step under the cursor grows to its full text; the rest stay truncated
 			local text = (state.steps_expand == i and plan.flow_full[i]) or s
 			for j, dl in ipairs(wrap(text, "   " .. g .. " ", "     ", width)) do
@@ -946,13 +1043,17 @@ function M.steps(focus)
 		if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
 		state.steps_buf, state.steps_win = nil, nil
 	end
-	-- run an action: close the panel, drop back to a normal window (so composes/edits
-	-- and --go's follow window land somewhere sane), open the plan first if the action
-	-- needs it, then run.
-	local function act(fn, open_plan)
-		close()
-		local w = state.steps_prev_win
-		if w and vim.api.nvim_win_is_valid(w) then vim.api.nvim_set_current_win(w) end
+	-- run an action. By default: close the panel and drop back to a normal window (so
+	-- composes/edits and --go's follow window land somewhere sane), open the plan first
+	-- if the action needs it, then run. keep=true leaves the panel open — for pure
+	-- dispatches (finalize/reconcile) that just wt-send to the claude TUI in another
+	-- window, so you keep watching the plan update live.
+	local function act(fn, open_plan, keep)
+		if not keep then
+			close()
+			local w = state.steps_prev_win
+			if w and vim.api.nvim_win_is_valid(w) then vim.api.nvim_set_current_win(w) end
+		end
 		if open_plan and state.plan_path and vim.api.nvim_buf_get_name(0) ~= state.plan_path then
 			pcall(vim.cmd, "edit " .. vim.fn.fnameescape(state.plan_path))
 		end
@@ -962,12 +1063,27 @@ function M.steps(focus)
 	vim.keymap.set("n", "q", close, o)
 	vim.keymap.set("n", "<Esc>", close, o)
 	vim.keymap.set("n", "a", function() act(M.ask, true) end, o)
-	vim.keymap.set("n", "d", function() act(resolve_next_decision, true) end, o)
+	-- resolve decisions WITHOUT tearing down the panel: focus the plan in the left
+	-- window (panel stays on the right), then chain through every unresolved decision.
+	-- The panel re-renders live as each is written.
+	vim.keymap.set("n", "d", function()
+		if not state.plan_path then return end
+		local w = state.steps_prev_win
+		if w and vim.api.nvim_win_is_valid(w) then
+			vim.api.nvim_set_current_win(w)
+			if vim.api.nvim_buf_get_name(0) ~= state.plan_path then
+				pcall(vim.cmd, "edit " .. vim.fn.fnameescape(state.plan_path))
+			end
+		else
+			pcall(vim.cmd, "aboveleft vsplit " .. vim.fn.fnameescape(state.plan_path))
+		end
+		resolve_next_decision()
+	end, o)
 	vim.keymap.set("n", "v", function() act(M.approve, true) end, o)
-	vim.keymap.set("n", "f", function() act(M.finalize, false) end, o)
+	vim.keymap.set("n", "f", function() act(M.finalize, false, true) end, o)
 	vim.keymap.set("n", "g", function() act(M.go, false) end, o)
 	vim.keymap.set("n", "m", function() act(M.amend, true) end, o)
-	vim.keymap.set("n", "r", function() act(M.reconcile, false) end, o)
+	vim.keymap.set("n", "r", function() act(M.reconcile, false, true) end, o)
 	vim.keymap.set("n", "p", function() act(function() end, true) end, o)
 	vim.keymap.set("n", "<CR>", function()
 		local ln = vim.api.nvim_win_get_cursor(win)[1]
@@ -1081,11 +1197,12 @@ resolve_next_decision = function()
 	for i, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
 		if l:match("%*%*Your call:%*%*") and l:match("_%(unresolved%)_") then
 			vim.api.nvim_win_set_cursor(0, { i, 0 })
-			M.resolve_decision()
+			-- chain: after this one is written, prompt for the next until none remain
+			M.resolve_decision(resolve_next_decision)
 			return
 		end
 	end
-	vim.notify("plan: no unresolved decisions", vim.log.levels.INFO)
+	vim.notify("plan: all decisions resolved — v to approve", vim.log.levels.INFO)
 end
 
 -- Is the cursor inside a `### D#` decision block (vs past it under a later heading)?
@@ -1147,17 +1264,55 @@ function M.autostart()
 	end))
 end
 
--- Silently bind the session to the worktree's plan WITHOUT opening it — reads status
--- + progress and starts the watcher — so the lualine component and <C-p> work in an
--- ordinary code-editing nvim, not just the --plan stack pane. No-op outside a worktree
--- that has a matching plan.
+-- Watch the plans dir for THIS worktree's plan to appear, then bind + surface it —
+-- covers an nvim already open on a worktree when a claude session runs /plan-ticket
+-- there (plan-open sees this pane and defers to it, so nothing else would open it).
+-- Opens the plan only from a scratch/dashboard buffer; otherwise just notifies, so it
+-- never yanks you out of active editing. No PLAN_NVIM_OPEN needed, unlike autostart.
+local function watch_for_plan(key)
+	local target = plans_dir() .. "/" .. key .. ".md"
+	if state.watcher then pcall(function() state.watcher:close() end) end
+	local h = vim.uv.new_fs_event()
+	if not h then return end
+	state.watcher = h
+	pcall(function()
+		h:start(plans_dir(), {}, vim.schedule_wrap(function(err)
+			if err or state.plan_path then return end
+			if not vim.uv.fs_stat(target) then return end
+			state.plan_path = target
+			read_status()
+			read_progress()
+			state.last_amended = state.progress and state.progress.amended_at
+			state.last_status = state.status
+			local cur = vim.api.nvim_get_current_buf()
+			local scratch = (vim.api.nvim_buf_get_name(cur) == "" and not vim.bo[cur].modified)
+				or vim.bo[cur].filetype == "snacks_dashboard"
+			if scratch then
+				open_path(target)
+			else
+				vim.notify("plan: " .. key .. " ready — :PlanOpen to review")
+			end
+			watch() -- swap to the sidecar watcher now that a plan is bound
+		end))
+	end)
+end
+
+-- Silently bind the session to the worktree's plan so the lualine component and <C-p>
+-- work in an ordinary code-editing nvim, not just the --plan stack pane. If the plan
+-- exists, bind + watch now; if it doesn't yet (fresh worktree), watch for it to appear.
+-- No-op outside a worktree with a derivable plan key.
 function M.bind()
-	if state.plan_path or not resolve_plan_path() then return end
-	read_status()
-	read_progress()
-	state.last_amended = state.progress and state.progress.amended_at -- baselines; open only on a later change
-	state.last_status = state.status
-	watch()
+	if state.plan_path then return end
+	if resolve_plan_path() then
+		read_status()
+		read_progress()
+		state.last_amended = state.progress and state.progress.amended_at -- baselines; open only on a later change
+		state.last_status = state.status
+		watch()
+		return
+	end
+	local key = plan_key(state.root or git_root())
+	if key then watch_for_plan(key) end
 end
 
 -- Re-assert the buffer-local plan maps (deferred so they win over obsidian's
