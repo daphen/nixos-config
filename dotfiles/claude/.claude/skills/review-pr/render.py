@@ -45,8 +45,10 @@ def main() -> int:
     if not palette:
         print(f"warning: no review palette in {pal_dir} — page will be unstyled", file=sys.stderr)
 
+    styles = (SKILL_DIR / "ui.css").read_text() if (SKILL_DIR / "ui.css").is_file() else ""
     html = (SKILL_DIR / "template.html").read_text()
-    html = html.replace("{{MODE}}", mode).replace("{{PALETTE}}", palette).replace("{{NUM}}", num)
+    html = (html.replace("{{MODE}}", mode).replace("{{PALETTE}}", palette)
+                .replace("{{STYLES}}", styles).replace("{{NUM}}", num))
     for slot in SLOTS:
         html = html.replace("{{" + slot.upper() + "}}", str(frags.get(slot, "")))
 

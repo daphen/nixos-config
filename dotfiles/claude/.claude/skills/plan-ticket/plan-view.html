@@ -1,18 +1,16 @@
 <!doctype html>
 <!--
-  review-pr render template. render.py fills the double-brace slots; never hand-edit output.
-  Slots (names only, braces omitted here so this comment isn't substituted):
-    MODE PALETTE STYLES TITLE META VERDICT_CLASS VERDICT_BADGE VERDICT_WHY
-    DIAGRAM FINDINGS FILEMAP INTENT VERIFICATION NUM
-  Styling is shared with plan-ticket via ui.css (inlined at STYLES) — keep the two aligned.
-  Fragment component classes: .lane/.node/.arrow/.split (diagram), .finding + <pre> .ln[.bad|.good|.strike]
-  + .note (findings), .grp/.frow/.bar (file map), ul.intent li, .verify div.
+  plan-ticket scan view. plan-render.py fills the double-brace slots from the plan
+  artifacts (<key>.md + .progress.json + .review.json). Read-only; nvim stays the driver.
+  Styling shared with review-pr via ui.css (inlined at STYLES) — keep the two aligned.
+  Slots (braces omitted): MODE PALETTE STYLES KEY TITLE STATUS STATUS_CLASS BRANCH
+    PROGRESS SHAPE FLOW DECISIONS SURFACE VERIFICATION RECON
 -->
 <html lang="en" class="theme-{{MODE}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Review · PR #{{NUM}}</title>
+<title>Plan · {{KEY}}</title>
 <style>
 {{PALETTE}}
 {{STYLES}}
@@ -22,36 +20,34 @@
 <div class="wrap">
   <header>
     <h1>{{TITLE}}</h1>
-    <div class="meta">{{META}}</div>
+    <div class="meta"><span class="badge {{STATUS_CLASS}}">{{STATUS}}</span> &nbsp; <b>{{KEY}}</b> · {{BRANCH}} · {{PROGRESS}}</div>
   </header>
 
-  <div class="verdict"><span class="badge {{VERDICT_CLASS}}">{{VERDICT_BADGE}}</span>
-    <span class="why">{{VERDICT_WHY}}</span></div>
+  <div class="shape">{{SHAPE}}</div>
 
-  <h2>How the change works</h2>
-  <div class="flow">{{DIAGRAM}}</div>
+  <h2>Flow <span class="count">{{PROGRESS}}</span></h2>
+  {{FLOW}}
 
-  <h2>Findings</h2>
-  {{FINDINGS}}
+  <h2>Decision points</h2>
+  {{DECISIONS}}
 
-  <h2>Change footprint</h2>
-  <div class="fmap">{{FILEMAP}}</div>
-
-  <h2>Intent</h2>
-  <ul class="intent">{{INTENT}}</ul>
+  <h2>Surface area — containment boundary</h2>
+  {{SURFACE}}
 
   <h2>Verification</h2>
-  <div class="verify">{{VERIFICATION}}</div>
+  {{VERIFICATION}}
 
-  <div class="foot mono">Local review · nothing posted to GitHub · reopen: pr-review-open {{NUM}}</div>
+  <h2>Reconciliation</h2>
+  <div class="recon">{{RECON}}</div>
+
+  <div class="foot mono">Read-only scan · drive planning in nvim · reopen: plan-view {{KEY}}</div>
 </div>
 <div class="navhint">j/k · h/l · u/d half-page · gg/G ends · ↵ expand · o open-in-nvim · Esc</div>
 <script>
-/* Built-in vim navigation between items — works on file:// without Vimium. */
 (function(){
-  var SEL = ".finding, .node, .frow, ul.intent li, .verify div";
+  var SEL = ".step, .dec, .frow, .vrow";
   var items = Array.prototype.slice.call(document.querySelectorAll(SEL)), i = -1, lastG = 0;
-  var KEY = "review:" + location.pathname;
+  var KEY = "planview:" + location.pathname;
   function focus(n){
     if(!items.length) return;
     if(i >= 0 && items[i]) items[i].classList.remove("nav-focus");
@@ -59,8 +55,6 @@
     items[i].classList.add("nav-focus");
     items[i].scrollIntoView({block:"center", behavior:"smooth"});
   }
-  // Move the highlight ~half a viewport (vim Ctrl-u/Ctrl-d): pick the item
-  // nearest to the current one shifted by half a screen, then focus it.
   function halfPage(dir){
     if(!items.length) return;
     var anchor = items[i >= 0 ? i : 0].getBoundingClientRect().top;
@@ -92,7 +86,6 @@
     }
     if(best >= 0) focus(best);
   }
-  // Open the focused item's file at its line in the worktree's nvim (server /open).
   function openInNvim(el){
     var f = el.getAttribute("data-file"); if(!f) return;
     var ln = el.getAttribute("data-line") || "1";
@@ -123,7 +116,8 @@
   } catch(e){}
   function save(){ try{ sessionStorage.setItem(KEY, JSON.stringify({y: window.scrollY, i: i})); }catch(e){} }
 
-  // Live updates when served by pr-review-open; no-op on file://.
+  // Live updates: the plan-view server pushes on any artifact change → reload
+  // in place (state preserved). No-op on file:// (EventSource just fails).
   if(location.protocol.indexOf("http") === 0){
     try {
       var es = new EventSource("/events");

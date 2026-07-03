@@ -87,9 +87,13 @@ hand them to the renderer, which inlines the current-mode palette (from
 writes the stable path `~/.cache/pr-reviews/pr-<num>.html`:
 
 ```
-python3 <skill-dir>/render.py <num> <fragments.json>          # prints the output path
-browser-dispatch --profile=work --new-window "file://$HOME/.cache/pr-reviews/pr-<num>.html"
+python3 <skill-dir>/render.py <num> <fragments.json>   # prints the output path
+setsid pr-review-open <num> >/dev/null 2>&1 &          # serves it + opens a chromeless app window
 ```
+
+`pr-review-open` serves the page on localhost (live-reload on re-render; `o` jumps the
+review worktree's nvim to the finding's file:line via its `/open` endpoint) and opens it
+as a helium `--app` window. Re-rendering after it's up just updates the open window.
 
 `fragments.json` keys (each a raw HTML string built with the component classes the
 template documents in its header comment — **colours are `--rv-*` vars + `color-mix`, never
@@ -99,7 +103,7 @@ hex**):
 - `meta` — one line: PR #, author, state, base←head, +add/−del, file count, github + ticket links.
 - `verdict_class` / `verdict_badge` — `approve|changes|comment` and its label; `verdict_why` — one line + a `<span class="note">` caveat.
 - `diagram` — **the centrepiece.** `.lane`/`.node`/`.arrow`/`.split` markup showing *how this change works*, chosen to fit the PR: data-flow pipeline, state machine, before/after, or sequence. Label real files/symbols. At least half the page's weight is this + the annotated code, not prose.
-- `findings` — one `.finding` per issue, ranked blocker → should-fix → nit, **each an annotated `<pre>` of the actual hunk** (offending line `.ln.bad`, good line `.ln.good`) + a `.note`. Refuted candidates: `.ln.strike` + `.note.drop`. Not text cards describing invisible code.
+- `findings` — one `.finding` per issue, ranked blocker → should-fix → nit, **each an annotated `<pre>` of the actual hunk** (offending line `.ln.bad`, good line `.ln.good`) + a `.note`. Refuted candidates: `.ln.strike` + `.note.drop`. Not text cards describing invisible code. Put `data-file="<repo-relative path>" data-line="<line>"` on each `.finding` (and any file-anchored `.frow`) so `o` can open it in nvim.
 - `filemap` — `.grp` columns (by area) with per-file `.bar` change-size bars. Not a table.
 - `intent` — `<li>` items against the linked ticket (satisfied / missing / out-of-scope).
 - `verification` — rows: what you actually ran + results, CI rollup for the rest.

@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+"""Render a plan artifact to a scannable HTML page.
+
+Usage: plan-render.py <plan.md-path>
+
+Data-driven (no LLM): reads <key>.md + <key>.progress.json + <key>.review.json,
+inlines the current theme palette, and writes ~/.cache/plan-views/<key>.html
+(also printed). Read-only view; nvim stays the authoring driver.
+"""
+import html
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+HOME = Path(os.environ["HOME"])
+SKILL_DIR = Path(__file__).resolve().parent
+PHASE_CLASS = {"draft": "draft", "finalized": "finalized", "implementing": "implementing", "reconciled": "reconciled"}
+
+
+def md_inline(s: str) -> str:
+    s = html.escape(s)
+    s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
+    s = re.sub(r"`(.+?)`", r"<code>\1</code>", s)
+    return s
+
+
+def md_block(text: str) -> str:
+    """Very light markdown → HTML for prose sections (paragraphs + bullet lists)."""
+    out, buf, in_ul = [], [], False
+    def flush_p():
+        if buf:
+            out.append("<p>" + " ".join(buf) + "</p>"); buf.clear()
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            flush_p()
+            if in_ul: out.append("</ul>"); in_ul = False
+            continue
+        m = re.match(r"\s*[-*]\s+(.*)", line)
+        if m:
+            flush_p()
+            if not in_ul: out.append("<ul>"); in_ul = True
+            out.append("<li>" + md_inline(m.group(1)) + "</li>")
+        else:
+            buf.append(md_inline(line))
+    flush_p()
+    if in_ul: out.append("</ul>")
+    return "\n".join(out) or '<span class="empty">—</span>'
+
+
+def sections(md: str) -> dict:
+    """Split markdown into {heading-lower: body} by `## ` headings."""
+    secs, cur, body = {}, None, []
+    for line in md.splitlines():
+        h = re.match(r"^##\s+(.*)", line)
+        if h:
+            if cur is not None: secs[cur] = "\n".join(body).strip()
+            cur = h.group(1).strip().lower(); body = []
+        elif cur is not None:
+            body.append(line)
+    if cur is not None: secs[cur] = "\n".join(body).strip()
+    return secs
+
+
+def find_section(secs: dict, *needles: str) -> str:
+    for k, v in secs.items():
+        if any(n in k for n in needles):
+            return v
+    return ""
+
+
+def render_flow(progress) -> str:
+    flow = (progress or {}).get("flow") or []
+    if not flow:
+        return '<div class="empty">No flow steps recorded yet.</div>'
+    rows = []
+    for f in flow:
+        st = f.get("status", "pending")
+        rows.append(
+            f'<div class="step {st}"><span class="dot"></span>'
+            f'<span class="txt"><span class="new">◆</span>{md_inline(f.get("step",""))}</span></div>'
+        )
+    return "\n".join(rows)
+
+
+def render_decisions(secs: dict) -> str:
+    body = find_section(secs, "decision")
+    if not body:
+        return '<div class="empty">No decision points.</div>'
+    blocks = re.split(r"(?=^###\s+)", body, flags=re.M)
+    cards = []
+    for b in blocks:
+        b = b.strip()
+        if not b.startswith("###"):
+            continue
+        q = re.match(r"###\s+(.*)", b).group(1).strip()
+        call_m = re.search(r"\*\*Your call:\*\*\s*(.*)", b)
+        call = call_m.group(1).strip() if call_m else ""
+        unresolved = "(unresolved)" in call.lower() or "_(unresolved)_" in b.lower()
+        cls = "dec unresolved" if unresolved else "dec"
+        call_html = f'<div class="call">Your call: {md_inline(call) or "—"}</div>' if call_m else ""
+        cards.append(f'<div class="{cls}"><div class="q">{md_inline(q)}</div>{call_html}</div>')
+    return "\n".join(cards) or '<div class="empty">No decision points.</div>'
+
+
+def render_surface(progress, review) -> str:
+    planned = (progress or {}).get("planned") or []
+    rows = []
+    for p in planned:
+        act = p.get("action", "modify")
+        st = p.get("status", "pending")
+        note = p.get("note", "")
+        f = p.get("file", "")
+        rows.append(
+            f'<div class="frow openable" data-file="{html.escape(f, quote=True)}"><span class="tag {act}">{act}</span>'
+            f'<span class="st {st}">{st}</span>'
+            f'<span class="nm">{html.escape(f)}</span>'
+            f'<span class="note">{md_inline(note)}</span></div>'
+        )
+    for d in (review or {}).get("drift") or []:
+        rows.append(
+            f'<div class="frow"><span class="tag drift">drift</span><span class="st"></span>'
+            f'<span class="nm">{html.escape(d.get("file", d.get("hunk","")))}</span>'
+            f'<span class="note">{md_inline(d.get("why",""))}</span></div>'
+        )
+    return "\n".join(rows) or '<div class="empty">No surface-area files recorded yet.</div>'
+
+
+def render_verification(review) -> str:
+    items = (review or {}).get("verification") or []
+    if not items:
+        return '<div class="empty">Not reconciled yet — run <code>--reconcile</code>.</div>'
+    rows = []
+    for v in items:
+        r = v.get("result", "pending")
+        label = v.get("check", "")
+        cmd = v.get("command")
+        tag = "AT" if cmd else "MT"
+        rows.append(
+            f'<div class="vrow"><span class="r {r}">{tag} {r}</span>'
+            f'<span>{md_inline(label)}</span></div>'
+        )
+    return "\n".join(rows)
+
+
+def render_html(md_path: Path) -> str:
+    """Render the plan artifacts at md_path into the filled HTML string.
+    Reusable by both the CLI (static write) and the plan-view live server."""
+    key = md_path.stem
+    md = md_path.read_text()
+
+    def load(suffix):
+        p = md_path.with_name(md_path.stem + suffix)
+        if p.is_file():
+            try: return json.loads(p.read_text())
+            except Exception: return None
+        return None
+    progress = load(".progress.json")
+    review = load(".review.json")
+
+    secs = sections(md)
+    title_m = re.search(r"^#\s+(.*)", md, flags=re.M)
+    title = title_m.group(1).strip() if title_m else key
+    phase = (progress or {}).get("phase")
+    status_line = re.search(r"^>\s*Status:\s*`?(\w+)`?", md, flags=re.M)
+    status = phase or (status_line.group(1) if status_line else "draft")
+    status_cls = PHASE_CLASS.get(status, "draft")
+    branch = (progress or {}).get("branch") or ""
+    br_m = re.search(r"worktree:\s*`([^`]+)`", md)
+    if not branch and br_m: branch = br_m.group(1)
+
+    flow = (progress or {}).get("flow") or []
+    done = sum(1 for f in flow if f.get("status") == "done")
+    progress_txt = f"{done}/{len(flow)} steps" if flow else "—"
+
+    mode = "light"
+    mf = HOME / ".config" / "theme_mode"
+    if mf.is_file() and mf.read_text().strip() in ("light", "dark"):
+        mode = mf.read_text().strip()
+    pal_dir = HOME / ".config" / "themes" / "generated" / "review"
+    palette = ""
+    for cand in (pal_dir / f"{mode}.theme", pal_dir / "light.theme", pal_dir / "dark.theme"):
+        if cand.is_file():
+            palette = cand.read_text(); break
+
+    ui_css_path = HOME / ".claude" / "skills" / "review-pr" / "ui.css"  # shared with review-pr
+    ui_css = ui_css_path.read_text() if ui_css_path.is_file() else ""
+    fill = {
+        "MODE": mode, "PALETTE": palette, "STYLES": ui_css, "KEY": key, "TITLE": md_inline(title),
+        "STATUS": status, "STATUS_CLASS": status_cls, "BRANCH": html.escape(branch),
+        "PROGRESS": progress_txt,
+        "SHAPE": md_block(find_section(secs, "the shape", "shape")) or '<span class="empty">—</span>',
+        "FLOW": render_flow(progress),
+        "DECISIONS": render_decisions(secs),
+        "SURFACE": render_surface(progress, review),
+        "VERIFICATION": render_verification(review),
+        "RECON": md_block(find_section(secs, "reconciliation")),
+    }
+    tpl = (SKILL_DIR / "plan-view.html").read_text()
+    for k, v in fill.items():
+        tpl = tpl.replace("{{" + k + "}}", str(v))
+    return tpl
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("usage: plan-render.py <plan.md-path>", file=sys.stderr)
+        return 2
+    md_path = Path(sys.argv[1]).expanduser()
+    if not md_path.is_file():
+        print(f"no plan at {md_path}", file=sys.stderr)
+        return 1
+    out_dir = HOME / ".cache" / "plan-views"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{md_path.stem}.html"
+    out.write_text(render_html(md_path))
+    print(out)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
