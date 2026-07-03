@@ -72,44 +72,23 @@ def pick_recent_worktree(lovables: list[dict], recency: list[str]) -> str:
 
 
 def desired_order(lovables: list[dict], active: str, recency: list[str]) -> list[dict]:
-    """Layout:
+    """STATIC layout — the order never depends on which workspace is focused:
 
-        [other inactive worktrees]   <- top, sorted by current idx
-        [partner]                    <- idx M-1
-        [active]                     <- idx M   (closest to non-lovables below)
+        [inactive worktrees]         <- top, sorted by current idx
+        [main]                       <- idx M-1
+        [current worktree]           <- idx M   (touching the non-lovables)
 
-    partner = main when active != main, else the most-recent non-main
-    worktree. Super+O swaps active and partner (the active position
-    is always M; toggling main↔worktree means whichever is current
-    active moves to M, the other moves to M-1).
+    Toggling main↔worktree flips `active` but not this order, so the reorder
+    ws-tracker fires after every focus is a structural no-op — nothing moves
+    while the user is looking (moving the strip mid/post-animation was the
+    Super+O yank). Only a partner change (picker jump) rearranges, and
+    ws-jump-adjacent choreographs those moves invisibly around the focus.
     """
     by_name = {w.get("name"): w for w in lovables}
-    active_ws = by_name.get(active)
-
-    if active == MAIN_WS:
-        partner_name = pick_recent_worktree(lovables, recency)
-    elif active and active in by_name:
-        partner_name = MAIN_WS if MAIN_WS in by_name else ""
-    else:
-        partner_name = ""
-    partner_ws = by_name.get(partner_name) if partner_name else None
-
-    bottom: list[dict] = []
-    if partner_ws is not None and (active_ws is None or partner_ws.get("id") != active_ws.get("id")):
-        bottom.append(partner_ws)
-    if active_ws is not None:
-        bottom.append(active_ws)
-
+    wt_name = pick_recent_worktree(lovables, recency)
+    bottom = [w for w in (by_name.get(MAIN_WS), by_name.get(wt_name)) if w is not None]
     bottom_ids = {w.get("id") for w in bottom}
     cur = sorted(lovables, key=lambda x: x["idx"])
-    # Super+O flips which of the {active, partner} pair is active without
-    # moving anything, so BOTH orders of the bottom pair are canonical.
-    # Accepting the flipped order keeps this a no-op after a toggle — the
-    # 1-step focus animation is never stomped by workspace moves. Paths
-    # that change the pair itself (picker jumps) still reorder fully,
-    # and ws-jump-adjacent does its moves BEFORE focusing (invisible).
-    if len(bottom) == 2 and {w.get("id") for w in cur[-2:]} == bottom_ids:
-        return cur
     top = [w for w in cur if w.get("id") not in bottom_ids]
     return top + bottom
 

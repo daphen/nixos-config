@@ -117,6 +117,15 @@ def update_recency(name: str) -> None:
 
 
 def reorder() -> None:
+    # ws-jump-adjacent touches reorder-hold while choreographing a jump
+    # (pre-moves + focus + delayed tuck). Reordering inside that window
+    # would race the focus animation — the jump owns the layout until done.
+    try:
+        hold = STATE_DIR / "reorder-hold"
+        if time.time() - hold.stat().st_mtime < 1.0:
+            return
+    except Exception:
+        pass
     try:
         subprocess.run([str(REORDER_SCRIPT)], check=False, timeout=2)
     except Exception:

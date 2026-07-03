@@ -3,9 +3,11 @@
 ws-focus-workspace-up
 
 Drop-in replacement for focus-workspace-up-or-monitor that treats the
-group of `lovable-*` named workspaces as a single navigable entry —
-only the *active* one (per ws/active state) participates in the
-workspace cycle. All other lovable-* are hidden from Super+J/K.
+group of `lovable-*` named workspaces as a two-slot dock: main and the
+current partner worktree (recency front) participate in the Super+J/K
+walk; the rest of the pile is hidden. ws-reorder keeps the pair in a
+STATIC [main, worktree] order touching the non-lovables, so every step
+in the walk is physically adjacent — nothing hidden ever scrolls past.
 
 If at the top of the filtered list, falls back to focus-monitor-up
 (same as the original script).
@@ -17,7 +19,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-ACTIVE_FILE = Path(os.environ["HOME"]) / ".local/state/wt-stacks/ws/active"
+RECENCY_FILE = Path(os.environ["HOME"]) / ".local/state/wt-stacks/ws/recency"
+MAIN_WS = "lovable-main"
 
 
 def niri_json(*args: str):
@@ -27,15 +30,23 @@ def niri_json(*args: str):
     return json.loads(out.stdout) if out.stdout.strip() else None
 
 
-def is_inactive_lovable(name: str | None, active: str) -> bool:
-    if not name or not name.startswith("lovable-") or name == "lovable":
+def visible_lovables(workspaces: list[dict]) -> set[str]:
+    """main + the current partner worktree (most recent one that still
+    exists) — the two lovable workspaces that participate in the walk."""
+    names = {w.get("name") for w in workspaces}
+    try:
+        recency = [n for n in json.loads(RECENCY_FILE.read_text()) if isinstance(n, str)]
+    except Exception:
+        recency = []
+    partner = next((n for n in recency
+                    if n != MAIN_WS and n.startswith("lovable-") and n in names), "")
+    return {MAIN_WS, partner} - {""}
+
+
+def is_hidden_lovable(name: str | None, visible: set[str]) -> bool:
+    if not name or not name.startswith("lovable-"):
         return False
-    # lovable-main always participates in the Super+J/K nav cycle —
-    # it's pinned at idx M (closest to non-lovables) by ws-reorder, so
-    # Super+K from a non-lovable workspace should land on main next.
-    if name == "lovable-main":
-        return False
-    return name != active
+    return name not in visible
 
 
 def main(direction: str) -> int:
@@ -46,17 +57,14 @@ def main(direction: str) -> int:
         return 0
     cur_output = cur.get("output")
 
-    try:
-        active_stack = ACTIVE_FILE.read_text().strip()
-    except Exception:
-        active_stack = ""
+    visible = visible_lovables(workspaces)
 
-    # Filter to: same output, has windows, NOT an inactive lovable-*.
+    # Filter to: same output, has windows, not a hidden (pile) lovable.
     candidates = [
         w for w in workspaces
         if w.get("output") == cur_output
         and w.get("active_window_id") is not None
-        and not is_inactive_lovable(w.get("name"), active_stack)
+        and not is_hidden_lovable(w.get("name"), visible)
     ]
     candidates.sort(key=lambda w: w.get("idx") or 0)
 

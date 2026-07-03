@@ -2,29 +2,32 @@
 """
 ws-jump-adjacent <target_workspace_name>
 
-Set up the canonical lovable layout assuming `target` is becoming the
-new active workspace, then focus it:
+Move focus to `target`, maintaining the STATIC lovable layout:
 
-    [other-inactive-worktrees]  <- idx 1..M-2 (current idx order)
-    [partner]                   <- idx M-1
-    [target = new active]       <- idx M
+    [inactive worktrees]   <- idx 1..M-2 (current idx order)
+    [main]                 <- idx M-1
+    [current worktree]     <- idx M  (touching the non-lovables)
 
-Where partner = main when target is a worktree, OR most-recent
-non-main worktree when target IS main.
-
-This matches what ws-reorder produces, so the reorder fired by
-ws-tracker after the focus event is a no-op — no extra moves shake
-the workspace stack after the user lands on target.
+Matches ws-reorder, so the reorder ws-tracker fires after the focus
+event is a no-op. Every move is choreographed to be INVISIBLE:
+workspaces are only moved while off-screen, and never in a way that
+explicitly relocates the focused workspace (proven flicker) or races
+the focus animation (proven yank). Side-effect renumbering of the
+focused workspace's index is proven invisible.
 """
 from __future__ import annotations
 import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ACTIVE_FILE = Path(os.environ["HOME"]) / ".local/state/wt-stacks/ws/active"
 RECENCY_FILE = Path(os.environ["HOME"]) / ".local/state/wt-stacks/ws/recency"
+# While fresh (<1s), ws-tracker skips its reorder — the jump owns the layout
+# until its own choreography completes, so nothing races the focus animation.
+HOLD_FILE = Path(os.environ["HOME"]) / ".local/state/wt-stacks/ws/reorder-hold"
 MAIN_WS = "lovable-main"
 
 
@@ -59,59 +62,73 @@ def main() -> int:
         return 0
     output = target.get("output")
 
+    focused = next((w for w in workspaces if w.get("is_focused")), None)
+    if focused is not None and focused.get("id") == target.get("id"):
+        return 0
+
     lovables = [w for w in workspaces
                 if (w.get("name") or "").startswith("lovable")
                 and w.get("output") == output]
     by_name = {w.get("name"): w for w in lovables}
-
-    # Canonical layout (matches ws-reorder so the reorder fired by
-    # ws-tracker after focus is a no-op):
-    #     [other-inactive-worktrees]   <- idx 1..M-2
-    #     [partner]                    <- idx M-1
-    #     [target = new active]        <- idx M  (closest to non-lovables)
-    #
-    # partner = main when target is a worktree, OR the most-recent
-    # non-main worktree when target IS main.
     main_ws = by_name.get(MAIN_WS)
-    if target_name == MAIN_WS:
-        existing = set(by_name.keys())
-        partner_name = next(
-            (n for n in read_recency()
-             if n != MAIN_WS and n.startswith("lovable-") and n in existing),
-            None,
-        )
-        partner_ws = by_name.get(partner_name) if partner_name else None
-    else:
-        partner_ws = main_ws
 
-    used = set()
-    bottom: list[dict] = []
-    if partner_ws is not None and partner_ws.get("id") != target.get("id"):
-        bottom.append(partner_ws)
-        used.add(partner_ws.get("id"))
-    bottom.append(target)
-    used.add(target.get("id"))
+    # The current bottom worktree (idx M in the static layout).
+    lov_sorted = sorted(lovables, key=lambda x: x["idx"])
+    bottom = lov_sorted[-1] if lov_sorted else None
+    cur_wt = bottom if bottom is not None and bottom.get("name") != MAIN_WS else None
 
-    top = [w for w in sorted(lovables, key=lambda x: x["idx"])
-           if w.get("id") not in used]
+    # Target already in the dock (main or the bottom worktree): plain focus,
+    # physically adjacent to everything that matters.
+    if target_name == MAIN_WS or (cur_wt is not None and target["id"] == cur_wt["id"]):
+        niri_action("focus-workspace", target_name)
+        return 0
 
-    order = top + bottom
+    # Target is a pile worktree — promote it into the bottom slot.
+    on_old_wt = (focused is not None and cur_wt is not None
+                 and focused.get("id") == cur_wt.get("id"))
 
-    # Apply moves to put each workspace at its target index.
-    for target_idx, w in enumerate(order, start=1):
-        current = niri_json("workspaces") or []
-        cur_w = next((c for c in current if c.get("id") == w["id"]), None)
-        if cur_w is None or cur_w["idx"] == target_idx:
-            continue
-        niri_action(
-            "move-workspace-to-index",
-            "--reference", w.get("name"),
-            str(target_idx),
-        )
+    def hold():
+        try:
+            HOLD_FILE.parent.mkdir(parents=True, exist_ok=True)
+            HOLD_FILE.touch()
+        except Exception:
+            pass
 
-    # Finally focus the target. After the layout pass, the target's idx
-    # is M (bottom of lovable group), so the focus animation is at most
-    # one step up from whatever non-lovable workspace the user was on.
+    if on_old_wt:
+        if main_ws is None:
+            # Degenerate (no main): any rearrange would move the focused
+            # workspace. Just focus; tracker's reorder self-heals later.
+            niri_action("focus-workspace", target_name)
+            return 0
+        hold()
+        # 1. Slide the target into main's slot — it lands directly above the
+        #    user, whose own index is untouched (invisible).
+        niri_action("move-workspace-to-index", "--reference", target_name,
+                    str(main_ws["idx"]))
+        # 2. One-step focus up — same animation as Super+J/K.
+        niri_action("focus-workspace", target_name)
+        # 3. Tuck the old worktree to the top of the pile — but only AFTER the
+        #    focus animation has finished; renumbering the strip mid-scroll
+        #    cancels the animation. Once parked, it's an invisible side-effect.
+        time.sleep(0.45)
+        niri_action("move-workspace-to-index", "--reference", cur_wt["name"], "1")
+        return 0
+
+    # User is NOT on the old worktree (non-lovable, main, other output):
+    # every move below is off-screen. Tuck the old worktree first so the
+    # focus scroll can't pass it, then drop the target into the bottom slot.
+    hold()
+    if cur_wt is not None:
+        niri_action("move-workspace-to-index", "--reference", cur_wt["name"], "1")
+    current = niri_json("workspaces") or []
+    m2 = next((w for w in current
+               if w.get("name") == MAIN_WS and w.get("output") == output), None)
+    if m2 is not None:
+        # Final-position index: extracting the target from the pile above main
+        # shifts main up one, so `m2.idx` (not +1) lands the target directly
+        # below main — right above the first non-lovable, never below it.
+        niri_action("move-workspace-to-index", "--reference", target_name,
+                    str(m2["idx"]))
     niri_action("focus-workspace", target_name)
     return 0
 
