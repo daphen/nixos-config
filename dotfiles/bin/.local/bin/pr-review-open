@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Reopen a rendered PR review page in the work browser. With no arg, derives
+# the PR number from a `review/pr-<num>` worktree branch. The review-pr skill
+# writes these to ~/.cache/pr-reviews/pr-<num>.html.
+set -eu
+
+num="${1:-}"
+if [ -z "$num" ]; then
+    b=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    case "$b" in
+        review/pr-*) num="${b#review/pr-}" ;;
+    esac
+fi
+if [ -z "$num" ]; then
+    echo "usage: pr-review-open <pr-num>   (or run inside a review/pr-<num> worktree)" >&2
+    exit 1
+fi
+num="${num#\#}"
+
+f="$HOME/.cache/pr-reviews/pr-$num.html"
+if [ ! -f "$f" ]; then
+    echo "no rendered review at $f — run the review for PR #$num first" >&2
+    exit 1
+fi
+exec "$HOME/.config/niri/scripts/browser-dispatch" --profile=work --new-window "file://$f"

@@ -50,6 +50,14 @@
     # We use niri-unstable from this flake (tracks master, includes v26.04+).
     niri-flake.url = "github:sodiboo/niri-flake";
 
+    # quickshell — upstream flake pinned to v0.3.0. nixpkgs ships only 0.2.1,
+    # which crashes tearing down layer-shell windows on reload / monitor
+    # re-anchor; 0.3.0 has the multi-monitor + reload stability fixes.
+    quickshell = {
+      url = "github:quickshell-mirror/quickshell/v0.3.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Pinned nixpkgs for iwd 3.12 (fixes repeated SIGSEGV in build_ciphers_common during roaming)
     nixpkgs-iwd.url = "github:nixos/nixpkgs/34c521aa2928ec0f0b376f60d33816fe768ea60d";
 
@@ -150,7 +158,7 @@
       # Shared modules used by all machines
       commonModules = [
         # Apply overlays
-        { nixpkgs.overlays = [ iwdOverlay widevineOverlay asusctlOverlay appsOverlay neovimOverlay ]; }
+        { nixpkgs.overlays = [ iwdOverlay widevineOverlay asusctlOverlay appsOverlay neovimOverlay inputs.quickshell.overlays.default ]; }
 
         # Niri flake module (sets up dbus, portals, polkit, etc.)
         niri-flake.nixosModules.niri
