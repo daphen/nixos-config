@@ -220,8 +220,11 @@ PanelWindow {
                     } else if (event.key === root.altKey && (event.modifiers & Qt.ControlModifier)) {
                         root.altActivate()
                         event.accepted = true
-                    } else if ((event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) && root.tabs.length > 1) {
-                        const dir = event.key === Qt.Key_Backtab ? -1 : 1
+                    } else if (root.tabs.length > 1
+                            && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab
+                                || ((event.key === Qt.Key_H || event.key === Qt.Key_L) && (event.modifiers & Qt.ControlModifier)))) {
+                        const dir = (event.key === Qt.Key_Backtab
+                                     || (event.key === Qt.Key_H && (event.modifiers & Qt.ControlModifier))) ? -1 : 1
                         root.tab = (root.tab + dir + root.tabs.length) % root.tabs.length
                         event.accepted = true
                     }
