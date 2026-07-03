@@ -212,6 +212,9 @@ def main() -> int:
     else:
         print(f"==> worktree already exists at {worktree_path.name}")
 
+    # Register with zoxide so `z review-<num>` reaches the worktree immediately.
+    subprocess.run(["zoxide", "add", str(worktree_path)], capture_output=True)
+
     print(f"==> focusing workspace {workspace}")
     ensure_workspace(workspace)
 

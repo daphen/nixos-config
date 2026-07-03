@@ -183,6 +183,10 @@ def main() -> int:
             print("wt switch --create failed", file=sys.stderr)
             return rc
 
+    # Register the worktree with zoxide so `z <name>` reaches it immediately,
+    # without needing a manual cd there first.
+    subprocess.run(["zoxide", "add", str(worktree_path)], capture_output=True)
+
     # 2. Create the named workspace (focus it unless building in background)
     print(f"==> {'building' if args.background else 'focusing'} workspace {workspace}")
     ensure_workspace(workspace, focus=not args.background)
