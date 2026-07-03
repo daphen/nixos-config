@@ -30,6 +30,30 @@
     };
   }
 
+  // 3. Hide dropped frames. When the window is scrolled out of niri's
+  //    viewport / covered, the compositor stops frame callbacks and frames
+  //    miss presentation — Netflix reads those via getVideoPlaybackQuality
+  //    and downshifts the rung even at 140 Mbps. Nobody is watching a
+  //    hidden window; report zero so rung choice follows bandwidth only.
+  var realQuality = HTMLVideoElement.prototype.getVideoPlaybackQuality;
+  if (realQuality) {
+    HTMLVideoElement.prototype.getVideoPlaybackQuality = function () {
+      var q = realQuality.call(this);
+      return {
+        creationTime: q.creationTime,
+        totalVideoFrames: q.totalVideoFrames,
+        droppedVideoFrames: 0,
+        corruptedVideoFrames: 0,
+      };
+    };
+  }
+  try {
+    Object.defineProperty(HTMLVideoElement.prototype, "webkitDroppedFrameCount", {
+      get: function () { return 0; },
+      configurable: true,
+    });
+  } catch (e) { /* best-effort */ }
+
   try {
     Object.defineProperty(Document.prototype, "hidden", {
       get: function () { return false; },
