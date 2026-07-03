@@ -14,9 +14,9 @@ ShellRoot {
         Bar { required property var modelData; screen: modelData }
     }
 
-    // Single overlay that follows the focused monitor (its `screen` binds to
-    // the focused output). One window avoids the per-screen duplicate toasts
-    // and the focus-driven window flipping that crashed quickshell 0.2.1.
+    // Single overlay pinned to one monitor (set once, at startup). Per-screen
+    // instances duplicated toasts, and moving/flipping the layer-shell window
+    // on focus changes crashed quickshell 0.2.1.
     NotificationOverlay {}
 
     Launcher {}
