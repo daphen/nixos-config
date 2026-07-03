@@ -20,7 +20,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import time
@@ -28,18 +27,6 @@ from pathlib import Path
 
 HOME = os.environ["HOME"]
 LOVABLE_DIR = Path(HOME) / "work" / "lovable"
-
-
-def latest_session_id(worktree_path: Path) -> str | None:
-    """Most-recently-modified claude session for this worktree's cwd, or
-    None. Claude stores sessions at ~/.claude/projects/<cwd with '/' and
-    '.' replaced by '-'>/<session-uuid>.jsonl."""
-    enc = re.sub(r"[/.]", "-", str(worktree_path))
-    pdir = Path(HOME) / ".claude" / "projects" / enc
-    if not pdir.is_dir():
-        return None
-    sessions = sorted(pdir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return sessions[0].stem if sessions else None
 
 
 def niri_json(*args: str):
@@ -200,16 +187,15 @@ def main() -> int:
     print(f"==> {'building' if args.background else 'focusing'} workspace {workspace}")
     ensure_workspace(workspace, focus=not args.background)
 
-    # 3. Build the claude command. `auto` resumes the worktree's most
-    #    recent session on reopen so the stack returns with its
-    #    conversation intact; a fresh worktree has none and falls to new.
+    # 3. Build the claude command. `auto` uses `claude --continue`, which
+    #    resumes the worktree's most recent conversation when one exists and
+    #    starts fresh otherwise. Letting claude resolve its own session store
+    #    keeps this immune to changes in claude's on-disk layout — the script
+    #    no longer re-derives session paths itself.
     mode, sid = args.mode, args.session_id
     if mode == "auto":
-        sid = latest_session_id(worktree_path)
-        mode = "resume" if sid else "new"
-        print(f"==> auto: {'resuming ' + sid if sid else 'no prior session — starting new'}")
-
-    if mode == "new":
+        claude_cmd = ["claude", "--continue"]
+    elif mode == "new":
         claude_cmd = ["claude"]
     elif mode == "resume":
         if not sid:
