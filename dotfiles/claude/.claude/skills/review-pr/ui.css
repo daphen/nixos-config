@@ -99,6 +99,9 @@ pre .ln.good{background:color-mix(in srgb,var(--rv-green) 16%,transparent);borde
 pre .ln.strike{opacity:.55;text-decoration:line-through}
 pre .c{color:var(--rv-muted)}pre .k{color:var(--rv-purple)}pre .s{color:var(--rv-green)}
 .note{font-size:13px;margin:8px 2px 0;color:var(--rv-fg)}.note b{color:var(--rv-orange)}.note.drop b{color:var(--rv-green)}
+/* findings reasoning: three labeled plain-English rows */
+.why{font-size:13px;margin:4px 2px 0;color:var(--rv-fg)}.why b{color:var(--rv-muted)}
+.fix{font-size:13px;margin:4px 2px 0;color:var(--rv-fg)}.fix b{color:var(--rv-green)}
 
 /* verification (both) */
 ul.intent{list-style:none;padding:0;margin:0}

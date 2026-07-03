@@ -103,7 +103,13 @@ hex**):
 - `meta` — one line: PR #, author, state, base←head, +add/−del, file count, github + ticket links.
 - `verdict_class` / `verdict_badge` — `approve|changes|comment` and its label; `verdict_why` — one line + a `<span class="note">` caveat.
 - `diagram` — **the centrepiece.** `.lane`/`.node`/`.arrow`/`.split` markup showing *how this change works*, chosen to fit the PR: data-flow pipeline, state machine, before/after, or sequence. Label real files/symbols. At least half the page's weight is this + the annotated code, not prose.
-- `findings` — one `.finding` per issue, ranked blocker → should-fix → nit, **each an annotated `<pre>` of the actual hunk** (offending line `.ln.bad`, good line `.ln.good`) + a `.note`. Refuted candidates: `.ln.strike` + `.note.drop`. Not text cards describing invisible code. Put `data-file="<repo-relative path>" data-line="<line>"` on each `.finding` (and any file-anchored `.frow`) so `o` can open it in nvim.
+- `findings` — one `.finding` per issue, ranked blocker → should-fix → nit, **each an annotated `<pre>` of the actual hunk** (offending line `.ln.bad`, good line `.ln.good`). Not text cards describing invisible code. Put `data-file="<repo-relative path>" data-line="<line>"` on each `.finding` (and any file-anchored `.frow`) so `o` can open it in nvim.
+  The reasoning under the hunk is **three labeled plain-English rows** — write them for
+  someone who hasn't read the diff, no compressed jargon chains:
+  - `<p class="note"><b>Problem:</b> …</p>` — what's wrong, one plain sentence ("a `false` value silently disappears from the variant API response, but not from the project one").
+  - `<p class="why"><b>Why it matters:</b> …</p>` — the concrete consequence if left ("a client can't tell 'not fragile' apart from 'field missing', which will bite when someone reads the raw payload").
+  - `<p class="fix"><b>Fix:</b> …</p>` — the one-line change.
+  Refuted candidates: `.ln.strike` on the suspected lines + a single `.note.drop` with `<b>Refuted:</b>` explaining in the same plain terms why it's not real.
 - `filemap` — `.grp` columns (by area) with per-file `.bar` change-size bars. Not a table.
 - `intent` — `<li>` items against the linked ticket (satisfied / missing / out-of-scope).
 - `verification` — rows: what you actually ran + results, CI rollup for the rest.
