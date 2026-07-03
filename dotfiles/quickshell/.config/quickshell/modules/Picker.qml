@@ -321,8 +321,8 @@ PanelWindow {
                 model: root.filtered
                 currentIndex: root.selectedIndex
                 spacing: 2
-                topMargin: 6
-                bottomMargin: 6
+                topMargin: 10
+                bottomMargin: 10
                 opacity: root.loading ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
                 add: Transition {
@@ -358,7 +358,7 @@ PanelWindow {
                         anchors.left: parent.left
                         anchors.leftMargin: 22
                         anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 6
+                        anchors.bottomMargin: 10
                         text: rowItem.modelData ? String(rowItem.modelData.label || "") : ""
                         color: Theme.fg_muted
                         font.family: notch.sans

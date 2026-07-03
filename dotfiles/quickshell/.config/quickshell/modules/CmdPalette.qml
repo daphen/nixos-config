@@ -32,6 +32,7 @@ PanelWindow {
 
     function resetTransient() {
         search.text = ""
+        searchMode = null
         filterTab = 0
         scopedWindowId = null
         selectedIndex = 0
@@ -67,14 +68,6 @@ PanelWindow {
         return u.length <= 80 ? u : u.slice(0, 40) + "..." + u.slice(-37)
     }
 
-    function looksLikeUrl(t) {
-        if (!t || /\s/.test(t)) return false
-        if (/^[a-z][\w-]*:(\/\/)?/i.test(t)) return true
-        if (/^[\w-]+(\.[\w-]+)+([:/?#].*)?$/i.test(t)) return true
-        if (/^localhost([:/?#].*)?$/i.test(t)) return true
-        return false
-    }
-
     // Token-prefix 10000 > substring ~1000 (boundary/position bonus) >
     // fuzzy subsequence 1 (last-resort tiebreak). Same tiers as App.tsx.
     function scoreMatch(qLower, matchText) {
@@ -94,6 +87,14 @@ PanelWindow {
         return qi === qLower.length ? 1 : 0
     }
 
+    function looksLikeUrl(t) {
+        if (!t || /\s/.test(t)) return false
+        if (/^[a-z][\w-]*:(\/\/)?/i.test(t)) return true
+        if (/^[\w-]+(\.[\w-]+)+([:/?#].*)?$/i.test(t)) return true
+        if (/^localhost([:/?#].*)?$/i.test(t)) return true
+        return false
+    }
+
     function matchText(e) {
         let s = (e.title || "")
         if (e.url) {
@@ -103,12 +104,17 @@ PanelWindow {
         return s.toLowerCase()
     }
 
+    // Fixed order — DuckDuckGo is THE default search; the group is never
+    // rank-shuffled (every template contains the query, so scoring them
+    // is position noise).
+    // key + Tab enters that engine's search mode (chip before the input;
+    // Enter searches in a NEW tab; Backspace on empty input exits).
     readonly property var webTemplates: [
-        { name: "DuckDuckGo", origin: "https://duckduckgo.com",     mk: q => "https://duckduckgo.com/?q=" + encodeURIComponent(q) },
-        { name: "Google Drive", origin: "https://drive.google.com", mk: q => "https://drive.google.com/drive/search?q=" + encodeURIComponent(q) },
-        { name: "Youtube", origin: "https://www.youtube.com",       mk: q => "https://www.youtube.com/results?search_query=" + encodeURIComponent(q) },
-        { name: "Wikipedia", origin: "https://en.wikipedia.org",    mk: q => "https://en.wikipedia.org/w/index.php?search=" + encodeURIComponent(q) },
+        { key: "d", name: "DuckDuckGo", origin: "https://duckduckgo.com",   mk: q => "https://duckduckgo.com/?q=" + encodeURIComponent(q) },
+        { key: "m", name: "Google Maps", origin: "https://maps.google.com", mk: q => "https://www.google.com/maps/search/" + encodeURIComponent(q) },
+        { key: "y", name: "Youtube", origin: "https://www.youtube.com",     mk: q => "https://www.youtube.com/results?search_query=" + encodeURIComponent(q) },
     ]
+    property var searchMode: null
 
     // Flattened [divider, entry, entry, divider, ...] list, rebuilt on
     // every state push / keystroke. Groups: Open URL → Current Tab →
@@ -116,6 +122,15 @@ PanelWindow {
     // score under a query, cross-group URL dedupe, chin scope filter.
     readonly property var entries: {
         const _ = PaletteState.gen
+        if (searchMode) {
+            const qq = query.trim()
+            return [
+                { divider: true, label: searchMode.name },
+                { kind: "web", forceNewTab: true,
+                  title: qq.length ? ("Search " + searchMode.name + ": " + qq) : ("Search " + searchMode.name + "…"),
+                  url: searchMode.mk(qq), subtitle: "", faviconPath: "" },
+            ]
+        }
         const q = query.trim().toLowerCase()
         const ftab = filterTabs[filterTab]
         const scope = scopedWindowId
@@ -137,7 +152,7 @@ PanelWindow {
 
         const qmItems = (PaletteState.quickmarks || []).map(m => ({
             kind: "quickmark", title: m.name || "", url: m.url || "",
-            subtitle: niceUrl(m.url || ""), faviconPath: "",
+            subtitle: niceUrl(m.url || ""), faviconPath: m.faviconPath || "",
         }))
 
         const webItems = webTemplates.map(t => ({
@@ -146,10 +161,13 @@ PanelWindow {
             url: t.mk(query.trim()), subtitle: "", faviconPath: "",
         }))
 
-        const urlItems = looksLikeUrl(query.trim())
-            ? [{ kind: "url",
-                 title: "Go to " + (/^[a-z][\w-]*:/i.test(query.trim()) ? query.trim() : "https://" + query.trim()),
-                 url: /^[a-z][\w-]*:/i.test(query.trim()) ? query.trim() : "https://" + query.trim(),
+        // Address-bar default: a URL-shaped query gets a "Go to" row that
+        // wins unless a tab/quickmark hits; plain words fall through to the
+        // Web Search group (DDG on Enter) — same split as a browser bar.
+        const qt = query.trim()
+        const gotoUrl = /^[a-z][\w-]*:/i.test(qt) ? qt : "https://" + qt
+        const urlItems = looksLikeUrl(qt)
+            ? [{ kind: "url", title: "Go to " + gotoUrl, url: gotoUrl,
                  subtitle: "", faviconPath: "" }]
             : []
 
@@ -163,14 +181,20 @@ PanelWindow {
         }
 
         let groups = []
-        if (urlItems.length) groups.push({ id: "url", heading: "Open URL", items: urlItems, maxScore: 1000 })
-        if (currentItems.length && !q) groups.push({ id: "tabs", heading: "Current Tab", items: currentItems, maxScore: 0 })
         const rt = rank(q ? tabItems.concat(currentItems) : tabItems)
-        groups.push({ id: "tabs", heading: "Open Tabs", items: rt.items, maxScore: rt.maxScore })
         const rq = rank(qmItems)
+        // Address-bar Enter semantics: a URL-looking query navigates by
+        // default — unless a tab/quickmark actually hits (substring or
+        // better), in which case the hit stays on top. Weak fuzzy noise
+        // (score 1) doesn't count as a hit.
+        const hasHit = Math.max(rt.maxScore, rq.maxScore) >= 1000
+        if (urlItems.length) groups.push({ id: "url", heading: "Open URL", items: urlItems, maxScore: hasHit ? 999 : 99999 })
+        if (currentItems.length && !q) groups.push({ id: "tabs", heading: "Current Tab", items: currentItems, maxScore: 0 })
+        groups.push({ id: "tabs", heading: "Open Tabs", items: rt.items, maxScore: rt.maxScore })
         groups.push({ id: "quickmarks", heading: "Quickmarks", items: rq.items, maxScore: rq.maxScore })
-        const rw = rank(webItems)
-        groups.push({ id: "websites", heading: "Web Search", items: rw.items, maxScore: rw.maxScore })
+        // Web templates keep insertion order; modest score keeps the group
+        // below real hits and the Go-to row, but on top when nothing hits.
+        groups.push({ id: "websites", heading: "Web Search", items: webItems, maxScore: q ? 500 : 0 })
 
         // Cross-group URL dedupe (tabs > quickmarks > websites).
         const seen = ({})
@@ -226,7 +250,7 @@ PanelWindow {
         if (e.kind === "tab" && !inNewTab) {
             if (!e.isCurrent) PaletteState.activateTab(e.tabId, e.windowId)
         } else if (e.url) {
-            PaletteState.gotoUrl(e.url, inNewTab)
+            PaletteState.gotoUrl(e.url, inNewTab || !!e.forceNewTab)
         }
         PaletteState.hide()
     }
@@ -263,6 +287,14 @@ PanelWindow {
         const shift = event.modifiers & Qt.ShiftModifier
         if (event.key === Qt.Key_Escape) {
             PaletteState.hide(); event.accepted = true
+        } else if (event.key === Qt.Key_Tab && !root.searchMode) {
+            const kw = root.query.trim().toLowerCase()
+            const t = root.webTemplates.find(t => t.key === kw)
+            if (t) { root.searchMode = t; search.text = "" }
+            event.accepted = true
+        } else if (event.key === Qt.Key_Backspace && root.searchMode && search.text.length === 0) {
+            root.searchMode = null
+            event.accepted = true
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             if (shift) {
                 const q = root.query.trim()
@@ -348,9 +380,31 @@ PanelWindow {
                     renderType: Text.NativeRendering
                 }
 
+                Rectangle {
+                    id: modeChip
+                    visible: root.searchMode !== null
+                    anchors.left: searchIcon.right
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: visible ? chipText.implicitWidth + 16 : 0
+                    height: chipText.implicitHeight + 8
+                    radius: 6
+                    color: Theme.selection
+                    Text {
+                        id: chipText
+                        anchors.centerIn: parent
+                        text: root.searchMode ? root.searchMode.name : ""
+                        color: Theme.fg
+                        font.family: root.sans
+                        font.pixelSize: 12
+                        font.weight: 600
+                        renderType: Text.NativeRendering
+                    }
+                }
+
                 TextInput {
                     id: search
-                    anchors.left: searchIcon.right
+                    anchors.left: modeChip.visible ? modeChip.right : searchIcon.right
                     anchors.leftMargin: 12
                     anchors.right: escBadge.left
                     anchors.rightMargin: 12
@@ -455,8 +509,8 @@ PanelWindow {
                 clip: true
                 model: root.entries
                 currentIndex: root.selectedIndex
-                topMargin: 6
-                bottomMargin: 6
+                topMargin: 10
+                bottomMargin: 10
                 boundsBehavior: Flickable.StopAtBounds
 
                 Text {
@@ -486,7 +540,7 @@ PanelWindow {
                         anchors.left: parent.left
                         anchors.leftMargin: 18
                         anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 6
+                        anchors.bottomMargin: 10
                         text: rowItem.modelData ? String(rowItem.modelData.label || "") : ""
                         color: Theme.fg_muted
                         font.family: root.sans
