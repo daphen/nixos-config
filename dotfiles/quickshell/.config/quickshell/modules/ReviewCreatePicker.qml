@@ -74,9 +74,9 @@ Picker {
         command: ["bash", "-lc",
             "cd \"$HOME/work/lovable\" && repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) && " +
             "gh api graphql -f query='query($q1:String!,$q2:String!,$q3:String!){" +
-            "requested:search(query:$q1,type:ISSUE,first:50){nodes{... on PullRequest{number title url state author{login} viewerLatestReview{state}}}} " +
-            "reviewed:search(query:$q2,type:ISSUE,first:50){nodes{... on PullRequest{number title url state author{login} viewerLatestReview{state}}}} " +
-            "mine:search(query:$q3,type:ISSUE,first:30){nodes{... on PullRequest{number title url isDraft reviewDecision latestReviews(first:1){totalCount} commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}}' " +
+            "requested:search(query:$q1,type:ISSUE,first:50){nodes{... on PullRequest{number title url headRefName state author{login} viewerLatestReview{state}}}} " +
+            "reviewed:search(query:$q2,type:ISSUE,first:50){nodes{... on PullRequest{number title url headRefName state author{login} viewerLatestReview{state}}}} " +
+            "mine:search(query:$q3,type:ISSUE,first:30){nodes{... on PullRequest{number title url headRefName isDraft reviewDecision latestReviews(first:1){totalCount} commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}}' " +
             "-f q1=\"repo:$repo is:pr is:open review-requested:@me -author:@me sort:updated-desc\" " +
             "-f q2=\"repo:$repo is:pr reviewed-by:@me -author:@me sort:updated-desc\" " +
             "-f q3=\"repo:$repo is:pr is:open author:@me sort:updated-desc\""]
@@ -119,12 +119,22 @@ Picker {
         return { glyph: "", color: Theme.fg_muted }
     }
 
+    // Linear ticket id from the branch (convention: it's always in the branch
+    // name, e.g. daphen/every-1234-…), else an explicit KEY-123 in the title
+    // (other teams: SCA-2482 …); else the PR number.
+    function ticketFor(pr) {
+        const m = ((pr.headRefName || "") + " " + (pr.title || "")).match(/every-(\d+)/i)
+        if (m) return "EVERY-" + m[1]
+        const t = (pr.title || "").match(/\b([A-Z][A-Z0-9]{1,9}-\d+)\b/)
+        return t ? t[1] : "#" + pr.number
+    }
+
     function rowFor(pr, cat) {
         const m = catMeta(cat)
         return {
             number: String(pr.number),
             url: pr.url || "",
-            label: "#" + pr.number + "  " + (pr.title || ""),
+            label: ticketFor(pr) + "  " + (pr.title || ""),
             sub: (pr.author && pr.author.login) ? "@" + pr.author.login : "",
             glyph: m.glyph,
             gcolor: m.color,
@@ -201,7 +211,7 @@ Picker {
                 target: p.url || "",
                 url: p.url || "",
                 number: String(p.number),
-                label: "#" + p.number + "  " + (p.title || ""),
+                label: ticketFor(p) + "  " + (p.title || ""),
                 sub: sub,
                 glyph: glyph,
                 gcolor: color,
