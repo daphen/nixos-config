@@ -15,6 +15,7 @@ in
     ./programs.nix
     ./theme-system.nix
     ./notes-sync.nix
+    ./claude-backup.nix
     inputs.worktrunk.homeModules.default
   ];
 
