@@ -1,25 +1,121 @@
-#!/usr/bin/env bash
-# Reopen a rendered PR review page in the work browser. With no arg, derives
-# the PR number from a `review/pr-<num>` worktree branch. The review-pr skill
-# writes these to ~/.cache/pr-reviews/pr-<num>.html.
-set -eu
+#!/usr/bin/env python3
+"""Serve a rendered PR review page as a chromeless app window.
 
-num="${1:-}"
-if [ -z "$num" ]; then
-    b=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
-    case "$b" in
-        review/pr-*) num="${b#review/pr-}" ;;
-    esac
-fi
-if [ -z "$num" ]; then
-    echo "usage: pr-review-open <pr-num>   (or run inside a review/pr-<num> worktree)" >&2
-    exit 1
-fi
-num="${num#\#}"
+Usage: pr-review-open [<pr-num>]
 
-f="$HOME/.cache/pr-reviews/pr-$num.html"
-if [ ! -f "$f" ]; then
-    echo "no rendered review at $f — run the review for PR #$num first" >&2
-    exit 1
-fi
-exec "$HOME/.config/niri/scripts/browser-dispatch" --profile=work --new-window "file://$f"
+Serves ~/.cache/pr-reviews/pr-<num>.html (written by the review-pr skill) at
+http://127.0.0.1:<port> in a helium --app window. Server extras over a plain
+file:// open:
+  /events  SSE — pushes a reload when the review is re-rendered
+  /open    jumps the review worktree's nvim to file:line (spawning one if needed)
+
+With no arg, derives the PR number from a review/pr-<num> worktree branch.
+Ctrl-C to stop.
+"""
+import http.server
+import os
+import re
+import socketserver
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path(os.environ["HOME"])
+REVIEWS = HOME / ".cache" / "pr-reviews"
+NVIM_OPEN = next((str(p) for p in
+                  [HOME / ".local/bin/nvim-open", HOME / "nixos/dotfiles/bin/.local/bin/nvim-open"]
+                  if p.is_file()), None)
+
+
+def resolve_num(arg):
+    if arg:
+        return arg.lstrip("#")
+    br = subprocess.run(["git", "branch", "--show-current"],
+                        capture_output=True, text=True).stdout.strip()
+    m = re.match(r"review/pr-(\d+)$", br)
+    return m.group(1) if m else None
+
+
+def worktree_for(num):
+    hits = sorted(Path(HOME / "work").glob(f"lovable.review-{num}-*"))
+    return hits[0] if hits else None
+
+
+def make_handler(html_path: Path, worktree):
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            if self.path.startswith("/events"):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                last = html_path.stat().st_mtime if html_path.exists() else 0
+                try:
+                    while True:
+                        time.sleep(0.5)
+                        cur = html_path.stat().st_mtime if html_path.exists() else 0
+                        if cur != last:
+                            last = cur
+                            self.wfile.write(b"data: reload\n\n")
+                        else:
+                            self.wfile.write(b": keepalive\n\n")
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+            elif self.path.startswith("/open"):
+                from urllib.parse import urlparse, parse_qs
+                q = parse_qs(urlparse(self.path).query)
+                f = (q.get("file") or [""])[0]
+                ln = (q.get("line") or ["1"])[0]
+                ok = False
+                if worktree and f and NVIM_OPEN:
+                    ok = subprocess.run([NVIM_OPEN, str(worktree), f, ln]).returncode == 0
+                self.send_response(200 if ok else 500)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"ok" if ok else b"err")
+            else:
+                body = html_path.read_bytes() if html_path.exists() else b"<pre>no rendered review</pre>"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(body)
+    return H
+
+
+def main() -> int:
+    num = resolve_num(sys.argv[1] if len(sys.argv) > 1 else None)
+    if not num:
+        print("usage: pr-review-open <pr-num>   (or run inside a review/pr-<num> worktree)", file=sys.stderr)
+        return 1
+    html_path = REVIEWS / f"pr-{num}.html"
+    if not html_path.is_file():
+        print(f"no rendered review at {html_path} — run the review for PR #{num} first", file=sys.stderr)
+        return 1
+
+    worktree = worktree_for(num)
+
+    class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+
+    httpd = Server(("127.0.0.1", 0), make_handler(html_path, worktree))
+    url = f"http://127.0.0.1:{httpd.server_address[1]}/"
+    wt_note = f"open→{worktree.name}" if worktree and NVIM_OPEN else "open disabled (no review worktree)"
+    print(f"pr-review-open: PR #{num} → {url}  [{wt_note}]  (Ctrl-C to stop)", flush=True)
+    disp = HOME / ".config" / "niri" / "scripts" / "browser-dispatch"
+    if disp.is_file():
+        subprocess.Popen(["setsid", str(disp), "--profile=work", "--app", url],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -78,6 +78,10 @@ in {
     # pr-review-open: reopen a rendered PR review page (~/.cache/pr-reviews/pr-<n>.html)
     # in the work browser; derives the PR from a review/pr-<num> worktree branch.
     ".local/bin/pr-review-open".source = link "${dotfiles}/bin/.local/bin/pr-review-open";
+    # plan-view: live plan-artifact scan page (localhost server + SSE + helium --app).
+    ".local/bin/plan-view".source = link "${dotfiles}/bin/.local/bin/plan-view";
+    # nvim-open: jump the worktree's running nvim to file:line (or spawn one there).
+    ".local/bin/nvim-open".source = link "${dotfiles}/bin/.local/bin/nvim-open";
   };
 
   # Claude Code lives at ~/.claude, now sourced from the in-repo dotfiles

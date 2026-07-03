@@ -8,6 +8,8 @@
 #   browser-dispatch --profile=work <url>               force work profile
 #   browser-dispatch --new-window <url>                 open in a new window
 #   browser-dispatch --profile=work --new-window <url>  combine both
+#   browser-dispatch --app <url>                        chromeless app-mode window
+#                                                       (app-id chrome-<host>__-…)
 #
 # Browser binary, profile names and class names live in browser-config.sh
 # — switching browsers is a one-file edit.
@@ -20,11 +22,13 @@ source "$(dirname "$0")/browser-config.sh"
 
 FORCED_PROFILE=""
 NEW_WINDOW=""
+APP_MODE=""
 URL=""
 for arg in "$@"; do
     case "$arg" in
         --profile=*)   FORCED_PROFILE="${arg#--profile=}" ;;
         --new-window)  NEW_WINDOW="--new-window" ;;
+        --app)         APP_MODE=1 ;;
         *)             URL="$arg" ;;
     esac
 done
@@ -76,6 +80,23 @@ fi
 # Redirect stdout/stderr to /dev/null so chromium-based browsers don't
 # print "Opening in existing browser session." to whatever terminal
 # launched us (corrupts endcord's curses-rendered screen).
+
+# App mode: chromeless window with a URL-derived app-id (chrome-<host>__-…).
+# Deliberately NO --class — the derived app-id is what lets niri window-rules
+# target these windows, and keeps them out of the browser focus tracking.
+if [[ -n "$APP_MODE" ]]; then
+    if [[ "$PROFILE" == "work" ]]; then
+        DATA_DIR="$BROWSER_USER_DATA_WORK"
+    else
+        DATA_DIR="$BROWSER_USER_DATA_PERSONAL"
+    fi
+    exec "$BROWSER_BIN" \
+        "${BROWSER_FLAGS[@]}" \
+        --user-data-dir="$DATA_DIR" \
+        --profile-directory="$BROWSER_PROFILE" \
+        --app="$URL" >/dev/null 2>&1
+fi
+
 if [[ "$PROFILE" == "work" ]]; then
     exec "$BROWSER_BIN" \
         "${BROWSER_FLAGS[@]}" \

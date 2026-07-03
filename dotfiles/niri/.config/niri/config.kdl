@@ -638,6 +638,13 @@ window-rule {
     default-window-height { fixed 900; }
 }
 
+// plan-view / pr-review-open app windows (helium --app on localhost).
+// App mode derives the app-id from the URL, so one rule covers both.
+window-rule {
+    match app-id=r#"^chrome-127\.0\.0\.1"#
+    default-column-width { fixed 1100; }
+}
+
 // Dim inactive windows so the focused one stands out — idle windows are
 // more transparent (0.75) than the active one (0.85). Helium
 // (browser-personal/browser-work) is excluded — it stays full opacity

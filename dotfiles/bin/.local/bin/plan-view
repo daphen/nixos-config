@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Live, scannable plan view served over localhost.
+
+Usage: plan-view [<key|substring|path-to-.md>]
+
+Renders a plan artifact (<key>.md + .progress.json + .review.json) to HTML and
+serves it at http://127.0.0.1:<port>, watching the artifacts and pushing an SSE
+reload the instant any of them changes — so the page tracks --go/--reconcile in
+real time without a manual refresh. Read-only; nvim stays the authoring driver.
+
+With no arg, resolves from a review/pr-* branch's ticket or the newest plan in
+the vault. Ctrl-C to stop.
+"""
+import http.server
+import importlib.util
+import json
+import os
+import re
+import shutil
+import socketserver
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path(os.environ["HOME"])
+SKILL_DIR = HOME / ".claude" / "skills" / "plan-ticket"
+VAULT_PLANS = HOME / "personal" / "notes" / "storage" / "plans"
+NVIM_OPEN = shutil.which("nvim-open") or next(
+    (str(p) for p in [HOME / ".local/bin/nvim-open", HOME / "nixos/dotfiles/bin/.local/bin/nvim-open"] if p.is_file()),
+    None)
+
+_spec = importlib.util.spec_from_file_location("plan_render", SKILL_DIR / "plan-render.py")
+plan_render = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(plan_render)
+
+
+def git_root() -> Path | None:
+    r = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    return Path(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
+
+
+def resolve_plan(arg: str | None) -> Path | None:
+    if arg:
+        p = Path(arg).expanduser()
+        if p.is_file():
+            return p
+    # candidate dirs: vault plans + <repo>/.plans
+    dirs = [VAULT_PLANS]
+    root = git_root()
+    if root:
+        dirs.append(root / ".plans")
+    if arg:
+        for d in dirs:
+            if not d.is_dir():
+                continue
+            exact = d / f"{arg}.md"
+            if exact.is_file():
+                return exact
+            matches = sorted(d.glob(f"*{arg}*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if matches:
+                return matches[0]
+        return None
+    # no arg: derive a ticket key from the current branch, else newest vault plan
+    br = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True).stdout.strip()
+    m = re.search(r"(every-\d+|EVERY-\d+)", br)
+    if m:
+        return resolve_plan(m.group(1))
+    plans = sorted(VAULT_PLANS.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True) if VAULT_PLANS.is_dir() else []
+    return plans[0] if plans else None
+
+
+def sig(md_path: Path):
+    out = []
+    for suffix in ("", ".progress.json", ".review.json"):
+        p = md_path if suffix == "" else md_path.with_name(md_path.stem + suffix)
+        try:
+            out.append(p.stat().st_mtime)
+        except OSError:
+            out.append(0)
+    # replace-with-.md: the plain md is md_path itself
+    return tuple(out)
+
+
+def worktree_for(md_path: Path):
+    """The worktree whose nvim should open the plan's files: from the plan's
+    branch (daphen/<name> → ~/work/lovable.daphen-<name>), else the plan dir's
+    git root (when the plan lives inside the worktree's .plans/)."""
+    pj = md_path.with_name(md_path.stem + ".progress.json")
+    branch = ""
+    if pj.is_file():
+        try:
+            branch = json.loads(pj.read_text()).get("branch", "")
+        except Exception:
+            pass
+    if branch.startswith("daphen/"):
+        wt = HOME / "work" / f"lovable.daphen-{branch[len('daphen/'):]}"
+        if wt.is_dir():
+            return wt
+    r = subprocess.run(["git", "-C", str(md_path.parent), "rev-parse", "--show-toplevel"],
+                       capture_output=True, text=True)
+    if r.returncode == 0 and r.stdout.strip():
+        return Path(r.stdout.strip())
+    return None
+
+
+def make_handler(md_path: Path, worktree):
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):  # quiet
+            pass
+
+        def do_GET(self):
+            if self.path.startswith("/events"):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self.end_headers()
+                last = sig(md_path)
+                try:
+                    while True:
+                        time.sleep(0.5)
+                        cur = sig(md_path)
+                        if cur != last:
+                            last = cur
+                            self.wfile.write(b"data: reload\n\n")
+                        else:
+                            self.wfile.write(b": keepalive\n\n")
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+            elif self.path.startswith("/open"):
+                from urllib.parse import urlparse, parse_qs
+                q = parse_qs(urlparse(self.path).query)
+                f = (q.get("file") or [""])[0]
+                ln = (q.get("line") or ["1"])[0]
+                ok = False
+                if worktree and f and NVIM_OPEN:
+                    ok = subprocess.run([NVIM_OPEN, str(worktree), f, ln]).returncode == 0
+                self.send_response(200 if ok else 500)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"ok" if ok else b"err")
+            else:
+                try:
+                    body = plan_render.render_html(md_path).encode("utf-8")
+                except Exception as e:  # noqa: BLE001
+                    body = f"<pre>render error: {e}</pre>".encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(body)
+    return H
+
+
+def main() -> int:
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
+    md_path = resolve_plan(arg)
+    if not md_path:
+        print(f"no plan found for {arg!r} (looked in vault + <repo>/.plans)", file=sys.stderr)
+        return 1
+
+    class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+
+    worktree = worktree_for(md_path)
+    httpd = Server(("127.0.0.1", 0), make_handler(md_path, worktree))
+    port = httpd.server_address[1]
+    url = f"http://127.0.0.1:{port}/"
+    wt_note = f"open→{worktree.name}" if worktree and NVIM_OPEN else "open disabled (no worktree/nvim-open)"
+    print(f"plan-view: {md_path.stem} → {url}  [{wt_note}]  (Ctrl-C to stop)", flush=True)
+    disp = HOME / ".config" / "niri" / "scripts" / "browser-dispatch"
+    if disp.is_file():
+        subprocess.Popen(["setsid", str(disp), "--profile=work", "--app", url],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
