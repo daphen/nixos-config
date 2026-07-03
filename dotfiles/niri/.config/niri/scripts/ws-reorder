@@ -101,8 +101,16 @@ def desired_order(lovables: list[dict], active: str, recency: list[str]) -> list
         bottom.append(active_ws)
 
     bottom_ids = {w.get("id") for w in bottom}
-    top = [w for w in sorted(lovables, key=lambda x: x["idx"])
-           if w.get("id") not in bottom_ids]
+    cur = sorted(lovables, key=lambda x: x["idx"])
+    # Super+O flips which of the {active, partner} pair is active without
+    # moving anything, so BOTH orders of the bottom pair are canonical.
+    # Accepting the flipped order keeps this a no-op after a toggle — the
+    # 1-step focus animation is never stomped by workspace moves. Paths
+    # that change the pair itself (picker jumps) still reorder fully,
+    # and ws-jump-adjacent does its moves BEFORE focusing (invisible).
+    if len(bottom) == 2 and {w.get("id") for w in cur[-2:]} == bottom_ids:
+        return cur
+    top = [w for w in cur if w.get("id") not in bottom_ids]
     return top + bottom
 
 
