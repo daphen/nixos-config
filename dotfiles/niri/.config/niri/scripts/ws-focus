@@ -3,8 +3,9 @@
 ws-focus <role>
 
 Focus the most recently focused window matching <role> that is NOT on
-an inactive `lovable-<name>` workspace. Inactive = any lovable stack
-that isn't the one named in ~/.local/state/wt-stacks/ws/active. The
+an inactive `lovable-<name>` workspace. The active COUPLE — main plus
+the current partner worktree (recency front) — always participates;
+inactive = every other lovable stack (the pile). The
 list of windows on those workspaces is computed live from `niri msg
 --json workspaces` + `windows`, not cached — niri is the source of
 truth.
@@ -47,7 +48,7 @@ import sys
 from pathlib import Path
 
 HOME = os.environ["HOME"]
-ACTIVE_FILE = Path(HOME) / ".local/state/wt-stacks/ws/active"
+RECENCY_FILE = Path(HOME) / ".local/state/wt-stacks/ws/recency"
 # Authoritative recency overlay maintained by niri-focus-tracker. Niri's
 # own `focus_timestamp` doesn't reliably update on programmatic focus-window
 # calls, so we lean on the tracker which observes every focus event.
@@ -126,25 +127,25 @@ def recency(w: dict, overlay: dict[str, float]) -> float:
     return (ft.get("secs") or 0) + (ft.get("nanos") or 0) / 1e9
 
 
-def read_active_stack() -> str | None:
+def inactive_lovable_ws_ids(workspaces: list) -> set[int]:
+    """Workspace ids for every pile `lovable-<name>` stack. The active
+    COUPLE — main and the current partner worktree (recency front) — always
+    participates in role jumps; only the inactive pile is excluded. The
+    legacy bare `lovable` workspace is not a stack — windows pass through."""
+    names = {ws.get("name") for ws in workspaces}
     try:
-        return ACTIVE_FILE.read_text().strip() or None
+        recency = [n for n in json.loads(RECENCY_FILE.read_text()) if isinstance(n, str)]
     except Exception:
-        return None
-
-
-def inactive_lovable_ws_ids(workspaces: list, active: str | None) -> set[int]:
-    """Workspace ids for every `lovable-<name>` stack that isn't the
-    currently-active one. The legacy bare `lovable` workspace is not a
-    stack — windows there pass through."""
+        recency = []
+    partner = next((n for n in recency
+                    if n != "lovable-main" and n.startswith("lovable-") and n in names), "")
+    couple = {"lovable-main", partner}
     out: set[int] = set()
     for ws in workspaces:
         name = ws.get("name") or ""
         if not name.startswith("lovable-"):
             continue
-        if name == "lovable":
-            continue
-        if name == active:
+        if name == "lovable" or name in couple:
             continue
         out.add(ws["id"])
     return out
@@ -227,7 +228,7 @@ def main() -> int:
 
     windows = niri_json("windows") or []
     workspaces = niri_json("workspaces") or []
-    excluded_ws = inactive_lovable_ws_ids(workspaces, read_active_stack())
+    excluded_ws = inactive_lovable_ws_ids(workspaces)
     overlay = read_focus_times()
     personal_browser = read_personal_browser_id() if role == "browser" else None
 
