@@ -9,6 +9,10 @@ Singleton {
 
     property bool open: false
 
+    // Fired by `showOrJump`; NotificationJumpPicker decides: exactly one toast
+    // on screen → jump straight to it, else open the picker.
+    signal jumpRequested()
+
     function toggle() { open = !open }
     function show()   { open = true }
     function hide()   { open = false }
@@ -18,5 +22,6 @@ Singleton {
         function toggle() { root.toggle() }
         function show()   { root.show() }
         function hide()   { root.hide() }
+        function showOrJump() { root.jumpRequested() }
     }
 }

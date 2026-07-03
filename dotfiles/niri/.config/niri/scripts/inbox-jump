@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Super+i → always open the notification-center picker: active notifications
-# under "current", recently-dismissed under "earlier". Pick one to jump to
-# its window/app.
+# Super+i → jump-or-pick: exactly one notification toast on screen jumps
+# straight to it; zero or several opens the notification-center picker
+# (active under "current", recently-dismissed under "earlier").
 #
-# Always the picker (no auto-jump): notifications never expire here, so a
-# single lingering one would otherwise make Super+i jump unpredictably.
-# `--` so quickshell's IPC parses `show` as the function name, not a flag.
-qs ipc call -- notification-jump show >/dev/null 2>&1 || true
+# The one-toast check counts only toasts currently VISIBLE on screen — those
+# expire after a few seconds, so a lingering center entry can never hijack
+# Super+i into an unpredictable jump (which sank the earlier attempt that
+# keyed on the center's contents instead).
+# `--` so quickshell's IPC parses the call as a function name, not a flag.
+qs ipc call -- notification-jump showOrJump >/dev/null 2>&1 || true

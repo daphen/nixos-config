@@ -22,7 +22,22 @@ Picker {
     items: buildItems(Notifications.tracked, Notifications.seenGen,
                       Notifications.retained, Notifications.retainedGen)
 
-    onEnter: item => {
+    // NOTE: named openItem, NOT activate — Picker has its own activate() that
+    // its Enter handling calls; shadowing it breaks Enter inside the picker.
+    onEnter: item => root.openItem(item)
+
+    // Super+i (showOrJump): exactly one toast on screen → act on it directly,
+    // no picker round-trip; zero or several → the picker as usual.
+    Connections {
+        target: NotificationJumpPickerState
+        function onJumpRequested() {
+            const vis = Notifications.visibleTrayToasts()
+            if (vis.length === 1) root.openItem(root.mkItemLive(vis[0]))
+            else NotificationJumpPickerState.open = true
+        }
+    }
+
+    function openItem(item) {
         if (!item || item.divider) return
         NotificationJumpPickerState.open = false
         const n = item.notif   // live Notification, or null for a retained entry
