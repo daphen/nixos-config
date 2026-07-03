@@ -160,10 +160,11 @@ PanelWindow {
         width: 720
         height: 420
 
-        color: Theme.notch
+        color: Theme.bg
         radius: Theme.notchRadius
-        border.color: Theme.hairline
+        border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.5 : 0.10)
         border.width: 1
+        clip: true
 
         scale: root.open ? 1.0 : 0.96
         opacity: root.open ? 1.0 : 0.0
@@ -182,27 +183,43 @@ PanelWindow {
             }
         }
 
+        readonly property string sans: "sans-serif"
+
         Column {
             anchors.fill: parent
-            anchors.margins: 16
-            spacing: 12
+
+            Item {
+                id: inputWrap
+                width: parent.width
+                height: 52
+
+                Text {
+                    id: searchIcon
+                    anchors.left: parent.left
+                    anchors.leftMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "\uf002"
+                    color: Theme.fg_muted
+                    opacity: 0.85
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+                    renderType: Text.NativeRendering
+                }
 
             TextField {
                 id: search
-                width: parent.width
+                anchors.left: searchIcon.right
+                anchors.leftMargin: 10
+                anchors.right: parent.right
+                anchors.rightMargin: 16
+                anchors.verticalCenter: parent.verticalCenter
                 placeholderText: root.placeholder
                 color: Theme.fg
                 placeholderTextColor: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.5)
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 2
-                font.weight: Theme.fontWeight
-                background: Rectangle {
-                    color: "transparent"
-                    border.color: Theme.hairline
-                    border.width: 1
-                    radius: Theme.radiusSm
-                }
-                padding: 10
+                font.family: notch.sans
+                font.pixelSize: 16
+                background: null
+                padding: 8
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Escape) {
                         root.closeRequested()
@@ -237,46 +254,65 @@ PanelWindow {
                 }
             }
 
-            Row {
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    height: 1
+                    color: Theme.hairline
+                }
+            }
+
+            Item {
                 id: tabsRow
                 visible: root.tabs.length > 1
-                spacing: 18
-                height: visible ? 22 : 0
-                Repeater {
-                    model: root.tabs
-                    Text {
-                        required property var modelData
-                        required property int index
-                        text: String(modelData)
-                        color: index === root.tab ? Theme.fg : Theme.fg_muted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 2
-                        font.weight: index === root.tab ? Font.Bold : Theme.fontWeight
-                        font.capitalization: Font.AllUppercase
-                        font.letterSpacing: 1
-                        renderType: Text.NativeRendering
+                width: parent.width
+                height: visible ? 41 : 0
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Repeater {
+                        model: root.tabs
                         Rectangle {
-                            visible: parent.index === root.tab
-                            anchors.top: parent.bottom
-                            width: parent.width
-                            height: 2
-                            radius: 1
-                            color: Theme.cursor
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.tab = parent.index
+                            required property var modelData
+                            required property int index
+                            readonly property bool isActive: index === root.tab
+                            width: tabLabel.implicitWidth + 20
+                            height: tabLabel.implicitHeight + 12
+                            radius: 6
+                            color: isActive ? Theme.selection
+                                 : tabHover.hovered ? Theme.surface : "transparent"
+                            Text {
+                                id: tabLabel
+                                anchors.centerIn: parent
+                                text: String(parent.modelData)
+                                color: parent.isActive ? Theme.fg : Theme.fg_muted
+                                font.family: notch.sans
+                                font.pixelSize: 13
+                                font.weight: 500
+                                renderType: Text.NativeRendering
+                            }
+                            HoverHandler { id: tabHover }
+                            TapHandler { onTapped: root.tab = parent.index }
                         }
                     }
+                }
+
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    height: 1
+                    color: Theme.hairline
                 }
             }
 
             Item {
                 id: listSlot
                 width: parent.width
-                height: parent.height - search.height - parent.spacing - (footer.visible ? footer.height + parent.spacing : 0)
-                        - (tabsRow.visible ? tabsRow.height + parent.spacing : 0)
+                height: parent.height - inputWrap.height - tabsRow.height
+                        - (footer.visible ? footer.height : 0)
 
             ListView {
                 id: list
@@ -285,38 +321,51 @@ PanelWindow {
                 model: root.filtered
                 currentIndex: root.selectedIndex
                 spacing: 2
+                topMargin: 6
+                bottomMargin: 6
                 opacity: root.loading ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
                 add: Transition {
                     NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutCubic }
                 }
 
-                delegate: Rectangle {
+                delegate: Item {
                     id: rowItem
                     required property var modelData
                     required property int index
                     property bool isDivider: !!(modelData && modelData.divider)
                     width: list.width
-                    height: isDivider ? 26 : 36
-                    color: (!isDivider && index === root.selectedIndex)
-                        ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.10)
-                        : "transparent"
-                    radius: Theme.radiusSm
+                    height: isDivider ? 29 : 36
 
-                    // Non-selectable section divider.
+                    // ListView owns delegate x/y — the inset highlight must be
+                    // an inner rectangle, never an x-offset on the root.
+                    Rectangle {
+                        visible: !rowItem.isDivider
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        radius: 8
+                        color: rowItem.index === root.selectedIndex ? Theme.selection
+                             : rowHover.hovered ? Theme.surface
+                             : "transparent"
+                    }
+
+                    HoverHandler { id: rowHover; enabled: !rowItem.isDivider }
+
+                    // Non-selectable section heading (palette style).
                     Text {
                         visible: rowItem.isDivider
                         anchors.left: parent.left
-                        anchors.leftMargin: 10
+                        anchors.leftMargin: 22
                         anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 4
+                        anchors.bottomMargin: 6
                         text: rowItem.modelData ? String(rowItem.modelData.label || "") : ""
                         color: Theme.fg_muted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 3
-                        font.weight: Theme.fontWeight
+                        font.family: notch.sans
+                        font.pixelSize: 11
+                        font.weight: 600
                         font.capitalization: Font.AllUppercase
-                        font.letterSpacing: 1
+                        font.letterSpacing: 0.6
                         renderType: Text.NativeRendering
                     }
 
@@ -333,7 +382,7 @@ PanelWindow {
                         sourceSize.height: 32
                         fillMode: Image.PreserveAspectFit
                         anchors.right: parent.right
-                        anchors.rightMargin: 10
+                        anchors.rightMargin: 22
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     MultiEffect {
@@ -350,7 +399,7 @@ PanelWindow {
                             && rowItem.modelData && String(rowItem.modelData[root.glyphField] || "").length > 0
                         visible: active
                         anchors.left: parent.left
-                        anchors.leftMargin: 12
+                        anchors.leftMargin: 22
                         anchors.verticalCenter: parent.verticalCenter
                         text: active ? String(rowItem.modelData[root.glyphField]) : ""
                         color: (root.glyphColorField && rowItem.modelData && rowItem.modelData[root.glyphColorField])
@@ -360,19 +409,31 @@ PanelWindow {
                         renderType: Text.NativeRendering
                     }
 
+                    // Highlighted row (e.g. the active worktree): a small accent
+                    // dot instead of recoloring the whole label.
+                    Rectangle {
+                        id: hlDot
+                        visible: !rowItem.isDivider && root.highlightField.length > 0
+                            && rowItem.modelData && rowItem.modelData[root.highlightField] === true
+                        width: 6; height: 6; radius: 3
+                        color: Theme.cursor
+                        anchors.left: parent.left
+                        anchors.leftMargin: 22
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
                     Text {
                         visible: !rowItem.isDivider
-                        anchors.left: rowGlyph.active ? rowGlyph.right : parent.left
-                        anchors.leftMargin: rowGlyph.active ? 8 : 10
+                        anchors.left: rowGlyph.active ? rowGlyph.right : (hlDot.visible ? hlDot.left : parent.left)
+                        anchors.leftMargin: rowGlyph.active ? 10 : (hlDot.visible ? 16 : 22)
                         anchors.right: rowIcon.active ? rowIcon.left : subtitleText.left
                         anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
                         text: rowItem.modelData ? String(rowItem.modelData.label || "?") : "?"
-                        color: (root.highlightField && rowItem.modelData && rowItem.modelData[root.highlightField] === true)
-                            ? Theme.cursor : Theme.fg
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
-                        font.weight: Theme.fontWeight
+                        color: Theme.fg
+                        font.family: notch.sans
+                        font.pixelSize: 14
+                        font.weight: 500
                         renderType: Text.NativeRendering
                         elide: Text.ElideRight
                     }
@@ -381,12 +442,11 @@ PanelWindow {
                         visible: !rowItem.isDivider && root.subtitleField && rowItem.modelData && (rowItem.modelData[root.subtitleField] || "").length > 0
                         text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
                         color: Theme.fg_muted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 2
-                        font.weight: Theme.fontWeight
+                        font.family: notch.sans
+                        font.pixelSize: 12
                         renderType: Text.NativeRendering
                         anchors.right: parent.right
-                        anchors.rightMargin: 10
+                        anchors.rightMargin: 22
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
@@ -433,16 +493,28 @@ PanelWindow {
             }
             }
 
-            Text {
+            Item {
                 id: footer
                 width: parent.width
                 visible: root.altLabel.length > 0
-                text: root.altLabel
-                color: Theme.fg_muted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 2
-                renderType: Text.NativeRendering
-                horizontalAlignment: Text.AlignHCenter
+                height: visible ? 34 : 0
+                Rectangle {
+                    anchors.top: parent.top
+                    width: parent.width
+                    height: 1
+                    color: Theme.hairline
+                }
+                Text {
+                    anchors.centerIn: parent
+                    width: parent.width - 32
+                    text: root.altLabel
+                    color: Theme.fg_muted
+                    font.family: notch.sans
+                    font.pixelSize: 12
+                    renderType: Text.NativeRendering
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
+                }
             }
         }
     }

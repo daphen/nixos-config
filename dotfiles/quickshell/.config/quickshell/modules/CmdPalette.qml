@@ -1,0 +1,665 @@
+import QtQuick
+import Quickshell
+import Quickshell.Wayland
+import "."
+
+// Command palette — quickshell port of the chromium-palette popup.
+// Data + actions come from PaletteState (palette-daemon over the UI
+// socket); ranking, grouping and keybinds are ported 1:1 from the
+// Solid app (App.tsx). Visuals are a faithful clone of the original
+// SCSS (App.scss/Entry.scss/index.scss): 600×480, radius 14, strong
+// fg-tinted outer border, full-width hairline section separators,
+// borderless 17px input, sans-serif type.
+PanelWindow {
+    id: root
+
+    property bool active: false
+    visible: active
+    readonly property bool open: PaletteState.open
+
+    onOpenChanged: {
+        if (open) {
+            closeDelay.stop()
+            active = true
+            resetTransient()
+            PaletteState.refresh()
+            search.forceActiveFocus()
+        } else {
+            closeDelay.restart()
+        }
+    }
+    Timer { id: closeDelay; interval: 300; onTriggered: root.active = false }
+
+    function resetTransient() {
+        search.text = ""
+        filterTab = 0
+        scopedWindowId = null
+        selectedIndex = 0
+        list.positionViewAtBeginning()
+    }
+
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    exclusionMode: ExclusionMode.Ignore
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.namespace: "qs-picker"
+    WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+    // The old palette rendered in the system sans stack, not the
+    // desktop's mono — part of what made it feel cleaner. Keep that.
+    readonly property string sans: "sans-serif"
+    // Outer border: --app-container-border-color (fg @ .5 light / .1 dark).
+    readonly property color panelBorder:
+        Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.5 : 0.10)
+
+    // ── ranking / grouping (ported from App.tsx) ──────────────────────
+    readonly property var filterTabs: ["All", "Tabs", "Quickmarks", "Web"]
+    property int filterTab: 0
+    property string query: search ? search.text : ""
+    property var scopedWindowId: null
+    property int selectedIndex: 0
+
+    onQueryChanged: { selectedIndex = firstSelectable(); list.positionViewAtBeginning() }
+    onFilterTabChanged: selectedIndex = firstSelectable()
+
+    function niceUrl(u) {
+        if (!u) return ""
+        return u.length <= 80 ? u : u.slice(0, 40) + "..." + u.slice(-37)
+    }
+
+    function looksLikeUrl(t) {
+        if (!t || /\s/.test(t)) return false
+        if (/^[a-z][\w-]*:(\/\/)?/i.test(t)) return true
+        if (/^[\w-]+(\.[\w-]+)+([:/?#].*)?$/i.test(t)) return true
+        if (/^localhost([:/?#].*)?$/i.test(t)) return true
+        return false
+    }
+
+    // Token-prefix 10000 > substring ~1000 (boundary/position bonus) >
+    // fuzzy subsequence 1 (last-resort tiebreak). Same tiers as App.tsx.
+    function scoreMatch(qLower, matchText) {
+        if (!qLower) return 1
+        const v = matchText
+        const tokens = v.split(/\W+/).filter(t => t.length > 0)
+        for (let i = 0; i < tokens.length; i++)
+            if (tokens[i].startsWith(qLower)) return 10000
+        const idx = v.indexOf(qLower)
+        if (idx >= 0) {
+            const atBoundary = idx === 0 || /[\s/\-_.]/.test(v[idx - 1])
+            return 1000 - Math.min(idx, 500) + (atBoundary ? 200 : 0)
+        }
+        let qi = 0
+        for (let vi = 0; vi < v.length && qi < qLower.length; vi++)
+            if (v[vi] === qLower[qi]) qi++
+        return qi === qLower.length ? 1 : 0
+    }
+
+    function matchText(e) {
+        let s = (e.title || "")
+        if (e.url) {
+            const m = e.url.match(/^[a-z][\w+.-]*:\/\/([^/]+)(\/[^?#]*)?/i)
+            if (m) s += " " + m[1] + (m[2] || "")
+        }
+        return s.toLowerCase()
+    }
+
+    readonly property var webTemplates: [
+        { name: "DuckDuckGo", origin: "https://duckduckgo.com",     mk: q => "https://duckduckgo.com/?q=" + encodeURIComponent(q) },
+        { name: "Google Drive", origin: "https://drive.google.com", mk: q => "https://drive.google.com/drive/search?q=" + encodeURIComponent(q) },
+        { name: "Youtube", origin: "https://www.youtube.com",       mk: q => "https://www.youtube.com/results?search_query=" + encodeURIComponent(q) },
+        { name: "Wikipedia", origin: "https://en.wikipedia.org",    mk: q => "https://en.wikipedia.org/w/index.php?search=" + encodeURIComponent(q) },
+    ]
+
+    // Flattened [divider, entry, entry, divider, ...] list, rebuilt on
+    // every state push / keystroke. Groups: Open URL → Current Tab →
+    // Open Tabs → Quickmarks → Web Search, ranked + reordered by best
+    // score under a query, cross-group URL dedupe, chin scope filter.
+    readonly property var entries: {
+        const _ = PaletteState.gen
+        const q = query.trim().toLowerCase()
+        const ftab = filterTabs[filterTab]
+        const scope = scopedWindowId
+
+        const tabs = (PaletteState.tabs || []).slice()
+        tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))
+        const curId = PaletteState.currentTabId
+        const scoped = scope == null ? tabs : tabs.filter(t => t.windowId === scope)
+
+        const tabEntry = t => ({
+            kind: "tab", title: t.title || "Untitled", url: t.url || "",
+            subtitle: niceUrl(t.url || ""), faviconPath: t.faviconPath || "",
+            tabId: t.id, windowId: t.windowId,
+        })
+        let currentItems = []
+        const cur = scoped.find(t => t.id === curId)
+        if (cur) { const e = tabEntry(cur); e.isCurrent = true; currentItems = [e] }
+        const tabItems = scoped.filter(t => t.id !== curId).map(tabEntry)
+
+        const qmItems = (PaletteState.quickmarks || []).map(m => ({
+            kind: "quickmark", title: m.name || "", url: m.url || "",
+            subtitle: niceUrl(m.url || ""), faviconPath: "",
+        }))
+
+        const webItems = webTemplates.map(t => ({
+            kind: "web",
+            title: q ? ("Search " + t.name + ": " + query.trim()) : ("Search " + t.name),
+            url: t.mk(query.trim()), subtitle: "", faviconPath: "",
+        }))
+
+        const urlItems = looksLikeUrl(query.trim())
+            ? [{ kind: "url",
+                 title: "Go to " + (/^[a-z][\w-]*:/i.test(query.trim()) ? query.trim() : "https://" + query.trim()),
+                 url: /^[a-z][\w-]*:/i.test(query.trim()) ? query.trim() : "https://" + query.trim(),
+                 subtitle: "", faviconPath: "" }]
+            : []
+
+        const rank = items => {
+            if (!q) return { items: items, maxScore: 0 }
+            const scored = items
+                .map(e => ({ e: e, s: scoreMatch(q, matchText(e)) }))
+                .filter(x => x.s > 0)
+            scored.sort((a, b) => b.s - a.s)
+            return { items: scored.map(x => x.e), maxScore: scored.length ? scored[0].s : 0 }
+        }
+
+        let groups = []
+        if (urlItems.length) groups.push({ id: "url", heading: "Open URL", items: urlItems, maxScore: 1000 })
+        if (currentItems.length && !q) groups.push({ id: "tabs", heading: "Current Tab", items: currentItems, maxScore: 0 })
+        const rt = rank(q ? tabItems.concat(currentItems) : tabItems)
+        groups.push({ id: "tabs", heading: "Open Tabs", items: rt.items, maxScore: rt.maxScore })
+        const rq = rank(qmItems)
+        groups.push({ id: "quickmarks", heading: "Quickmarks", items: rq.items, maxScore: rq.maxScore })
+        const rw = rank(webItems)
+        groups.push({ id: "websites", heading: "Web Search", items: rw.items, maxScore: rw.maxScore })
+
+        // Cross-group URL dedupe (tabs > quickmarks > websites).
+        const seen = ({})
+        for (let gi = 0; gi < groups.length; gi++) {
+            groups[gi].items = groups[gi].items.filter(e => {
+                if (!e.url) return true
+                if (seen[e.url]) return false
+                seen[e.url] = true
+                return true
+            })
+        }
+
+        let nonEmpty = groups.filter(g => g.items.length > 0)
+        if (q) nonEmpty.sort((a, b) => b.maxScore - a.maxScore)
+
+        if (ftab === "Tabs") nonEmpty = nonEmpty.filter(g => g.id === "tabs")
+        else if (ftab === "Quickmarks") nonEmpty = nonEmpty.filter(g => g.id === "quickmarks")
+        else if (ftab === "Web") nonEmpty = nonEmpty.filter(g => g.id === "websites")
+
+        const out = []
+        for (let gi = 0; gi < nonEmpty.length; gi++) {
+            out.push({ divider: true, label: nonEmpty[gi].heading })
+            for (let ii = 0; ii < nonEmpty[gi].items.length; ii++)
+                out.push(nonEmpty[gi].items[ii])
+        }
+        return out
+    }
+
+    onEntriesChanged: if (selectedIndex >= entries.length) selectedIndex = firstSelectable()
+
+    function firstSelectable() {
+        for (let i = 0; i < entries.length; i++)
+            if (!entries[i] || !entries[i].divider) return i
+        return 0
+    }
+
+    function step(dir) {
+        const n = entries.length
+        if (n === 0) return
+        let i = selectedIndex + dir
+        while (i >= 0 && i < n && entries[i] && entries[i].divider) i += dir
+        if (i >= 0 && i < n) { selectedIndex = i; list.positionViewAtIndex(i, ListView.Contain) }
+    }
+
+    // Enter = run: tab row activates the tab; URL rows navigate the
+    // current tab (Ctrl+Enter = new tab; on a tab row an intentional
+    // duplicate). Shift+Enter = DDG the raw query.
+    function runSelected(inNewTab) {
+        if (entries.length === 0) return
+        const idx = Math.max(0, Math.min(selectedIndex, entries.length - 1))
+        const e = entries[idx]
+        if (!e || e.divider) return
+        if (e.kind === "tab" && !inNewTab) {
+            if (!e.isCurrent) PaletteState.activateTab(e.tabId, e.windowId)
+        } else if (e.url) {
+            PaletteState.gotoUrl(e.url, inNewTab)
+        }
+        PaletteState.hide()
+    }
+
+    // Drop a stale chin scope when the daemon reports a different
+    // focused window (external focus changes) — port of App.tsx logic.
+    Connections {
+        target: PaletteState
+        function onGenChanged() {
+            const sid = root.scopedWindowId
+            if (sid == null) return
+            const focused = (PaletteState.chin || []).find(w => w.focused)
+            if (focused && focused.id !== sid) root.scopedWindowId = null
+        }
+    }
+
+    function selectChinWindow(w) {
+        scopedWindowId = w.id
+        PaletteState.activateWindow(w.profile, w.id)
+    }
+
+    function cycleChin(dir) {
+        const wins = PaletteState.chin || []
+        if (wins.length === 0) return
+        const sid = scopedWindowId
+        let idx = wins.findIndex(w => w.id === sid)
+        if (idx < 0) idx = wins.findIndex(w => w.focused)
+        const next = ((idx < 0 ? 0 : idx) + dir + wins.length) % wins.length
+        selectChinWindow(wins[next])
+    }
+
+    function handleKeys(event) {
+        const ctrl = event.modifiers & Qt.ControlModifier
+        const shift = event.modifiers & Qt.ShiftModifier
+        if (event.key === Qt.Key_Escape) {
+            PaletteState.hide(); event.accepted = true
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            if (shift) {
+                const q = root.query.trim()
+                if (q.length > 0) {
+                    PaletteState.gotoUrl("https://duckduckgo.com/?q=" + encodeURIComponent(q), false)
+                    PaletteState.hide()
+                }
+            } else {
+                root.runSelected(!!ctrl)
+            }
+            event.accepted = true
+        } else if (event.key === Qt.Key_Down || (event.key === Qt.Key_J && ctrl)) {
+            root.step(1); event.accepted = true
+        } else if (event.key === Qt.Key_Up || (event.key === Qt.Key_K && ctrl)) {
+            root.step(-1); event.accepted = true
+        } else if ((event.key === Qt.Key_H || event.key === Qt.Key_L) && ctrl && shift) {
+            root.cycleChin(event.key === Qt.Key_L ? 1 : -1); event.accepted = true
+        } else if ((event.key === Qt.Key_H || event.key === Qt.Key_L) && ctrl) {
+            const dir = event.key === Qt.Key_L ? 1 : -1
+            root.filterTab = (root.filterTab + dir + root.filterTabs.length) % root.filterTabs.length
+            event.accepted = true
+        } else if (event.key === Qt.Key_D && ctrl) {
+            const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
+            const e = root.entries[idx]
+            if (e && !e.divider && e.kind === "tab") PaletteState.closeTab(e.tabId)
+            event.accepted = true
+        }
+    }
+
+    // ── visuals: faithful clone of the original popup ─────────────────
+    Rectangle {
+        id: dim
+        anchors.fill: parent
+        color: "#000000"
+        opacity: root.open ? 0.30 : 0
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        MouseArea { anchors.fill: parent; onClicked: PaletteState.hide() }
+    }
+
+    Rectangle {
+        id: panel
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: Math.round(parent.height * 0.22)
+        width: 600
+        height: 480
+
+        color: Theme.bg
+        radius: 14
+        border.color: root.panelBorder
+        border.width: 1
+        clip: true
+
+        scale: root.open ? 1.0 : 0.97
+        opacity: root.open ? 1.0 : 0.0
+        Behavior on scale {
+            NumberAnimation { duration: 170; easing.type: Easing.BezierSpline
+                              easing.bezierCurve: [0.26, 0.08, 0.25, 1.0, 1.0, 1.0] }
+        }
+        Behavior on opacity {
+            NumberAnimation { duration: 170; easing.type: Easing.BezierSpline
+                              easing.bezierCurve: [0.26, 0.08, 0.25, 1.0, 1.0, 1.0] }
+        }
+
+        Column {
+            anchors.fill: parent
+
+            // ── input_wrap: icon + borderless input + ESC badge ──────
+            Item {
+                id: inputWrap
+                width: parent.width
+                height: 56
+
+                Text {
+                    id: searchIcon
+                    anchors.left: parent.left
+                    anchors.leftMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: ""
+                    color: Theme.fg_muted
+                    opacity: 0.85
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 16
+                    renderType: Text.NativeRendering
+                }
+
+                TextInput {
+                    id: search
+                    anchors.left: searchIcon.right
+                    anchors.leftMargin: 12
+                    anchors.right: escBadge.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: Theme.fg
+                    font.family: root.sans
+                    font.pixelSize: 17
+                    clip: true
+                    Keys.onPressed: event => root.handleKeys(event)
+                    Text {
+                        visible: !search.text
+                        text: PaletteState.daemonConnected ? "Type to search..." : "palette-daemon offline…"
+                        color: Theme.fg_muted
+                        font: search.font
+                        renderType: Text.NativeRendering
+                    }
+                }
+
+                Rectangle {
+                    id: escBadge
+                    anchors.right: parent.right
+                    anchors.rightMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: escText.implicitWidth + 16
+                    height: escText.implicitHeight + 8
+                    radius: 6
+                    color: "transparent"
+                    border.color: Theme.hairline
+                    border.width: 1
+                    Text {
+                        id: escText
+                        anchors.centerIn: parent
+                        text: "ESC"
+                        color: Theme.fg_muted
+                        font.family: root.sans
+                        font.pixelSize: 11
+                        font.weight: 500
+                        font.letterSpacing: 0.5
+                        renderType: Text.NativeRendering
+                    }
+                }
+
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    height: 1
+                    color: Theme.hairline
+                }
+            }
+
+            // ── filter_tabs: pill buttons + hairline ─────────────────
+            Item {
+                id: tabsWrap
+                width: parent.width
+                height: 41
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Repeater {
+                        model: root.filterTabs
+                        Rectangle {
+                            required property var modelData
+                            required property int index
+                            readonly property bool isActive: index === root.filterTab
+                            width: tabLabel.implicitWidth + 20
+                            height: tabLabel.implicitHeight + 12
+                            radius: 6
+                            color: isActive ? Theme.selection
+                                 : tabHover.hovered ? Theme.surface : "transparent"
+                            Text {
+                                id: tabLabel
+                                anchors.centerIn: parent
+                                text: String(parent.modelData)
+                                color: parent.isActive ? Theme.fg : Theme.fg_muted
+                                font.family: root.sans
+                                font.pixelSize: 13
+                                font.weight: 500
+                                renderType: Text.NativeRendering
+                            }
+                            HoverHandler { id: tabHover }
+                            TapHandler { onTapped: root.filterTab = parent.index }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    height: 1
+                    color: Theme.hairline
+                }
+            }
+
+            // ── list ─────────────────────────────────────────────────
+            ListView {
+                id: list
+                width: parent.width
+                height: parent.height - inputWrap.height - tabsWrap.height - chinWrap.height
+                clip: true
+                model: root.entries
+                currentIndex: root.selectedIndex
+                topMargin: 6
+                bottomMargin: 6
+                boundsBehavior: Flickable.StopAtBounds
+
+                Text {
+                    visible: root.entries.length === 0
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    anchors.topMargin: 24
+                    text: "No results."
+                    color: Theme.fg_muted
+                    font.family: root.sans
+                    font.pixelSize: 13
+                    renderType: Text.NativeRendering
+                }
+
+                delegate: Item {
+                    id: rowItem
+                    required property var modelData
+                    required property int index
+                    property bool isDivider: !!(modelData && modelData.divider)
+                    readonly property bool hasSubtitle: !isDivider && String(modelData.subtitle || "").length > 0
+                    width: list.width
+                    height: isDivider ? 29 : (hasSubtitle ? 48 : 36)
+
+                    // Group heading: 11px uppercase, padding 12 18 6.
+                    Text {
+                        visible: rowItem.isDivider
+                        anchors.left: parent.left
+                        anchors.leftMargin: 18
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 6
+                        text: rowItem.modelData ? String(rowItem.modelData.label || "") : ""
+                        color: Theme.fg_muted
+                        font.family: root.sans
+                        font.pixelSize: 11
+                        font.weight: 600
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.6
+                        renderType: Text.NativeRendering
+                    }
+
+                    // Entry: inset 6px, radius 8, padding 8 12.
+                    Rectangle {
+                        visible: !rowItem.isDivider
+                        anchors.fill: parent
+                        anchors.leftMargin: 6
+                        anchors.rightMargin: 6
+                        radius: 8
+                        color: rowItem.index === root.selectedIndex ? Theme.selection
+                             : rowHover.hovered ? Theme.surface : "transparent"
+                        opacity: (!rowItem.isDivider && rowItem.modelData.isCurrent) ? 0.6 : 1
+
+                        Image {
+                            id: fav
+                            anchors.left: parent.left
+                            anchors.leftMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: rowItem.hasSubtitle ? 22 : 18
+                            height: width
+                            source: (!rowItem.isDivider && rowItem.modelData.faviconPath)
+                                ? "file://" + rowItem.modelData.faviconPath : ""
+                            visible: status === Image.Ready
+                            sourceSize.width: 44; sourceSize.height: 44
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                        }
+                        Rectangle {
+                            visible: fav.status !== Image.Ready
+                            anchors.fill: fav
+                            radius: 4
+                            color: Theme.surface
+                            Text {
+                                anchors.centerIn: parent
+                                text: {
+                                    if (rowItem.isDivider) return ""
+                                    const t = String(rowItem.modelData.title || "?")
+                                    return t.length ? t[0].toUpperCase() : "?"
+                                }
+                                color: Theme.fg_muted
+                                font.family: root.sans
+                                font.pixelSize: 10
+                                font.weight: 600
+                                renderType: Text.NativeRendering
+                            }
+                        }
+
+                        Column {
+                            anchors.left: fav.right
+                            anchors.leftMargin: 12
+                            anchors.right: parent.right
+                            anchors.rightMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 2
+                            Text {
+                                width: parent.width
+                                text: rowItem.isDivider ? "" : String(rowItem.modelData.title || "")
+                                color: Theme.fg
+                                elide: Text.ElideRight
+                                font.family: root.sans
+                                font.pixelSize: 14
+                                font.weight: 500
+                                renderType: Text.NativeRendering
+                            }
+                            Text {
+                                width: parent.width
+                                visible: text.length > 0
+                                text: rowItem.isDivider ? "" : String(rowItem.modelData.subtitle || "")
+                                color: Theme.fg_muted
+                                elide: Text.ElideRight
+                                font.family: root.sans
+                                font.pixelSize: 12
+                                renderType: Text.NativeRendering
+                            }
+                        }
+
+                        HoverHandler { id: rowHover }
+                        TapHandler {
+                            onTapped: { root.selectedIndex = rowItem.index; root.runSelected(false) }
+                        }
+                    }
+                }
+            }
+
+            // ── chin: strong top border + pills ──────────────────────
+            Item {
+                id: chinWrap
+                width: parent.width
+                height: PaletteState.chin.length > 0 ? 42 : 0
+                visible: height > 0
+
+                Rectangle {
+                    anchors.top: parent.top
+                    width: parent.width
+                    height: 1
+                    color: root.panelBorder
+                }
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+                    Repeater {
+                        model: PaletteState.chin
+                        Rectangle {
+                            id: pill
+                            required property var modelData
+                            readonly property bool isActive: root.scopedWindowId != null
+                                ? modelData.id === root.scopedWindowId
+                                : !!modelData.focused
+                            height: 26
+                            width: Math.min(pillRow.implicitWidth + 16, 220)
+                            radius: 8
+                            color: isActive ? Theme.selection
+                                 : pillHover.hovered ? Theme.surface : "transparent"
+                            border.color: isActive ? root.panelBorder : "transparent"
+                            border.width: 1
+                            Row {
+                                id: pillRow
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Image {
+                                    width: 14; height: 14
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    source: pill.modelData.faviconPath ? "file://" + pill.modelData.faviconPath : ""
+                                    visible: status === Image.Ready
+                                    sourceSize.width: 28; sourceSize.height: 28
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: String(pill.modelData.activeTabTitle || ("Window " + pill.modelData.id))
+                                    color: pill.isActive ? Theme.fg : Theme.fg_muted
+                                    elide: Text.ElideRight
+                                    width: Math.min(implicitWidth, 150)
+                                    font.family: root.sans
+                                    font.pixelSize: 12
+                                    renderType: Text.NativeRendering
+                                }
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: profileText.implicitWidth + 10
+                                    height: profileText.implicitHeight + 4
+                                    radius: 4
+                                    color: Theme.surface
+                                    Text {
+                                        id: profileText
+                                        anchors.centerIn: parent
+                                        text: pill.modelData.profile === "personal" ? "P"
+                                            : pill.modelData.profile === "work" ? "W" : "?"
+                                        color: Theme.fg_muted
+                                        font.family: root.sans
+                                        font.pixelSize: 10
+                                        font.weight: 600
+                                        font.letterSpacing: 0.5
+                                        renderType: Text.NativeRendering
+                                    }
+                                }
+                            }
+                            HoverHandler { id: pillHover }
+                            TapHandler { onTapped: root.selectChinWindow(pill.modelData) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

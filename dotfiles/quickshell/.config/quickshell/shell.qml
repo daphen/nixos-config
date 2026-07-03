@@ -20,6 +20,7 @@ ShellRoot {
     NotificationOverlay {}
 
     Launcher {}
+    CmdPalette {}
     WorktreePicker {}
     WorktreeCreatePicker {}
     ReviewCreatePicker {}
