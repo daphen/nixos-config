@@ -38,6 +38,8 @@ PanelWindow {
     property var tabs: []
     property int tab: 0
     onTabChanged: selectedIndex = firstSelectable()
+    // Opt-in Ctrl+Y: called with the focused item (yank/copy semantics).
+    property var onYank: null
 
     property string query: search ? search.text : ""
     property int selectedIndex: 0
@@ -219,6 +221,10 @@ PanelWindow {
                         event.accepted = true
                     } else if (event.key === root.altKey && (event.modifiers & Qt.ControlModifier)) {
                         root.altActivate()
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier) && root.onYank) {
+                        const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
+                        if (root.filtered.length > 0 && !root.filtered[idx].divider) root.onYank(root.filtered[idx])
                         event.accepted = true
                     } else if (root.tabs.length > 1
                             && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab

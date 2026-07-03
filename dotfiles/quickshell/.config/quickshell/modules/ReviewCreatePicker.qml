@@ -10,7 +10,16 @@ Picker {
     onCloseRequested: ReviewCreatePickerState.open = false
 
     placeholder: "search PRs — or paste a PR number / url"
-    altLabel: "Enter: review / open    ·    Ctrl+Enter: full worktree    ·    Tab: switch"
+    altLabel: "Enter: review / open   ·   Ctrl+Enter: worktree   ·   Ctrl+Y: copy url   ·   Tab/Ctrl+H/L: switch"
+
+    // Ctrl+Y: copy the focused PR's URL (mirrors the imv copy pattern:
+    // wl-copy + a notification so the yank is visible).
+    onYank: item => {
+        const u = (item && (item.url || item.target)) || ""
+        if (!u) return
+        Quickshell.execDetached(["sh", "-c",
+            "wl-copy -- \"$1\" && notify-send -t 2000 'Copied PR URL' \"$1\"", "_", u])
+    }
     subtitleField: "sub"
     glyphField: "glyph"
     glyphColorField: "gcolor"
@@ -65,8 +74,8 @@ Picker {
         command: ["bash", "-lc",
             "cd \"$HOME/work/lovable\" && repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) && " +
             "gh api graphql -f query='query($q1:String!,$q2:String!,$q3:String!){" +
-            "requested:search(query:$q1,type:ISSUE,first:50){nodes{... on PullRequest{number title state author{login} viewerLatestReview{state}}}} " +
-            "reviewed:search(query:$q2,type:ISSUE,first:50){nodes{... on PullRequest{number title state author{login} viewerLatestReview{state}}}} " +
+            "requested:search(query:$q1,type:ISSUE,first:50){nodes{... on PullRequest{number title url state author{login} viewerLatestReview{state}}}} " +
+            "reviewed:search(query:$q2,type:ISSUE,first:50){nodes{... on PullRequest{number title url state author{login} viewerLatestReview{state}}}} " +
             "mine:search(query:$q3,type:ISSUE,first:30){nodes{... on PullRequest{number title url isDraft reviewDecision latestReviews(first:1){totalCount} commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}}' " +
             "-f q1=\"repo:$repo is:pr is:open review-requested:@me -author:@me sort:updated-desc\" " +
             "-f q2=\"repo:$repo is:pr reviewed-by:@me -author:@me sort:updated-desc\" " +
@@ -114,6 +123,7 @@ Picker {
         const m = catMeta(cat)
         return {
             number: String(pr.number),
+            url: pr.url || "",
             label: "#" + pr.number + "  " + (pr.title || ""),
             sub: (pr.author && pr.author.login) ? "@" + pr.author.login : "",
             glyph: m.glyph,
@@ -189,6 +199,7 @@ Picker {
             out.push({
                 action: "url",
                 target: p.url || "",
+                url: p.url || "",
                 number: String(p.number),
                 label: "#" + p.number + "  " + (p.title || ""),
                 sub: sub,
