@@ -76,10 +76,10 @@ Picker {
             "gh api graphql -f query='query($q1:String!,$q2:String!,$q3:String!){" +
             "requested:search(query:$q1,type:ISSUE,first:50){nodes{... on PullRequest{number title url headRefName state author{login} viewerLatestReview{state}}}} " +
             "reviewed:search(query:$q2,type:ISSUE,first:50){nodes{... on PullRequest{number title url headRefName state author{login} viewerLatestReview{state}}}} " +
-            "mine:search(query:$q3,type:ISSUE,first:30){nodes{... on PullRequest{number title url headRefName isDraft reviewDecision latestReviews(first:1){totalCount} commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}}' " +
+            "mine:search(query:$q3,type:ISSUE,first:40){nodes{... on PullRequest{number title url headRefName state isDraft reviewDecision latestReviews(first:1){totalCount} commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}}' " +
             "-f q1=\"repo:$repo is:pr is:open review-requested:@me -author:@me sort:updated-desc\" " +
             "-f q2=\"repo:$repo is:pr reviewed-by:@me -author:@me sort:updated-desc\" " +
-            "-f q3=\"repo:$repo is:pr is:open author:@me sort:updated-desc\""]
+            "-f q3=\"repo:$repo is:pr author:@me sort:updated-desc\""]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -187,26 +187,32 @@ Picker {
         return out
     }
 
-    // my PRs tab — one status glyph per row: failing CI beats review state
-    // (it's the thing to act on), then approved / changes / commented / waiting.
+
+    // my PRs tab — open first, then recently merged/closed (capped). Open rows
+    // get one status glyph: failing CI beats review state (it's the thing to
+    // act on), then approved / changes / commented / waiting.
     function buildMine(nodes) {
-        const out = []
+        const open = [], done = []
         for (const p of (nodes || [])) {
-            const ci = (((p.commits || {}).nodes || [])[0] || {}).commit
-            const ciState = (ci && ci.statusCheckRollup && ci.statusCheckRollup.state) || ""
-            const dec = p.reviewDecision || ""
-            const commented = ((p.latestReviews || {}).totalCount || 0) > 0
             let glyph, color, sub = ""
-            if (ciState === "FAILURE" || ciState === "ERROR") {
-                glyph = ""; color = Theme.red
-                sub = dec === "APPROVED" ? "ci failing · approved" : "ci failing"
-            } else if (dec === "APPROVED")           { glyph = ""; color = Theme.green }
-            else if (dec === "CHANGES_REQUESTED")    { glyph = ""; color = Theme.red }
-            else if (commented)                      { glyph = ""; color = Theme.blue }
-            else                                     { glyph = ""; color = Theme.fg_muted }
-            if (!sub && ciState === "PENDING") sub = "ci pending"
-            if (!sub && p.isDraft) sub = "draft"
-            out.push({
+            if (p.state === "MERGED")      { glyph = "\uf126"; color = Theme.purple; sub = "merged" }
+            else if (p.state === "CLOSED") { glyph = "\uf00d"; color = Theme.fg_muted; sub = "closed" }
+            else {
+                const ci = (((p.commits || {}).nodes || [])[0] || {}).commit
+                const ciState = (ci && ci.statusCheckRollup && ci.statusCheckRollup.state) || ""
+                const dec = p.reviewDecision || ""
+                const commented = ((p.latestReviews || {}).totalCount || 0) > 0
+                if (ciState === "FAILURE" || ciState === "ERROR") {
+                    glyph = "\uf00d"; color = Theme.red
+                    sub = dec === "APPROVED" ? "ci failing \u00b7 approved" : "ci failing"
+                } else if (dec === "APPROVED")           { glyph = "\uf00c"; color = Theme.green }
+                else if (dec === "CHANGES_REQUESTED")    { glyph = "\uf071"; color = Theme.red }
+                else if (commented)                      { glyph = "\uf075"; color = Theme.blue }
+                else                                     { glyph = "\uf10c"; color = Theme.fg_muted }
+                if (!sub && ciState === "PENDING") sub = "ci pending"
+                if (!sub && p.isDraft) sub = "draft"
+            }
+            const row = {
                 action: "url",
                 target: p.url || "",
                 url: p.url || "",
@@ -215,8 +221,9 @@ Picker {
                 sub: sub,
                 glyph: glyph,
                 gcolor: color,
-            })
+            }
+            if (p.state === "OPEN") open.push(row); else done.push(row)
         }
-        return out
+        return open.concat(done.slice(0, 15))
     }
 }
