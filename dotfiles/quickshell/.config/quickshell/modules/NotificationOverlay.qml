@@ -6,14 +6,15 @@ import "."
 PanelWindow {
     id: root
 
-    // Pin to one monitor (the output focused at startup), set imperatively so
-    // it never re-anchors on focus change — moving a layer-shell window between
-    // monitors crashes quickshell 0.2.1. True follow-focus needs a newer quickshell.
-    Component.onCompleted: {
+    // Follow the focused monitor: bind `screen` to the focused output. Single
+    // window (no per-screen duplicates); `visible` never reads `screen`, so no
+    // binding loop. Re-anchors on focus change — safe on quickshell 0.3.0+.
+    screen: {
+        const _ = NiriState.version
         const scrs = Quickshell.screens
         for (let i = 0; i < scrs.length; i++)
-            if (scrs[i].name === NiriState.focusedOutput()) { screen = scrs[i]; return }
-        if (scrs.length) screen = scrs[0]
+            if (scrs[i].name === NiriState.focusedOutput()) return scrs[i]
+        return scrs.length ? scrs[0] : null
     }
 
     anchors {
