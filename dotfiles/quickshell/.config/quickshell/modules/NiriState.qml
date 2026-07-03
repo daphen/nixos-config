@@ -129,6 +129,9 @@ Singleton {
         const name = ws.name || ""
         if (!name.startsWith("lovable-")) return false
         if (name === "lovable" || name === "lovable-deps") return false
+        // The couple (main + active worktree) is the visible unit — only
+        // the inactive pile hides from the minimap.
+        if (name === "lovable-main") return false
         return name !== activeStack
     }
 
