@@ -105,6 +105,9 @@ output "eDP-1" {
     mode "3840x2400@120.000"
     scale 1.75
     position x=0 y=0
+    // Raise the signal ceiling so the driver can drive the ProArt OLED at 10-bit.
+    // Parked: needs the 2026-06-18 niri binary (re-login) — uncomment then.
+    // max-bpc 10
 }
 
 // Dell P3425WE ultrawide - positioned to the LEFT of laptop, raised on stand
@@ -355,7 +358,7 @@ layout {
 // fractionally smoother but was the largest single battery cost.
 blur {
     passes 2
-    offset 4.5
+    offset 6
     noise 0.02
     saturation 1.1
 }
@@ -483,16 +486,15 @@ window-rule {
     // block-out-from "screencast"
 }
 
-// Default styling for all windows: rounded corners, the lightest
-// touch of transparency, and border-around-window so the active
-// border doesn't bleed through. Opacity dropped from 0.9 → 0.97
-// after halving blur passes — the softer blur made the previous
-// 10% transparency read as visual noise. 3% keeps a hint of the
-// glassy look without distracting from window contents.
+// Default styling for all windows: rounded corners, a touch of
+// transparency so the blurred background reads through, and
+// border-around-window so the active border doesn't bleed through.
+// Lower opacity shows more blur through — balance it against the
+// blur offset so the glassy look doesn't tip into visual noise.
 window-rule {
     geometry-corner-radius 10
     clip-to-geometry true
-    opacity 0.97
+    opacity 0.92
     draw-border-with-background false
 }
 
@@ -529,10 +531,11 @@ layer-rule {
 }
 
 
-// Make wallpaper static (doesn't scroll with workspaces)
-// Places swaybg in the backdrop layer so it stays fixed
-// Disabled for now — backdrop layer hides wallpaper from blur sampling.
-/-layer-rule {
+// Put swaybg (namespace "wallpaper") into the backdrop: niri blurs the
+// backdrop, not the background layer, so this is what makes the wallpaper
+// show through transparent windows AND get blurred. Requires the
+// workspace background-color to be transparent (it is, line 168).
+layer-rule {
     match namespace="^wallpaper$"
     place-within-backdrop true
 }
@@ -635,14 +638,15 @@ window-rule {
     default-window-height { fixed 900; }
 }
 
-// Dim inactive windows so the focused one stands out. Helium
+// Dim inactive windows so the focused one stands out — idle windows are
+// more transparent (0.75) than the active one (0.85). Helium
 // (browser-personal/browser-work) is excluded — it stays full opacity
 // even when unfocused. Placed last so it wins the opacity for the
 // inactive case over the earlier per-app opacity rules.
 window-rule {
     match is-active=false
     exclude app-id=r#"^(browser-personal|browser-work)$"#
-    opacity 0.9
+    opacity 0.86
 }
 
 binds {
