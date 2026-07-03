@@ -687,7 +687,7 @@ binds {
     Super+Ctrl+g { spawn-sh "kitty --class lovable_picker $HOME/.config/niri/scripts/spawn-claude-session-picker"; }
     Super+Shift+g { spawn-sh "$HOME/.config/niri/scripts/spawn-new-claude-session"; }
     Super+Shift+f { spawn-sh "$HOME/.config/niri/scripts/fork-claude-session"; }
-    Super+r { spawn-sh "$HOME/.config/niri/scripts/spawn-terminal-with-zoxide-picker"; }
+    Super+r hotkey-overlay-title="Create PR review" { spawn "qs" "ipc" "call" "review-create" "toggle"; }
     Super+g { spawn-sh "$HOME/.config/niri/scripts/ws-focus claude"; }
     Super+d { spawn-sh "$HOME/.config/niri/scripts/ws-focus term"; }
     Super+Shift+d { spawn-sh "SHOW_FASTFETCH=1 kitty"; }

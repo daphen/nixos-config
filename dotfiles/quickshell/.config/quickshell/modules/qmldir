@@ -27,6 +27,8 @@ singleton WorktreePickerState 1.0 WorktreePickerState.qml
 WorktreePicker 1.0 WorktreePicker.qml
 singleton WorktreeCreatePickerState 1.0 WorktreeCreatePickerState.qml
 WorktreeCreatePicker 1.0 WorktreeCreatePicker.qml
+singleton ReviewCreatePickerState 1.0 ReviewCreatePickerState.qml
+ReviewCreatePicker 1.0 ReviewCreatePicker.qml
 singleton WorktreeNameInputPickerState 1.0 WorktreeNameInputPickerState.qml
 WorktreeNameInputPicker 1.0 WorktreeNameInputPicker.qml
 singleton LovboxPickerState 1.0 LovboxPickerState.qml

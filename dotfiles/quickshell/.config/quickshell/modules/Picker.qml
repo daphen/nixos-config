@@ -24,6 +24,15 @@ PanelWindow {
     property var onAltAction: null
     property string altLabel: ""
     property int altKey: Qt.Key_W
+    // Set by pickers whose items arrive asynchronously: shows a loading
+    // indicator, and the list fades in once loading clears.
+    property bool loading: false
+    // Optional per-item colored status glyph (a Nerd Font char) at the row's
+    // left; its color comes from glyphColorField (a color value on the item).
+    property string glyphField: ""
+    property string glyphColorField: ""
+    // When true, Ctrl+Enter fires the alt action instead of the primary one.
+    property bool ctrlEnterAlt: false
 
     property string query: search ? search.text : ""
     property int selectedIndex: 0
@@ -192,7 +201,8 @@ PanelWindow {
                         root.closeRequested()
                         event.accepted = true
                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        root.activate()
+                        if (root.ctrlEnterAlt && (event.modifiers & Qt.ControlModifier)) root.altActivate()
+                        else root.activate()
                         event.accepted = true
                     } else if (event.key === Qt.Key_Down
                             || (event.key === Qt.Key_J && (event.modifiers & Qt.ControlModifier))) {
@@ -209,14 +219,23 @@ PanelWindow {
                 }
             }
 
-            ListView {
-                id: list
+            Item {
+                id: listSlot
                 width: parent.width
                 height: parent.height - search.height - parent.spacing - (footer.visible ? footer.height + parent.spacing : 0)
+
+            ListView {
+                id: list
+                anchors.fill: parent
                 clip: true
                 model: root.filtered
                 currentIndex: root.selectedIndex
                 spacing: 2
+                opacity: root.loading ? 0 : 1
+                Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                add: Transition {
+                    NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutCubic }
+                }
 
                 delegate: Rectangle {
                     id: rowItem
@@ -272,9 +291,25 @@ PanelWindow {
                     }
 
                     Text {
-                        visible: !rowItem.isDivider
+                        id: rowGlyph
+                        readonly property bool active: !rowItem.isDivider && root.glyphField.length > 0
+                            && rowItem.modelData && String(rowItem.modelData[root.glyphField] || "").length > 0
+                        visible: active
                         anchors.left: parent.left
-                        anchors.leftMargin: 10
+                        anchors.leftMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: active ? String(rowItem.modelData[root.glyphField]) : ""
+                        color: (root.glyphColorField && rowItem.modelData && rowItem.modelData[root.glyphColorField])
+                            ? rowItem.modelData[root.glyphColorField] : Theme.fg_muted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize
+                        renderType: Text.NativeRendering
+                    }
+
+                    Text {
+                        visible: !rowItem.isDivider
+                        anchors.left: rowGlyph.active ? rowGlyph.right : parent.left
+                        anchors.leftMargin: rowGlyph.active ? 8 : 10
                         anchors.right: rowIcon.active ? rowIcon.left : subtitleText.left
                         anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
@@ -313,6 +348,35 @@ PanelWindow {
                 }
 
                 onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+            }
+
+            Item {
+                anchors.fill: parent
+                opacity: root.loading ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 6
+                    Repeater {
+                        model: 3
+                        Rectangle {
+                            required property int index
+                            width: 7; height: 7; radius: 3.5
+                            color: Theme.fg_muted
+                            opacity: 0.25
+                            SequentialAnimation on opacity {
+                                running: root.loading
+                                loops: Animation.Infinite
+                                PauseAnimation { duration: index * 150 }
+                                NumberAnimation { to: 1.0; duration: 300; easing.type: Easing.InOutQuad }
+                                NumberAnimation { to: 0.25; duration: 300; easing.type: Easing.InOutQuad }
+                                PauseAnimation { duration: (2 - index) * 150 }
+                            }
+                        }
+                    }
+                }
+            }
             }
 
             Text {
