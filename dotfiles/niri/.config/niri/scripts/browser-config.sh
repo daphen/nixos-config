@@ -56,6 +56,13 @@ BROWSER_FLAGS=(
     # full-screen/window share. Wayland ozone routes capture through the
     # xdg-desktop-portal ScreenCast picker instead.
     --ozone-platform-hint=auto
+    # Netflix (and other adaptive players) dump bitrate when Chromium marks
+    # an unfocused window occluded/backgrounded — Wayland occlusion detection
+    # misfires for visible-but-unfocused surfaces, so video playing next to
+    # your work degrades to ~480p. Keep unfocused windows first-class.
+    --disable-backgrounding-occluded-windows
+    --disable-renderer-backgrounding
+    --disable-background-timer-throttling
 )
 
 # Point GLib at gsettings-desktop-schemas so Chromium's GTK theme code
