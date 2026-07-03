@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Focus the most-recently-focused Helium window (if any) before toggling
-# the palette. Focusing Helium wakes its service worker via
+# the palette (the quickshell CmdPalette, fed by palette-daemon). Focusing Helium wakes its service worker via
 # chrome.windows.onFocusChanged, so the daemon has fresh tab state by
 # the time the palette renders. This replaces the SW keepalive alarm —
 # the user's gesture *is* the wake.
@@ -52,4 +52,4 @@ if [[ -n "$target_id" ]]; then
     fi
 fi
 
-exec palette-ipc toggle
+exec qs ipc call -- palette toggle

@@ -100,7 +100,7 @@ in
   # ~/personal/chromium-palette/dist; PALETTE_POPUP_DIST pins it.
   systemd.user.services.palette-daemon = {
     Unit = {
-      Description = "Palette Daemon (WebKit command-palette overlay)";
+      Description = "Palette Daemon (browser state mirror for the quickshell palette)";
       PartOf = [ "graphical-session.target" ];
       After = [ "graphical-session.target" ];
     };
@@ -109,14 +109,11 @@ in
       ExecCondition = "/bin/sh -c '[ -n \"$WAYLAND_DISPLAY\" ]'";
       ExecStart = "${palette-daemon}/bin/palette-daemon";
       Environment = [
-        "PALETTE_POPUP_DIST=%h/personal/chromium-palette/dist"
+        # Headless: no GTK/WebKit window — quickshell's CmdPalette renders
+        # the UI over palette-ui.sock. Ends the WebKit fractional-scale
+        # fuzziness and the cold-start cost for good.
+        "PALETTE_HEADLESS=1"
         "RUST_LOG=palette_daemon=info"
-        # Force GTK4's OpenGL renderer instead of the default Vulkan one.
-        # The Vulkan swapchain doesn't recreate on output reconfiguration
-        # (VK_SUBOPTIMAL_KHR in journal logs), which bilinear-stretches the
-        # webview to the new surface dimensions — the "palette becomes
-        # fuzzy after unplugging external monitors" symptom.
-        "GSK_RENDERER=ngl"
       ];
       Restart = "on-failure";
       RestartSec = 2;
