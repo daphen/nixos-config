@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Widgets
 import Quickshell.Services.Notifications
 import "."
 
@@ -62,7 +63,7 @@ Rectangle {
     border.color: isCritical ? Theme.red : Theme.hairline
     border.width: 1
 
-    Column {
+    Row {
         id: content
         anchors {
             left: parent.left
@@ -70,45 +71,76 @@ Rectangle {
             top: parent.top
             margins: 12
         }
-        spacing: 4
+        spacing: 10
 
-        Text {
-            width: parent.width
-            text: notification ? (notification.appName || "Notification") : ""
-            color: Theme.fg_muted
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 2
-            font.weight: Theme.fontWeight
-            renderType: Text.NativeRendering
-            elide: Text.ElideRight
+        // Sender avatar from the image-path hint (dsqrd). Hidden unless the
+        // image actually loads, so other apps' toasts are unaffected.
+        ClippingRectangle {
+            id: avatar
+            readonly property string src: {
+                const p = root.notification ? (root.notification.image || "") : ""
+                return p.startsWith("/") ? "file://" + p : p
+            }
+            visible: avatarImg.status === Image.Ready
+            width: visible ? 40 : 0
+            height: 40
+            radius: width / 2
+            color: "transparent"
+
+            Image {
+                id: avatarImg
+                anchors.fill: parent
+                source: avatar.src
+                fillMode: Image.PreserveAspectCrop
+                sourceSize.width: 80
+                sourceSize.height: 80
+                smooth: true
+                cache: true
+            }
         }
 
-        Text {
-            width: parent.width
-            text: notification ? notification.summary : ""
-            color: Theme.fg
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
-            font.weight: 600
-            renderType: Text.NativeRendering
-            wrapMode: Text.WordWrap
-            elide: Text.ElideRight
-            maximumLineCount: 2
-        }
+        Column {
+            width: parent.width - (avatar.visible ? avatar.width + content.spacing : 0)
+            spacing: 4
 
-        Text {
-            width: parent.width
-            visible: text.length > 0
-            text: notification ? notification.body : ""
-            color: Theme.fg
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
-            font.weight: Theme.fontWeight
-            renderType: Text.NativeRendering
-            textFormat: Text.MarkdownText
-            wrapMode: Text.WordWrap
-            elide: Text.ElideRight
-            maximumLineCount: 5
+            Text {
+                width: parent.width
+                text: notification ? (notification.appName || "Notification") : ""
+                color: Theme.fg_muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize - 2
+                font.weight: Theme.fontWeight
+                renderType: Text.NativeRendering
+                elide: Text.ElideRight
+            }
+
+            Text {
+                width: parent.width
+                text: notification ? notification.summary : ""
+                color: Theme.fg
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize
+                font.weight: 600
+                renderType: Text.NativeRendering
+                wrapMode: Text.WordWrap
+                elide: Text.ElideRight
+                maximumLineCount: 2
+            }
+
+            Text {
+                width: parent.width
+                visible: text.length > 0
+                text: notification ? notification.body : ""
+                color: Theme.fg
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize - 1
+                font.weight: Theme.fontWeight
+                renderType: Text.NativeRendering
+                textFormat: Text.MarkdownText
+                wrapMode: Text.WordWrap
+                elide: Text.ElideRight
+                maximumLineCount: 5
+            }
         }
     }
 
