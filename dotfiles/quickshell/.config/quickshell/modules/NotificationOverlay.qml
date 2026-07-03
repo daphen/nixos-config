@@ -6,6 +6,16 @@ import "."
 PanelWindow {
     id: root
 
+    // Follow the focused monitor without a binding loop: bind `screen` to the
+    // focused output. `visible` never reads `screen`, so the two can't loop.
+    screen: {
+        const _ = NiriState.version
+        const scrs = Quickshell.screens
+        for (let i = 0; i < scrs.length; i++)
+            if (scrs[i].name === NiriState.focusedOutput()) return scrs[i]
+        return scrs.length ? scrs[0] : null
+    }
+
     anchors {
         top: true
         right: true
@@ -14,13 +24,10 @@ PanelWindow {
     margins.top: Theme.barHeight / 2
     margins.right: 16
 
-    // Only render on the focused output — duplicate toasts across monitors
-    // are distracting when working on one screen.
-    readonly property bool onFocusedScreen: {
-        const _ = NiriState.version
-        return screen && screen.name === NiriState.focusedOutput()
-    }
-    visible: onFocusedScreen && Notifications.tracked.values.length > 0
+    // Gated only on having notifications, NOT on the focused output. Flipping
+    // this per-screen on focus changes churned the layer-shell window and
+    // crashed quickshell 0.2.1 (it re-parented the toast across windows).
+    visible: Notifications.tracked.values.length > 0
 
     implicitWidth: 380
     implicitHeight: Math.max(toastColumn.implicitHeight + 16, 1)

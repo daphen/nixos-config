@@ -14,14 +14,15 @@ ShellRoot {
         Bar { required property var modelData; screen: modelData }
     }
 
-    Variants {
-        model: Quickshell.screens
-        NotificationOverlay { required property var modelData; screen: modelData }
-    }
+    // Single overlay that follows the focused monitor (its `screen` binds to
+    // the focused output). One window avoids the per-screen duplicate toasts
+    // and the focus-driven window flipping that crashed quickshell 0.2.1.
+    NotificationOverlay {}
 
     Launcher {}
     WorktreePicker {}
     WorktreeCreatePicker {}
+    ReviewCreatePicker {}
     WorktreeNameInputPicker {}
     LovboxPicker {}
     BluetoothPicker {}
