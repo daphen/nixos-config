@@ -230,16 +230,18 @@ def main() -> int:
         preview_url,
     ])
 
-    claude_cmd = ["claude"]
-    if not args.no_resume:
-        sid = latest_claude_session(worktree_path)
-        if sid:
-            claude_cmd = ["claude", "--resume", sid]
-            print(f"==> spawning claude (resume {sid[:8]})")
-        else:
-            print("==> spawning claude (no prior session)")
+    # Launch straight into the review. A fresh worktree starts the review-pr
+    # skill via its trigger phrase, passed on the launch command so it rides
+    # the spawn (reliable — no post-spawn wt-send injection to race). An
+    # existing session just continues where it left off, no re-trigger.
+    # --continue lets claude resolve its own latest session (layout-proof),
+    # matching ws-createwt.
+    if not args.no_resume and latest_claude_session(worktree_path):
+        claude_cmd = ["claude", "--continue"]
+        print("==> spawning claude (resuming review session)")
     else:
-        print("==> spawning claude (fresh, --no-resume)")
+        claude_cmd = ["claude", "review this PR"]
+        print("==> spawning claude (starting review)")
     spawn_and_wait([
         "kitty",
         "--class", "claude",

@@ -75,6 +75,9 @@ in {
     # plan-open: the plan-ticket skill runs this after PLAN to open the plan in nvim
     # (no-ops if an nvim is already in the repo, e.g. the worktree stack's pane).
     ".local/bin/plan-open".source = link "${dotfiles}/bin/.local/bin/plan-open";
+    # pr-review-open: reopen a rendered PR review page (~/.cache/pr-reviews/pr-<n>.html)
+    # in the work browser; derives the PR from a review/pr-<num> worktree branch.
+    ".local/bin/pr-review-open".source = link "${dotfiles}/bin/.local/bin/pr-review-open";
   };
 
   # Claude Code lives at ~/.claude, now sourced from the in-repo dotfiles
