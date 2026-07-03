@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "site-tweaks",
+  "version": "1.0",
+  "description": "Per-site page-world shims. netflix: hide AV1 support (the L3 av1-hd-bitrate-capped ladder software-decodes badly and the player downshifts on dropped frames) and pin visibility (quality survives unfocused playback). Load unpacked in the personal profile.",
+  "content_scripts": [
+    {
+      "matches": ["https://www.netflix.com/*"],
+      "js": ["netflix-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}
