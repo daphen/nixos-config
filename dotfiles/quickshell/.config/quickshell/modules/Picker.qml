@@ -33,6 +33,11 @@ PanelWindow {
     property string glyphColorField: ""
     // When true, Ctrl+Enter fires the alt action instead of the primary one.
     property bool ctrlEnterAlt: false
+    // Opt-in tab bar: labels shown under the search field, Tab/Shift+Tab cycles.
+    // Pickers bind their items on `tab` to swap datasets.
+    property var tabs: []
+    property int tab: 0
+    onTabChanged: selectedIndex = firstSelectable()
 
     property string query: search ? search.text : ""
     property int selectedIndex: 0
@@ -215,6 +220,45 @@ PanelWindow {
                     } else if (event.key === root.altKey && (event.modifiers & Qt.ControlModifier)) {
                         root.altActivate()
                         event.accepted = true
+                    } else if ((event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) && root.tabs.length > 1) {
+                        const dir = event.key === Qt.Key_Backtab ? -1 : 1
+                        root.tab = (root.tab + dir + root.tabs.length) % root.tabs.length
+                        event.accepted = true
+                    }
+                }
+            }
+
+            Row {
+                id: tabsRow
+                visible: root.tabs.length > 1
+                spacing: 18
+                height: visible ? 22 : 0
+                Repeater {
+                    model: root.tabs
+                    Text {
+                        required property var modelData
+                        required property int index
+                        text: String(modelData)
+                        color: index === root.tab ? Theme.fg : Theme.fg_muted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize - 2
+                        font.weight: index === root.tab ? Font.Bold : Theme.fontWeight
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 1
+                        renderType: Text.NativeRendering
+                        Rectangle {
+                            visible: parent.index === root.tab
+                            anchors.top: parent.bottom
+                            width: parent.width
+                            height: 2
+                            radius: 1
+                            color: Theme.cursor
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.tab = parent.index
+                        }
                     }
                 }
             }
@@ -223,6 +267,7 @@ PanelWindow {
                 id: listSlot
                 width: parent.width
                 height: parent.height - search.height - parent.spacing - (footer.visible ? footer.height + parent.spacing : 0)
+                        - (tabsRow.visible ? tabsRow.height + parent.spacing : 0)
 
             ListView {
                 id: list

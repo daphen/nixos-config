@@ -9,35 +9,45 @@ Picker {
     open: ReviewCreatePickerState.open
     onCloseRequested: ReviewCreatePickerState.open = false
 
-    placeholder: "search my review PRs — or paste a PR number / url"
-    altLabel: "Enter: review here (+ visual)    ·    Ctrl+Enter: full worktree to run the PR"
+    placeholder: "search PRs — or paste a PR number / url"
+    altLabel: "Enter: review / open    ·    Ctrl+Enter: full worktree    ·    Tab: switch"
     subtitleField: "sub"
     glyphField: "glyph"
     glyphColorField: "gcolor"
     ctrlEnterAlt: true
+    tabs: ["reviews", "my PRs"]
 
-    // PRs where I'm a reviewer, fetched on each open: open review requests +
-    // everything I've reviewed (any state). Both carry my latest review state.
+    // reviews tab: PRs where I'm a reviewer (requested + reviewed, my state).
+    // my PRs tab: my open PRs with review decision + CI rollup.
     property var requestedNodes: []
     property var reviewedNodes: []
+    property var mineNodes: []
 
     onActiveChanged: {
         if (active) {
             root.requestedNodes = []
             root.reviewedNodes = []
+            root.mineNodes = []
             root.loading = true
             prProc.running = true
         }
     }
 
-    items: buildItems(root.requestedNodes, root.reviewedNodes, root.query)
+    items: root.tab === 1 ? buildMine(root.mineNodes)
+                          : buildItems(root.requestedNodes, root.reviewedNodes, root.query)
 
-    // Enter: lightweight review — a single claude window in the main checkout
-    // (so gh resolves the repo). The review-pr skill fetches the diff via gh
-    // and opens the visual review in the browser itself; no worktree/devenv.
+    // Enter — reviews tab: lightweight review (claude in the main checkout;
+    // the skill fetches via gh and serves the visual itself). my-PRs tab:
+    // open the PR on GitHub in the work browser.
     onEnter: item => {
-        if (!item || !item.number) return
+        if (!item) return
         ReviewCreatePickerState.open = false
+        if (item.action === "url") {
+            Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/browser-dispatch",
+                "--profile=work", "--new-window", item.target])
+            return
+        }
+        if (!item.number) return
         Quickshell.execDetached(["kitty", "--class", "claude",
             "--working-directory", Quickshell.env("HOME") + "/work/lovable",
             "-e", "bash", "-lc", "claude 'review PR #" + item.number + "'"])
@@ -54,20 +64,24 @@ Picker {
         id: prProc
         command: ["bash", "-lc",
             "cd \"$HOME/work/lovable\" && repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) && " +
-            "gh api graphql -f query='query($q1:String!,$q2:String!){" +
+            "gh api graphql -f query='query($q1:String!,$q2:String!,$q3:String!){" +
             "requested:search(query:$q1,type:ISSUE,first:50){nodes{... on PullRequest{number title state author{login} viewerLatestReview{state}}}} " +
-            "reviewed:search(query:$q2,type:ISSUE,first:50){nodes{... on PullRequest{number title state author{login} viewerLatestReview{state}}}}}' " +
+            "reviewed:search(query:$q2,type:ISSUE,first:50){nodes{... on PullRequest{number title state author{login} viewerLatestReview{state}}}} " +
+            "mine:search(query:$q3,type:ISSUE,first:30){nodes{... on PullRequest{number title url isDraft reviewDecision latestReviews(first:1){totalCount} commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}}' " +
             "-f q1=\"repo:$repo is:pr is:open review-requested:@me -author:@me sort:updated-desc\" " +
-            "-f q2=\"repo:$repo is:pr reviewed-by:@me -author:@me sort:updated-desc\""]
+            "-f q2=\"repo:$repo is:pr reviewed-by:@me -author:@me sort:updated-desc\" " +
+            "-f q3=\"repo:$repo is:pr is:open author:@me sort:updated-desc\""]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
                     const d = (JSON.parse(this.text || "{}").data) || {}
                     root.requestedNodes = (d.requested && d.requested.nodes) || []
                     root.reviewedNodes = (d.reviewed && d.reviewed.nodes) || []
+                    root.mineNodes = (d.mine && d.mine.nodes) || []
                 } catch (e) {
                     root.requestedNodes = []
                     root.reviewedNodes = []
+                    root.mineNodes = []
                 }
                 root.loading = false
             }
@@ -149,6 +163,38 @@ Picker {
         for (const g of groups) {
             const list = cats[g[0]]
             for (const p of list.slice(0, g[1])) out.push(rowFor(p, g[0]))
+        }
+        return out
+    }
+
+    // my PRs tab — one status glyph per row: failing CI beats review state
+    // (it's the thing to act on), then approved / changes / commented / waiting.
+    function buildMine(nodes) {
+        const out = []
+        for (const p of (nodes || [])) {
+            const ci = (((p.commits || {}).nodes || [])[0] || {}).commit
+            const ciState = (ci && ci.statusCheckRollup && ci.statusCheckRollup.state) || ""
+            const dec = p.reviewDecision || ""
+            const commented = ((p.latestReviews || {}).totalCount || 0) > 0
+            let glyph, color, sub = ""
+            if (ciState === "FAILURE" || ciState === "ERROR") {
+                glyph = ""; color = Theme.red
+                sub = dec === "APPROVED" ? "ci failing · approved" : "ci failing"
+            } else if (dec === "APPROVED")           { glyph = ""; color = Theme.green }
+            else if (dec === "CHANGES_REQUESTED")    { glyph = ""; color = Theme.red }
+            else if (commented)                      { glyph = ""; color = Theme.blue }
+            else                                     { glyph = ""; color = Theme.fg_muted }
+            if (!sub && ciState === "PENDING") sub = "ci pending"
+            if (!sub && p.isDraft) sub = "draft"
+            out.push({
+                action: "url",
+                target: p.url || "",
+                number: String(p.number),
+                label: "#" + p.number + "  " + (p.title || ""),
+                sub: sub,
+                glyph: glyph,
+                gcolor: color,
+            })
         }
         return out
     }
