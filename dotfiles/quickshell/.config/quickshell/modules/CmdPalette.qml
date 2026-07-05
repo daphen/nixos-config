@@ -535,16 +535,6 @@ PanelWindow {
                     required property int index
                     property bool isDivider: !!(modelData && modelData.divider)
                     readonly property bool hasSubtitle: !isDivider && String(modelData.subtitle || "").length > 0
-                    // Trailing profile chip for tab rows (P/W), like the
-                    // reference palette's per-row meta chips.
-                    readonly property string profileLetter: {
-                        if (isDivider || !modelData || modelData.kind !== "tab" || modelData.windowId === undefined) return ""
-                        const ws = PaletteState.chin || []
-                        for (let i = 0; i < ws.length; i++)
-                            if (ws[i].id === modelData.windowId)
-                                return ws[i].profile === "personal" ? "P" : ws[i].profile === "work" ? "W" : ""
-                        return ""
-                    }
                     width: list.width
                     height: isDivider ? 36 : (hasSubtitle ? 64 : 44)
 
@@ -635,34 +625,10 @@ PanelWindow {
                             }
                         }
 
-                        Rectangle {
-                            id: kindChip
-                            visible: rowItem.profileLetter.length > 0
-                            anchors.right: parent.right
-                            anchors.rightMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: kindText.implicitWidth + 12
-                            height: 22
-                            radius: 6
-                            color: Theme.surface
-                            border.color: Theme.hairline
-                            border.width: 1
-                            Text {
-                                id: kindText
-                                anchors.centerIn: parent
-                                text: rowItem.profileLetter
-                                color: Theme.fg_muted
-                                font.family: root.sans
-                                font.pixelSize: 10
-                                font.weight: 600
-                                renderType: Text.NativeRendering
-                            }
-                        }
-
                         Column {
                             anchors.left: iconBox.right
                             anchors.leftMargin: 14
-                            anchors.right: kindChip.visible ? kindChip.left : parent.right
+                            anchors.right: parent.right
                             anchors.rightMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 2
