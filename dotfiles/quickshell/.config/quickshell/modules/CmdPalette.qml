@@ -337,9 +337,9 @@ PanelWindow {
     Rectangle {
         id: panel
         anchors.horizontalCenter: parent.horizontalCenter
-        y: Math.round(parent.height * 0.22)
-        width: 600
-        height: 480
+        y: Math.round((parent.height - height) / 2)
+        width: 660
+        height: 560
 
         color: Theme.bg
         radius: 14
@@ -437,7 +437,7 @@ PanelWindow {
                 Rectangle {
                     id: escBadge
                     anchors.right: searchField.right
-                    anchors.rightMargin: 12
+                    anchors.rightMargin: 14
                     anchors.verticalCenter: searchField.verticalCenter
                     width: escText.implicitWidth + 16
                     height: escText.implicitHeight + 8
@@ -463,22 +463,22 @@ PanelWindow {
             Item {
                 id: tabsWrap
                 width: parent.width
-                height: 41
+                height: 42
 
                 Row {
                     anchors.left: parent.left
-                    anchors.leftMargin: 12
+                    anchors.leftMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
+                    spacing: 6
                     Repeater {
                         model: root.filterTabs
                         Rectangle {
                             required property var modelData
                             required property int index
                             readonly property bool isActive: index === root.filterTab
-                            width: tabLabel.implicitWidth + 20
-                            height: tabLabel.implicitHeight + 12
-                            radius: 6
+                            width: tabLabel.implicitWidth + 16
+                            height: 26
+                            radius: 8
                             color: isActive ? Theme.selection
                                  : tabHover.hovered ? Theme.surface : "transparent"
                             Text {
@@ -487,7 +487,7 @@ PanelWindow {
                                 text: String(parent.modelData)
                                 color: parent.isActive ? Theme.fg : Theme.fg_muted
                                 font.family: root.sans
-                                font.pixelSize: 13
+                                font.pixelSize: 12
                                 font.weight: 500
                                 renderType: Text.NativeRendering
                             }
@@ -542,7 +542,7 @@ PanelWindow {
                     Text {
                         visible: rowItem.isDivider
                         anchors.left: parent.left
-                        anchors.leftMargin: 18
+                        anchors.leftMargin: 28
                         anchors.bottom: parent.bottom
                         anchors.bottomMargin: 10
                         text: rowItem.modelData ? String(rowItem.modelData.label || "") : ""
@@ -557,7 +557,7 @@ PanelWindow {
                     Text {
                         visible: rowItem.isDivider
                         anchors.right: parent.right
-                        anchors.rightMargin: 18
+                        anchors.rightMargin: 28
                         anchors.bottom: parent.bottom
                         anchors.bottomMargin: 10
                         text: {
@@ -579,8 +579,8 @@ PanelWindow {
                     Rectangle {
                         visible: !rowItem.isDivider
                         anchors.fill: parent
-                        anchors.leftMargin: 6
-                        anchors.rightMargin: 6
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
                         radius: 12
                         color: rowItem.index === root.selectedIndex ? Theme.selection
                              : rowHover.hovered ? Theme.surface : "transparent"
@@ -629,7 +629,7 @@ PanelWindow {
                             anchors.left: iconBox.right
                             anchors.leftMargin: 14
                             anchors.right: parent.right
-                            anchors.rightMargin: 12
+                            anchors.rightMargin: 14
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 2
                             Text {
@@ -678,7 +678,7 @@ PanelWindow {
 
                 Row {
                     anchors.left: parent.left
-                    anchors.leftMargin: 12
+                    anchors.leftMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
                     Repeater {
