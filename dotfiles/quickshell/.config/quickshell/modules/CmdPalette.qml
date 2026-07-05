@@ -532,7 +532,7 @@ PanelWindow {
                     property bool isDivider: !!(modelData && modelData.divider)
                     readonly property bool hasSubtitle: !isDivider && String(modelData.subtitle || "").length > 0
                     width: list.width
-                    height: isDivider ? 29 : (hasSubtitle ? 48 : 36)
+                    height: isDivider ? 34 : (hasSubtitle ? 56 : 44)
 
                     // Group heading: 11px uppercase, padding 12 18 6.
                     Text {
@@ -577,7 +577,7 @@ PanelWindow {
                         anchors.fill: parent
                         anchors.leftMargin: 6
                         anchors.rightMargin: 6
-                        radius: 8
+                        radius: 10
                         color: rowItem.index === root.selectedIndex ? Theme.selection
                              : rowHover.hovered ? Theme.surface : "transparent"
                         border.width: 1
@@ -631,8 +631,8 @@ PanelWindow {
                                 color: Theme.fg
                                 elide: Text.ElideRight
                                 font.family: root.sans
-                                font.pixelSize: 14
-                                font.weight: 500
+                                font.pixelSize: 15
+                                font.weight: 600
                                 renderType: Text.NativeRendering
                             }
                             Text {
@@ -642,7 +642,7 @@ PanelWindow {
                                 color: Theme.fg_muted
                                 elide: Text.ElideRight
                                 font.family: root.sans
-                                font.pixelSize: 12
+                                font.pixelSize: 13
                                 renderType: Text.NativeRendering
                             }
                         }

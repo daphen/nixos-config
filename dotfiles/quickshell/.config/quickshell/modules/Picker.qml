@@ -187,8 +187,8 @@ PanelWindow {
                 }
             }
         }
-        width: 720
-        height: 420
+        width: 760
+        height: 480
 
         color: Theme.bg
         radius: Theme.notchRadius
@@ -221,7 +221,7 @@ PanelWindow {
             Item {
                 id: inputWrap
                 width: parent.width
-                height: 52
+                height: 58
 
                 Text {
                     id: searchIcon
@@ -256,7 +256,7 @@ PanelWindow {
                 color: Theme.fg
                 placeholderTextColor: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.5)
                 font.family: notch.sans
-                font.pixelSize: 16
+                font.pixelSize: 17
                 background: null
                 padding: 8
                 Keys.onPressed: event => {
@@ -374,7 +374,7 @@ PanelWindow {
                     required property int index
                     property bool isDivider: !!(modelData && modelData.divider)
                     width: list.width
-                    height: isDivider ? 29 : 36
+                    height: isDivider ? 34 : 44
 
                     // ListView owns delegate x/y — the inset highlight must be
                     // an inner rectangle, never an x-offset on the root.
@@ -383,7 +383,7 @@ PanelWindow {
                         anchors.fill: parent
                         anchors.leftMargin: 10
                         anchors.rightMargin: 10
-                        radius: 8
+                        radius: 10
                         color: rowItem.index === root.selectedIndex ? Theme.selection
                              : rowHover.hovered ? Theme.surface
                              : "transparent"
@@ -486,8 +486,8 @@ PanelWindow {
                         text: rowItem.modelData ? String(rowItem.modelData.label || "?") : "?"
                         color: Theme.fg
                         font.family: notch.sans
-                        font.pixelSize: 14
-                        font.weight: 500
+                        font.pixelSize: 15
+                        font.weight: 600
                         renderType: Text.NativeRendering
                         elide: Text.ElideRight
                     }
@@ -497,7 +497,7 @@ PanelWindow {
                         text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
                         color: Theme.fg_muted
                         font.family: notch.sans
-                        font.pixelSize: 12
+                        font.pixelSize: 13
                         renderType: Text.NativeRendering
                         anchors.right: parent.right
                         anchors.rightMargin: 22
