@@ -139,7 +139,7 @@ PanelWindow {
         id: capsule
         anchors.horizontalCenter: parent.horizontalCenter
         y: Theme.barHeight - root.seamOverlap
-        height: root.open ? 52 + root.seamOverlap : 0
+        height: root.open ? Math.max(52, content.implicitHeight + 22) + root.seamOverlap : 0
         width: root.open ? Math.min(content.implicitWidth + 32, 560) : 48
         topLeftRadius: 0
         topRightRadius: 0
@@ -234,24 +234,31 @@ PanelWindow {
             Column {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 1
+                // implicitWidth is the unwrapped ideal, so short messages
+                // keep the capsule compact and long ones cap at 420 and wrap.
+                width: Math.min(Math.max(summaryText.implicitWidth, bodyText.implicitWidth), 420)
                 Text {
+                    id: summaryText
                     text: root.nSummary
                     color: Theme.fg
                     elide: Text.ElideRight
-                    width: Math.min(implicitWidth, 420)
+                    width: parent.width
                     font.family: Theme.fontFamily
                     font.pixelSize: 13
                     font.weight: 600
                     renderType: Text.NativeRendering
                 }
                 Text {
+                    id: bodyText
                     visible: text.length > 0
                     text: root.nBody
-                    color: Theme.fg_muted
+                    color: Theme.fg
                     elide: Text.ElideRight
-                    width: Math.min(implicitWidth, 420)
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 4
+                    width: parent.width
                     font.family: Theme.fontFamily
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSize - 1
                     renderType: Text.NativeRendering
                 }
             }
