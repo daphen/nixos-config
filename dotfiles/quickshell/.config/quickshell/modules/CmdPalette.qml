@@ -422,7 +422,7 @@ PanelWindow {
                     anchors.verticalCenter: searchField.verticalCenter
                     color: Theme.fg
                     font.family: root.sans
-                    font.pixelSize: 17
+                    font.pixelSize: 18
                     clip: true
                     Keys.onPressed: event => root.handleKeys(event)
                     Text {
@@ -536,7 +536,7 @@ PanelWindow {
                     property bool isDivider: !!(modelData && modelData.divider)
                     readonly property bool hasSubtitle: !isDivider && String(modelData.subtitle || "").length > 0
                     width: list.width
-                    height: isDivider ? 36 : (hasSubtitle ? 60 : 46)
+                    height: isDivider ? 36 : (hasSubtitle ? 60 : 44)
 
                     // Group heading: 11px uppercase, padding 12 18 6.
                     Text {
@@ -551,7 +551,7 @@ PanelWindow {
                         font.pixelSize: 11
                         font.weight: 600
                         font.capitalization: Font.AllUppercase
-                        font.letterSpacing: 0.6
+                        font.letterSpacing: 1.2
                         renderType: Text.NativeRendering
                     }
                     Text {
@@ -635,7 +635,7 @@ PanelWindow {
                                 color: Theme.fg
                                 elide: Text.ElideRight
                                 font.family: root.sans
-                                font.pixelSize: 16
+                                font.pixelSize: 15
                                 font.weight: 600
                                 renderType: Text.NativeRendering
                             }
@@ -646,7 +646,7 @@ PanelWindow {
                                 color: Theme.fg_muted
                                 elide: Text.ElideRight
                                 font.family: root.sans
-                                font.pixelSize: 13
+                                font.pixelSize: 12
                                 renderType: Text.NativeRendering
                             }
                         }

@@ -47,9 +47,9 @@ PanelWindow {
     // Small keycap chip (esc, arrows, enter) — the reference-palette detail.
     component KeyCap: Rectangle {
         property alias text: capText.text
-        width: capText.implicitWidth + 12
-        height: 20
-        radius: 5
+        width: capText.implicitWidth + 14
+        height: 22
+        radius: 6
         color: Theme.surface
         border.color: Theme.hairline
         border.width: 1
@@ -62,6 +62,19 @@ PanelWindow {
             font.weight: 500
             renderType: Text.NativeRendering
         }
+    }
+
+    // Natural height of the list (rows + spacing + margins) so the panel
+    // can hug its content instead of showing a fixed-height void.
+    readonly property int listContentHeight: {
+        let h = 20
+        for (let i = 0; i < filtered.length; i++) {
+            const it = filtered[i]
+            if (it && it.divider) h += 36
+            else h += (subtitleField.length > 0 && it && String(it[subtitleField] || "").length > 0) ? 60 : 44
+            if (i > 0) h += 2
+        }
+        return h
     }
 
     // Rows under a divider until the next one — shown as the section count.
@@ -188,7 +201,10 @@ PanelWindow {
             }
         }
         width: 760
-        height: 480
+        // Hug the content like the reference — footer sits right under the
+        // last row; 480 caps long lists (the ListView scrolls past that).
+        height: Math.min(480, inputWrap.height + tabsRow.height + root.listContentHeight + footer.height)
+        Behavior on height { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
         color: Theme.bg
         radius: Theme.notchRadius
@@ -267,7 +283,7 @@ PanelWindow {
                 color: Theme.fg
                 placeholderTextColor: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.5)
                 font.family: notch.sans
-                font.pixelSize: 17
+                font.pixelSize: 18
                 background: null
                 padding: 8
                 Keys.onPressed: event => {
@@ -380,7 +396,7 @@ PanelWindow {
                     readonly property bool hasSub: !isDivider && root.subtitleField.length > 0
                         && modelData && String(modelData[root.subtitleField] || "").length > 0
                     width: list.width
-                    height: isDivider ? 36 : (hasSub ? 60 : 46)
+                    height: isDivider ? 36 : (hasSub ? 60 : 44)
 
                     // ListView owns delegate x/y — the inset highlight must be
                     // an inner rectangle, never an x-offset on the root.
@@ -412,7 +428,7 @@ PanelWindow {
                         font.pixelSize: 11
                         font.weight: 600
                         font.capitalization: Font.AllUppercase
-                        font.letterSpacing: 0.6
+                        font.letterSpacing: 1.2
                         renderType: Text.NativeRendering
                     }
                     Text {
@@ -495,7 +511,7 @@ PanelWindow {
                             text: rowItem.modelData ? String(rowItem.modelData.label || "?") : "?"
                             color: Theme.fg
                             font.family: notch.sans
-                            font.pixelSize: 16
+                            font.pixelSize: 15
                             font.weight: 600
                             renderType: Text.NativeRendering
                             elide: Text.ElideRight
@@ -506,7 +522,7 @@ PanelWindow {
                             text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
                             color: Theme.fg_muted
                             font.family: notch.sans
-                            font.pixelSize: 13
+                            font.pixelSize: 12
                             renderType: Text.NativeRendering
                             elide: Text.ElideRight
                         }
@@ -558,7 +574,7 @@ PanelWindow {
             Item {
                 id: footer
                 width: parent.width
-                height: 36
+                height: 42
                 Rectangle {
                     anchors.top: parent.top
                     width: parent.width
@@ -578,7 +594,7 @@ PanelWindow {
                         text: "move"
                         color: Theme.fg_muted
                         font.family: notch.sans
-                        font.pixelSize: 11
+                        font.pixelSize: 12
                         renderType: Text.NativeRendering
                     }
                     Item { width: 8; height: 1 }
@@ -588,7 +604,7 @@ PanelWindow {
                         text: "open"
                         color: Theme.fg_muted
                         font.family: notch.sans
-                        font.pixelSize: 11
+                        font.pixelSize: 12
                         renderType: Text.NativeRendering
                     }
                     Item { visible: root.tabs.length > 1; width: 8; height: 1 }
@@ -599,7 +615,7 @@ PanelWindow {
                         text: "switch"
                         color: Theme.fg_muted
                         font.family: notch.sans
-                        font.pixelSize: 11
+                        font.pixelSize: 12
                         renderType: Text.NativeRendering
                     }
                 }
