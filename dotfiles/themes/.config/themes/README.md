@@ -72,7 +72,7 @@ The central configuration file containing all color definitions organized by the
         "primary": "#181818",
         "secondary": "#1B1B1B",
         "tertiary": "#1B1B1B",
-        "selection": "#282F38",
+        "selection": "#2E2E2E",
         "surface": "#1B1B1B",
         "overlay": "#292826",
         "prompt": "#323A40"

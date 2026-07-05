@@ -15,7 +15,7 @@ local c = {
   bg = "#181818",
   bg_secondary = "#1B1B1B",
   bg_tertiary = "#1B1B1B",
-  bg_selection = "#282F38",
+  bg_selection = "#2E2E2E",
   bg_surface = "#1B1B1B",
   bg_overlay = "#292826",
 

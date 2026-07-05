@@ -48,7 +48,7 @@ Singleton {
             "bg":          "#181818",
             "bg_alt":      "#1B1B1B",
             "tertiary":    "#1B1B1B",
-            "selection":   "#282F38",
+            "selection":   "#2E2E2E",
             "surface":     "#1B1B1B",
             "overlay":     "#292826",
             "prompt":      "#323A40",
