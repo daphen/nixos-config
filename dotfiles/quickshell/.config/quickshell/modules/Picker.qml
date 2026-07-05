@@ -563,8 +563,8 @@ PanelWindow {
                     anchors.leftMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
-                    KeyCap { text: "↑" }
-                    KeyCap { text: "↓" }
+                    KeyCap { text: "⌃j" }
+                    KeyCap { text: "⌃k" }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "move"
@@ -578,6 +578,17 @@ PanelWindow {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "open"
+                        color: Theme.fg_muted
+                        font.family: notch.sans
+                        font.pixelSize: 11
+                        renderType: Text.NativeRendering
+                    }
+                    Item { visible: root.tabs.length > 1; width: 8; height: 1 }
+                    KeyCap { visible: root.tabs.length > 1; text: "⇥" }
+                    Text {
+                        visible: root.tabs.length > 1
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "switch"
                         color: Theme.fg_muted
                         font.family: notch.sans
                         font.pixelSize: 11
