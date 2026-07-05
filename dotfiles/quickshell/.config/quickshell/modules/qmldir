@@ -53,3 +53,4 @@ singleton NotificationJumpPickerState 1.0 NotificationJumpPickerState.qml
 NotificationJumpPicker 1.0 NotificationJumpPicker.qml
 singleton PaletteState 1.0 PaletteState.qml
 CmdPalette 1.0 CmdPalette.qml
+NotificationIsland 1.0 NotificationIsland.qml

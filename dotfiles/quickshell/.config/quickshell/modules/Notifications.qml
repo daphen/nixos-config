@@ -19,6 +19,10 @@ Singleton {
     // change so bindings that read seenIds re-evaluate.
     property var seenIds: ({})
     property int seenGen: 0
+    // A genuinely-new notification passed every filter — fired once per
+    // arrival for presentation surfaces (toasts render from tracked; the
+    // island animates per-event).
+    signal present(var notification)
     function markSeen(n) {
         if (n) root.markSeenById(n.id)
     }
@@ -298,6 +302,9 @@ Singleton {
                 return
             }
             root.enforceCap()
+            // Surfaces (toast overlay, notification island) present anything
+            // that got this far and isn't a keepOnReload restore.
+            if (root.startupSettled) root.present(notification)
         }
     }
 

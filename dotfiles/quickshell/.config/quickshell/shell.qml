@@ -19,6 +19,9 @@ ShellRoot {
     // focus-driven re-anchor is safe on quickshell 0.3.0+.
     NotificationOverlay {}
 
+    // Dynamic-island capsule under the bar notch (trial: coexists with toasts).
+    NotificationIsland {}
+
     Launcher {}
     CmdPalette {}
     WorktreePicker {}
