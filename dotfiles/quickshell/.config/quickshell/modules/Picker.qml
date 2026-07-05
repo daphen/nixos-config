@@ -207,7 +207,8 @@ PanelWindow {
         Behavior on height { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
         color: Theme.bg
-        radius: Theme.notchRadius
+        // Radii from the reference palette: panel 24, field 15, cards 13.
+        radius: 24
         border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.5 : 0.10)
         border.width: 1
         clip: true
@@ -246,7 +247,7 @@ PanelWindow {
                     anchors.rightMargin: 14
                     anchors.topMargin: 14
                     anchors.bottomMargin: 6
-                    radius: 12
+                    radius: 15
                     color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
                 }
 
@@ -403,9 +404,9 @@ PanelWindow {
                     Rectangle {
                         visible: !rowItem.isDivider
                         anchors.fill: parent
-                        anchors.leftMargin: 10
-                        anchors.rightMargin: 10
-                        radius: 12
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
+                        radius: 13
                         color: rowItem.index === root.selectedIndex ? Theme.selection
                              : rowHover.hovered ? Theme.surface
                              : "transparent"
@@ -419,7 +420,7 @@ PanelWindow {
                     Text {
                         visible: rowItem.isDivider
                         anchors.left: parent.left
-                        anchors.leftMargin: 22
+                        anchors.leftMargin: 28
                         anchors.bottom: parent.bottom
                         anchors.bottomMargin: 10
                         text: rowItem.modelData ? String(rowItem.modelData.label || "") : ""
@@ -434,7 +435,7 @@ PanelWindow {
                     Text {
                         visible: rowItem.isDivider
                         anchors.right: parent.right
-                        anchors.rightMargin: 22
+                        anchors.rightMargin: 28
                         anchors.bottom: parent.bottom
                         anchors.bottomMargin: 10
                         text: root.sectionCount(rowItem.index)
@@ -458,7 +459,7 @@ PanelWindow {
                         sourceSize.height: 32
                         fillMode: Image.PreserveAspectFit
                         anchors.right: parent.right
-                        anchors.rightMargin: 22
+                        anchors.rightMargin: 28
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     MultiEffect {
@@ -475,7 +476,7 @@ PanelWindow {
                             && rowItem.modelData && String(rowItem.modelData[root.glyphField] || "").length > 0
                         visible: active
                         anchors.left: parent.left
-                        anchors.leftMargin: 22
+                        anchors.leftMargin: 28
                         anchors.verticalCenter: parent.verticalCenter
                         text: active ? String(rowItem.modelData[root.glyphField]) : ""
                         color: (root.glyphColorField && rowItem.modelData && rowItem.modelData[root.glyphColorField])
@@ -494,16 +495,16 @@ PanelWindow {
                         width: 6; height: 6; radius: 3
                         color: Theme.cursor
                         anchors.left: parent.left
-                        anchors.leftMargin: 22
+                        anchors.leftMargin: 28
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
                     Column {
                         visible: !rowItem.isDivider
                         anchors.left: rowGlyph.active ? rowGlyph.right : (hlDot.visible ? hlDot.left : parent.left)
-                        anchors.leftMargin: rowGlyph.active ? 10 : (hlDot.visible ? 16 : 22)
+                        anchors.leftMargin: rowGlyph.active ? 10 : (hlDot.visible ? 16 : 28)
                         anchors.right: rowIcon.active ? rowIcon.left : parent.right
-                        anchors.rightMargin: 22
+                        anchors.rightMargin: 28
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
                         Text {

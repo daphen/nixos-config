@@ -342,7 +342,9 @@ PanelWindow {
         height: 560
 
         color: Theme.bg
-        radius: 14
+        // Radii measured off the reference palette: panel 24, field 15,
+        // cards 13, tiles 10, keycaps 7.
+        radius: 24
         border.color: root.panelBorder
         border.width: 1
         clip: true
@@ -374,7 +376,7 @@ PanelWindow {
                     anchors.rightMargin: 14
                     anchors.topMargin: 14
                     anchors.bottomMargin: 6
-                    radius: 12
+                    radius: 15
                     color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
                 }
 
@@ -478,7 +480,7 @@ PanelWindow {
                             readonly property bool isActive: index === root.filterTab
                             width: tabLabel.implicitWidth + 16
                             height: 26
-                            radius: 8
+                            radius: 10
                             color: isActive ? Theme.selection
                                  : tabHover.hovered ? Theme.surface : "transparent"
                             Text {
@@ -581,7 +583,7 @@ PanelWindow {
                         anchors.fill: parent
                         anchors.leftMargin: 14
                         anchors.rightMargin: 14
-                        radius: 12
+                        radius: 13
                         color: rowItem.index === root.selectedIndex ? Theme.selection
                              : rowHover.hovered ? Theme.surface : "transparent"
                         border.width: 1
@@ -691,7 +693,7 @@ PanelWindow {
                                 : !!modelData.focused
                             height: 26
                             width: Math.min(pillRow.implicitWidth + 16, 220)
-                            radius: 8
+                            radius: 10
                             color: isActive ? Theme.selection
                                  : pillHover.hovered ? Theme.surface : "transparent"
                             border.color: isActive ? root.panelBorder : "transparent"
