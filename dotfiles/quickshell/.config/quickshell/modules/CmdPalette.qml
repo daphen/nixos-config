@@ -440,9 +440,9 @@ PanelWindow {
                     anchors.rightMargin: 14
                     anchors.verticalCenter: searchField.verticalCenter
                     width: escText.implicitWidth + 16
-                    height: escText.implicitHeight + 8
-                    radius: 6
-                    color: "transparent"
+                    height: 24
+                    radius: 7
+                    color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
                     border.color: Theme.hairline
                     border.width: 1
                     Text {

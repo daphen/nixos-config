@@ -47,10 +47,10 @@ PanelWindow {
     // Small keycap chip (esc, arrows, enter) — the reference-palette detail.
     component KeyCap: Rectangle {
         property alias text: capText.text
-        width: capText.implicitWidth + 14
-        height: 22
-        radius: 6
-        color: Theme.surface
+        width: Math.max(capText.implicitWidth + 14, 24)
+        height: 24
+        radius: 7
+        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
         border.color: Theme.hairline
         border.width: 1
         Text {
@@ -58,7 +58,7 @@ PanelWindow {
             anchors.centerIn: parent
             color: Theme.fg_muted
             font.family: notch.sans
-            font.pixelSize: 11
+            font.pixelSize: 12
             font.weight: 500
             renderType: Text.NativeRendering
         }
@@ -587,8 +587,8 @@ PanelWindow {
                     anchors.leftMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
-                    KeyCap { text: "⌃j" }
-                    KeyCap { text: "⌃k" }
+                    KeyCap { text: "j" }
+                    KeyCap { text: "k" }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "move"
