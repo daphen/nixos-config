@@ -20,8 +20,7 @@ Singleton {
     property var seenIds: ({})
     property int seenGen: 0
     // A genuinely-new notification passed every filter — fired once per
-    // arrival for presentation surfaces (toasts render from tracked; the
-    // island animates per-event).
+    // arrival for the island to animate.
     signal present(var notification)
     function markSeen(n) {
         if (n) root.markSeenById(n.id)
@@ -40,25 +39,18 @@ Singleton {
         return !!root.seenIds[id]
     }
 
-    // keepOnReload restores tracked notifications across a Quickshell reload
-    // (home-manager rebuild, theme switch). seenIds is in-memory and resets on
-    // reload, so without this every restored notification re-pops as a fresh
-    // toast. Snapshot the IDs present at startup and suppress their toast
-    // entrance — they belong in the Super+i history, not a flash. New
-    // notifications arrive after startup via onNotification, so they're never
-    // in this set and pop normally.
-    // A toast flashes only for a genuinely NEW notification — one delivered via
-    // onNotification, which marks it live below. Notifications restored across a
-    // reload (keepOnReload: rebuild, theme switch) are re-populated into
-    // trackedNotifications WITHOUT re-firing onNotification, so they never enter
-    // liveIds and their toast stays collapsed (they still live in the Super+i
-    // history). This is timing-independent — unlike snapshotting trackedNotifications
+    // Only a genuinely NEW notification — delivered via onNotification, which
+    // marks it live below — presents. Notifications restored across a reload
+    // (keepOnReload: rebuild, theme switch) are re-populated into
+    // trackedNotifications WITHOUT re-firing onNotification, so they never
+    // enter liveIds and stay quiet (they still live in the Super+i history).
+    // This is timing-independent — unlike snapshotting trackedNotifications
     // at startup, which races the async restore and misses everything.
     property var liveIds: ({})
     function isLive(n) { return !!(n && root.liveIds[n.id]) }
 
     // Backstop for the edge where a restore somehow re-fires onNotification:
-    // suppress every toast entrance for a short settle window after launch.
+    // suppress presentation for a short settle window after launch.
     property bool startupSettled: false
     Timer {
         running: true
@@ -83,11 +75,10 @@ Singleton {
     }
 
     // Only these apps persist in the Super+i tray. Everything else (screenshots,
-    // system notify-send, etc.) still toasts once — see Toast.qml — then drops,
-    // so the center stays a list of things you can actually act on.
-    // Which notification ids are showing as toasts right now, reported by the
-    // Toast delegates. Lets Super+i jump straight to a lone on-screen toast
-    // (unlike the center, toasts expire, so the count can't go stale).
+    // system notify-send, etc.) still shows once in the island — which dismisses
+    // it after — so the center stays a list of things you can actually act on.
+    // Which notification id is showing in the island right now, reported by
+    // NotificationIsland. Lets Super+i jump straight to a lone on-screen one.
     property var visibleToastIds: ({})
     function setToastVisible(id, vis) {
         if (id === undefined || id === null || id === 0) return
@@ -283,7 +274,7 @@ Singleton {
             notification.tracked = true
             // Arrivals during the post-reload settle window are restores re-fired
             // by keepOnReload, not genuinely new — mark them seen so they land in
-            // "earlier"/off the badge (same gate the toast uses via startupSettled).
+            // "earlier"/off the badge (same startupSettled gate as presentation).
             if (!root.startupSettled) root.markSeenById(notification.id)
             // One entry per source. Messages collapse by conversation (the
             // channel/group/DM — latest line wins, regardless of sender); Claude
@@ -295,15 +286,15 @@ Singleton {
             // A Claude prompt arriving on the session you're focused on just
             // clears. Messages are NOT suppressed here: slqs/dsqrd already
             // withhold the channel you're actually viewing (should=false), so
-            // anything that reaches us is a different channel and should toast
-            // even while the client window is focused.
+            // anything that reaches us is a different channel and should
+            // present even while the client window is focused.
             if (root._matchesFocus(notification) && !root.isMessageApp(notification)) {
                 root.clearOne(notification)
                 return
             }
             root.enforceCap()
-            // Surfaces (toast overlay, notification island) present anything
-            // that got this far and isn't a keepOnReload restore.
+            // The island presents anything that got this far and isn't a
+            // keepOnReload restore.
             if (root.startupSettled) root.present(notification)
         }
     }

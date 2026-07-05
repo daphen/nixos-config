@@ -4,11 +4,12 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import "."
 
-// Dynamic-island notification capsule. Springs down out of the bar's
-// centered notch when a notification arrives (Notifications.present),
-// holds a few seconds, springs back. Click = the same activation the
-// Super+i picker does (open channel / focus window). Coexists with the
-// corner toasts for now — trial period before it replaces them.
+// Dynamic-island notification capsule — the sole presentation surface.
+// Springs down out of the bar's centered notch when a notification
+// arrives (Notifications.present), holds a few seconds, springs back.
+// Click = the same activation the Super+i picker does (open channel /
+// focus window). Owns the ephemeral lifecycle: non-tray notifications
+// (screenshots, notify-send) are dismissed once their showing ends.
 PanelWindow {
     id: root
 
@@ -43,6 +44,7 @@ PanelWindow {
 
     // Current presentation.
     property var notif: null           // live Notification (may die under us)
+    property int nId: 0
     property string nApp: ""
     property string nSummary: ""
     property string nBody: ""
@@ -57,7 +59,9 @@ PanelWindow {
 
     function show(n) {
         const wasOpen = open
+        if (notif && nId !== (n.id || 0)) endShowing()
         notif = n
+        nId = n.id || 0
         nApp = n.appName || ""
         nSummary = n.summary || ""
         nBody = (n.body || "").replace(/<[^>]+>/g, "").replace(/\n/g, "  ")
@@ -66,10 +70,23 @@ PanelWindow {
         nWindowId = (n.hints && n.hints["niri-window"] !== undefined)
             ? String(n.hints["niri-window"]) : ""
         extraCount = wasOpen ? extraCount + 1 : 0
+        Notifications.setToastVisible(nId, true)
         closeDelay.stop()
         active = true
         open = true
         holdTimer.restart()
+    }
+
+    // A notification's showing is over (replaced or capsule closed): stop
+    // reporting it on-screen, and drop non-tray ones — they have no home in
+    // the Super+i center, and with no toast lifecycle nothing else dismisses
+    // them. Looked up by id: the object may already be gone.
+    function endShowing() {
+        Notifications.setToastVisible(nId, false)
+        if (Notifications.trayApps.indexOf(nApp.toLowerCase()) === -1) {
+            const n = Notifications._findById(nId)
+            if (n) n.dismiss()
+        }
     }
 
     function hide() {
@@ -78,7 +95,15 @@ PanelWindow {
         closeDelay.restart()
     }
     Timer { id: holdTimer; interval: 5000; onTriggered: root.hide() }
-    Timer { id: closeDelay; interval: 400; onTriggered: { root.active = false; root.notif = null } }
+    Timer {
+        id: closeDelay
+        interval: 400
+        onTriggered: {
+            root.endShowing()
+            root.active = false
+            root.notif = null
+        }
+    }
 
     // Click: same semantics as the Super+i picker's openItem — retain
     // messages as history, fire the default action, focus the window.

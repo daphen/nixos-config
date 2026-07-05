@@ -14,12 +14,7 @@ ShellRoot {
         Bar { required property var modelData; screen: modelData }
     }
 
-    // Single overlay that follows the focused monitor (its `screen` binds to
-    // the focused output). One window avoids per-screen duplicate toasts; the
-    // focus-driven re-anchor is safe on quickshell 0.3.0+.
-    NotificationOverlay {}
-
-    // Dynamic-island capsule under the bar notch (trial: coexists with toasts).
+    // Dynamic-island notification capsule under the bar notch.
     NotificationIsland {}
 
     Launcher {}

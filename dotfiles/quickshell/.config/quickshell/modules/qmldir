@@ -18,8 +18,6 @@ Dnd 1.0 Dnd.qml
 Inbox 1.0 Inbox.qml
 singleton Notifications 1.0 Notifications.qml
 singleton DndState 1.0 DndState.qml
-Toast 1.0 Toast.qml
-NotificationOverlay 1.0 NotificationOverlay.qml
 singleton LauncherState 1.0 LauncherState.qml
 Launcher 1.0 Launcher.qml
 Picker 1.0 Picker.qml
