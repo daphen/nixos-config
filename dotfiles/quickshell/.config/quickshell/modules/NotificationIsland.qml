@@ -22,12 +22,13 @@ PanelWindow {
         return scrs.length ? scrs[0] : null
     }
 
-    // Sits just below the bar, horizontally centered (no side anchors →
-    // niri centers the surface, which is also the notch's center).
+    // Overlaps the bar region (Overlay layer renders above it) so the
+    // capsule can cover the notch's bottom border where it attaches and
+    // read as one continuous shape growing out of the notch.
     anchors.top: true
-    margins.top: Theme.barHeight
+    margins.top: 0
     implicitWidth: 600
-    implicitHeight: 120
+    implicitHeight: Theme.barHeight + 130
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -101,24 +102,58 @@ PanelWindow {
         hide()
     }
 
+    // Same two-rectangle construction as the bar's notch (outer =
+    // hairline, inner = fill inset 1px on left/right/bottom, flush top)
+    // so the joint is invisible: the capsule's top overlaps the notch's
+    // bottom border and shares its exact colors.
+    // 4 logical px so the capsule's top edge lands on an integer physical
+    // pixel at 1.75 scale — a fractional edge leaves an antialiased row
+    // that lets the notch border bleed through.
+    readonly property int seamOverlap: 4
     Rectangle {
         id: capsule
         anchors.horizontalCenter: parent.horizontalCenter
-        // Tucked fully above the window top when closed — it slides out
-        // from under the notch's bottom edge.
-        y: root.open ? -Theme.notchRadius : -(height + 4)
-        height: 52
-        width: root.open ? Math.min(content.implicitWidth + 32, 560) : 140
-        radius: height / 2
-        topLeftRadius: root.open ? 12 : height / 2
-        topRightRadius: root.open ? 12 : height / 2
+        y: Theme.barHeight - root.seamOverlap
+        height: root.open ? 52 + root.seamOverlap : 0
+        width: root.open ? Math.min(content.implicitWidth + 32, 560) : 48
+        topLeftRadius: 0
+        topRightRadius: 0
+        bottomLeftRadius: Math.min(height / 2, Theme.notchRadius + 6)
+        bottomRightRadius: Math.min(height / 2, Theme.notchRadius + 6)
+        // Root is fill-colored so the part tucked inside the notch is
+        // invisible against it; the hairline outline is an overlay that
+        // starts at the bar's bottom edge.
         color: Theme.notch
-        border.color: Theme.hairline
-        border.width: 1
-        opacity: root.open ? 1 : 0
         clip: true
 
-        Behavior on y {
+        Rectangle {
+            anchors.fill: parent
+            anchors.topMargin: root.seamOverlap
+            color: Theme.hairline
+            topLeftRadius: 0
+            topRightRadius: 0
+            bottomLeftRadius: capsule.bottomLeftRadius
+            bottomRightRadius: capsule.bottomRightRadius
+            clip: true
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.leftMargin: 1
+                anchors.rightMargin: 1
+                anchors.bottomMargin: 1
+                // Rounded rects antialias every edge; a flush top edge
+                // leaves a partial-alpha row that tints the seam. Overshoot
+                // the top so the parent's clip cuts it with a hard edge.
+                anchors.topMargin: -2
+                color: Theme.notch
+                topLeftRadius: 0
+                topRightRadius: 0
+                bottomLeftRadius: Math.max(0, capsule.bottomLeftRadius - 1)
+                bottomRightRadius: Math.max(0, capsule.bottomRightRadius - 1)
+            }
+        }
+
+        Behavior on height {
             NumberAnimation {
                 duration: 380
                 easing.type: Easing.BezierSpline
@@ -132,12 +167,11 @@ PanelWindow {
                 easing.bezierCurve: [0.34, 1.4, 0.64, 1.0, 1.0, 1.0]
             }
         }
-        Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
         Row {
             id: content
-            anchors.verticalCenter: parent.verticalCenter
-            // Keep content visually centered under the notch even as width animates.
+            // Center within the visible (below-bar) portion of the capsule.
+            y: root.seamOverlap + (parent.height - root.seamOverlap - height) / 2
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 10
             opacity: root.open ? 1 : 0
