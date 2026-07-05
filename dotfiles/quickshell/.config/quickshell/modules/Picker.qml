@@ -67,7 +67,7 @@ PanelWindow {
     // Natural height of the list (rows + spacing + margins) so the panel
     // can hug its content instead of showing a fixed-height void.
     readonly property int listContentHeight: {
-        let h = 20
+        let h = 18
         for (let i = 0; i < filtered.length; i++) {
             const it = filtered[i]
             if (it && it.divider) h += 36
@@ -237,7 +237,7 @@ PanelWindow {
             Item {
                 id: inputWrap
                 width: parent.width
-                height: 74
+                height: 68
 
                 Rectangle {
                     id: searchField
@@ -245,7 +245,7 @@ PanelWindow {
                     anchors.leftMargin: 14
                     anchors.rightMargin: 14
                     anchors.topMargin: 14
-                    anchors.bottomMargin: 12
+                    anchors.bottomMargin: 6
                     radius: 12
                     color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
                 }
@@ -380,7 +380,7 @@ PanelWindow {
                 model: root.filtered
                 currentIndex: root.selectedIndex
                 spacing: 2
-                topMargin: 10
+                topMargin: 8
                 bottomMargin: 10
                 opacity: root.loading ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }

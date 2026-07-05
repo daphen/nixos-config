@@ -365,7 +365,7 @@ PanelWindow {
             Item {
                 id: inputWrap
                 width: parent.width
-                height: 74
+                height: 68
 
                 Rectangle {
                     id: searchField
@@ -373,7 +373,7 @@ PanelWindow {
                     anchors.leftMargin: 14
                     anchors.rightMargin: 14
                     anchors.topMargin: 14
-                    anchors.bottomMargin: 12
+                    anchors.bottomMargin: 6
                     radius: 12
                     color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
                 }
