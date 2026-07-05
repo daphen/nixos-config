@@ -535,8 +535,18 @@ PanelWindow {
                     required property int index
                     property bool isDivider: !!(modelData && modelData.divider)
                     readonly property bool hasSubtitle: !isDivider && String(modelData.subtitle || "").length > 0
+                    // Trailing profile chip for tab rows (P/W), like the
+                    // reference palette's per-row meta chips.
+                    readonly property string profileLetter: {
+                        if (isDivider || !modelData || modelData.kind !== "tab" || modelData.windowId === undefined) return ""
+                        const ws = PaletteState.chin || []
+                        for (let i = 0; i < ws.length; i++)
+                            if (ws[i].id === modelData.windowId)
+                                return ws[i].profile === "personal" ? "P" : ws[i].profile === "work" ? "W" : ""
+                        return ""
+                    }
                     width: list.width
-                    height: isDivider ? 36 : (hasSubtitle ? 60 : 44)
+                    height: isDivider ? 36 : (hasSubtitle ? 64 : 44)
 
                     // Group heading: 11px uppercase, padding 12 18 6.
                     Text {
@@ -588,32 +598,59 @@ PanelWindow {
                         border.color: rowItem.index === root.selectedIndex ? Theme.hairline : "transparent"
                         opacity: (!rowItem.isDivider && rowItem.modelData.isCurrent) ? 0.6 : 1
 
-                        Image {
-                            id: fav
-                            anchors.left: parent.left
-                            anchors.leftMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: rowItem.hasSubtitle ? 22 : 18
-                            height: width
-                            source: (!rowItem.isDivider && rowItem.modelData.faviconPath)
-                                ? "file://" + rowItem.modelData.faviconPath : ""
-                            visible: status === Image.Ready
-                            sourceSize.width: 44; sourceSize.height: 44
-                            fillMode: Image.PreserveAspectFit
-                            asynchronous: true
-                        }
                         Rectangle {
-                            visible: fav.status !== Image.Ready
-                            anchors.fill: fav
-                            radius: 4
-                            color: Theme.surface
+                            id: iconBox
+                            anchors.left: parent.left
+                            anchors.leftMargin: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: rowItem.hasSubtitle ? 34 : 24
+                            height: width
+                            radius: rowItem.hasSubtitle ? 10 : 7
+                            color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06)
+                            Image {
+                                id: fav
+                                anchors.centerIn: parent
+                                width: rowItem.hasSubtitle ? 22 : 16
+                                height: width
+                                source: (!rowItem.isDivider && rowItem.modelData.faviconPath)
+                                    ? "file://" + rowItem.modelData.faviconPath : ""
+                                visible: status === Image.Ready
+                                sourceSize.width: 44; sourceSize.height: 44
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                            }
                             Text {
                                 anchors.centerIn: parent
+                                visible: fav.status !== Image.Ready
                                 text: {
                                     if (rowItem.isDivider) return ""
                                     const t = String(rowItem.modelData.title || "?")
                                     return t.length ? t[0].toUpperCase() : "?"
                                 }
+                                color: Theme.fg_muted
+                                font.family: root.sans
+                                font.pixelSize: rowItem.hasSubtitle ? 13 : 10
+                                font.weight: 600
+                                renderType: Text.NativeRendering
+                            }
+                        }
+
+                        Rectangle {
+                            id: kindChip
+                            visible: rowItem.profileLetter.length > 0
+                            anchors.right: parent.right
+                            anchors.rightMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: kindText.implicitWidth + 12
+                            height: 22
+                            radius: 6
+                            color: Theme.surface
+                            border.color: Theme.hairline
+                            border.width: 1
+                            Text {
+                                id: kindText
+                                anchors.centerIn: parent
+                                text: rowItem.profileLetter
                                 color: Theme.fg_muted
                                 font.family: root.sans
                                 font.pixelSize: 10
@@ -623,9 +660,9 @@ PanelWindow {
                         }
 
                         Column {
-                            anchors.left: fav.right
-                            anchors.leftMargin: 12
-                            anchors.right: parent.right
+                            anchors.left: iconBox.right
+                            anchors.leftMargin: 14
+                            anchors.right: kindChip.visible ? kindChip.left : parent.right
                             anchors.rightMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 2
