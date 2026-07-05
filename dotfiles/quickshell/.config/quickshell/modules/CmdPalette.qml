@@ -550,6 +550,26 @@ PanelWindow {
                         font.letterSpacing: 0.6
                         renderType: Text.NativeRendering
                     }
+                    Text {
+                        visible: rowItem.isDivider
+                        anchors.right: parent.right
+                        anchors.rightMargin: 18
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 10
+                        text: {
+                            let c = 0
+                            for (let j = rowItem.index + 1; j < root.entries.length; j++) {
+                                if (root.entries[j] && root.entries[j].divider) break
+                                c++
+                            }
+                            return c
+                        }
+                        color: Theme.fg_muted
+                        opacity: 0.7
+                        font.family: root.sans
+                        font.pixelSize: 11
+                        renderType: Text.NativeRendering
+                    }
 
                     // Entry: inset 6px, radius 8, padding 8 12.
                     Rectangle {
@@ -560,6 +580,8 @@ PanelWindow {
                         radius: 8
                         color: rowItem.index === root.selectedIndex ? Theme.selection
                              : rowHover.hovered ? Theme.surface : "transparent"
+                        border.width: 1
+                        border.color: rowItem.index === root.selectedIndex ? Theme.hairline : "transparent"
                         opacity: (!rowItem.isDivider && rowItem.modelData.isCurrent) ? 0.6 : 1
 
                         Image {

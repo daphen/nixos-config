@@ -44,6 +44,36 @@ PanelWindow {
     property string query: search ? search.text : ""
     property int selectedIndex: 0
 
+    // Small keycap chip (esc, arrows, enter) — the reference-palette detail.
+    component KeyCap: Rectangle {
+        property alias text: capText.text
+        width: capText.implicitWidth + 12
+        height: 20
+        radius: 5
+        color: Theme.surface
+        border.color: Theme.hairline
+        border.width: 1
+        Text {
+            id: capText
+            anchors.centerIn: parent
+            color: Theme.fg_muted
+            font.family: notch.sans
+            font.pixelSize: 11
+            font.weight: 500
+            renderType: Text.NativeRendering
+        }
+    }
+
+    // Rows under a divider until the next one — shown as the section count.
+    function sectionCount(i) {
+        let c = 0
+        for (let j = i + 1; j < filtered.length; j++) {
+            if (filtered[j] && filtered[j].divider) break
+            c++
+        }
+        return c
+    }
+
     property bool active: false
     visible: active
 
@@ -206,12 +236,21 @@ PanelWindow {
                     renderType: Text.NativeRendering
                 }
 
+                KeyCap {
+                    id: escCap
+                    anchors.right: parent.right
+                    anchors.rightMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "esc"
+                    TapHandler { onTapped: root.closeRequested() }
+                }
+
             TextField {
                 id: search
                 anchors.left: searchIcon.right
                 anchors.leftMargin: 10
-                anchors.right: parent.right
-                anchors.rightMargin: 16
+                anchors.right: escCap.left
+                anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 placeholderText: root.placeholder
                 color: Theme.fg
@@ -348,6 +387,8 @@ PanelWindow {
                         color: rowItem.index === root.selectedIndex ? Theme.selection
                              : rowHover.hovered ? Theme.surface
                              : "transparent"
+                        border.width: 1
+                        border.color: rowItem.index === root.selectedIndex ? Theme.hairline : "transparent"
                     }
 
                     HoverHandler { id: rowHover; enabled: !rowItem.isDivider }
@@ -366,6 +407,19 @@ PanelWindow {
                         font.weight: 600
                         font.capitalization: Font.AllUppercase
                         font.letterSpacing: 0.6
+                        renderType: Text.NativeRendering
+                    }
+                    Text {
+                        visible: rowItem.isDivider
+                        anchors.right: parent.right
+                        anchors.rightMargin: 22
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 10
+                        text: root.sectionCount(rowItem.index)
+                        color: Theme.fg_muted
+                        opacity: 0.7
+                        font.family: notch.sans
+                        font.pixelSize: 11
                         renderType: Text.NativeRendering
                     }
 
@@ -496,24 +550,53 @@ PanelWindow {
             Item {
                 id: footer
                 width: parent.width
-                visible: root.altLabel.length > 0
-                height: visible ? 34 : 0
+                height: 36
                 Rectangle {
                     anchors.top: parent.top
                     width: parent.width
                     height: 1
                     color: Theme.hairline
                 }
+                Row {
+                    id: footerHints
+                    anchors.left: parent.left
+                    anchors.leftMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+                    KeyCap { text: "↑" }
+                    KeyCap { text: "↓" }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "move"
+                        color: Theme.fg_muted
+                        font.family: notch.sans
+                        font.pixelSize: 11
+                        renderType: Text.NativeRendering
+                    }
+                    Item { width: 8; height: 1 }
+                    KeyCap { text: "↵" }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "open"
+                        color: Theme.fg_muted
+                        font.family: notch.sans
+                        font.pixelSize: 11
+                        renderType: Text.NativeRendering
+                    }
+                }
                 Text {
-                    anchors.centerIn: parent
-                    width: parent.width - 32
+                    visible: root.altLabel.length > 0
+                    anchors.right: parent.right
+                    anchors.rightMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, parent.width - footerHints.width - 48)
                     text: root.altLabel
                     color: Theme.fg_muted
                     font.family: notch.sans
-                    font.pixelSize: 12
+                    font.pixelSize: 11
                     renderType: Text.NativeRendering
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
+                    horizontalAlignment: Text.AlignRight
+                    elide: Text.ElideLeft
                 }
             }
         }
