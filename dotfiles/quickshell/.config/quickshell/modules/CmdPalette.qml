@@ -668,7 +668,7 @@ PanelWindow {
             Item {
                 id: chinWrap
                 width: parent.width
-                height: PaletteState.chin.length > 0 ? 42 : 0
+                height: PaletteState.chin.length > 0 ? 54 : 0
                 visible: height > 0
 
                 Rectangle {

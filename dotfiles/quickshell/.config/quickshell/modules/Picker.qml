@@ -575,7 +575,7 @@ PanelWindow {
             Item {
                 id: footer
                 width: parent.width
-                height: 42
+                height: 52
                 Rectangle {
                     anchors.top: parent.top
                     width: parent.width
@@ -585,7 +585,7 @@ PanelWindow {
                 Row {
                     id: footerHints
                     anchors.left: parent.left
-                    anchors.leftMargin: 16
+                    anchors.leftMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
                     KeyCap { text: "j" }
@@ -623,7 +623,7 @@ PanelWindow {
                 Text {
                     visible: root.altLabel.length > 0
                     anchors.right: parent.right
-                    anchors.rightMargin: 16
+                    anchors.rightMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.min(implicitWidth, parent.width - footerHints.width - 48)
                     text: root.altLabel
