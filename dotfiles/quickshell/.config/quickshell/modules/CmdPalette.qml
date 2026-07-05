@@ -365,13 +365,24 @@ PanelWindow {
             Item {
                 id: inputWrap
                 width: parent.width
-                height: 56
+                height: 74
+
+                Rectangle {
+                    id: searchField
+                    anchors.fill: parent
+                    anchors.leftMargin: 14
+                    anchors.rightMargin: 14
+                    anchors.topMargin: 14
+                    anchors.bottomMargin: 12
+                    radius: 12
+                    color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
+                }
 
                 Text {
                     id: searchIcon
-                    anchors.left: parent.left
-                    anchors.leftMargin: 16
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: searchField.left
+                    anchors.leftMargin: 14
+                    anchors.verticalCenter: searchField.verticalCenter
                     text: ""
                     color: Theme.fg_muted
                     opacity: 0.85
@@ -385,7 +396,7 @@ PanelWindow {
                     visible: root.searchMode !== null
                     anchors.left: searchIcon.right
                     anchors.leftMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.verticalCenter: searchField.verticalCenter
                     width: visible ? chipText.implicitWidth + 16 : 0
                     height: chipText.implicitHeight + 8
                     radius: 6
@@ -408,7 +419,7 @@ PanelWindow {
                     anchors.leftMargin: 12
                     anchors.right: escBadge.left
                     anchors.rightMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.verticalCenter: searchField.verticalCenter
                     color: Theme.fg
                     font.family: root.sans
                     font.pixelSize: 17
@@ -425,9 +436,9 @@ PanelWindow {
 
                 Rectangle {
                     id: escBadge
-                    anchors.right: parent.right
-                    anchors.rightMargin: 16
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: searchField.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: searchField.verticalCenter
                     width: escText.implicitWidth + 16
                     height: escText.implicitHeight + 8
                     radius: 6
@@ -445,13 +456,6 @@ PanelWindow {
                         font.letterSpacing: 0.5
                         renderType: Text.NativeRendering
                     }
-                }
-
-                Rectangle {
-                    anchors.bottom: parent.bottom
-                    width: parent.width
-                    height: 1
-                    color: Theme.hairline
                 }
             }
 
@@ -532,7 +536,7 @@ PanelWindow {
                     property bool isDivider: !!(modelData && modelData.divider)
                     readonly property bool hasSubtitle: !isDivider && String(modelData.subtitle || "").length > 0
                     width: list.width
-                    height: isDivider ? 34 : (hasSubtitle ? 56 : 44)
+                    height: isDivider ? 36 : (hasSubtitle ? 60 : 46)
 
                     // Group heading: 11px uppercase, padding 12 18 6.
                     Text {
@@ -577,7 +581,7 @@ PanelWindow {
                         anchors.fill: parent
                         anchors.leftMargin: 6
                         anchors.rightMargin: 6
-                        radius: 10
+                        radius: 12
                         color: rowItem.index === root.selectedIndex ? Theme.selection
                              : rowHover.hovered ? Theme.surface : "transparent"
                         border.width: 1
@@ -631,7 +635,7 @@ PanelWindow {
                                 color: Theme.fg
                                 elide: Text.ElideRight
                                 font.family: root.sans
-                                font.pixelSize: 15
+                                font.pixelSize: 16
                                 font.weight: 600
                                 renderType: Text.NativeRendering
                             }

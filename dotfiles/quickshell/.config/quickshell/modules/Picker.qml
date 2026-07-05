@@ -221,13 +221,24 @@ PanelWindow {
             Item {
                 id: inputWrap
                 width: parent.width
-                height: 58
+                height: 74
+
+                Rectangle {
+                    id: searchField
+                    anchors.fill: parent
+                    anchors.leftMargin: 14
+                    anchors.rightMargin: 14
+                    anchors.topMargin: 14
+                    anchors.bottomMargin: 12
+                    radius: 12
+                    color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
+                }
 
                 Text {
                     id: searchIcon
-                    anchors.left: parent.left
-                    anchors.leftMargin: 16
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: searchField.left
+                    anchors.leftMargin: 14
+                    anchors.verticalCenter: searchField.verticalCenter
                     text: "\uf002"
                     color: Theme.fg_muted
                     opacity: 0.85
@@ -238,9 +249,9 @@ PanelWindow {
 
                 KeyCap {
                     id: escCap
-                    anchors.right: parent.right
-                    anchors.rightMargin: 16
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: searchField.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: searchField.verticalCenter
                     text: "esc"
                     TapHandler { onTapped: root.closeRequested() }
                 }
@@ -251,7 +262,7 @@ PanelWindow {
                 anchors.leftMargin: 10
                 anchors.right: escCap.left
                 anchors.rightMargin: 12
-                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenter: searchField.verticalCenter
                 placeholderText: root.placeholder
                 color: Theme.fg
                 placeholderTextColor: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.5)
@@ -292,13 +303,6 @@ PanelWindow {
                     }
                 }
             }
-
-                Rectangle {
-                    anchors.bottom: parent.bottom
-                    width: parent.width
-                    height: 1
-                    color: Theme.hairline
-                }
             }
 
             Item {
@@ -373,8 +377,10 @@ PanelWindow {
                     required property var modelData
                     required property int index
                     property bool isDivider: !!(modelData && modelData.divider)
+                    readonly property bool hasSub: !isDivider && root.subtitleField.length > 0
+                        && modelData && String(modelData[root.subtitleField] || "").length > 0
                     width: list.width
-                    height: isDivider ? 34 : 44
+                    height: isDivider ? 36 : (hasSub ? 60 : 46)
 
                     // ListView owns delegate x/y — the inset highlight must be
                     // an inner rectangle, never an x-offset on the root.
@@ -383,7 +389,7 @@ PanelWindow {
                         anchors.fill: parent
                         anchors.leftMargin: 10
                         anchors.rightMargin: 10
-                        radius: 10
+                        radius: 12
                         color: rowItem.index === root.selectedIndex ? Theme.selection
                              : rowHover.hovered ? Theme.surface
                              : "transparent"
@@ -476,32 +482,34 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
-                    Text {
+                    Column {
                         visible: !rowItem.isDivider
                         anchors.left: rowGlyph.active ? rowGlyph.right : (hlDot.visible ? hlDot.left : parent.left)
                         anchors.leftMargin: rowGlyph.active ? 10 : (hlDot.visible ? 16 : 22)
-                        anchors.right: rowIcon.active ? rowIcon.left : subtitleText.left
-                        anchors.rightMargin: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: rowItem.modelData ? String(rowItem.modelData.label || "?") : "?"
-                        color: Theme.fg
-                        font.family: notch.sans
-                        font.pixelSize: 15
-                        font.weight: 600
-                        renderType: Text.NativeRendering
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        id: subtitleText
-                        visible: !rowItem.isDivider && root.subtitleField && rowItem.modelData && (rowItem.modelData[root.subtitleField] || "").length > 0
-                        text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
-                        color: Theme.fg_muted
-                        font.family: notch.sans
-                        font.pixelSize: 13
-                        renderType: Text.NativeRendering
-                        anchors.right: parent.right
+                        anchors.right: rowIcon.active ? rowIcon.left : parent.right
                         anchors.rightMargin: 22
                         anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        Text {
+                            width: parent.width
+                            text: rowItem.modelData ? String(rowItem.modelData.label || "?") : "?"
+                            color: Theme.fg
+                            font.family: notch.sans
+                            font.pixelSize: 16
+                            font.weight: 600
+                            renderType: Text.NativeRendering
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            width: parent.width
+                            visible: rowItem.hasSub
+                            text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
+                            color: Theme.fg_muted
+                            font.family: notch.sans
+                            font.pixelSize: 13
+                            renderType: Text.NativeRendering
+                            elide: Text.ElideRight
+                        }
                     }
 
                     MouseArea {
