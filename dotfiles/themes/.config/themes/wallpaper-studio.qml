@@ -187,6 +187,14 @@ FloatingWindow {
             onMoved: parent.moved(value)
         }
     }
+    component SectionLabel: Text {
+        color: "#707B84"
+        font.pixelSize: 11
+        font.weight: 600
+        font.letterSpacing: 1.2
+        font.family: "Geist"
+        font.capitalization: Font.AllUppercase
+    }
     component Chip: Rectangle {
         property string label
         signal clicked()
@@ -201,7 +209,7 @@ FloatingWindow {
         // ── live shader preview + draggable anchors ─────────────────
         Rectangle {
             id: stage
-            width: parent.width - panel.width; height: parent.height
+            width: parent.width - panelScroll.width; height: parent.height
             color: "#101010"
 
             readonly property real fitW: Math.min(width - 28, (height - 28) * 1.6)
@@ -301,109 +309,124 @@ FloatingWindow {
             }
         }
 
-        // ── controls ────────────────────────────────────────────────
-        Column {
-            id: panel
-            width: 320
-            padding: 18
-            spacing: 10
+        // ── controls ────────────────────────────────────────────────        Flickable {
+            id: panelScroll
+            width: 360; height: parent.height
+            contentHeight: panel.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
 
-            Row {
-                spacing: 8
-                Repeater {
-                    model: ["dark", "light"]
-                    Rectangle {
-                        required property string modelData
-                        width: 70; height: 26; radius: 13
-                        color: win.mode === modelData ? "#EDEDED" : "#2E2E2E"
-                        Text { anchors.centerIn: parent; text: parent.modelData
-                               color: win.mode === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
-                        TapHandler { onTapped: { win.mode = parent.modelData; win.resetAnchors() } }
+            Column {
+                id: panel
+                width: 360
+                padding: 18
+                spacing: 10
+
+                SectionLabel { text: "Global — whole canvas" }
+
+                Flow {
+                    width: 324; spacing: 6
+                    Repeater {
+                        model: ["dark", "light"]
+                        Rectangle {
+                            required property string modelData
+                            width: 70; height: 26; radius: 13
+                            color: win.mode === modelData ? "#EDEDED" : "#2E2E2E"
+                            Text { anchors.centerIn: parent; text: parent.modelData
+                                   color: win.mode === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
+                            TapHandler { onTapped: { win.mode = parent.modelData; win.resetAnchors() } }
+                        }
                     }
                 }
-            }
-            Row {
-                spacing: 8
-                Repeater {
-                    model: ["mesh", "streaks", "flow", "bands"]
-                    Rectangle {
-                        required property string modelData
-                        width: 74; height: 26; radius: 13
-                        color: win.style === modelData ? "#EDEDED" : "#2E2E2E"
-                        Text { anchors.centerIn: parent; text: parent.modelData
-                               color: win.style === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
-                        TapHandler { onTapped: { win.style = parent.modelData; win.resetAnchors() } }
+                Flow {
+                    width: 324; spacing: 6
+                    Repeater {
+                        model: ["mesh", "streaks", "flow", "bands"]
+                        Rectangle {
+                            required property string modelData
+                            width: 74; height: 26; radius: 13
+                            color: win.style === modelData ? "#EDEDED" : "#2E2E2E"
+                            Text { anchors.centerIn: parent; text: parent.modelData
+                                   color: win.style === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
+                            TapHandler { onTapped: { win.style = parent.modelData; win.resetAnchors() } }
+                        }
                     }
                 }
-            }
 
-            Text { text: "anchor " + (win.selected + 1) + " / " + anchorsModel.count + " — drag to move, scroll to resize, double-click canvas to add (max 8)"
-                   width: 284; wrapMode: Text.WordWrap; color: "#707B84"; font.pixelSize: 11; font.family: "Geist" }
+                Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chrome"; from: 0; to: 1; step: 0.02; value: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
+                Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chromatic shift"; from: 0; to: 20; step: 1; value: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
+                Knob { visible: win.style === "streaks" || win.style === "flow"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
+                Knob { visible: win.style !== "mesh"; label: "angle"; from: -60; to: 60; step: 1; value: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
+                Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
+                Knob { label: "wave length"; from: 300; to: 3000; step: 10; value: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
+                Knob { label: "swirl"; from: -180; to: 180; step: 1; value: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
+                Knob { visible: win.style === "mesh" || win.style === "bands"; label: "softness"; from: 10; to: 220; step: 1; value: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
+                Knob { label: "grain"; from: 0; to: 0.5; step: 0.01; value: win.grain; onMoved: v => { win.grain = v; win.saveState() } }
 
-            Flow {
-                width: 284; spacing: 6
-                Repeater {
-                    model: win.palette
-                    Rectangle {
-                        required property string modelData
-                        width: 30; height: 30; radius: 8
-                        color: modelData
-                        border.width: anchorsModel.count > win.selected && anchorsModel.get(win.selected).hex === modelData ? 3 : 1
-                        border.color: border.width === 3 ? "#FF570D" : "#3A3A3A"
-                        TapHandler { onTapped: {
-                            anchorsModel.setProperty(win.selected, "hex", parent.modelData)
-                            win.touchAnchors()
-                        } }
+                Row {
+                    spacing: 8
+                    Chip { label: "reset anchors"; onClicked: win.resetAnchors() }
+                }
+
+                Rectangle { width: 324; height: 1; color: "#2E2E2E" }
+
+                SectionLabel { text: "Selected anchor — " + (win.selected + 1) + " of " + anchorsModel.count }
+                Text { text: "drag to move, scroll to resize, double-click canvas to add (max 8)"
+                       width: 324; wrapMode: Text.WordWrap; color: "#707B84"; font.pixelSize: 11; font.family: "Geist" }
+
+                Flow {
+                    width: 324; spacing: 6
+                    Repeater {
+                        model: win.palette
+                        Rectangle {
+                            required property string modelData
+                            width: 30; height: 30; radius: 8
+                            color: modelData
+                            border.width: anchorsModel.count > win.selected && anchorsModel.get(win.selected).hex === modelData ? 3 : 1
+                            border.color: border.width === 3 ? "#FF570D" : "#3A3A3A"
+                            TapHandler { onTapped: {
+                                anchorsModel.setProperty(win.selected, "hex", parent.modelData)
+                                win.touchAnchors()
+                            } }
+                        }
                     }
                 }
-            }
 
-            Knob {
-                label: "anchor size"
-                from: 0.2; to: 3; step: 0.05
-                value: anchorsModel.count > win.selected ? anchorsModel.get(win.selected).size : 1
-                onMoved: v => { anchorsModel.setProperty(win.selected, "size", v); win.touchAnchors() }
-            }
-
-            Row {
-                spacing: 8
-                Chip { label: "remove anchor"; onClicked: {
-                    if (anchorsModel.count <= 2) return
-                    anchorsModel.remove(win.selected)
-                    win.selected = Math.max(0, win.selected - 1)
-                    win.touchAnchors()
-                } }
-                Chip { label: "reset"; onClicked: win.resetAnchors() }
-            }
-
-            Rectangle { width: 284; height: 1; color: "#2E2E2E" }
-
-            Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chrome"; from: 0; to: 1; step: 0.02; value: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
-            Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chromatic shift"; from: 0; to: 20; step: 1; value: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
-            Knob { visible: win.style === "streaks" || win.style === "flow"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
-            Knob { visible: win.style !== "mesh"; label: "angle"; from: -60; to: 60; step: 1; value: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
-            Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
-            Knob { label: "wave length"; from: 300; to: 3000; step: 10; value: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
-            Knob { label: "swirl"; from: -180; to: 180; step: 1; value: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
-            Knob { visible: win.style === "mesh" || win.style === "bands"; label: "softness"; from: 10; to: 220; step: 1; value: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
-            Knob { label: "grain"; from: 0; to: 0.5; step: 0.01; value: win.grain; onMoved: v => { win.grain = v; win.saveState() } }
-
-            Item { width: 1; height: 6 }
-
-            Row {
-                spacing: 8
-                Rectangle {
-                    width: 120; height: 30; radius: 15; color: "#EDEDED"
-                    Text { anchors.centerIn: parent; text: "Save 4K"; color: "#181818"; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
-                    TapHandler { onTapped: win.save4k(false) }
+                Knob {
+                    label: "anchor size"
+                    from: 0.2; to: 3; step: 0.05
+                    value: anchorsModel.count > win.selected ? anchorsModel.get(win.selected).size : 1
+                    onMoved: v => { anchorsModel.setProperty(win.selected, "size", v); win.touchAnchors() }
                 }
-                Rectangle {
-                    width: 120; height: 30; radius: 15; color: "#2E2E2E"
-                    Text { anchors.centerIn: parent; text: "Save + Set"; color: "#EDEDED"; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
-                    TapHandler { onTapped: win.save4k(true) }
+
+                Row {
+                    spacing: 8
+                    Chip { label: "remove anchor"; onClicked: {
+                        if (anchorsModel.count <= 2) return
+                        anchorsModel.remove(win.selected)
+                        win.selected = Math.max(0, win.selected - 1)
+                        win.touchAnchors()
+                    } }
                 }
+
+                Rectangle { width: 324; height: 1; color: "#2E2E2E" }
+
+                Row {
+                    spacing: 8
+                    Rectangle {
+                        width: 120; height: 30; radius: 15; color: "#EDEDED"
+                        Text { anchors.centerIn: parent; text: "Save 4K"; color: "#181818"; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
+                        TapHandler { onTapped: win.save4k(false) }
+                    }
+                    Rectangle {
+                        width: 120; height: 30; radius: 15; color: "#2E2E2E"
+                        Text { anchors.centerIn: parent; text: "Save + Set"; color: "#EDEDED"; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
+                        TapHandler { onTapped: win.save4k(true) }
+                    }
+                }
+                Text { text: win.status; color: "#97B5A6"; font.pixelSize: 12; font.family: "Geist" }
+                Item { width: 1; height: 12 }
             }
-            Text { text: win.status; color: "#97B5A6"; font.pixelSize: 12; font.family: "Geist" }
         }
     }
 }
