@@ -181,12 +181,21 @@ FloatingWindow {
                seed + "-" + Math.floor(Math.random() * 100000) + ".png"
     }
     Process { id: applyProc }
+    FileView {
+        id: themeModeFile
+        path: Quickshell.env("HOME") + "/.config/theme_mode"
+        watchChanges: true
+    }
     function save4k(andSet) {
         const out = setPath()
         win.status = "rendering 4K…"
         fx.grabToImage(function (res) {
             if (!res.saveToFile(out)) { win.status = "save failed"; return }
-            win.status = "saved ✓"
+            let cur = ""
+            try { cur = themeModeFile.text().trim() } catch (e) {}
+            win.status = !andSet ? "saved ✓"
+                       : cur === win.mode ? "saved + set ✓"
+                       : "saved ✓ — queued for " + win.mode + " mode (you're in " + cur + ")"
             statusClear.restart()
             if (andSet) {
                 // setsid: waypaper/swaybg must survive this Process's exit —
