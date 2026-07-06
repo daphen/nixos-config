@@ -184,9 +184,13 @@ EOPY
     local swirl="${SWIRL:-$(( 15 + SEED % 40 ))}"
     local blur="${BLUR:-80}"
     local grain="${GRAIN:-0.12}"
-    # Knobs are calibrated at 3840 wide; scale them to the render size so a
-    # small preview looks like the final.
-    local sc; sc=$(awk "BEGIN{printf \"%.4f\", $W/3840}")
+    # ALL geometry is computed at a fixed internal resolution and resized to
+    # the requested size at the very end — the only way preview and 4K stay
+    # truly identical (per-size pipelines kept diverging in smear tails,
+    # noise realizations, and rounding). Soft gradients lose nothing in a
+    # 2x upscale; grain is added after the final resize at native res.
+    local WW=1920 WH=1200
+    local sc; sc=$(awk "BEGIN{printf \"%.4f\", $WW/3840}")
     local amp_s len_s blur_s
     amp_s=$(awk "BEGIN{printf \"%d\", $wave_amp*$sc + 0.5}")
     len_s=$(awk "BEGIN{printf \"%d\", $wave_len*$sc + 0.5}")
@@ -215,7 +219,7 @@ EOPY
         local pct unpct RW RH
         pct=$(awk "BEGIN{printf \"%.3f\", 100/$squash}")
         unpct=$(awk "BEGIN{printf \"%.3f\", $squash*100}")
-        RW=$(( W * 2 )); RH=$(( H * 2 + 2 * pad ))
+        RW=$(( WW * 2 )); RH=$(( WH * 2 + 2 * pad ))
         # Finishing is asymmetric: dark lifts faint light out of black;
         # light keeps the paper white and deepens the chromatic ink.
         local finish_args
@@ -238,7 +242,10 @@ EOPY
         [[ "$mode" == "light" ]] && combine_op="Multiply"
         local chrome_args=()
         if [[ "$mode" == "dark" ]]; then
-            chrome_args=( "(" -size "${RW}x${RH}" xc:gray50 -seed "$SEED" -attenuate 2.5 +noise Uniform -colorspace Gray -blur "0x${nblur}" -level "38%,62%" ")" -compose Multiply -composite )
+            # Noise on a FIXED logical grid, upscaled to the canvas — a
+            # per-resolution realization made preview and 4K structurally
+            # different after the gain stage.
+            chrome_args=( "(" -size "960x640" xc:gray50 -seed "$SEED" -attenuate 2.5 +noise Uniform -colorspace Gray -blur "0x1.5" -level "38%,62%" -filter Gaussian -resize "${RW}x${RH}!" ")" -compose Multiply -composite )
         fi
         magick "$seedpng" \
             -filter Gaussian -resize "${RW}x${RH}!" \
@@ -250,23 +257,25 @@ EOPY
             -wave "${amp_s}x${len_s}" \
             -swirl "$swirl" \
             -rotate "$ANGLE" \
-            -gravity center -crop "${W}x${H}+0+0" +repage \
+            -gravity center -crop "${WW}x${WH}+0+0" +repage \
             \( -clone 0 -channel R -separate +channel -virtual-pixel Edge -distort Affine "0,0 ${ab_s},0" \) \
             \( -clone 0 -channel G -separate +channel \) \
             \( -clone 0 -channel B -separate +channel -virtual-pixel Edge -distort Affine "0,0 -${ab_s},0" \) \
             -delete 0 -combine \
             -unsharp "0x${unsharp_s}+1.0+0.02" \
             "${finish_args[@]}" \
+            -filter Gaussian -resize "${W}x${H}!" \
             "${grain_args[@]}" \
             "$out"
     else
         magick "$seedpng" \
-            -filter Gaussian -resize "${W}x$(( H + 2 * pad ))!" \
+            -filter Gaussian -resize "${WW}x$(( WH + 2 * pad ))!" \
             -background "$base_hex" -virtual-pixel Mirror \
             -wave "${amp_s}x${len_s}" \
             -swirl "$swirl" \
             -blur "0x${blur_s}" \
-            -gravity center -crop "${W}x${H}+0+0" +repage \
+            -gravity center -crop "${WW}x${WH}+0+0" +repage \
+            -filter Gaussian -resize "${W}x${H}!" \
             "${grain_args[@]}" \
             "$out"
     fi
