@@ -49,7 +49,10 @@ W="${SIZE%x*}"; H="${SIZE#*x}"
 
 gen_one() {
     local mode="$1"
-    local out="${OUT:-$OUT_DIR/mesh-$mode-$SEED.png}"
+    # Unique name per save: swaybg textures never reload, so overwriting a
+    # previous file leaves stale wallpaper on screen (and multiple saves
+    # with the default seed silently clobbered each other).
+    local out="${OUT:-$OUT_DIR/mesh-$mode-$SEED-$(date +%H%M%S).png}"
     local seedpng
     seedpng="$(mktemp --suffix=.png)"
 
@@ -273,6 +276,9 @@ EOPY
     if [[ "$SET_LINK" == 1 ]]; then
         ln -sf "$out" "$THEMES_DIR/wallpaper-$mode"
         if [[ "$(cat "$HOME/.config/theme_mode" 2>/dev/null)" == "$mode" ]] && command -v waypaper &>/dev/null; then
+            # swaybg never reloads its texture — make sure no stale instance
+            # survives the handoff.
+            pkill -x swaybg 2>/dev/null || true
             waypaper --wallpaper "$out" &>/dev/null &
         fi
     fi
