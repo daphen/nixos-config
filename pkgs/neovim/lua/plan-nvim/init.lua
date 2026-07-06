@@ -21,6 +21,8 @@ local state = {
 	status = nil,
 	progress = nil,
 	watcher = nil,
+	poller = nil,
+	poll_stamp = "",
 	file_watchers = {},
 	steps_buf = nil,
 	steps_win = nil,
@@ -199,6 +201,68 @@ function M.statusline()
 	return string.format("%s %s · %s%s", icon, (p and p.ticket) or "plan", state.status or "draft", nexttxt)
 end
 
+-- Shared refresh: re-read the artifacts and update every surface. Driven by
+-- BOTH the fs_event watcher and a 2s mtime poll — fs_event alone proved
+-- capable of failing silently (a whole implement cycle went unnoticed).
+local function refresh_from_artifacts()
+	read_status()
+	read_progress()
+	pcall(vim.cmd, "checktime") -- reload the plan buffer when the agent rewrites it (answers, --finalize)
+	-- An amend (from nvim OR the agent TUI) bumps amended_at; bring the plan up
+	-- so you review the additions and re-approve, even from a code buffer.
+	local amended = state.progress and state.progress.amended_at
+	local signal = (amended and amended ~= state.last_amended)
+		or (state.status == "amended" and state.last_status ~= "amended")
+	if signal then
+		state.last_amended = amended
+		if state.plan_path and vim.api.nvim_buf_get_name(0) ~= state.plan_path then
+			if pcall(vim.cmd, "edit " .. vim.fn.fnameescape(state.plan_path)) then
+				vim.notify("plan: amended — review the additions & re-approve")
+			else
+				vim.notify("plan: amended — :PlanOpen to review", vim.log.levels.WARN)
+			end
+		end
+	end
+	state.last_status = state.status
+	if state.progress and state.progress.phase == "implementing" then
+		arm_surface_watches(state.root) -- surface area can grow (unplanned files)
+		follow_step() -- open the file the agent is currently touching
+	elseif state.progress and state.progress.phase == "reconciled" then
+		state.following = false -- implementation done; stop following
+	end
+	if state.steps_buf and vim.api.nvim_buf_is_valid(state.steps_buf)
+		and state.steps_win and vim.api.nvim_win_is_valid(state.steps_win) then
+		render_steps(state.steps_buf)
+	end
+	pcall(function() require("plan-nvim.review").refresh() end)
+end
+
+local function artifact_stamp()
+	if not state.plan_path then return "" end
+	local base = state.plan_path:gsub("%.md$", "")
+	local parts = {}
+	for _, f in ipairs({ state.plan_path, base .. ".progress.json", base .. ".review.json" }) do
+		local st = vim.uv.fs_stat(f)
+		parts[#parts + 1] = st and (st.mtime.sec .. ":" .. st.mtime.nsec) or "x"
+	end
+	return table.concat(parts, "|")
+end
+
+local function start_poll()
+	if state.poller then pcall(function() state.poller:stop(); state.poller:close() end) end
+	local t = vim.uv.new_timer()
+	if not t then return end
+	state.poller = t
+	state.poll_stamp = artifact_stamp()
+	t:start(2000, 2000, vim.schedule_wrap(function()
+		local stamp = artifact_stamp()
+		if stamp ~= state.poll_stamp then
+			state.poll_stamp = stamp
+			refresh_from_artifacts()
+		end
+	end))
+end
+
 -- own fs_event on .plans/ so status (and a future review overlay) refresh when
 -- the agent rewrites the sidecars during --go / --reconcile.
 local function watch()
@@ -209,38 +273,10 @@ local function watch()
 	pcall(function()
 		h:start(plans_dir(), {}, vim.schedule_wrap(function(err)
 			if err then return end
-			read_status()
-			read_progress()
-			pcall(vim.cmd, "checktime") -- reload the plan buffer when the agent rewrites it (answers, --finalize)
-			-- An amend (from nvim OR the agent TUI) bumps amended_at; bring the plan up
-			-- so you review the additions and re-approve, even from a code buffer.
-			local amended = state.progress and state.progress.amended_at
-			local signal = (amended and amended ~= state.last_amended)
-				or (state.status == "amended" and state.last_status ~= "amended")
-			if signal then
-				state.last_amended = amended
-				if state.plan_path and vim.api.nvim_buf_get_name(0) ~= state.plan_path then
-					if pcall(vim.cmd, "edit " .. vim.fn.fnameescape(state.plan_path)) then
-						vim.notify("plan: amended — review the additions & re-approve")
-					else
-						vim.notify("plan: amended — :PlanOpen to review", vim.log.levels.WARN)
-					end
-				end
-			end
-			state.last_status = state.status
-			if state.progress and state.progress.phase == "implementing" then
-				arm_surface_watches(state.root) -- surface area can grow (unplanned files)
-				follow_step() -- open the file the agent is currently touching
-			elseif state.progress and state.progress.phase == "reconciled" then
-				state.following = false -- implementation done; stop following
-			end
-			if state.steps_buf and vim.api.nvim_buf_is_valid(state.steps_buf)
-				and state.steps_win and vim.api.nvim_win_is_valid(state.steps_win) then
-				render_steps(state.steps_buf)
-			end
-			pcall(function() require("plan-nvim.review").refresh() end)
+			refresh_from_artifacts()
 		end))
 	end)
+	start_poll()
 end
 
 local function open_path(path)
