@@ -231,7 +231,7 @@ PanelWindow {
             }
         }
 
-        readonly property string sans: "sans-serif"
+        readonly property string sans: "Noto Sans"
 
         Column {
             anchors.fill: parent
