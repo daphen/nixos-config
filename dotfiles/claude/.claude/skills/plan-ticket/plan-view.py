@@ -121,8 +121,9 @@ def main() -> int:
     url = f"http://127.0.0.1:{PORT}/plan/{args.key}"
     print(url)
     if args.open:
+        # chromeless app-mode window (own app-id) — matches review-pr's page
         dispatch = HOME / ".config" / "niri" / "scripts" / "browser-dispatch"
-        opener = [str(dispatch)] if dispatch.is_file() else ["xdg-open"]
+        opener = [str(dispatch), "--app"] if dispatch.is_file() else ["xdg-open"]
         subprocess.Popen(opener + [url], stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
     return 0

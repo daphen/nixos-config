@@ -9,11 +9,12 @@ Three-phase workflow. North star: **containment** — the surface area is a hard
 boundary, and the artifact lets the user see and prove the work stayed small.
 
 Three artifacts, keyed to the plan, are the seam between this skill, the neovim
-plugin, and the Quickshell board. Never duplicate their state elsewhere.
+plugin, and the live plan view (plan-view.py, opened as an app window on --go).
+Never duplicate their state elsewhere.
 
 - `<plandir>/<key>.md` — the human artifact (source of truth).
 - `<plandir>/<key>.progress.json` — machine state, read by the plugin (live-watch)
-  and Quickshell. Always exists from PLAN onward.
+  and the plan view. Always exists from PLAN onward.
 - `<plandir>/<key>.review.json` — produced by RECONCILE: hunk↔step correspondence,
   drift flags, verification results.
 
