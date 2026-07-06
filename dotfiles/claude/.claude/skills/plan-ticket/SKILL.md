@@ -166,6 +166,10 @@ new scope to add; also honor any manual edits the user already made to the artif
 
 ## PHASE 2 — IMPLEMENT (`--go`)
 
+0. FIRST, open the live plan view so the user watches the flow tick:
+   `python3 ~/.claude/skills/plan-ticket/plan-view.py <key> --plandir <plandir> --open`
+   Idempotent — reuses the running server (port 8746); the page hot-reloads
+   whenever `progress.json`/`review.json` change.
 1. Read `<plandir>/<key>.md` (normally already `--finalize`d into clean
    directives); honor the user's edits — their text wins.
 2. Refuse to start if any **Your call:** is `(unresolved)`; list them and stop.
