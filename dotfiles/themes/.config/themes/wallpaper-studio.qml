@@ -133,10 +133,13 @@ FloatingWindow {
             win.status = "saved ✓"
             statusClear.restart()
             if (andSet) {
+                // setsid: waypaper/swaybg must survive this Process's exit —
+                // plain & left them in our process group and they died with
+                // it (both monitors went bare-backdrop gray).
                 applyProc.command = ["bash", "-c",
                     "ln -sf '" + out + "' \"$HOME/.config/themes/wallpaper-" + win.mode + "\"; " +
                     "if [ \"$(cat \"$HOME/.config/theme_mode\")\" = '" + win.mode + "' ]; then " +
-                    "pkill -x swaybg; waypaper --wallpaper '" + out + "' & fi"]
+                    "pkill -x swaybg; setsid waypaper --wallpaper '" + out + "' >/dev/null 2>&1 </dev/null & fi"]
                 applyProc.running = true
             }
         }, Qt.size(3840, 2400))

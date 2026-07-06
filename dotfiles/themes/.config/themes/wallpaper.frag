@@ -29,9 +29,12 @@ layout(std140, binding = 0) uniform buf {
 const float ASPECT = 1.6;   // 16:10 canvas
 
 float hash12(vec2 p) {
-    p = fract(p * vec2(123.34, 456.21) + seedF);
-    p += dot(p, p + 45.32);
-    return fract(p.x * p.y);
+    // Hoskins hash — stable at coordinates in the thousands (a cheaper
+    // fract-mul hash lost precision and the grain degenerated into
+    // horizontal weave).
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031 + seedF * 0.017);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
 }
 float vnoise(vec2 p) {
     vec2 i = floor(p), f = fract(p);
