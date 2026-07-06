@@ -140,22 +140,28 @@ Singleton {
         const out = []
         const groups = visibleWorkspaces(output)
         for (let g = 0; g < groups.length; g++) {
-            if (g > 0) out.push({ kind: "gap" })
             const ws = groups[g].ws
             const wins = groups[g].windows
             const activeId = ws.active_window_id
             const wsFocused = ws.is_focused || false
+            const cells = []
             if (wins.length === 0 && (wsFocused || ws.is_active === true)) {
-                out.push({ kind: "dot" })
-                continue
+                cells.push({ kind: "dot" })
+            } else {
+                for (const w of wins) {
+                    cells.push({
+                        kind: "bar",
+                        focused: w.is_focused === true,
+                        wsActive: !wsFocused && w.id === activeId,
+                    })
+                }
             }
-            for (const w of wins) {
-                out.push({
-                    kind: "bar",
-                    focused: w.is_focused === true,
-                    wsActive: !wsFocused && w.id === activeId,
-                })
-            }
+            // Gap only between groups that actually render — an empty
+            // inactive workspace (niri's trailing one) used to leave a
+            // phantom gap cell that pushed the ticks ~9px off center.
+            if (cells.length === 0) continue
+            if (out.length > 0) out.push({ kind: "gap" })
+            for (const c of cells) out.push(c)
         }
         return out
     }
