@@ -170,12 +170,12 @@ def render_surface(progress, review, secs: dict) -> str:
         f, note = p.get("file", ""), p.get("note", "")
         chips = " ".join(f"◆{n}" for n in steps_for(f))
         chips_html = f'<span class="ct">{chips}</span>' if chips else ""
-        note_html = f'<span class="note">{md_inline(note)}</span>' if note else ""
+        note_html = f'<div class="note">{md_inline(note)}</div>' if note else ""
         return (
             f'<div class="frow surf openable" data-file="{html.escape(f, quote=True)}"><span class="tag {act}">{act}</span>'
             f'<span class="st {st}">{st}</span>'
-            f'<span class="nm">{html.escape(f.rsplit("/", 1)[-1])}</span>'
-            f'{chips_html}{note_html}</div>'
+            f'<div class="fmain"><div class="l1"><span class="nm">{html.escape(f.rsplit("/", 1)[-1])}</span>'
+            f'{chips_html}</div>{note_html}</div></div>'
         )
 
     groups: dict = {}
@@ -188,8 +188,8 @@ def render_surface(progress, review, secs: dict) -> str:
     ]
     drift = [
         f'<div class="frow surf"><span class="tag drift">drift</span><span class="st"></span>'
-        f'<span class="nm">{html.escape(x.get("file", x.get("hunk","")))}</span>'
-        f'<span class="note">{md_inline(x.get("why",""))}</span></div>'
+        f'<div class="fmain"><div class="l1"><span class="nm">{html.escape(x.get("file", x.get("hunk","")))}</span></div>'
+        f'<div class="note">{md_inline(x.get("why",""))}</div></div></div>'
         for x in (review or {}).get("drift") or []
     ]
     if drift:
