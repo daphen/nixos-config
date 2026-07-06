@@ -393,7 +393,7 @@ FloatingWindow {
                 Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
                 Knob { label: "wave length"; from: 300; to: 3000; step: 10; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
                 Knob { label: "swirl"; from: -180; to: 180; step: 1; extValue: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
-                Knob { visible: win.style === "mesh" || win.style === "bands"; label: "softness"; from: 10; to: 220; step: 1; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
+                Knob { visible: win.style !== "streaks"; label: "softness"; from: 10; to: 220; step: 1; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
                 Knob { label: "grain"; from: 0; to: 0.5; step: 0.01; extValue: win.grain; onMoved: v => { win.grain = v; win.saveState() } }
 
                 Row {
