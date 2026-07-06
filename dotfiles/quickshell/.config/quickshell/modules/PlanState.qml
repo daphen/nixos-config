@@ -31,7 +31,7 @@ Singleton {
         return m ? "EVERY-" + m[0] : wsShort
     }
 
-    readonly property string icon: phase === "reconciled" ? "󰄲"    // nf-md-checkbox_marked
+    readonly property string icon: phase === "reconciled" ? "󰄭"    // nf-md-check_all
                                  : phase === "implementing" ? "󰦖"  // nf-md-progress_clock
                                  : phase === "finalized" ? "󰄬"     // nf-md-check
                                  : "󰏫"                             // nf-md-pencil (draft)
