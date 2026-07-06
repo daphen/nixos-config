@@ -19,6 +19,7 @@ SET_LINK=0
 # Optional explicit knobs — default to seed-derived when empty.
 WAVE_AMP="" WAVE_LEN="" SWIRL="" BLUR="" GRAIN="" OUT=""
 CELLS="10x6" ANCHORS="4" ANCHOR_SPEC=""
+STYLE="mesh" ANGLE="35" STREAK="120" ABERRATION="6"
 
 shift $(( $# > 0 ? 1 : 0 )) || true
 while [[ $# -gt 0 ]]; do
@@ -35,6 +36,10 @@ while [[ $# -gt 0 ]]; do
         --cells)    CELLS="$2"; shift 2 ;;
         --anchors)  ANCHORS="$2"; shift 2 ;;
         --anchor-spec) ANCHOR_SPEC="$2"; shift 2 ;;
+        --style)    STYLE="$2"; shift 2 ;;
+        --angle)    ANGLE="$2"; shift 2 ;;
+        --streak)   STREAK="$2"; shift 2 ;;
+        --aberration) ABERRATION="$2"; shift 2 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
@@ -50,12 +55,16 @@ gen_one() {
 
     # Weighted palette: mostly background tones so the accents read as
     # soft glows, not a color explosion.
-    python3 - "$mode" "$SEED" "$seedpng" "$CELLS" "$ANCHORS" "$ANCHOR_SPEC" <<'EOPY'
+    python3 - "$mode" "$SEED" "$seedpng" "$CELLS" "$ANCHORS" "$ANCHOR_SPEC" "$STYLE" <<'EOPY'
 import json, os, random, struct, sys, zlib
 
 mode, seed, out, cells, n_anchors = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4], int(sys.argv[5])
 anchor_spec = sys.argv[6] if len(sys.argv) > 6 else ""
+style = sys.argv[7] if len(sys.argv) > 7 else "mesh"
 GW, GH = (int(v) for v in cells.split("x"))
+if style == "streaks":
+    # small hot points, not fields — dense grid so cores stay tight
+    GW, GH = GW * 4, GH * 4
 themes = json.load(open(os.path.expanduser("~/.config/themes/colors.json")))["themes"][mode]
 bg, acc = themes["background"], themes["accent"]
 
@@ -75,6 +84,15 @@ else:
 
 rng = random.Random(seed if mode == "dark" else seed + 1)
 base = c(bg["primary"])
+if style == "streaks":
+    # Chroma look: near-black stage, hot chromatic points. The magick pass
+    # stretches these into light streaks.
+    base = tuple(round(v * 0.25) for v in c(bg["primary"])) if mode == "dark" else c(bg["primary"])
+    hot = [(255, 255, 255), c(acc["orange"])]
+    for k in ("sky", "blue", "cyan"):
+        if k in acc:
+            hot.append(c(acc[k]))
+    pool = [base, base] + hot
 
 anchors = []
 if anchor_spec:
@@ -84,7 +102,8 @@ if anchor_spec:
         if not part.strip():
             continue
         ax, ay, col, size = part.split(",")
-        anchors.append((float(ax), float(ay), c(col), float(size)))
+        sz = float(size) * (0.45 if style == "streaks" else 1.0)
+        anchors.append((float(ax), float(ay), c(col), sz))
 for i in range(max(2, n_anchors)) if not anchor_spec else []:
     col = pool[0] if i == 0 else rng.choice(pool)
     # soften accents toward base so they glow rather than shout — but on a
@@ -92,26 +111,48 @@ for i in range(max(2, n_anchors)) if not anchor_spec else []:
     # accent than dark does.
     if col == pool[0]:
         t = 1.0
+    elif style == "streaks":
+        t = rng.uniform(0.85, 1.0)   # streak light stays chromatic
     elif mode == "dark":
         t = rng.uniform(0.35, 0.75)
     else:
         t = rng.uniform(0.65, 1.0)
     col = tuple(base[k] + (col[k] - base[k]) * t for k in range(3))
-    anchors.append((rng.random(), rng.random(), col, 1.0))
+    if style == "streaks":
+        # a couple of large dark stage anchors, the rest tight hot cores
+        sz = 1.6 if i < 2 else rng.uniform(0.16, 0.32)
+        if i < 2:
+            col = base
+        anchors.append((rng.random(), rng.random(), col, sz))
+    else:
+        anchors.append((rng.random(), rng.random(), col, 1.0))
 
 rows = []
 for y in range(GH):
     row = bytearray([0])
     for x in range(GW):
         u = x / max(1, GW - 1); v = y / max(1, GH - 1)
-        num = [0.0, 0.0, 0.0]; den = 0.0
-        for ax, ay, col, size in anchors:
-            d2 = (u - ax) ** 2 + (v - ay) ** 2
-            w = (size * size) / (d2 + 0.02)
-            den += w
-            for k in range(3):
-                num[k] += col[k] * w
-        px = tuple(min(255, max(0, round(num[k] / den + rng.uniform(-6, 6)))) for k in range(3))
+        if style == "streaks":
+            # additive glows on a dark stage: each anchor contributes
+            # exp-falloff light, everything else stays black — normalized
+            # weighting would hand each anchor a whole bright region.
+            import math
+            acc = [float(b) for b in base]
+            for ax, ay, col, size in anchors:
+                d2 = (u - ax) ** 2 + (v - ay) ** 2
+                g = math.exp(-d2 / (0.014 * size * size + 1e-6))
+                for k in range(3):
+                    acc[k] += (col[k] - base[k]) * g
+            px = tuple(min(255, max(0, round(acc[k]))) for k in range(3))
+        else:
+            num = [0.0, 0.0, 0.0]; den = 0.0
+            for ax, ay, col, size in anchors:
+                d2 = (u - ax) ** 2 + (v - ay) ** 2
+                w = (size * size) / (d2 + 0.02)
+                den += w
+                for k in range(3):
+                    num[k] += col[k] * w
+            px = tuple(min(255, max(0, round(num[k] / den + rng.uniform(-6, 6)))) for k in range(3))
         row += bytes(px)
     rows.append(bytes(row))
 
@@ -149,15 +190,48 @@ EOPY
     local pad=$(( amp_s * 2 + 60 ))
     local grain_args=(-attenuate "$grain" +noise Gaussian)
     [[ "$grain" == "0" || "$grain" == "0.0" ]] && grain_args=()
-    magick "$seedpng" \
-        -filter Gaussian -resize "${W}x$(( H + 2 * pad ))!" \
-        -background "$base_hex" -virtual-pixel Mirror \
-        -wave "${amp_s}x${len_s}" \
-        -swirl "$swirl" \
-        -blur "0x${blur_s}" \
-        -gravity center -crop "${W}x${H}+0+0" +repage \
-        "${grain_args[@]}" \
-        "$out"
+    if [[ "$STYLE" == "streaks" ]]; then
+        # Chroma: ripple the hot points, stretch them into light with a long
+        # directional motion blur (+ a shorter counter-pass for depth), split
+        # the channels a few px for chromatic fringes, then crush the blacks.
+        local ab_s squash
+        ab_s=$(awk "BEGIN{printf \"%d\", $ABERRATION*$sc + 0.5}")
+        (( ab_s < 1 )) && ab_s=1
+        # Streak length -> horizontal squash/stretch smear factor. Smear on
+        # the X axis (no rotation bookkeeping), then rotate the FINISHED
+        # streaked image and center-crop from a 1.6x oversized render so
+        # the rotation fill never reaches the crop.
+        squash=$(awk "BEGIN{f=$STREAK/2; if(f<10)f=10; if(f>200)f=200; printf \"%.1f\", f}")
+        local pct unpct RW RH
+        pct=$(awk "BEGIN{printf \"%.3f\", 100/$squash}")
+        unpct=$(awk "BEGIN{printf \"%.3f\", $squash*100}")
+        RW=$(( W * 2 )); RH=$(( H * 2 + 2 * pad ))
+        magick "$seedpng" \
+            -filter Gaussian -resize "${RW}x${RH}!" \
+            -background "$base_hex" -virtual-pixel Mirror \
+            -filter Gaussian -resize "${pct}%x100%!" -resize "${RW}x${RH}!" \
+            -wave "${amp_s}x${len_s}" \
+            -swirl "$swirl" \
+            -rotate "$ANGLE" \
+            -gravity center -crop "${W}x${H}+0+0" +repage \
+            \( -clone 0 -channel R -separate +channel -roll "+${ab_s}+0" \) \
+            \( -clone 0 -channel G -separate +channel \) \
+            \( -clone 0 -channel B -separate +channel -roll "-${ab_s}+0" \) \
+            -delete 0 -combine \
+            -level "0%,22%" -sigmoidal-contrast 5x22% -modulate 100,140 \
+            "${grain_args[@]}" \
+            "$out"
+    else
+        magick "$seedpng" \
+            -filter Gaussian -resize "${W}x$(( H + 2 * pad ))!" \
+            -background "$base_hex" -virtual-pixel Mirror \
+            -wave "${amp_s}x${len_s}" \
+            -swirl "$swirl" \
+            -blur "0x${blur_s}" \
+            -gravity center -crop "${W}x${H}+0+0" +repage \
+            "${grain_args[@]}" \
+            "$out"
+    fi
     rm -f "$seedpng"
     echo "$out"
 

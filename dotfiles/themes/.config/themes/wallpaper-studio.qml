@@ -14,6 +14,9 @@ FloatingWindow {
     color: "#181818"
 
     property string mode: "dark"
+    property string style: "mesh"
+    property int angle: 25
+    property int streak: 220
     property int seed: 42
     property int waveAmp: 50
     property int waveLen: 1600
@@ -75,6 +78,7 @@ FloatingWindow {
                 "--swirl", String(swirl), "--blur", String(blurV),
                 "--grain", grain.toFixed(2),
                 "--anchor-spec", anchorSpec(),
+                "--style", style, "--angle", String(angle), "--streak", String(streak),
                 "--size", size]
                .concat(out ? ["--out", out] : [])
                .concat(extra || [])
@@ -230,6 +234,21 @@ FloatingWindow {
                 }
             }
 
+            Row {
+                spacing: 8
+                Repeater {
+                    model: ["mesh", "streaks"]
+                    Rectangle {
+                        required property string modelData
+                        width: 74; height: 26; radius: 13
+                        color: win.style === modelData ? "#EDEDED" : "#2E2E2E"
+                        Text { anchors.centerIn: parent; text: parent.modelData
+                               color: win.style === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
+                        TapHandler { onTapped: { win.style = parent.modelData; win.render() } }
+                    }
+                }
+            }
+
             Text { text: "anchor " + (win.selected + 1) + " / " + anchorsModel.count + " — drag to move, scroll to resize, double-click canvas to add"
                    width: 284; wrapMode: Text.WordWrap; color: "#707B84"; font.pixelSize: 11; font.family: "Geist" }
 
@@ -272,6 +291,8 @@ FloatingWindow {
 
             Rectangle { width: 284; height: 1; color: "#2E2E2E" }
 
+            Knob { visible: win.style === "streaks"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.render() } }
+            Knob { visible: win.style === "streaks"; label: "angle"; from: -60; to: 60; step: 1; value: win.angle; onMoved: v => { win.angle = v; win.render() } }
             Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.render() } }
             Knob { label: "wave length"; from: 300; to: 3000; step: 10; value: win.waveLen; onMoved: v => { win.waveLen = v; win.render() } }
             Knob { label: "swirl"; from: -180; to: 180; step: 1; value: win.swirl; onMoved: v => { win.swirl = v; win.render() } }
