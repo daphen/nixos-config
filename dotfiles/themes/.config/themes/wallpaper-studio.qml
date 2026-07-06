@@ -191,20 +191,18 @@ FloatingWindow {
         win.status = "rendering 4K…"
         fx.grabToImage(function (res) {
             if (!res.saveToFile(out)) { win.status = "save failed"; return }
-            let cur = ""
-            try { cur = themeModeFile.text().trim() } catch (e) {}
-            win.status = !andSet ? "saved ✓"
-                       : cur === win.mode ? "saved + set ✓"
-                       : "saved ✓ — queued for " + win.mode + " mode (you're in " + cur + ")"
+            win.status = andSet ? "saved + set ✓" : "saved ✓"
             statusClear.restart()
             if (andSet) {
                 // setsid: waypaper/swaybg must survive this Process's exit —
                 // plain & left them in our process group and they died with
                 // it (both monitors went bare-backdrop gray).
+                // Set means set — apply immediately regardless of the current
+                // theme mode; the symlink still lands in the composition's
+                // mode slot so theme switches keep pairing correctly.
                 applyProc.command = ["bash", "-c",
                     "ln -sf '" + out + "' \"$HOME/.config/themes/wallpaper-" + win.mode + "\"; " +
-                    "if [ \"$(cat \"$HOME/.config/theme_mode\")\" = '" + win.mode + "' ]; then " +
-                    "pkill -x swaybg; setsid waypaper --wallpaper '" + out + "' >/dev/null 2>&1 </dev/null & fi"]
+                    "pkill -x swaybg; setsid waypaper --wallpaper '" + out + "' >/dev/null 2>&1 </dev/null &"]
                 applyProc.running = true
             }
         }, Qt.size(3840, 2400))
