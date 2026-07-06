@@ -231,7 +231,7 @@ PanelWindow {
             }
         }
 
-        readonly property string sans: "Inter"
+        readonly property string sans: "Geist"
 
         Column {
             anchors.fill: parent

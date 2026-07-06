@@ -258,6 +258,7 @@
 
   # Fonts
   fonts.packages = with pkgs; [
+    geist-font
     inter
     noto-fonts
     noto-fonts-cjk-sans
