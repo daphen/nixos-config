@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""nvim-open <worktree-dir> <file> [line]
+"""nvim-open <worktree-dir> <file> [line] [--focus]
 
 Open <file> (repo-relative or absolute) at [line] in the nvim already running
 in <worktree-dir> — found by matching each server socket's process cwd, since
-nvim auto-listens on $XDG_RUNTIME_DIR/nvim.<pid>.0.
+nvim auto-listens on $XDG_RUNTIME_DIR/nvim.<pid>.0. --focus also shifts niri
+focus to that window (default leaves focus where it is).
 
 No nvim there → spawn a kitty+nvim in the worktree AND place it on the
 worktree's niri workspace (lovable-<name>), creating/naming that workspace if
@@ -45,8 +46,24 @@ def find_socket(wt: str):
         except OSError:
             continue
         if cwd == wt or cwd.startswith(wt + "/"):
-            return str(sock)
-    return None
+            return str(sock), int(pid)
+    return None, None
+
+
+def focus_window_of(pid: int):
+    """Focus the niri window hosting pid — walk up parents until one owns a window
+    (nvim lives inside kitty; niri knows the kitty pid)."""
+    by_pid = {w.get("pid"): w["id"] for w in (niri_json("windows") or [])}
+    p = pid
+    while p > 1:
+        if p in by_pid:
+            niri_action("focus-window", "--id", str(by_pid[p]))
+            return
+        try:
+            with open(f"/proc/{p}/stat") as f:
+                p = int(f.read().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            return
 
 
 def workspace_for(wt: str):
@@ -94,19 +111,23 @@ def window_ids():
 
 
 def main() -> int:
-    if len(sys.argv) < 3:
-        print("usage: nvim-open <worktree-dir> <file> [line]", file=sys.stderr)
+    focus = "--focus" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--focus"]
+    if len(args) < 2:
+        print("usage: nvim-open <worktree-dir> <file> [line] [--focus]", file=sys.stderr)
         return 2
-    wt = sys.argv[1].rstrip("/")
-    file_arg = sys.argv[2]
-    line = sys.argv[3] if len(sys.argv) > 3 else "1"
+    wt = args[0].rstrip("/")
+    file_arg = args[1]
+    line = args[2] if len(args) > 2 else "1"
     abs_path = file_arg if file_arg.startswith("/") else f"{wt}/{file_arg}"
 
-    sock = find_socket(wt)
+    sock, nvim_pid = find_socket(wt)
     if sock:
         # <C-\><C-N> forces normal mode; :edit +line jumps; zz centers.
         subprocess.run(["nvim", "--server", sock, "--remote-send",
                         f"<C-\\><C-N>:edit +{line} {abs_path}<CR>zz"])
+        if focus:
+            focus_window_of(nvim_pid)
         return 0
 
     # Fallback: fresh kitty+nvim in the worktree, placed on its workspace.
@@ -119,8 +140,6 @@ def main() -> int:
         start_new_session=True)
 
     ws = workspace_for(wt)
-    if not ws:
-        return 0
     new_id = None
     deadline = time.time() + 8
     while time.time() < deadline:
@@ -129,9 +148,11 @@ def main() -> int:
         if new:
             new_id = new.pop()
             break
-    if new_id is not None and ensure_workspace(ws):
+    if new_id is not None and ws and ensure_workspace(ws):
         niri_action("move-window-to-workspace", "--window-id", str(new_id),
-                    "--focus", "false", ws)
+                    "--focus", "true" if focus else "false", ws)
+    elif new_id is not None and focus:
+        niri_action("focus-window", "--id", str(new_id))
     return 0
 
 

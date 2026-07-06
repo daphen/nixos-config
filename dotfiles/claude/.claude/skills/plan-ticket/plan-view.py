@@ -69,7 +69,7 @@ class Handler(BaseHTTPRequestHandler):
             root = self._worktree_for(key)
             ok = False
             if root and f and NVIM_OPEN.is_file():
-                ok = subprocess.run([str(NVIM_OPEN), root, f, ln]).returncode == 0
+                ok = subprocess.run([str(NVIM_OPEN), root, f, ln, "--focus"]).returncode == 0
             self.send_response(200 if ok else 500)
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
