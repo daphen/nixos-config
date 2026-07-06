@@ -23,6 +23,8 @@ FloatingWindow {
     property real grain: 0.12
     property int angle: 25
     property int streak: 220
+    property real chrome: 0.5
+    property int aberration: 6
     property string status: ""
     property int selected: 0
     property int anchorsRev: 0
@@ -43,7 +45,8 @@ FloatingWindow {
         }
         const st = { mode: mode, style: style, seed: seed, waveAmp: waveAmp,
                      waveLen: waveLen, swirl: swirl, blurV: blurV, grain: grain,
-                     angle: angle, streak: streak, anchors: a }
+                     angle: angle, streak: streak, chrome: chrome,
+                     aberration: aberration, anchors: a }
         try { stateFile.setText(JSON.stringify(st)) } catch (e) {}
     }
     function restoreState() {
@@ -52,6 +55,8 @@ FloatingWindow {
             mode = st.mode; style = st.style; seed = st.seed
             waveAmp = st.waveAmp; waveLen = st.waveLen; swirl = st.swirl
             blurV = st.blurV; grain = st.grain; angle = st.angle; streak = st.streak
+            if (st.chrome !== undefined) chrome = st.chrome
+            if (st.aberration !== undefined) aberration = st.aberration
             anchorsModel.clear()
             for (const x of st.anchors) anchorsModel.append(x)
             return anchorsModel.count >= 2
@@ -215,8 +220,9 @@ FloatingWindow {
                 property real grainAmt: win.grain
                 property real angleDeg: win.angle
                 property real streakLen: win.streak
-                property real aberr: 6
+                property real aberr: win.aberration
                 property real seedF: win.seed
+                property real chromeAmt: win.chrome
             }
 
             TapHandler {
@@ -351,6 +357,8 @@ FloatingWindow {
 
             Rectangle { width: 284; height: 1; color: "#2E2E2E" }
 
+            Knob { visible: win.style === "streaks"; label: "chrome"; from: 0; to: 1; step: 0.02; value: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
+            Knob { visible: win.style === "streaks"; label: "chromatic shift"; from: 0; to: 20; step: 1; value: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
             Knob { visible: win.style === "streaks"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
             Knob { visible: win.style === "streaks"; label: "angle"; from: -60; to: 60; step: 1; value: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
             Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }

@@ -24,6 +24,7 @@ layout(std140, binding = 0) uniform buf {
     float streakLen;   // 40..400
     float aberr;       // chromatic offset, px at 3840
     float seedF;       // noise seed
+    float chromeAmt;   // brushed-filament strength 0..1
 };
 
 const float ASPECT = 1.6;   // 16:10 canvas
@@ -85,9 +86,13 @@ vec3 glowField(vec2 uv) {
         float g = exp(-d2(uv, A.xy) / (0.014 * A.z * A.z + 1e-6));
         acc += (C - baseColor.rgb) * g;
     }
-    if (modeLight < 0.5) {
-        float n = 0.6 + 0.8 * vnoise(uv * vec2(90.0 * ASPECT, 90.0));
-        acc *= n;
+    if (chromeAmt > 0.001) {
+        // fine vertical frequency -> the directional smear draws it into
+        // thin threads; modulate only the LIGHT (delta), never the stage,
+        // so white paper stays white.
+        float n = vnoise(uv * vec2(45.0 * ASPECT, 240.0));
+        n = mix(1.0, 0.25 + 1.5 * n, chromeAmt);
+        acc = baseColor.rgb + (acc - baseColor.rgb) * n;
     }
     return acc;
 }
