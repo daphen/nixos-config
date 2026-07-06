@@ -117,7 +117,7 @@ def render_flow(progress, secs: dict) -> str:
         more = f'<div class="more">{md_block(d)}</div>' if d else ""
         rows.append(
             f'<div class="step {st}"><span class="dot"></span>'
-            f'<span class="txt"><span class="new">◆</span>{md_inline(title)}{more}</span></div>'
+            f'<span class="txt"><span class="new">◆{idx + 1}</span>{md_inline(title)}{more}</span></div>'
         )
     return "\n".join(rows)
 
@@ -142,27 +142,58 @@ def render_decisions(secs: dict) -> str:
     return "\n".join(cards) or '<div class="empty">No decision points.</div>'
 
 
-def render_surface(progress, review) -> str:
+def step_file_refs(secs: dict) -> list:
+    """Per ◆ step, the entries of its `_(files: …)_` annotation."""
+    refs = []
+    for d in flow_details(secs):
+        m = re.search(r"_\(files:\s*([^)]+)\)_", d)
+        refs.append([e.strip().strip("`") for e in m.group(1).split(",")] if m else [])
+    return refs
+
+
+def render_surface(progress, review, secs: dict) -> str:
     planned = (progress or {}).get("planned") or []
-    rows = []
-    for p in planned:
-        act = p.get("action", "modify")
-        st = p.get("status", "pending")
-        note = p.get("note", "")
-        f = p.get("file", "")
-        rows.append(
+    if not planned:
+        return '<div class="empty">No surface-area files recorded yet.</div>'
+    refs = step_file_refs(secs)
+
+    def steps_for(path):
+        name = path.rsplit("/", 1)[-1].replace("_test", "")
+        out = []
+        for i, ents in enumerate(refs):
+            if any(e and (e in path or e in name) for e in ents):
+                out.append(i + 1)
+        return out
+
+    def frow(p):
+        act, st = p.get("action", "modify"), p.get("status", "pending")
+        f, note = p.get("file", ""), p.get("note", "")
+        chips = " ".join(f"◆{n}" for n in steps_for(f))
+        chips_html = f'<span class="ct">{chips}</span>' if chips else ""
+        return (
             f'<div class="frow openable" data-file="{html.escape(f, quote=True)}"><span class="tag {act}">{act}</span>'
             f'<span class="st {st}">{st}</span>'
-            f'<span class="nm">{html.escape(f)}</span>'
-            f'<span class="note">{md_inline(note)}</span></div>'
+            f'<span class="nm">{html.escape(f.rsplit("/", 1)[-1])}</span>'
+            f'{chips_html}<span class="note">{md_inline(note)}</span></div>'
         )
-    for d in (review or {}).get("drift") or []:
-        rows.append(
-            f'<div class="frow"><span class="tag drift">drift</span><span class="st"></span>'
-            f'<span class="nm">{html.escape(d.get("file", d.get("hunk","")))}</span>'
-            f'<span class="note">{md_inline(d.get("why",""))}</span></div>'
-        )
-    return "\n".join(rows) or '<div class="empty">No surface-area files recorded yet.</div>'
+
+    groups: dict = {}
+    for p in planned:
+        d = p.get("file", "").rsplit("/", 1)[0] if "/" in p.get("file", "") else "."
+        groups.setdefault(d, []).append(p)
+    cards = [
+        f'<div class="grp"><h3>{html.escape(d)}/</h3>' + "\n".join(frow(p) for p in ps) + "</div>"
+        for d, ps in groups.items()
+    ]
+    drift = [
+        f'<div class="frow"><span class="tag drift">drift</span><span class="st"></span>'
+        f'<span class="nm">{html.escape(x.get("file", x.get("hunk","")))}</span>'
+        f'<span class="note">{md_inline(x.get("why",""))}</span></div>'
+        for x in (review or {}).get("drift") or []
+    ]
+    if drift:
+        cards.append('<div class="grp"><h3>drift</h3>' + "\n".join(drift) + "</div>")
+    return '<div class="fmap">' + "\n".join(cards) + "</div>"
 
 
 def render_verification(review) -> str:
@@ -231,7 +262,7 @@ def render_html(md_path: Path) -> str:
         "SHAPE": md_block(find_section(secs, "the shape", "shape")) or '<span class="empty">—</span>',
         "FLOW": render_flow(progress, secs),
         "DECISIONS": render_decisions(secs),
-        "SURFACE": render_surface(progress, review),
+        "SURFACE": render_surface(progress, review, secs),
         "VERIFICATION": render_verification(review),
         "RECON": md_block(find_section(secs, "reconciliation")),
     }
