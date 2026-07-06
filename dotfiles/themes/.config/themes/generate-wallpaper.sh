@@ -190,7 +190,11 @@ EOPY
     blur_s=$(awk "BEGIN{printf \"%.1f\", $blur*$sc}")
     (( amp_s < 1 )) && amp_s=1
     (( len_s < 8 )) && len_s=8
-    local pad=$(( amp_s * 2 + 60 ))
+    # Pad must be PROPORTIONAL to render size — a constant made preview and
+    # 4K crop different slices of the seed field (compositions fell apart
+    # when saved).
+    local pad
+    pad=$(( amp_s * 2 + $(awk "BEGIN{printf \"%d\", 60*$sc + 1}") ))
     local grain_args=(-attenuate "$grain" +noise Gaussian)
     [[ "$grain" == "0" || "$grain" == "0.0" ]] && grain_args=()
     if [[ "$STYLE" == "streaks" ]]; then
@@ -213,14 +217,24 @@ EOPY
         # light keeps the paper white and deepens the chromatic ink.
         local finish_args
         if [[ "$mode" == "dark" ]]; then
-            finish_args=(-level "0%,22%" -sigmoidal-contrast 5x22% -modulate 100,140)
+            finish_args=(-level "0%,16%" -sigmoidal-contrast 5x22% -modulate 100,140)
         else
-            finish_args=(-level "0%,100%,0.5" -sigmoidal-contrast 4x72% -modulate 100,150)
+            finish_args=(-level "0%,100%,0.45" -sigmoidal-contrast 4x72% -modulate 100,150)
         fi
+        # Chrome filaments: break the glows into strands by multiplying with
+        # fine noise BEFORE the smear (motion-blurred noise = brushed metal),
+        # then crisp the ridges after.
+        local nblur unsharp_s
+        nblur=$(awk "BEGIN{printf \"%.2f\", 6*$sc}")
+        unsharp_s=$(awk "BEGIN{printf \"%.1f\", 10*$sc}")
         magick "$seedpng" \
             -filter Gaussian -resize "${RW}x${RH}!" \
+            \( -size "${RW}x${RH}" xc:gray50 -seed "$SEED" -attenuate 2.5 +noise Uniform -colorspace Gray -blur "0x${nblur}" -level "38%,62%" \) \
+            -compose Multiply -composite \
             -background "$base_hex" -virtual-pixel Mirror \
-            -filter Gaussian -resize "${pct}%x100%!" -resize "${RW}x${RH}!" \
+            \( -clone 0 -filter Gaussian -resize "${pct}%x100%!" -resize "${RW}x${RH}!" \) \
+            \( -clone 0 -filter Gaussian -resize "$(awk "BEGIN{printf \"%.3f\", 100/($squash/6)}")%x100%!" -resize "${RW}x${RH}!" \) \
+            -delete 0 -compose Screen -composite \
             -wave "${amp_s}x${len_s}" \
             -swirl "$swirl" \
             -rotate "$ANGLE" \
@@ -229,6 +243,7 @@ EOPY
             \( -clone 0 -channel G -separate +channel \) \
             \( -clone 0 -channel B -separate +channel -roll "-${ab_s}+0" \) \
             -delete 0 -combine \
+            -unsharp "0x${unsharp_s}+1.0+0.02" \
             "${finish_args[@]}" \
             "${grain_args[@]}" \
             "$out"
