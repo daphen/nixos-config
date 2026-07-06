@@ -21,8 +21,11 @@ PHASE_CLASS = {"draft": "draft", "finalized": "finalized", "implementing": "impl
 
 def md_inline(s: str) -> str:
     s = html.escape(s)
+    # stash code spans first — globs like `src/assets/**` confuse the bold regex
+    codes: list = []
+    s = re.sub(r"`(.+?)`", lambda m: (codes.append(m.group(1)), f"\x00{len(codes)-1}\x00")[1], s)
     s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
-    s = re.sub(r"`(.+?)`", r"<code>\1</code>", s)
+    s = re.sub(r"\x00(\d+)\x00", lambda m: f"<code>{codes[int(m.group(1))]}</code>", s)
     return s
 
 
@@ -71,16 +74,49 @@ def find_section(secs: dict, *needles: str) -> str:
     return ""
 
 
-def render_flow(progress) -> str:
+def flow_details(secs: dict) -> list:
+    """Full bodies of the md's ◆ work items, in document order."""
+    body = find_section(secs, "the flow", "flow")
+    items, cur = [], None
+    for line in body.splitlines():
+        m = re.match(r"\s*\d+\.\s+(.*)", line)
+        if m:
+            if cur is not None:
+                items.append(cur)
+            cur = [m.group(1)] if "◆" in m.group(1) else None
+        elif cur is not None:
+            cur.append(line.strip())
+    if cur is not None:
+        items.append(cur)
+    return ["\n".join(it).strip() for it in items]
+
+
+def render_flow(progress, secs: dict) -> str:
     flow = (progress or {}).get("flow") or []
     if not flow:
         return '<div class="empty">No flow steps recorded yet.</div>'
+    details = flow_details(secs)
+
+    def detail_for(idx, title):
+        if len(details) == len(flow):
+            return details[idx]
+        toks = set(re.findall(r"\w{4,}", title.lower()))
+        best, score = "", 0
+        for d in details:
+            s = len(toks & set(re.findall(r"\w{4,}", d.lower())))
+            if s > score:
+                best, score = d, s
+        return best if score >= 2 else ""
+
     rows = []
-    for f in flow:
+    for idx, f in enumerate(flow):
         st = f.get("status", "pending")
+        title = f.get("step", "")
+        d = detail_for(idx, title)
+        more = f'<div class="more">{md_block(d)}</div>' if d else ""
         rows.append(
             f'<div class="step {st}"><span class="dot"></span>'
-            f'<span class="txt"><span class="new">◆</span>{md_inline(f.get("step",""))}</span></div>'
+            f'<span class="txt"><span class="new">◆</span>{md_inline(title)}{more}</span></div>'
         )
     return "\n".join(rows)
 
@@ -192,7 +228,7 @@ def render_html(md_path: Path) -> str:
         "STATUS": status, "STATUS_CLASS": status_cls, "BRANCH": html.escape(branch),
         "PROGRESS": progress_txt,
         "SHAPE": md_block(find_section(secs, "the shape", "shape")) or '<span class="empty">—</span>',
-        "FLOW": render_flow(progress),
+        "FLOW": render_flow(progress, secs),
         "DECISIONS": render_decisions(secs),
         "SURFACE": render_surface(progress, review),
         "VERIFICATION": render_verification(review),
