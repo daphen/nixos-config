@@ -32,34 +32,62 @@ FloatingWindow {
     ListModel { id: anchorsModel }
     function touchAnchors() { anchorsRev++; saveState() }
 
+    // Per-context state: every mode×style keeps its own knobs AND anchors;
+    // switching pills restores that context's last composition.
+    property var contexts: ({})
+    function ctxKey() { return mode + "/" + style }
+    function snapshotCtx() {
+        const a = []
+        for (let i = 0; i < anchorsModel.count; i++) {
+            const x = anchorsModel.get(i)
+            a.push({ ax: x.ax, ay: x.ay, hex: x.hex, size: x.size })
+        }
+        return { seed: seed, waveAmp: waveAmp, waveLen: waveLen, swirl: swirl,
+                 blurV: blurV, grain: grain, angle: angle, streak: streak,
+                 chrome: chrome, aberration: aberration, anchors: a }
+    }
+    function applyCtx(c) {
+        seed = c.seed; waveAmp = c.waveAmp; waveLen = c.waveLen; swirl = c.swirl
+        blurV = c.blurV; grain = c.grain; angle = c.angle; streak = c.streak
+        if (c.chrome !== undefined) chrome = c.chrome
+        if (c.aberration !== undefined) aberration = c.aberration
+        anchorsModel.clear()
+        for (const x of c.anchors) anchorsModel.append(x)
+        selected = 0
+        anchorsRev++
+    }
+    function defaultKnobs() {
+        waveAmp = 50; waveLen = 1600; swirl = 30; blurV = 80; grain = 0.12
+        angle = 25; streak = 220; chrome = 0.5; aberration = 6
+    }
+    function switchContext(newMode, newStyle) {
+        contexts[ctxKey()] = snapshotCtx()
+        mode = newMode
+        style = newStyle
+        const c = contexts[ctxKey()]
+        if (c) { applyCtx(c); saveState() }
+        else { defaultKnobs(); resetAnchors() }
+    }
+
     // ── persistence ─────────────────────────────────────────────────
     FileView {
         id: stateFile
         path: Quickshell.env("HOME") + "/.local/state/wallpaper-studio.json"
     }
     function saveState() {
-        const a = []
-        for (let i = 0; i < anchorsModel.count; i++) {
-            const x = anchorsModel.get(i)
-            a.push({ ax: x.ax, ay: x.ay, hex: x.hex, size: x.size })
-        }
-        const st = { mode: mode, style: style, seed: seed, waveAmp: waveAmp,
-                     waveLen: waveLen, swirl: swirl, blurV: blurV, grain: grain,
-                     angle: angle, streak: streak, chrome: chrome,
-                     aberration: aberration, anchors: a }
-        try { stateFile.setText(JSON.stringify(st)) } catch (e) {}
+        contexts[ctxKey()] = snapshotCtx()
+        try { stateFile.setText(JSON.stringify({ mode: mode, style: style, contexts: contexts })) } catch (e) {}
     }
     function restoreState() {
         try {
             const st = JSON.parse(stateFile.text())
-            mode = st.mode; style = st.style; seed = st.seed
-            waveAmp = st.waveAmp; waveLen = st.waveLen; swirl = st.swirl
-            blurV = st.blurV; grain = st.grain; angle = st.angle; streak = st.streak
-            if (st.chrome !== undefined) chrome = st.chrome
-            if (st.aberration !== undefined) aberration = st.aberration
-            anchorsModel.clear()
-            for (const x of st.anchors) anchorsModel.append(x)
-            return anchorsModel.count >= 2
+            if (!st.contexts) return false
+            contexts = st.contexts
+            mode = st.mode; style = st.style
+            const c = contexts[ctxKey()]
+            if (!c || !c.anchors || c.anchors.length < 2) return false
+            applyCtx(c)
+            return true
         } catch (e) { return false }
     }
     Component.onCompleted: {
@@ -173,19 +201,23 @@ FloatingWindow {
     Timer { id: statusClear; interval: 2500; onTriggered: win.status = "" }
 
     component Knob: Column {
+        id: knobRoot
         property string label
-        property alias value: sl.value
+        property real extValue: 0
         property alias from: sl.from
         property alias to: sl.to
         property alias step: sl.stepSize
         signal moved(real v)
-        width: 284
+        width: 324
         spacing: 2
-        Text { text: label + "  " + Math.round(sl.value * 100) / 100; color: "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
+        Text { text: knobRoot.label + "  " + Math.round(sl.value * 100) / 100; color: "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
         Slider {
             id: sl; width: parent.width
-            onMoved: parent.moved(value)
+            onMoved: knobRoot.moved(value)
         }
+        // A plain value binding is severed by the first user drag; a Binding
+        // element re-asserts on context switches.
+        Binding { target: sl; property: "value"; value: knobRoot.extValue }
     }
     component SectionLabel: Text {
         color: "#707B84"
@@ -335,7 +367,7 @@ FloatingWindow {
                             color: win.mode === modelData ? "#EDEDED" : "#2E2E2E"
                             Text { anchors.centerIn: parent; text: parent.modelData
                                    color: win.mode === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
-                            TapHandler { onTapped: { win.mode = parent.modelData; win.resetAnchors() } }
+                            TapHandler { onTapped: win.switchContext(parent.modelData, win.style) }
                         }
                     }
                 }
@@ -349,20 +381,20 @@ FloatingWindow {
                             color: win.style === modelData ? "#EDEDED" : "#2E2E2E"
                             Text { anchors.centerIn: parent; text: parent.modelData
                                    color: win.style === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
-                            TapHandler { onTapped: { win.style = parent.modelData; win.resetAnchors() } }
+                            TapHandler { onTapped: win.switchContext(win.mode, parent.modelData) }
                         }
                     }
                 }
 
-                Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chrome"; from: 0; to: 1; step: 0.02; value: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
-                Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chromatic shift"; from: 0; to: 20; step: 1; value: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
-                Knob { visible: win.style === "streaks" || win.style === "flow"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
-                Knob { visible: win.style !== "mesh"; label: "angle"; from: -60; to: 60; step: 1; value: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
-                Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
-                Knob { label: "wave length"; from: 300; to: 3000; step: 10; value: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
-                Knob { label: "swirl"; from: -180; to: 180; step: 1; value: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
-                Knob { visible: win.style === "mesh" || win.style === "bands"; label: "softness"; from: 10; to: 220; step: 1; value: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
-                Knob { label: "grain"; from: 0; to: 0.5; step: 0.01; value: win.grain; onMoved: v => { win.grain = v; win.saveState() } }
+                Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chrome"; from: 0; to: 1; step: 0.02; extValue: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
+                Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chromatic shift"; from: 0; to: 20; step: 1; extValue: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
+                Knob { visible: win.style === "streaks" || win.style === "flow"; label: "streak length"; from: 40; to: 400; step: 5; extValue: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
+                Knob { visible: win.style !== "mesh"; label: "angle"; from: -60; to: 60; step: 1; extValue: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
+                Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
+                Knob { label: "wave length"; from: 300; to: 3000; step: 10; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
+                Knob { label: "swirl"; from: -180; to: 180; step: 1; extValue: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
+                Knob { visible: win.style === "mesh" || win.style === "bands"; label: "softness"; from: 10; to: 220; step: 1; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
+                Knob { label: "grain"; from: 0; to: 0.5; step: 0.01; extValue: win.grain; onMoved: v => { win.grain = v; win.saveState() } }
 
                 Row {
                     spacing: 8
@@ -396,7 +428,7 @@ FloatingWindow {
                 Knob {
                     label: "anchor size"
                     from: 0.2; to: 3; step: 0.05
-                    value: anchorsModel.count > win.selected ? anchorsModel.get(win.selected).size : 1
+                    extValue: { win.anchorsRev; return anchorsModel.count > win.selected ? anchorsModel.get(win.selected).size : 1 }
                     onMoved: v => { anchorsModel.setProperty(win.selected, "size", v); win.touchAnchors() }
                 }
 
