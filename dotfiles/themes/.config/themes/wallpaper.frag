@@ -122,24 +122,32 @@ vec3 streaksAt(vec2 uv) {
     c.x /= ASPECT;
     vec2 ruv = warp(c + 0.5);
 
-    float sigma = streakLen / 900.0;
+    // Flat stroke profile: uniform weight along the line with soft ends —
+    // a gaussian kept the anchor as a hot blob with comet tails. 63 taps
+    // keep long strokes smooth.
+    float halfLen = streakLen / 700.0;
     vec3 accL = vec3(0.0), accS = vec3(0.0);
     float wsumL = 0.0, wsumS = 0.0;
-    const int N = 33;
+    const int N = 63;
     for (int k = 0; k < N; k++) {
-        float t = (float(k) / float(N - 1) - 0.5) * 4.0;  // ±2σ
-        float wL = exp(-t * t);
-        float wS = exp(-t * t * 36.0);                    // σ/6 layer
-        vec3 s = glowField(ruv + vec2(t * sigma, 0.0));
+        float t = (float(k) / float(N - 1) - 0.5) * 2.0;   // ±1
+        float au = abs(t);
+        float wL = 1.0 - smoothstep(0.82, 1.0, au);
+        float wS = 1.0 - smoothstep(0.10, 0.16, au);       // short core layer
+        vec3 s = glowField(ruv + vec2(t * halfLen, 0.0));
         accL += s * wL; wsumL += wL;
         accS += s * wS; wsumS += wS;
     }
     vec3 L = accL / wsumL;
-    vec3 S = accS / wsumS;
-    // dark: light adds (screen); light: ink deepens (multiply on paper)
-    if (modeLight < 0.5) return 1.0 - (1.0 - L) * (1.0 - S);
+    vec3 S = accS / max(wsumS, 1e-4);
+    if (modeLight < 0.5) {
+        // soften the core so anchors don't read as blobs
+        vec3 Ssoft = baseColor.rgb + (S - baseColor.rgb) * 0.4;
+        return 1.0 - (1.0 - L) * (1.0 - Ssoft);
+    }
     vec3 pl = L / max(baseColor.rgb, vec3(1e-4));
     vec3 ps = S / max(baseColor.rgb, vec3(1e-4));
+    ps = mix(vec3(1.0), ps, 0.4);
     return clamp(pl * ps * baseColor.rgb, 0.0, 1.0);
 }
 
