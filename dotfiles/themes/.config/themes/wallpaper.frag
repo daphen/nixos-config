@@ -13,7 +13,7 @@ layout(std140, binding = 0) uniform buf {
     // colors (rgb)
     vec4 c0; vec4 c1; vec4 c2; vec4 c3; vec4 c4; vec4 c5; vec4 c6; vec4 c7;
     vec4 baseColor;
-    float styleMode;   // 0 mesh, 1 streaks, 2 flow (smeared mesh)
+    float styleMode;   // 0 mesh, 1 streaks, 2 flow (smeared mesh), 3 bands
     float modeLight;   // 0 dark, 1 light
     float waveAmp;     // calibrated at 3840px width
     float waveLen;
@@ -97,6 +97,23 @@ vec3 glowField(vec2 uv) {
     return acc;
 }
 
+// 1-D mesh along y: anchors are color STOPS (x ignored) — constant along
+// x gives clean bands; IDW interpolates between stops without sorting.
+vec3 bandsField(vec2 uv) {
+    float soft = mix(0.002, 0.05, clamp(blurK / 220.0, 0.0, 1.0));
+    vec3 num = vec3(0.0);
+    float den = 0.0;
+    for (int i = 0; i < 8; i++) {
+        vec4 A; vec3 C; getAnchor(i, A, C);
+        if (A.w < 0.5) continue;
+        float dy = uv.y - A.y;
+        float w = (A.z * A.z) / (dy * dy + soft);
+        num += C * w;
+        den += w;
+    }
+    return den > 0.0 ? num / den : baseColor.rgb;
+}
+
 vec2 warp(vec2 uv) {
     // swirl about center
     vec2 c = uv - 0.5;
@@ -177,7 +194,16 @@ vec3 finish(vec3 c) {
 void main() {
     vec2 uv = qt_TexCoord0;
     vec3 col;
-    if (styleMode < 0.5) {
+    if (styleMode > 2.5) {
+        // bands: rotate for diagonals, warp for the soft S boundaries
+        vec2 c = uv - 0.5;
+        c.x *= ASPECT;
+        float th = radians(-angleDeg);
+        float cs = cos(th), sn = sin(th);
+        c = vec2(c.x * cs - c.y * sn, c.x * sn + c.y * cs);
+        c.x /= ASPECT;
+        col = bandsField(warp(c + 0.5));
+    } else if (styleMode < 0.5) {
         col = meshField(warp(uv));
     } else {
         // chromatic fringes: shift the R/B sampling axes

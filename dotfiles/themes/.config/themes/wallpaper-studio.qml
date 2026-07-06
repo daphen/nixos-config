@@ -68,6 +68,16 @@ FloatingWindow {
     }
     function resetAnchors() {
         anchorsModel.clear()
+        if (style === "bands") {
+            const stops = mode === "dark"
+                ? [["#CCD5E4", 0.08], ["#396171", 0.4], ["#0A0A0A", 0.8]]
+                : [["#FFFFFF", 0.1], ["#7DD3FC", 0.45], ["#10100E", 0.9]]
+            for (const [hex, y] of stops)
+                anchorsModel.append({ ax: 0.5, ay: y, hex: hex, size: 1.0 })
+            selected = 0
+            touchAnchors()
+            return
+        }
         if (style === "flow") {
             const cols = mode === "dark"
                 ? ["#181818", "#CCD5E4", "#396171", "#181818", "#FF570D"]
@@ -222,7 +232,7 @@ FloatingWindow {
                 property vector4d c6: win.colorVec(6)
                 property vector4d c7: win.colorVec(7)
                 property vector4d baseColor: win.stageColor
-                property real styleMode: win.style === "streaks" ? 1 : win.style === "flow" ? 2 : 0
+                property real styleMode: win.style === "streaks" ? 1 : win.style === "flow" ? 2 : win.style === "bands" ? 3 : 0
                 property real modeLight: win.mode === "light" ? 1 : 0
                 property real waveAmp: win.waveAmp
                 property real waveLen: win.waveLen
@@ -315,7 +325,7 @@ FloatingWindow {
             Row {
                 spacing: 8
                 Repeater {
-                    model: ["mesh", "streaks", "flow"]
+                    model: ["mesh", "streaks", "flow", "bands"]
                     Rectangle {
                         required property string modelData
                         width: 74; height: 26; radius: 13
@@ -368,14 +378,14 @@ FloatingWindow {
 
             Rectangle { width: 284; height: 1; color: "#2E2E2E" }
 
-            Knob { visible: win.style !== "mesh"; label: "chrome"; from: 0; to: 1; step: 0.02; value: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
-            Knob { visible: win.style !== "mesh"; label: "chromatic shift"; from: 0; to: 20; step: 1; value: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
-            Knob { visible: win.style !== "mesh"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
+            Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chrome"; from: 0; to: 1; step: 0.02; value: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
+            Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chromatic shift"; from: 0; to: 20; step: 1; value: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
+            Knob { visible: win.style === "streaks" || win.style === "flow"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
             Knob { visible: win.style !== "mesh"; label: "angle"; from: -60; to: 60; step: 1; value: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
             Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
             Knob { label: "wave length"; from: 300; to: 3000; step: 10; value: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
             Knob { label: "swirl"; from: -180; to: 180; step: 1; value: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
-            Knob { visible: win.style === "mesh"; label: "softness"; from: 10; to: 220; step: 1; value: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
+            Knob { visible: win.style === "mesh" || win.style === "bands"; label: "softness"; from: 10; to: 220; step: 1; value: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
             Knob { label: "grain"; from: 0; to: 0.5; step: 0.01; value: win.grain; onMoved: v => { win.grain = v; win.saveState() } }
 
             Item { width: 1; height: 6 }
