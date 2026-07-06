@@ -118,12 +118,14 @@ def main() -> int:
                 break
             time.sleep(0.1)
 
+    # 127.0.0.1, not localhost — the vimium exclusion rule keys off it.
     url = f"http://127.0.0.1:{PORT}/plan/{args.key}"
     print(url)
     if args.open:
-        # chromeless app-mode window (own app-id) — matches review-pr's page
+        # chromeless app-mode window in the WORK profile — that's where the
+        # vimium localhost exclusions (and work session state) live.
         dispatch = HOME / ".config" / "niri" / "scripts" / "browser-dispatch"
-        opener = [str(dispatch), "--app"] if dispatch.is_file() else ["xdg-open"]
+        opener = [str(dispatch), "--profile=work", "--app"] if dispatch.is_file() else ["xdg-open"]
         subprocess.Popen(opener + [url], stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
     return 0
