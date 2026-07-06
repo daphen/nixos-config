@@ -616,10 +616,10 @@ apply_system_theme() {
             # Equal stops → niri renders the border as a solid active color.
             local grad_from="$active_color" grad_to="$active_color"
         else
-            local active_color=$(jq -r '.themes.light.accent.yellow' "$COLORS_FILE")  # brownish gold #df9001
-            local inactive_color="#999999"
-            # Light mode: solid gold ring (palette accent.yellow). Equal gradient
-            # stops render solid.
+            # Light mode: hairpin border color — fg (#10100E) at 12% over
+            # white, precomputed solid so it doesn't blend with wallpaper.
+            local active_color="#E2E2E2"
+            local inactive_color="#EFEFEE"
             local grad_from="$active_color" grad_to="$active_color"
         fi
         sed -i "s/active-color \"#[0-9a-fA-F]*\"/active-color \"${active_color}\"/g" "$niri_config"
