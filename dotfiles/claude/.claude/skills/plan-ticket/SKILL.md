@@ -134,8 +134,8 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
 5. **Author the diagram** → `<plandir>/<key>.diagram.html`: a raw HTML fragment
    showing *how the planned change works*, in the shape that fits it — data-flow
    pipeline, before/after, state machine, sequence. Same component vocabulary as
-   review-pr's centrepiece (classes live in the shared ui.css): `.lane` (variants
-   `.be`/`.tr`/`.fe` for backend/transport/frontend tints) with a `.lane-tag`,
+   review-pr's centrepiece (classes live in the shared ui.css): `.lane` (neutral
+   surface; `.be`/`.tr`/`.fe` are semantic-only markers) with a `.lane-tag`,
    `.node` (inner `.file` for the real path, `.sub` for a one-liner), `.arrow`
    (`.big` between lanes), `.split` for parallel nodes. Label real files/symbols
    from the surface area; colours only via `--rv-*` vars, never hex. Where a node
