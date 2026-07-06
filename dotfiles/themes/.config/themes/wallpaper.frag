@@ -25,6 +25,7 @@ layout(std140, binding = 0) uniform buf {
     float aberr;       // chromatic offset, px at 3840
     float seedF;       // noise seed
     float chromeAmt;   // brushed-filament strength 0..1
+    float postBlur;    // soft blur over the composed scene (mesh/bands), px at 3840
 };
 
 const float ASPECT = 1.6;   // 16:10 canvas
@@ -191,20 +192,40 @@ vec3 finish(vec3 c) {
     return c;
 }
 
-void main() {
-    vec2 uv = qt_TexCoord0;
-    vec3 col;
+// the composed scene for the cheap field styles (mesh, bands)
+vec3 sceneMB(vec2 uv) {
     if (styleMode > 2.5) {
-        // bands: rotate for diagonals, warp for the soft S boundaries
         vec2 c = uv - 0.5;
         c.x *= ASPECT;
         float th = radians(-angleDeg);
         float cs = cos(th), sn = sin(th);
         c = vec2(c.x * cs - c.y * sn, c.x * sn + c.y * cs);
         c.x /= ASPECT;
-        col = bandsField(warp(c + 0.5));
-    } else if (styleMode < 0.5) {
-        col = meshField(warp(uv));
+        return bandsField(warp(c + 0.5));
+    }
+    return meshField(warp(uv));
+}
+
+void main() {
+    vec2 uv = qt_TexCoord0;
+    vec3 col;
+    if (styleMode < 0.5 || styleMode > 2.5) {
+        if (postBlur < 0.5) {
+            col = sceneMB(uv);
+        } else {
+            // 12-tap poisson disc over the COMPOSED scene — a true soft
+            // blur on top of the finished gradient, resolution-independent.
+            float r = postBlur / 2200.0;
+            vec2 D[12] = vec2[](
+                vec2(-0.326, -0.406), vec2(-0.840, -0.074), vec2(-0.696, 0.457),
+                vec2(-0.203, 0.621),  vec2(0.962, -0.195),  vec2(0.473, -0.480),
+                vec2(0.519, 0.767),   vec2(0.185, -0.893),  vec2(0.507, 0.064),
+                vec2(0.896, 0.412),   vec2(-0.322, -0.933), vec2(-0.792, -0.598));
+            col = sceneMB(uv);
+            for (int k = 0; k < 12; k++)
+                col += sceneMB(uv + vec2(D[k].x / ASPECT, D[k].y) * r);
+            col /= 13.0;
+        }
     } else {
         // chromatic fringes: shift the R/B sampling axes
         float ab = aberr / 3840.0;

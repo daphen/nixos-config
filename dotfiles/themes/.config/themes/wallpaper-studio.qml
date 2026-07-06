@@ -25,6 +25,7 @@ FloatingWindow {
     property int streak: 220
     property real chrome: 0.5
     property int aberration: 6
+    property int postBlur: 0
     property string status: ""
     property int selected: 0
     property int anchorsRev: 0
@@ -44,13 +45,14 @@ FloatingWindow {
         }
         return { seed: seed, waveAmp: waveAmp, waveLen: waveLen, swirl: swirl,
                  blurV: blurV, grain: grain, angle: angle, streak: streak,
-                 chrome: chrome, aberration: aberration, anchors: a }
+                 chrome: chrome, aberration: aberration, postBlur: postBlur, anchors: a }
     }
     function applyCtx(c) {
         seed = c.seed; waveAmp = c.waveAmp; waveLen = c.waveLen; swirl = c.swirl
         blurV = c.blurV; grain = c.grain; angle = c.angle; streak = c.streak
         if (c.chrome !== undefined) chrome = c.chrome
         if (c.aberration !== undefined) aberration = c.aberration
+        postBlur = c.postBlur !== undefined ? c.postBlur : 0
         anchorsModel.clear()
         for (const x of c.anchors) anchorsModel.append(x)
         selected = 0
@@ -58,7 +60,7 @@ FloatingWindow {
     }
     function defaultKnobs() {
         waveAmp = 50; waveLen = 1600; swirl = 30; blurV = 80; grain = 0.12
-        angle = 25; streak = 220; chrome = 0.5; aberration = 6
+        angle = 25; streak = 220; chrome = 0.5; aberration = 6; postBlur = 0
     }
     function switchContext(newMode, newStyle) {
         contexts[ctxKey()] = snapshotCtx()
@@ -284,6 +286,7 @@ FloatingWindow {
                 property real aberr: win.aberration
                 property real seedF: win.seed
                 property real chromeAmt: win.chrome
+                property real postBlur: win.postBlur
             }
 
             TapHandler {
@@ -394,6 +397,7 @@ FloatingWindow {
                 Knob { label: "wave length"; from: 300; to: 3000; step: 10; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
                 Knob { label: "swirl"; from: -180; to: 180; step: 1; extValue: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
                 Knob { visible: win.style !== "streaks"; label: "softness"; from: 10; to: 220; step: 1; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
+                Knob { visible: win.style === "mesh" || win.style === "bands"; label: "soft blur"; from: 0; to: 200; step: 2; extValue: win.postBlur; onMoved: v => { win.postBlur = v; win.saveState() } }
                 Knob { label: "grain"; from: 0; to: 0.5; step: 0.01; extValue: win.grain; onMoved: v => { win.grain = v; win.saveState() } }
 
                 Row {
