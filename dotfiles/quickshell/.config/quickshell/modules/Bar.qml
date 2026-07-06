@@ -201,7 +201,7 @@ PanelWindow {
 
                     Text {
                         text: "󰚩" // nf-md-robot
-                        color: Theme.fg_muted
+                        color: Theme.fg
                         font.family: Theme.iconFontFamily
                         font.pixelSize: Theme.fontSize + 2
                         font.weight: Theme.fontWeight
@@ -222,7 +222,7 @@ PanelWindow {
                                 : SpendState.mode === "month" ? "m" : "∀"
                             return "$" + amount + " " + tag
                         }
-                        color: Theme.fg_muted
+                        color: Theme.fg
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize
                         font.weight: Theme.fontWeight
@@ -251,7 +251,7 @@ PanelWindow {
 
                     Text {
                         text: "" // nf-fa-tasks
-                        color: Theme.fg_muted
+                        color: Theme.fg
                         font.family: Theme.iconFontFamily
                         font.pixelSize: Theme.fontSize + 2
                         font.weight: Theme.fontWeight
@@ -262,7 +262,7 @@ PanelWindow {
 
                     Text {
                         text: TodoListPickerState.openCount
-                        color: Theme.fg_muted
+                        color: Theme.fg
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize
                         font.weight: Theme.fontWeight
