@@ -88,11 +88,14 @@ if style == "streaks":
     # Chroma look: near-black stage, hot chromatic points. The magick pass
     # stretches these into light streaks.
     base = tuple(round(v * 0.25) for v in c(bg["primary"])) if mode == "dark" else c(bg["primary"])
-    hot = [(255, 255, 255), c(acc["orange"])]
-    for k in ("sky", "blue", "cyan"):
+    # white light reads on a dark stage; on white paper it's invisible, so
+    # light mode streaks are pure chroma.
+    hot = [(255, 255, 255)] if mode == "dark" else []
+    hot.append(c(acc["orange"]))
+    for k in ("sky", "blue", "cyan", "green"):
         if k in acc:
             hot.append(c(acc[k]))
-    pool = [base, base] + hot
+    pool = ([base, base] + hot) if mode == "dark" else hot
 
 anchors = []
 if anchor_spec:
@@ -206,6 +209,14 @@ EOPY
         pct=$(awk "BEGIN{printf \"%.3f\", 100/$squash}")
         unpct=$(awk "BEGIN{printf \"%.3f\", $squash*100}")
         RW=$(( W * 2 )); RH=$(( H * 2 + 2 * pad ))
+        # Finishing is asymmetric: dark lifts faint light out of black;
+        # light keeps the paper white and deepens the chromatic ink.
+        local finish_args
+        if [[ "$mode" == "dark" ]]; then
+            finish_args=(-level "0%,22%" -sigmoidal-contrast 5x22% -modulate 100,140)
+        else
+            finish_args=(-level "0%,100%,0.5" -sigmoidal-contrast 4x72% -modulate 100,150)
+        fi
         magick "$seedpng" \
             -filter Gaussian -resize "${RW}x${RH}!" \
             -background "$base_hex" -virtual-pixel Mirror \
@@ -218,7 +229,7 @@ EOPY
             \( -clone 0 -channel G -separate +channel \) \
             \( -clone 0 -channel B -separate +channel -roll "-${ab_s}+0" \) \
             -delete 0 -combine \
-            -level "0%,22%" -sigmoidal-contrast 5x22% -modulate 100,140 \
+            "${finish_args[@]}" \
             "${grain_args[@]}" \
             "$out"
     else

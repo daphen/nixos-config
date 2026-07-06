@@ -34,13 +34,22 @@ FloatingWindow {
     }
     function resetAnchors() {
         anchorsModel.clear()
-        const base = mode === "dark" ? "#181818" : "#FFFFFF"
-        const a1 = mode === "dark" ? "#FF570D" : "#df9001"
-        const a2 = mode === "dark" ? "#97B5A6" : "#5E7270"
-        anchorsModel.append({ ax: 0.25, ay: 0.3, hex: base, size: 1.4 })
-        anchorsModel.append({ ax: 0.75, ay: 0.7, hex: base, size: 1.2 })
-        anchorsModel.append({ ax: 0.7, ay: 0.2, hex: a1, size: 0.8 })
-        anchorsModel.append({ ax: 0.3, ay: 0.8, hex: a2, size: 0.9 })
+        if (style === "streaks") {
+            const hot = mode === "dark"
+                ? ["#FFFFFF", "#FF570D", "#7DD3FC", "#CCD5E4", "#FFFFFF", "#FF570D"]
+                : ["#e16511", "#0284C7", "#396171", "#e16511", "#0284C7", "#243560"]
+            const pos = [[0.2, 0.25], [0.55, 0.15], [0.8, 0.35], [0.35, 0.6], [0.65, 0.75], [0.15, 0.8]]
+            for (let i = 0; i < 6; i++)
+                anchorsModel.append({ ax: pos[i][0], ay: pos[i][1], hex: hot[i], size: 0.5 + (i % 3) * 0.15 })
+        } else {
+            const base = mode === "dark" ? "#181818" : "#FFFFFF"
+            const a1 = mode === "dark" ? "#FF570D" : "#df9001"
+            const a2 = mode === "dark" ? "#97B5A6" : "#5E7270"
+            anchorsModel.append({ ax: 0.25, ay: 0.3, hex: base, size: 1.4 })
+            anchorsModel.append({ ax: 0.75, ay: 0.7, hex: base, size: 1.2 })
+            anchorsModel.append({ ax: 0.7, ay: 0.2, hex: a1, size: 0.8 })
+            anchorsModel.append({ ax: 0.3, ay: 0.8, hex: a2, size: 0.9 })
+        }
         selected = 0
     }
 
@@ -244,7 +253,7 @@ FloatingWindow {
                         color: win.style === modelData ? "#EDEDED" : "#2E2E2E"
                         Text { anchors.centerIn: parent; text: parent.modelData
                                color: win.style === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
-                        TapHandler { onTapped: { win.style = parent.modelData; win.render() } }
+                        TapHandler { onTapped: { win.style = parent.modelData; win.resetAnchors(); win.render() } }
                     }
                 }
             }
