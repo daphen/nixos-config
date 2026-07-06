@@ -339,11 +339,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783104878,
-        "narHash": "sha256-RuJKZTwBeAbdxpkPRqcpebUPQV4dbYS2K6vCBkSefuQ=",
+        "lastModified": 1783327224,
+        "narHash": "sha256-Vif+cw70gqD6WLbSdc6315SNBb+dkaXpq1Usru9/Vd8=",
         "ref": "refs/heads/main",
-        "rev": "bc755019c2d9a284298360847f6f66677dc1c515",
-        "revCount": 49,
+        "rev": "5bc2c98132036e8ca385fb4ab7f3e90be9c66909",
+        "revCount": 50,
         "type": "git",
         "url": "ssh://git@github.com/daphen/palette-daemon"
       },
