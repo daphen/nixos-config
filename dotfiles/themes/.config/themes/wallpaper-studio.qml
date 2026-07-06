@@ -3,9 +3,9 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 
-// Live mesh-gradient editor over generate-wallpaper.sh. Anchors are
-// draggable handles on the preview; select one to resize it or paint it
-// with a theme color. Save renders 4K with the same spec.
+// GPU mesh/streak wallpaper editor. The preview IS the renderer — a
+// fragment shader with every knob bound as a uniform, so it updates at
+// display refresh rate and Save grabs the identical shader at 4K.
 FloatingWindow {
     id: win
     title: "wallpaper-studio"
@@ -15,22 +15,51 @@ FloatingWindow {
 
     property string mode: "dark"
     property string style: "mesh"
-    property int angle: 25
-    property int streak: 220
     property int seed: 42
     property int waveAmp: 50
     property int waveLen: 1600
     property int swirl: 30
     property int blurV: 80
     property real grain: 0.12
-    property bool rendering: false
+    property int angle: 25
+    property int streak: 220
     property string status: ""
     property int selected: 0
+    property int anchorsRev: 0
 
     ListModel { id: anchorsModel }
+    function touchAnchors() { anchorsRev++; saveState() }
+
+    // ── persistence ─────────────────────────────────────────────────
+    FileView {
+        id: stateFile
+        path: Quickshell.env("HOME") + "/.local/state/wallpaper-studio.json"
+    }
+    function saveState() {
+        const a = []
+        for (let i = 0; i < anchorsModel.count; i++) {
+            const x = anchorsModel.get(i)
+            a.push({ ax: x.ax, ay: x.ay, hex: x.hex, size: x.size })
+        }
+        const st = { mode: mode, style: style, seed: seed, waveAmp: waveAmp,
+                     waveLen: waveLen, swirl: swirl, blurV: blurV, grain: grain,
+                     angle: angle, streak: streak, anchors: a }
+        try { stateFile.setText(JSON.stringify(st)) } catch (e) {}
+    }
+    function restoreState() {
+        try {
+            const st = JSON.parse(stateFile.text())
+            mode = st.mode; style = st.style; seed = st.seed
+            waveAmp = st.waveAmp; waveLen = st.waveLen; swirl = st.swirl
+            blurV = st.blurV; grain = st.grain; angle = st.angle; streak = st.streak
+            anchorsModel.clear()
+            for (const x of st.anchors) anchorsModel.append(x)
+            return anchorsModel.count >= 2
+        } catch (e) { return false }
+    }
     Component.onCompleted: {
-        resetAnchors()
-        render()
+        if (!restoreState()) resetAnchors()
+        anchorsRev++
     }
     function resetAnchors() {
         anchorsModel.clear()
@@ -51,9 +80,10 @@ FloatingWindow {
             anchorsModel.append({ ax: 0.3, ay: 0.8, hex: a2, size: 0.9 })
         }
         selected = 0
+        touchAnchors()
     }
 
-    // Theme palette swatches, read live from colors.json.
+    // ── theme palette swatches ──────────────────────────────────────
     FileView {
         id: colorsFile
         path: Quickshell.env("HOME") + "/.config/themes/colors.json"
@@ -70,78 +100,47 @@ FloatingWindow {
         } catch (e) { return ["#181818", "#FFFFFF", "#FF570D"] }
     }
 
-    readonly property string script: Quickshell.env("HOME") + "/.config/themes/generate-wallpaper.sh"
-    readonly property string previewPath: "/tmp/wallpaper-studio-preview.png"
-
-    function anchorSpec() {
-        const parts = []
-        for (let i = 0; i < anchorsModel.count; i++) {
-            const a = anchorsModel.get(i)
-            parts.push(a.ax.toFixed(3) + "," + a.ay.toFixed(3) + "," + a.hex + "," + a.size.toFixed(2))
-        }
-        return parts.join(";")
+    // ── uniforms ────────────────────────────────────────────────────
+    function anchorVec(i) {
+        anchorsRev
+        if (i >= anchorsModel.count) return Qt.vector4d(0, 0, 0, 0)
+        const a = anchorsModel.get(i)
+        const sz = a.size * (style === "streaks" ? 0.45 : 1.0)
+        return Qt.vector4d(a.ax, a.ay, sz, 1)
     }
-    function args(size, out, extra) {
-        return [script, mode, "--seed", String(seed),
-                "--wave-amp", String(waveAmp), "--wave-len", String(waveLen),
-                "--swirl", String(swirl), "--blur", String(blurV),
-                "--grain", grain.toFixed(2),
-                "--anchor-spec", anchorSpec(),
-                "--style", style, "--angle", String(angle), "--streak", String(streak),
-                "--size", size]
-               .concat(out ? ["--out", out] : [])
-               .concat(extra || [])
+    function colorVec(i) {
+        anchorsRev
+        if (i >= anchorsModel.count) return Qt.vector4d(0, 0, 0, 1)
+        const c = Qt.color(anchorsModel.get(i).hex)
+        return Qt.vector4d(c.r, c.g, c.b, 1)
+    }
+    readonly property vector4d stageColor: {
+        const c = Qt.color(mode === "dark" ? "#181818" : "#FFFFFF")
+        const f = (style === "streaks" && mode === "dark") ? 0.25 : 1.0
+        return Qt.vector4d(c.r * f, c.g * f, c.b * f, 1)
     }
 
-    // React-state feel: every change kills the in-flight render and starts a
-    // fast draft (work-res 480, ~0.4-1s) so the preview chases the latest
-    // state; a full-quality pass settles in once you stop touching things.
-    property bool settlePass: false
-    // Generation-keyed renders: each render writes its own slot and only the
-    // newest generation is allowed to reach the screen — a straggler from an
-    // aborted render can never overwrite a newer preview.
-    property int rgen: 0
-    property int shownGen: -1
-    function slotPath(g) { return win.previewPath + "." + (g % 8) + ".png" }
-    function launch(fast) {
-        if (proc.running) proc.running = false
-        win.rgen++
-        win.rendering = true
-        proc.command = win.args("960x600", win.slotPath(win.rgen),
-                                fast ? ["--work-res", "480"] : [])
-        proc.running = true
+    function setPath() {
+        return Quickshell.env("HOME") + "/Pictures/Wallpapers/generated/gl-" + mode + "-" +
+               seed + "-" + Math.floor(Math.random() * 100000) + ".png"
     }
-    function render() { debounce.restart() }
-    Timer {
-        id: debounce
-        interval: 60
-        onTriggered: {
-            win.settlePass = false
-            win.launch(true)
-        }
+    Process { id: applyProc }
+    function save4k(andSet) {
+        const out = setPath()
+        win.status = "rendering 4K…"
+        fx.grabToImage(function (res) {
+            if (!res.saveToFile(out)) { win.status = "save failed"; return }
+            win.status = "saved ✓"
+            statusClear.restart()
+            if (andSet) {
+                applyProc.command = ["bash", "-c",
+                    "ln -sf '" + out + "' \"$HOME/.config/themes/wallpaper-" + win.mode + "\"; " +
+                    "if [ \"$(cat \"$HOME/.config/theme_mode\")\" = '" + win.mode + "' ]; then " +
+                    "pkill -x swaybg; waypaper --wallpaper '" + out + "' & fi"]
+                applyProc.running = true
+            }
+        }, Qt.size(3840, 2400))
     }
-    Process {
-        id: proc
-        onExited: (code, status) => {
-            win.rendering = false
-            if (code !== 0) return              // aborted by a newer change
-            if (debounce.running) return        // a newer change is queued
-            win.shownGen = win.rgen
-            previewImg.source = ""
-            previewImg.source = "file://" + win.slotPath(win.rgen)
-            if (!win.settlePass) settle.restart()
-        }
-    }
-    Timer {
-        id: settle
-        interval: 500
-        onTriggered: {
-            if (debounce.running || proc.running) { settle.restart(); return }
-            win.settlePass = true
-            win.launch(false)
-        }
-    }
-    Process { id: saveProc; onExited: { win.status = "saved ✓"; statusClear.restart() } }
     Timer { id: statusClear; interval: 2500; onTriggered: win.status = "" }
 
     component Knob: Column {
@@ -170,41 +169,63 @@ FloatingWindow {
     Row {
         anchors.fill: parent
 
-        // ── preview + draggable anchors ─────────────────────────────
+        // ── live shader preview + draggable anchors ─────────────────
         Rectangle {
             id: stage
             width: parent.width - panel.width; height: parent.height
             color: "#101010"
 
-            // fitted 16:10 rect the preview occupies (source is 960x600)
             readonly property real fitW: Math.min(width - 28, (height - 28) * 1.6)
             readonly property real fitH: fitW / 1.6
             readonly property real ox: (width - fitW) / 2
             readonly property real oy: (height - fitH) / 2
 
-            Image {
-                id: previewImg
+            ShaderEffect {
+                id: fx
                 x: stage.ox; y: stage.oy
                 width: stage.fitW; height: stage.fitH
-                fillMode: Image.Stretch
-                cache: false
-                Rectangle {
-                    visible: win.rendering
-                    anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8
-                    width: 10; height: 10; radius: 5; color: "#FF570D"
-                }
+                fragmentShader: "file://" + Quickshell.env("HOME") + "/.config/themes/wallpaper.frag.qsb"
+
+                property vector4d a0: win.anchorVec(0)
+                property vector4d a1: win.anchorVec(1)
+                property vector4d a2: win.anchorVec(2)
+                property vector4d a3: win.anchorVec(3)
+                property vector4d a4: win.anchorVec(4)
+                property vector4d a5: win.anchorVec(5)
+                property vector4d a6: win.anchorVec(6)
+                property vector4d a7: win.anchorVec(7)
+                property vector4d c0: win.colorVec(0)
+                property vector4d c1: win.colorVec(1)
+                property vector4d c2: win.colorVec(2)
+                property vector4d c3: win.colorVec(3)
+                property vector4d c4: win.colorVec(4)
+                property vector4d c5: win.colorVec(5)
+                property vector4d c6: win.colorVec(6)
+                property vector4d c7: win.colorVec(7)
+                property vector4d baseColor: win.stageColor
+                property real styleMode: win.style === "streaks" ? 1 : 0
+                property real modeLight: win.mode === "light" ? 1 : 0
+                property real waveAmp: win.waveAmp
+                property real waveLen: win.waveLen
+                property real swirlDeg: win.swirl
+                property real blurK: win.blurV
+                property real grainAmt: win.grain
+                property real angleDeg: win.angle
+                property real streakLen: win.streak
+                property real aberr: 6
+                property real seedF: win.seed
             }
 
-            // double-click empty canvas: add an anchor there
             TapHandler {
                 acceptedButtons: Qt.LeftButton
                 onDoubleTapped: e => {
                     const u = (e.position.x - stage.ox) / stage.fitW
                     const v = (e.position.y - stage.oy) / stage.fitH
                     if (u < 0 || u > 1 || v < 0 || v > 1) return
+                    if (anchorsModel.count >= 8) return
                     anchorsModel.append({ ax: u, ay: v, hex: win.palette[0] || "#888888", size: 1.0 })
                     win.selected = anchorsModel.count - 1
-                    win.render()
+                    win.touchAnchors()
                 }
             }
 
@@ -236,14 +257,14 @@ FloatingWindow {
                             const v = Math.max(0, Math.min(1, (p.y - stage.oy) / stage.fitH))
                             anchorsModel.setProperty(handle.index, "ax", u)
                             anchorsModel.setProperty(handle.index, "ay", v)
-                            win.render()
+                            win.touchAnchors()
                         }
                         onWheel: wheel => {
                             win.selected = handle.index
                             const d = wheel.angleDelta.y > 0 ? 0.1 : -0.1
                             const ns = Math.max(0.2, Math.min(3, handle.size + d))
                             anchorsModel.setProperty(handle.index, "size", ns)
-                            win.render()
+                            win.touchAnchors()
                         }
                     }
                 }
@@ -267,11 +288,10 @@ FloatingWindow {
                         color: win.mode === modelData ? "#EDEDED" : "#2E2E2E"
                         Text { anchors.centerIn: parent; text: parent.modelData
                                color: win.mode === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
-                        TapHandler { onTapped: { win.mode = parent.modelData; win.resetAnchors(); win.render() } }
+                        TapHandler { onTapped: { win.mode = parent.modelData; win.resetAnchors() } }
                     }
                 }
             }
-
             Row {
                 spacing: 8
                 Repeater {
@@ -282,15 +302,14 @@ FloatingWindow {
                         color: win.style === modelData ? "#EDEDED" : "#2E2E2E"
                         Text { anchors.centerIn: parent; text: parent.modelData
                                color: win.style === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
-                        TapHandler { onTapped: { win.style = parent.modelData; win.resetAnchors(); win.render() } }
+                        TapHandler { onTapped: { win.style = parent.modelData; win.resetAnchors() } }
                     }
                 }
             }
 
-            Text { text: "anchor " + (win.selected + 1) + " / " + anchorsModel.count + " — drag to move, scroll to resize, double-click canvas to add"
+            Text { text: "anchor " + (win.selected + 1) + " / " + anchorsModel.count + " — drag to move, scroll to resize, double-click canvas to add (max 8)"
                    width: 284; wrapMode: Text.WordWrap; color: "#707B84"; font.pixelSize: 11; font.family: "Geist" }
 
-            // theme swatches paint the selected anchor
             Flow {
                 width: 284; spacing: 6
                 Repeater {
@@ -303,7 +322,7 @@ FloatingWindow {
                         border.color: border.width === 3 ? "#FF570D" : "#3A3A3A"
                         TapHandler { onTapped: {
                             anchorsModel.setProperty(win.selected, "hex", parent.modelData)
-                            win.render()
+                            win.touchAnchors()
                         } }
                     }
                 }
@@ -313,7 +332,7 @@ FloatingWindow {
                 label: "anchor size"
                 from: 0.2; to: 3; step: 0.05
                 value: anchorsModel.count > win.selected ? anchorsModel.get(win.selected).size : 1
-                onMoved: v => { anchorsModel.setProperty(win.selected, "size", v); win.render() }
+                onMoved: v => { anchorsModel.setProperty(win.selected, "size", v); win.touchAnchors() }
             }
 
             Row {
@@ -322,20 +341,20 @@ FloatingWindow {
                     if (anchorsModel.count <= 2) return
                     anchorsModel.remove(win.selected)
                     win.selected = Math.max(0, win.selected - 1)
-                    win.render()
+                    win.touchAnchors()
                 } }
-                Chip { label: "reset"; onClicked: { win.resetAnchors(); win.render() } }
+                Chip { label: "reset"; onClicked: win.resetAnchors() }
             }
 
             Rectangle { width: 284; height: 1; color: "#2E2E2E" }
 
-            Knob { visible: win.style === "streaks"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.render() } }
-            Knob { visible: win.style === "streaks"; label: "angle"; from: -60; to: 60; step: 1; value: win.angle; onMoved: v => { win.angle = v; win.render() } }
-            Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.render() } }
-            Knob { label: "wave length"; from: 300; to: 3000; step: 10; value: win.waveLen; onMoved: v => { win.waveLen = v; win.render() } }
-            Knob { label: "swirl"; from: -180; to: 180; step: 1; value: win.swirl; onMoved: v => { win.swirl = v; win.render() } }
-            Knob { label: "blur"; from: 10; to: 220; step: 1; value: win.blurV; onMoved: v => { win.blurV = v; win.render() } }
-            Knob { label: "grain"; from: 0; to: 0.5; step: 0.01; value: win.grain; onMoved: v => { win.grain = v; win.render() } }
+            Knob { visible: win.style === "streaks"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
+            Knob { visible: win.style === "streaks"; label: "angle"; from: -60; to: 60; step: 1; value: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
+            Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
+            Knob { label: "wave length"; from: 300; to: 3000; step: 10; value: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
+            Knob { label: "swirl"; from: -180; to: 180; step: 1; value: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
+            Knob { visible: win.style === "mesh"; label: "softness"; from: 10; to: 220; step: 1; value: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
+            Knob { label: "grain"; from: 0; to: 0.5; step: 0.01; value: win.grain; onMoved: v => { win.grain = v; win.saveState() } }
 
             Item { width: 1; height: 6 }
 
@@ -344,20 +363,12 @@ FloatingWindow {
                 Rectangle {
                     width: 120; height: 30; radius: 15; color: "#EDEDED"
                     Text { anchors.centerIn: parent; text: "Save 4K"; color: "#181818"; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
-                    TapHandler { onTapped: {
-                        win.status = "rendering 4K…"
-                        saveProc.command = win.args("3840x2400", "")
-                        saveProc.running = true
-                    } }
+                    TapHandler { onTapped: win.save4k(false) }
                 }
                 Rectangle {
                     width: 120; height: 30; radius: 15; color: "#2E2E2E"
                     Text { anchors.centerIn: parent; text: "Save + Set"; color: "#EDEDED"; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
-                    TapHandler { onTapped: {
-                        win.status = "rendering 4K…"
-                        saveProc.command = win.args("3840x2400", "", ["--set"])
-                        saveProc.running = true
-                    } }
+                    TapHandler { onTapped: win.save4k(true) }
                 }
             }
             Text { text: win.status; color: "#97B5A6"; font.pixelSize: 12; font.family: "Geist" }
