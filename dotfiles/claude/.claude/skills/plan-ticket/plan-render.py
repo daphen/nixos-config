@@ -33,8 +33,9 @@ def md_block(text: str) -> str:
     """Very light markdown → HTML for prose sections (paragraphs + bullet lists)."""
     out, buf, in_ul = [], [], False
     def flush_p():
+        # join wrapped lines before inlining — bold/code spans cross hard wraps
         if buf:
-            out.append("<p>" + " ".join(buf) + "</p>"); buf.clear()
+            out.append("<p>" + md_inline(" ".join(buf)) + "</p>"); buf.clear()
     for raw in text.splitlines():
         line = raw.rstrip()
         if not line.strip():
@@ -47,7 +48,7 @@ def md_block(text: str) -> str:
             if not in_ul: out.append("<ul>"); in_ul = True
             out.append("<li>" + md_inline(m.group(1)) + "</li>")
         else:
-            buf.append(md_inline(line))
+            buf.append(line.strip())
     flush_p()
     if in_ul: out.append("</ul>")
     return "\n".join(out) or '<span class="empty">—</span>'
