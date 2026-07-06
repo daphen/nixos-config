@@ -93,23 +93,41 @@ FloatingWindow {
                .concat(extra || [])
     }
 
+    // React-state feel: every change kills the in-flight render and starts a
+    // fast draft (work-res 480, ~0.4-1s) so the preview chases the latest
+    // state; a full-quality pass settles in once you stop touching things.
+    property bool settlePass: false
     function render() { debounce.restart() }
     Timer {
         id: debounce
-        interval: 160
+        interval: 60
         onTriggered: {
-            if (win.rendering) { debounce.restart(); return }
+            if (proc.running) proc.running = false
+            win.settlePass = false
             win.rendering = true
-            proc.command = win.args("960x600", win.previewPath)
+            proc.command = win.args("960x600", win.previewPath, ["--work-res", "480"])
             proc.running = true
         }
     }
     Process {
         id: proc
-        onExited: {
+        onExited: (code, status) => {
             win.rendering = false
+            if (code !== 0) return   // aborted by a newer change
             previewImg.source = ""
             previewImg.source = "file://" + win.previewPath
+            if (!win.settlePass) settle.restart()
+        }
+    }
+    Timer {
+        id: settle
+        interval: 500
+        onTriggered: {
+            if (debounce.running || proc.running) { settle.restart(); return }
+            win.settlePass = true
+            win.rendering = true
+            proc.command = win.args("960x600", win.previewPath)
+            proc.running = true
         }
     }
     Process { id: saveProc; onExited: { win.status = "saved ✓"; statusClear.restart() } }

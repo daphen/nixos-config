@@ -19,7 +19,7 @@ SET_LINK=0
 # Optional explicit knobs — default to seed-derived when empty.
 WAVE_AMP="" WAVE_LEN="" SWIRL="" BLUR="" GRAIN="" OUT=""
 CELLS="10x6" ANCHORS="4" ANCHOR_SPEC=""
-STYLE="mesh" ANGLE="35" STREAK="120" ABERRATION="6"
+STYLE="mesh" ANGLE="35" STREAK="120" ABERRATION="6" WORK_RES=""
 
 shift $(( $# > 0 ? 1 : 0 )) || true
 while [[ $# -gt 0 ]]; do
@@ -40,6 +40,7 @@ while [[ $# -gt 0 ]]; do
         --angle)    ANGLE="$2"; shift 2 ;;
         --streak)   STREAK="$2"; shift 2 ;;
         --aberration) ABERRATION="$2"; shift 2 ;;
+        --work-res) WORK_RES="$2"; shift 2 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
@@ -189,7 +190,10 @@ EOPY
     # truly identical (per-size pipelines kept diverging in smear tails,
     # noise realizations, and rounding). Soft gradients lose nothing in a
     # 2x upscale; grain is added after the final resize at native res.
-    local WW=1920 WH=1200
+    # --work-res trades exactness for speed (the studio uses it for live
+    # slider feedback, then settles with the default).
+    local WW="${WORK_RES:-1920}" WH
+    WH=$(( WW * 5 / 8 ))
     local sc; sc=$(awk "BEGIN{printf \"%.4f\", $WW/3840}")
     local amp_s len_s blur_s
     amp_s=$(awk "BEGIN{printf \"%d\", $wave_amp*$sc + 0.5}")
