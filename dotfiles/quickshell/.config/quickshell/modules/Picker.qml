@@ -514,7 +514,7 @@ PanelWindow {
                             color: Theme.fg
                             font.family: notch.sans
                             font.pixelSize: 15
-                            font.weight: 600
+                            font.weight: 500
                             renderType: Text.NativeRendering
                             elide: Text.ElideRight
                         }

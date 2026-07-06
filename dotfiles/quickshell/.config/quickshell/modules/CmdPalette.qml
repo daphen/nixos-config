@@ -641,7 +641,7 @@ PanelWindow {
                                 elide: Text.ElideRight
                                 font.family: root.sans
                                 font.pixelSize: 15
-                                font.weight: 600
+                                font.weight: 500
                                 renderType: Text.NativeRendering
                             }
                             Text {
