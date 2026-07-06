@@ -16,6 +16,8 @@ MODE="${1:-both}"
 SEED=$RANDOM
 SIZE="3840x2400"
 SET_LINK=0
+# Optional explicit knobs — default to seed-derived when empty.
+WAVE_AMP="" WAVE_LEN="" SWIRL="" BLUR="" GRAIN="" OUT=""
 
 shift $(( $# > 0 ? 1 : 0 )) || true
 while [[ $# -gt 0 ]]; do
@@ -23,6 +25,12 @@ while [[ $# -gt 0 ]]; do
         --seed) SEED="$2"; shift 2 ;;
         --size) SIZE="$2"; shift 2 ;;
         --set)  SET_LINK=1; shift ;;
+        --wave-amp) WAVE_AMP="$2"; shift 2 ;;
+        --wave-len) WAVE_LEN="$2"; shift 2 ;;
+        --swirl)    SWIRL="$2"; shift 2 ;;
+        --blur)     BLUR="$2"; shift 2 ;;
+        --grain)    GRAIN="$2"; shift 2 ;;
+        --out)      OUT="$2"; shift 2 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
@@ -32,7 +40,7 @@ W="${SIZE%x*}"; H="${SIZE#*x}"
 
 gen_one() {
     local mode="$1"
-    local out="$OUT_DIR/mesh-$mode-$SEED.png"
+    local out="${OUT:-$OUT_DIR/mesh-$mode-$SEED.png}"
     local seedpng
     seedpng="$(mktemp --suffix=.png)"
 
@@ -89,18 +97,31 @@ PY
     # mode's base color and center-crop the target out of the middle.
     local base_hex
     base_hex=$(jq -r ".themes.$mode.background.primary" "$COLORS_FILE")
-    local wave_amp=$(( 30 + SEED % 50 ))
-    local wave_len=$(( 1200 + SEED % 900 ))
-    local swirl=$(( 15 + SEED % 40 ))
-    local pad=$(( wave_amp * 2 + 60 ))
+    local wave_amp="${WAVE_AMP:-$(( 30 + SEED % 50 ))}"
+    local wave_len="${WAVE_LEN:-$(( 1200 + SEED % 900 ))}"
+    local swirl="${SWIRL:-$(( 15 + SEED % 40 ))}"
+    local blur="${BLUR:-80}"
+    local grain="${GRAIN:-0.12}"
+    # Knobs are calibrated at 3840 wide; scale them to the render size so a
+    # small preview looks like the final.
+    local sc; sc=$(awk "BEGIN{printf \"%.4f\", $W/3840}")
+    local amp_s len_s blur_s
+    amp_s=$(awk "BEGIN{printf \"%d\", $wave_amp*$sc + 0.5}")
+    len_s=$(awk "BEGIN{printf \"%d\", $wave_len*$sc + 0.5}")
+    blur_s=$(awk "BEGIN{printf \"%.1f\", $blur*$sc}")
+    (( amp_s < 1 )) && amp_s=1
+    (( len_s < 8 )) && len_s=8
+    local pad=$(( amp_s * 2 + 60 ))
+    local grain_args=(-attenuate "$grain" +noise Gaussian)
+    [[ "$grain" == "0" || "$grain" == "0.0" ]] && grain_args=()
     magick "$seedpng" \
         -filter Gaussian -resize "${W}x$(( H + 2 * pad ))!" \
         -background "$base_hex" -virtual-pixel Mirror \
-        -wave "${wave_amp}x${wave_len}" \
+        -wave "${amp_s}x${len_s}" \
         -swirl "$swirl" \
-        -blur 0x80 \
+        -blur "0x${blur_s}" \
         -gravity center -crop "${W}x${H}+0+0" +repage \
-        -attenuate 0.12 +noise Gaussian \
+        "${grain_args[@]}" \
         "$out"
     rm -f "$seedpng"
     echo "$out"
