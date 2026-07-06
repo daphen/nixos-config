@@ -8,6 +8,9 @@
 # with wave+swirl distortions, then finished with soft film grain. --set
 # points the theme wallpaper symlink at the result and applies via waypaper.
 set -euo pipefail
+# The studio aborts in-flight renders; take magick/python down with us so a
+# killed render can't finish later and overwrite a newer preview.
+trap 'pkill -P $$ 2>/dev/null; exit 130' TERM INT
 
 THEMES_DIR="$HOME/.config/themes"
 COLORS_FILE="$THEMES_DIR/colors.json"

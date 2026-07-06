@@ -97,25 +97,38 @@ FloatingWindow {
     // fast draft (work-res 480, ~0.4-1s) so the preview chases the latest
     // state; a full-quality pass settles in once you stop touching things.
     property bool settlePass: false
+    // Generation-keyed renders: each render writes its own slot and only the
+    // newest generation is allowed to reach the screen — a straggler from an
+    // aborted render can never overwrite a newer preview.
+    property int rgen: 0
+    property int shownGen: -1
+    function slotPath(g) { return win.previewPath + "." + (g % 8) + ".png" }
+    function launch(fast) {
+        if (proc.running) proc.running = false
+        win.rgen++
+        win.rendering = true
+        proc.command = win.args("960x600", win.slotPath(win.rgen),
+                                fast ? ["--work-res", "480"] : [])
+        proc.running = true
+    }
     function render() { debounce.restart() }
     Timer {
         id: debounce
         interval: 60
         onTriggered: {
-            if (proc.running) proc.running = false
             win.settlePass = false
-            win.rendering = true
-            proc.command = win.args("960x600", win.previewPath, ["--work-res", "480"])
-            proc.running = true
+            win.launch(true)
         }
     }
     Process {
         id: proc
         onExited: (code, status) => {
             win.rendering = false
-            if (code !== 0) return   // aborted by a newer change
+            if (code !== 0) return              // aborted by a newer change
+            if (debounce.running) return        // a newer change is queued
+            win.shownGen = win.rgen
             previewImg.source = ""
-            previewImg.source = "file://" + win.previewPath
+            previewImg.source = "file://" + win.slotPath(win.rgen)
             if (!win.settlePass) settle.restart()
         }
     }
@@ -125,9 +138,7 @@ FloatingWindow {
         onTriggered: {
             if (debounce.running || proc.running) { settle.restart(); return }
             win.settlePass = true
-            win.rendering = true
-            proc.command = win.args("960x600", win.previewPath)
-            proc.running = true
+            win.launch(false)
         }
     }
     Process { id: saveProc; onExited: { win.status = "saved ✓"; statusClear.restart() } }
