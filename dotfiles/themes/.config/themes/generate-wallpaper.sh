@@ -227,21 +227,30 @@ EOPY
         local nblur unsharp_s
         nblur=$(awk "BEGIN{printf \"%.2f\", 6*$sc}")
         unsharp_s=$(awk "BEGIN{printf \"%.1f\", 10*$sc}")
+        # The filament noise is a MULTIPLY — fine on a black stage, but it
+        # halves white paper to gray. Dark mode only.
+        # Layer combine: light ADDS on a black stage (Screen), ink DEEPENS
+        # on paper (Multiply).
+        local combine_op="Screen"
+        [[ "$mode" == "light" ]] && combine_op="Multiply"
+        local chrome_args=()
+        if [[ "$mode" == "dark" ]]; then
+            chrome_args=( "(" -size "${RW}x${RH}" xc:gray50 -seed "$SEED" -attenuate 2.5 +noise Uniform -colorspace Gray -blur "0x${nblur}" -level "38%,62%" ")" -compose Multiply -composite )
+        fi
         magick "$seedpng" \
             -filter Gaussian -resize "${RW}x${RH}!" \
-            \( -size "${RW}x${RH}" xc:gray50 -seed "$SEED" -attenuate 2.5 +noise Uniform -colorspace Gray -blur "0x${nblur}" -level "38%,62%" \) \
-            -compose Multiply -composite \
+            "${chrome_args[@]}" \
             -background "$base_hex" -virtual-pixel Mirror \
             \( -clone 0 -filter Gaussian -resize "${pct}%x100%!" -resize "${RW}x${RH}!" \) \
             \( -clone 0 -filter Gaussian -resize "$(awk "BEGIN{printf \"%.3f\", 100/($squash/6)}")%x100%!" -resize "${RW}x${RH}!" \) \
-            -delete 0 -compose Screen -composite \
+            -delete 0 -compose "$combine_op" -composite \
             -wave "${amp_s}x${len_s}" \
             -swirl "$swirl" \
             -rotate "$ANGLE" \
             -gravity center -crop "${W}x${H}+0+0" +repage \
-            \( -clone 0 -channel R -separate +channel -roll "+${ab_s}+0" \) \
+            \( -clone 0 -channel R -separate +channel -virtual-pixel Edge -distort Affine "0,0 ${ab_s},0" \) \
             \( -clone 0 -channel G -separate +channel \) \
-            \( -clone 0 -channel B -separate +channel -roll "-${ab_s}+0" \) \
+            \( -clone 0 -channel B -separate +channel -virtual-pixel Edge -distort Affine "0,0 -${ab_s},0" \) \
             -delete 0 -combine \
             -unsharp "0x${unsharp_s}+1.0+0.02" \
             "${finish_args[@]}" \
