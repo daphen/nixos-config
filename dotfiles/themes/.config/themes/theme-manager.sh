@@ -616,10 +616,10 @@ apply_system_theme() {
             # Equal stops → niri renders the border as a solid active color.
             local grad_from="$active_color" grad_to="$active_color"
         else
-            # Light mode: hairpin-family neutral, but darker than the UI
-            # hairline (12% was invisible as a window ring) — fg at ~33%
-            # over white.
-            local active_color="#B0B0AF"
+            # Light mode: hairpin-family neutral. Active needs real weight
+            # to read as focus against light windows — fg at ~60% over
+            # white; inactive stays a whisper.
+            local active_color="#6F6F6E"
             local inactive_color="#E2E2E1"
             local grad_from="$active_color" grad_to="$active_color"
         fi
