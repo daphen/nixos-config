@@ -10,6 +10,7 @@ scroll/focus preserved. `--open` routes the URL through browser-dispatch.
 Typical use (from the plan-ticket skill's --go): ensure + open.
 """
 import argparse
+import json
 import importlib.util
 import os
 import socket
@@ -21,6 +22,8 @@ from pathlib import Path
 
 PORT = 8746
 HOME = Path(os.environ["HOME"])
+MAIN_REPO = HOME / "work" / "lovable"
+NVIM_OPEN = HOME / ".local" / "bin" / "nvim-open"
 SKILL = Path(__file__).resolve().parent
 
 _spec = importlib.util.spec_from_file_location("plan_render", SKILL / "plan-render.py")
@@ -57,6 +60,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
+        elif self.path.startswith("/open"):
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            key = (q.get("key") or [""])[0]
+            f = (q.get("file") or [""])[0]
+            ln = (q.get("line") or ["1"])[0]
+            root = self._worktree_for(key)
+            ok = False
+            if root and f and NVIM_OPEN.is_file():
+                ok = subprocess.run([str(NVIM_OPEN), root, f, ln]).returncode == 0
+            self.send_response(200 if ok else 500)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"ok" if ok else b"err")
         elif self.path == "/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -77,6 +94,29 @@ class Handler(BaseHTTPRequestHandler):
                 pass
         else:
             self.send_error(404)
+
+    def _worktree_for(self, key):
+        # branch from progress.json -> worktree path via git worktree list
+        try:
+            prog = json.loads((self.plandir / f"{key}.progress.json").read_text())
+            branch = prog.get("branch") or ""
+        except (OSError, ValueError):
+            branch = ""
+        if not branch:
+            return None
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(MAIN_REPO), "worktree", "list", "--porcelain"],
+                capture_output=True, text=True, timeout=5).stdout
+        except Exception:
+            return None
+        path = None
+        for line in out.splitlines():
+            if line.startswith("worktree "):
+                path = line.split(" ", 1)[1]
+            elif line == f"branch refs/heads/{branch}":
+                return path
+        return None
 
     def _snapshot(self):
         out = []

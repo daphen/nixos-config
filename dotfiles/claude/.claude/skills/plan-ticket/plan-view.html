@@ -89,7 +89,8 @@
   function openInNvim(el){
     var f = el.getAttribute("data-file"); if(!f) return;
     var ln = el.getAttribute("data-line") || "1";
-    try { fetch("/open?file=" + encodeURIComponent(f) + "&line=" + encodeURIComponent(ln)); } catch(e){}
+    var k = location.pathname.split("/plan/")[1] || "";
+    try { fetch("/open?key=" + encodeURIComponent(k) + "&file=" + encodeURIComponent(f) + "&line=" + encodeURIComponent(ln)); } catch(e){}
   }
   document.addEventListener("keydown", function(e){
     if(e.metaKey || e.ctrlKey || e.altKey) return;
