@@ -48,7 +48,7 @@ PanelWindow {
 
     // The old palette rendered in the system sans stack, not the
     // desktop's mono — part of what made it feel cleaner. Keep that.
-    readonly property string sans: "Noto Sans"
+    readonly property string sans: "Inter"
     // Outer border: --app-container-border-color (fg @ .5 light / .1 dark).
     readonly property color panelBorder:
         Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
