@@ -68,6 +68,17 @@ FloatingWindow {
     }
     function resetAnchors() {
         anchorsModel.clear()
+        if (style === "flow") {
+            const cols = mode === "dark"
+                ? ["#181818", "#CCD5E4", "#396171", "#181818", "#FF570D"]
+                : ["#FFFFFF", "#396171", "#0284C7", "#F4F5F2", "#e16511"]
+            const pos = [[0.15, 0.2], [0.6, 0.1], [0.85, 0.5], [0.35, 0.75], [0.75, 0.9]]
+            for (let i = 0; i < 5; i++)
+                anchorsModel.append({ ax: pos[i][0], ay: pos[i][1], hex: cols[i], size: 0.9 + (i % 2) * 0.4 })
+            selected = 0
+            touchAnchors()
+            return
+        }
         if (style === "streaks") {
             const hot = mode === "dark"
                 ? ["#FFFFFF", "#FF570D", "#7DD3FC", "#CCD5E4", "#FFFFFF", "#FF570D"]
@@ -110,7 +121,7 @@ FloatingWindow {
         anchorsRev
         if (i >= anchorsModel.count) return Qt.vector4d(0, 0, 0, 0)
         const a = anchorsModel.get(i)
-        const sz = a.size * (style === "streaks" ? 0.45 : 1.0)
+        const sz = a.size * (style === "streaks" ? 0.45 : 1.0)   // flow keeps full fields
         return Qt.vector4d(a.ax, a.ay, sz, 1)
     }
     function colorVec(i) {
@@ -211,7 +222,7 @@ FloatingWindow {
                 property vector4d c6: win.colorVec(6)
                 property vector4d c7: win.colorVec(7)
                 property vector4d baseColor: win.stageColor
-                property real styleMode: win.style === "streaks" ? 1 : 0
+                property real styleMode: win.style === "streaks" ? 1 : win.style === "flow" ? 2 : 0
                 property real modeLight: win.mode === "light" ? 1 : 0
                 property real waveAmp: win.waveAmp
                 property real waveLen: win.waveLen
@@ -304,7 +315,7 @@ FloatingWindow {
             Row {
                 spacing: 8
                 Repeater {
-                    model: ["mesh", "streaks"]
+                    model: ["mesh", "streaks", "flow"]
                     Rectangle {
                         required property string modelData
                         width: 74; height: 26; radius: 13
@@ -357,10 +368,10 @@ FloatingWindow {
 
             Rectangle { width: 284; height: 1; color: "#2E2E2E" }
 
-            Knob { visible: win.style === "streaks"; label: "chrome"; from: 0; to: 1; step: 0.02; value: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
-            Knob { visible: win.style === "streaks"; label: "chromatic shift"; from: 0; to: 20; step: 1; value: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
-            Knob { visible: win.style === "streaks"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
-            Knob { visible: win.style === "streaks"; label: "angle"; from: -60; to: 60; step: 1; value: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
+            Knob { visible: win.style !== "mesh"; label: "chrome"; from: 0; to: 1; step: 0.02; value: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
+            Knob { visible: win.style !== "mesh"; label: "chromatic shift"; from: 0; to: 20; step: 1; value: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
+            Knob { visible: win.style !== "mesh"; label: "streak length"; from: 40; to: 400; step: 5; value: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
+            Knob { visible: win.style !== "mesh"; label: "angle"; from: -60; to: 60; step: 1; value: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
             Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
             Knob { label: "wave length"; from: 300; to: 3000; step: 10; value: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
             Knob { label: "swirl"; from: -180; to: 180; step: 1; value: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }

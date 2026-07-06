@@ -13,7 +13,7 @@ layout(std140, binding = 0) uniform buf {
     // colors (rgb)
     vec4 c0; vec4 c1; vec4 c2; vec4 c3; vec4 c4; vec4 c5; vec4 c6; vec4 c7;
     vec4 baseColor;
-    float styleMode;   // 0 mesh, 1 streaks
+    float styleMode;   // 0 mesh, 1 streaks, 2 flow (smeared mesh)
     float modeLight;   // 0 dark, 1 light
     float waveAmp;     // calibrated at 3840px width
     float waveLen;
@@ -134,7 +134,10 @@ vec3 streaksAt(vec2 uv) {
         float au = abs(t);
         float wL = 1.0 - smoothstep(0.82, 1.0, au);
         float wS = 1.0 - smoothstep(0.10, 0.16, au);       // short core layer
-        vec3 s = glowField(ruv + vec2(t * halfLen, 0.0));
+        vec2 sp = ruv + vec2(t * halfLen, 0.0);
+        // flow = the full-canvas mesh field smeared directionally (silk
+        // folds); streaks = hot cores on a stage.
+        vec3 s = (styleMode > 1.5) ? meshField(sp) : glowField(sp);
         accL += s * wL; wsumL += wL;
         accS += s * wS; wsumS += wS;
     }
@@ -153,6 +156,11 @@ vec3 streaksAt(vec2 uv) {
 
 vec3 finish(vec3 c) {
     if (styleMode < 0.5) return c;   // mesh keeps its natural range
+    if (styleMode > 1.5) {
+        // flow: gentle S-curve only — the field is already full-range
+        c = mix(c, c * c * (3.0 - 2.0 * c), 0.35);
+        return c;
+    }
     if (modeLight < 0.5) {
         c = clamp(c / 0.16, 0.0, 1.0);              // lift faint light
         c = c * c * (3.0 - 2.0 * c);                // soft sigmoid
