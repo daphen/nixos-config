@@ -3,13 +3,14 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 
-// Live tuning UI for generate-wallpaper.sh. Sliders re-render a small
-// preview (debounced); Save renders the full 4K with the same knobs.
+// Live mesh-gradient editor over generate-wallpaper.sh. Anchors are
+// draggable handles on the preview; select one to resize it or paint it
+// with a theme color. Save renders 4K with the same spec.
 FloatingWindow {
     id: win
     title: "wallpaper-studio"
-    implicitWidth: 1280
-    implicitHeight: 660
+    implicitWidth: 1340
+    implicitHeight: 720
     color: "#181818"
 
     property string mode: "dark"
@@ -19,22 +20,61 @@ FloatingWindow {
     property int swirl: 30
     property int blurV: 80
     property real grain: 0.12
-    property int anchors_: 4
-    property int cellsW: 10
     property bool rendering: false
-    property int gen: 0
     property string status: ""
+    property int selected: 0
+
+    ListModel { id: anchorsModel }
+    Component.onCompleted: {
+        resetAnchors()
+        render()
+    }
+    function resetAnchors() {
+        anchorsModel.clear()
+        const base = mode === "dark" ? "#181818" : "#FFFFFF"
+        const a1 = mode === "dark" ? "#FF570D" : "#df9001"
+        const a2 = mode === "dark" ? "#97B5A6" : "#5E7270"
+        anchorsModel.append({ ax: 0.25, ay: 0.3, hex: base, size: 1.4 })
+        anchorsModel.append({ ax: 0.75, ay: 0.7, hex: base, size: 1.2 })
+        anchorsModel.append({ ax: 0.7, ay: 0.2, hex: a1, size: 0.8 })
+        anchorsModel.append({ ax: 0.3, ay: 0.8, hex: a2, size: 0.9 })
+        selected = 0
+    }
+
+    // Theme palette swatches, read live from colors.json.
+    FileView {
+        id: colorsFile
+        path: Quickshell.env("HOME") + "/.config/themes/colors.json"
+        watchChanges: true
+    }
+    readonly property var palette: {
+        try {
+            const t = JSON.parse(colorsFile.text())["themes"][mode]
+            const out = []
+            for (const k of ["primary", "secondary", "tertiary", "selection", "overlay", "prompt"])
+                if (t.background[k]) out.push(t.background[k])
+            for (const k in t.accent) out.push(t.accent[k])
+            return out
+        } catch (e) { return ["#181818", "#FFFFFF", "#FF570D"] }
+    }
 
     readonly property string script: Quickshell.env("HOME") + "/.config/themes/generate-wallpaper.sh"
     readonly property string previewPath: "/tmp/wallpaper-studio-preview.png"
 
+    function anchorSpec() {
+        const parts = []
+        for (let i = 0; i < anchorsModel.count; i++) {
+            const a = anchorsModel.get(i)
+            parts.push(a.ax.toFixed(3) + "," + a.ay.toFixed(3) + "," + a.hex + "," + a.size.toFixed(2))
+        }
+        return parts.join(";")
+    }
     function args(size, out, extra) {
         return [script, mode, "--seed", String(seed),
                 "--wave-amp", String(waveAmp), "--wave-len", String(waveLen),
                 "--swirl", String(swirl), "--blur", String(blurV),
                 "--grain", grain.toFixed(2),
-                "--anchors", String(anchors_),
-                "--cells", cellsW + "x" + Math.max(2, Math.round(cellsW * 0.6)),
+                "--anchor-spec", anchorSpec(),
                 "--size", size]
                .concat(out ? ["--out", out] : [])
                .concat(extra || [])
@@ -55,15 +95,12 @@ FloatingWindow {
         id: proc
         onExited: {
             win.rendering = false
-            // force a reload: file:// URLs ignore query-string cache busters
             previewImg.source = ""
             previewImg.source = "file://" + win.previewPath
         }
     }
     Process { id: saveProc; onExited: { win.status = "saved ✓"; statusClear.restart() } }
     Timer { id: statusClear; interval: 2500; onTriggered: win.status = "" }
-
-    Component.onCompleted: render()
 
     component Knob: Column {
         property string label
@@ -80,18 +117,34 @@ FloatingWindow {
             onMoved: parent.moved(value)
         }
     }
+    component Chip: Rectangle {
+        property string label
+        signal clicked()
+        width: chipText.implicitWidth + 20; height: 26; radius: 13; color: "#2E2E2E"
+        Text { id: chipText; anchors.centerIn: parent; text: parent.label; color: "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
+        TapHandler { onTapped: parent.clicked() }
+    }
 
     Row {
         anchors.fill: parent
 
+        // ── preview + draggable anchors ─────────────────────────────
         Rectangle {
+            id: stage
             width: parent.width - panel.width; height: parent.height
             color: "#101010"
+
+            // fitted 16:10 rect the preview occupies (source is 960x600)
+            readonly property real fitW: Math.min(width - 28, (height - 28) * 1.6)
+            readonly property real fitH: fitW / 1.6
+            readonly property real ox: (width - fitW) / 2
+            readonly property real oy: (height - fitH) / 2
+
             Image {
                 id: previewImg
-                anchors.fill: parent
-                anchors.margins: 14
-                fillMode: Image.PreserveAspectFit
+                x: stage.ox; y: stage.oy
+                width: stage.fitW; height: stage.fitH
+                fillMode: Image.Stretch
                 cache: false
                 Rectangle {
                     visible: win.rendering
@@ -99,8 +152,63 @@ FloatingWindow {
                     width: 10; height: 10; radius: 5; color: "#FF570D"
                 }
             }
+
+            // double-click empty canvas: add an anchor there
+            TapHandler {
+                acceptedButtons: Qt.LeftButton
+                onDoubleTapped: e => {
+                    const u = (e.position.x - stage.ox) / stage.fitW
+                    const v = (e.position.y - stage.oy) / stage.fitH
+                    if (u < 0 || u > 1 || v < 0 || v > 1) return
+                    anchorsModel.append({ ax: u, ay: v, hex: win.palette[0] || "#888888", size: 1.0 })
+                    win.selected = anchorsModel.count - 1
+                    win.render()
+                }
+            }
+
+            Repeater {
+                model: anchorsModel
+                Rectangle {
+                    id: handle
+                    required property int index
+                    required property real ax
+                    required property real ay
+                    required property string hex
+                    required property real size
+                    readonly property bool isSel: win.selected === index
+                    width: 16 + size * 14; height: width; radius: width / 2
+                    x: stage.ox + ax * stage.fitW - width / 2
+                    y: stage.oy + ay * stage.fitH - height / 2
+                    color: hex
+                    border.width: isSel ? 3 : 1
+                    border.color: isSel ? "#FF570D" : "#EDEDED"
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.SizeAllCursor
+                        onPressed: win.selected = handle.index
+                        onPositionChanged: mouse => {
+                            if (!pressed) return
+                            const p = mapToItem(stage, mouse.x, mouse.y)
+                            const u = Math.max(0, Math.min(1, (p.x - stage.ox) / stage.fitW))
+                            const v = Math.max(0, Math.min(1, (p.y - stage.oy) / stage.fitH))
+                            anchorsModel.setProperty(handle.index, "ax", u)
+                            anchorsModel.setProperty(handle.index, "ay", v)
+                            win.render()
+                        }
+                        onWheel: wheel => {
+                            win.selected = handle.index
+                            const d = wheel.angleDelta.y > 0 ? 0.1 : -0.1
+                            const ns = Math.max(0.2, Math.min(3, handle.size + d))
+                            anchorsModel.setProperty(handle.index, "size", ns)
+                            win.render()
+                        }
+                    }
+                }
+            }
         }
 
+        // ── controls ────────────────────────────────────────────────
         Column {
             id: panel
             width: 320
@@ -117,30 +225,60 @@ FloatingWindow {
                         color: win.mode === modelData ? "#EDEDED" : "#2E2E2E"
                         Text { anchors.centerIn: parent; text: parent.modelData
                                color: win.mode === parent.modelData ? "#181818" : "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
-                        TapHandler { onTapped: { win.mode = parent.modelData; win.render() } }
+                        TapHandler { onTapped: { win.mode = parent.modelData; win.resetAnchors(); win.render() } }
                     }
                 }
             }
 
-            Row {
-                spacing: 8
-                Rectangle {
-                    width: 110; height: 26; radius: 13; color: "#2E2E2E"
-                    Text { anchors.centerIn: parent; text: "seed " + win.seed; color: "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
-                    TapHandler { onTapped: { win.seed = Math.floor(Math.random() * 32768); win.render() } }
+            Text { text: "anchor " + (win.selected + 1) + " / " + anchorsModel.count + " — drag to move, scroll to resize, double-click canvas to add"
+                   width: 284; wrapMode: Text.WordWrap; color: "#707B84"; font.pixelSize: 11; font.family: "Geist" }
+
+            // theme swatches paint the selected anchor
+            Flow {
+                width: 284; spacing: 6
+                Repeater {
+                    model: win.palette
+                    Rectangle {
+                        required property string modelData
+                        width: 30; height: 30; radius: 8
+                        color: modelData
+                        border.width: anchorsModel.count > win.selected && anchorsModel.get(win.selected).hex === modelData ? 3 : 1
+                        border.color: border.width === 3 ? "#FF570D" : "#3A3A3A"
+                        TapHandler { onTapped: {
+                            anchorsModel.setProperty(win.selected, "hex", parent.modelData)
+                            win.render()
+                        } }
+                    }
                 }
-                Text { text: "click to reroll"; color: "#707B84"; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter; font.family: "Geist" }
             }
 
-            Knob { label: "anchors (colors in the field)"; from: 2; to: 7; step: 1; value: win.anchors_; onMoved: v => { win.anchors_ = v; win.render() } }
-            Knob { label: "cells (field detail)"; from: 3; to: 16; step: 1; value: win.cellsW; onMoved: v => { win.cellsW = v; win.render() } }
+            Knob {
+                label: "anchor size"
+                from: 0.2; to: 3; step: 0.05
+                value: anchorsModel.count > win.selected ? anchorsModel.get(win.selected).size : 1
+                onMoved: v => { anchorsModel.setProperty(win.selected, "size", v); win.render() }
+            }
+
+            Row {
+                spacing: 8
+                Chip { label: "remove anchor"; onClicked: {
+                    if (anchorsModel.count <= 2) return
+                    anchorsModel.remove(win.selected)
+                    win.selected = Math.max(0, win.selected - 1)
+                    win.render()
+                } }
+                Chip { label: "reset"; onClicked: { win.resetAnchors(); win.render() } }
+            }
+
+            Rectangle { width: 284; height: 1; color: "#2E2E2E" }
+
             Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.render() } }
             Knob { label: "wave length"; from: 300; to: 3000; step: 10; value: win.waveLen; onMoved: v => { win.waveLen = v; win.render() } }
             Knob { label: "swirl"; from: -180; to: 180; step: 1; value: win.swirl; onMoved: v => { win.swirl = v; win.render() } }
             Knob { label: "blur"; from: 10; to: 220; step: 1; value: win.blurV; onMoved: v => { win.blurV = v; win.render() } }
             Knob { label: "grain"; from: 0; to: 0.5; step: 0.01; value: win.grain; onMoved: v => { win.grain = v; win.render() } }
 
-            Item { width: 1; height: 8 }
+            Item { width: 1; height: 6 }
 
             Row {
                 spacing: 8
@@ -164,11 +302,6 @@ FloatingWindow {
                 }
             }
             Text { text: win.status; color: "#97B5A6"; font.pixelSize: 12; font.family: "Geist" }
-            Text {
-                width: 284; wrapMode: Text.WordWrap
-                text: "Saves to ~/Pictures/Wallpapers/generated/ as mesh-" + win.mode + "-" + win.seed + ".png. Save+Set also points the theme symlink at it."
-                color: "#707B84"; font.pixelSize: 11; font.family: "Geist"
-            }
         }
     }
 }

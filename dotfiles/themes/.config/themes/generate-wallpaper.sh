@@ -18,7 +18,7 @@ SIZE="3840x2400"
 SET_LINK=0
 # Optional explicit knobs — default to seed-derived when empty.
 WAVE_AMP="" WAVE_LEN="" SWIRL="" BLUR="" GRAIN="" OUT=""
-CELLS="10x6" ANCHORS="4"
+CELLS="10x6" ANCHORS="4" ANCHOR_SPEC=""
 
 shift $(( $# > 0 ? 1 : 0 )) || true
 while [[ $# -gt 0 ]]; do
@@ -34,6 +34,7 @@ while [[ $# -gt 0 ]]; do
         --out)      OUT="$2"; shift 2 ;;
         --cells)    CELLS="$2"; shift 2 ;;
         --anchors)  ANCHORS="$2"; shift 2 ;;
+        --anchor-spec) ANCHOR_SPEC="$2"; shift 2 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
@@ -49,10 +50,11 @@ gen_one() {
 
     # Weighted palette: mostly background tones so the accents read as
     # soft glows, not a color explosion.
-    python3 - "$mode" "$SEED" "$seedpng" "$CELLS" "$ANCHORS" <<'EOPY'
+    python3 - "$mode" "$SEED" "$seedpng" "$CELLS" "$ANCHORS" "$ANCHOR_SPEC" <<'EOPY'
 import json, os, random, struct, sys, zlib
 
 mode, seed, out, cells, n_anchors = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4], int(sys.argv[5])
+anchor_spec = sys.argv[6] if len(sys.argv) > 6 else ""
 GW, GH = (int(v) for v in cells.split("x"))
 themes = json.load(open(os.path.expanduser("~/.config/themes/colors.json")))["themes"][mode]
 bg, acc = themes["background"], themes["accent"]
@@ -75,7 +77,15 @@ rng = random.Random(seed if mode == "dark" else seed + 1)
 base = c(bg["primary"])
 
 anchors = []
-for i in range(max(2, n_anchors)):
+if anchor_spec:
+    # Explicit "x,y,#hex,size;…" from the studio editor — colors used as
+    # given, size scales the anchor's influence radius.
+    for part in anchor_spec.split(";"):
+        if not part.strip():
+            continue
+        ax, ay, col, size = part.split(",")
+        anchors.append((float(ax), float(ay), c(col), float(size)))
+for i in range(max(2, n_anchors)) if not anchor_spec else []:
     col = pool[0] if i == 0 else rng.choice(pool)
     # soften accents toward base so they glow rather than shout — but on a
     # white base softening IS erasing, so light mode keeps far more of the
@@ -87,7 +97,7 @@ for i in range(max(2, n_anchors)):
     else:
         t = rng.uniform(0.65, 1.0)
     col = tuple(base[k] + (col[k] - base[k]) * t for k in range(3))
-    anchors.append((rng.random(), rng.random(), col))
+    anchors.append((rng.random(), rng.random(), col, 1.0))
 
 rows = []
 for y in range(GH):
@@ -95,9 +105,9 @@ for y in range(GH):
     for x in range(GW):
         u = x / max(1, GW - 1); v = y / max(1, GH - 1)
         num = [0.0, 0.0, 0.0]; den = 0.0
-        for ax, ay, col in anchors:
+        for ax, ay, col, size in anchors:
             d2 = (u - ax) ** 2 + (v - ay) ** 2
-            w = 1.0 / (d2 + 0.02)
+            w = (size * size) / (d2 + 0.02)
             den += w
             for k in range(3):
                 num[k] += col[k] * w
