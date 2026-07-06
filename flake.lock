@@ -22,11 +22,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783323245,
-        "narHash": "sha256-/X+65EWHqSbj6fRwqXRG1jWlm3Proy9b/R+sSjXf+wo=",
+        "lastModified": 1783324004,
+        "narHash": "sha256-GHoXJ5jm3ugoc+/0oB6ItRwtRew3IiEvcV9boM5o8fk=",
         "ref": "refs/heads/main",
-        "rev": "60fdb77dc6ac71961b03177a0b7535cf931fa387",
-        "revCount": 60,
+        "rev": "1a4ee9ac8808ac3d56f32ba20e61cabd9295edbd",
+        "revCount": 61,
         "type": "git",
         "url": "ssh://git@github.com/daphen/dsqrd"
       },
@@ -419,11 +419,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783323243,
-        "narHash": "sha256-tBN3ZMzBb1mpWbQwNaoNLHX5LRRFQf2ZiCPSd7mShrE=",
+        "lastModified": 1783324002,
+        "narHash": "sha256-88enr4d3g/bNSZgE+poT7BEf0k4TT3nzsPbG3Lv3PPo=",
         "ref": "refs/heads/main",
-        "rev": "8b57dfd900a7302bf8cb4cd44a387ceb566cb711",
-        "revCount": 55,
+        "rev": "23cf122d8bfd1e0ecc76d8ea054d121b8b929076",
+        "revCount": 56,
         "type": "git",
         "url": "ssh://git@github.com/daphen/slqs"
       },
