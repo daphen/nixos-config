@@ -18,6 +18,7 @@ SIZE="3840x2400"
 SET_LINK=0
 # Optional explicit knobs — default to seed-derived when empty.
 WAVE_AMP="" WAVE_LEN="" SWIRL="" BLUR="" GRAIN="" OUT=""
+CELLS="10x6" ANCHORS="4"
 
 shift $(( $# > 0 ? 1 : 0 )) || true
 while [[ $# -gt 0 ]]; do
@@ -31,6 +32,8 @@ while [[ $# -gt 0 ]]; do
         --blur)     BLUR="$2"; shift 2 ;;
         --grain)    GRAIN="$2"; shift 2 ;;
         --out)      OUT="$2"; shift 2 ;;
+        --cells)    CELLS="$2"; shift 2 ;;
+        --anchors)  ANCHORS="$2"; shift 2 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
@@ -46,10 +49,11 @@ gen_one() {
 
     # Weighted palette: mostly background tones so the accents read as
     # soft glows, not a color explosion.
-    python3 - "$mode" "$SEED" "$seedpng" <<'PY'
+    python3 - "$mode" "$SEED" "$seedpng" "$CELLS" "$ANCHORS" <<'EOPY'
 import json, os, random, struct, sys, zlib
 
-mode, seed, out = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+mode, seed, out, cells, n_anchors = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4], int(sys.argv[5])
+GW, GH = (int(v) for v in cells.split("x"))
 themes = json.load(open(os.path.expanduser("~/.config/themes/colors.json")))["themes"][mode]
 bg, acc = themes["background"], themes["accent"]
 
@@ -57,26 +61,47 @@ def c(h):
     h = h.lstrip("#")
     return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
 
+# Anchor pool: base tones first so at least one anchor grounds the image,
+# accents after — spatial interpolation between anchors is what makes the
+# result read as ONE flowing gradient instead of isolated blobs.
 if mode == "dark":
-    weighted = ([c(bg["primary"])] * 10 + [c(bg["overlay"])] * 4
-                + [c(bg["prompt"])] * 2 + [c(acc["orange"])] * 1
-                + [c(acc["green"])] * 1)
+    pool = [c(bg["primary"]), c(bg["overlay"]), c(bg["prompt"]),
+            c(acc["orange"]), c(acc["green"]), c(bg["primary"])]
 else:
-    weighted = ([c(bg["primary"])] * 8 + [c(bg["tertiary"])] * 5
-                + [c(bg["overlay"])] * 3 + [c(acc["yellow"])] * 1
-                + [c(acc["green"])] * 1)
+    pool = [c(bg["primary"]), c(bg["tertiary"]), c(bg["overlay"]),
+            c(acc["yellow"]), c(acc["green"]), c(bg["primary"])]
 
 rng = random.Random(seed if mode == "dark" else seed + 1)
-W, H = 10, 6
 base = c(bg["primary"])
+
+anchors = []
+for i in range(max(2, n_anchors)):
+    col = pool[0] if i == 0 else rng.choice(pool)
+    # soften accents toward base so they glow rather than shout — but on a
+    # white base softening IS erasing, so light mode keeps far more of the
+    # accent than dark does.
+    if col == pool[0]:
+        t = 1.0
+    elif mode == "dark":
+        t = rng.uniform(0.35, 0.75)
+    else:
+        t = rng.uniform(0.65, 1.0)
+    col = tuple(base[k] + (col[k] - base[k]) * t for k in range(3))
+    anchors.append((rng.random(), rng.random(), col))
+
 rows = []
-for y in range(H):
+for y in range(GH):
     row = bytearray([0])
-    for x in range(W):
-        px = rng.choice(weighted)
-        # pull every point toward the base so accents glow instead of shout
-        t = rng.uniform(0.35, 0.8)
-        px = tuple(round(base[i] + (px[i] - base[i]) * t) for i in range(3))
+    for x in range(GW):
+        u = x / max(1, GW - 1); v = y / max(1, GH - 1)
+        num = [0.0, 0.0, 0.0]; den = 0.0
+        for ax, ay, col in anchors:
+            d2 = (u - ax) ** 2 + (v - ay) ** 2
+            w = 1.0 / (d2 + 0.02)
+            den += w
+            for k in range(3):
+                num[k] += col[k] * w
+        px = tuple(min(255, max(0, round(num[k] / den + rng.uniform(-6, 6)))) for k in range(3))
         row += bytes(px)
     rows.append(bytes(row))
 
@@ -85,11 +110,11 @@ def chunk(tag, data):
             + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff))
 
 png = (b"\x89PNG\r\n\x1a\n"
-       + chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0))
+       + chunk(b"IHDR", struct.pack(">IIBBBBB", GW, GH, 8, 2, 0, 0, 0))
        + chunk(b"IDAT", zlib.compress(b"".join(rows)))
        + chunk(b"IEND", b""))
 open(out, "wb").write(png)
-PY
+EOPY
 
     # Liquify + grain. Wave/swirl parameters keyed off the seed so each
     # run has its own flow. -wave grows the canvas and fills the new bands

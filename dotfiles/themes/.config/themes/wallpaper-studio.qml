@@ -19,6 +19,8 @@ FloatingWindow {
     property int swirl: 30
     property int blurV: 80
     property real grain: 0.12
+    property int anchors_: 4
+    property int cellsW: 10
     property bool rendering: false
     property int gen: 0
     property string status: ""
@@ -30,7 +32,10 @@ FloatingWindow {
         return [script, mode, "--seed", String(seed),
                 "--wave-amp", String(waveAmp), "--wave-len", String(waveLen),
                 "--swirl", String(swirl), "--blur", String(blurV),
-                "--grain", grain.toFixed(2), "--size", size]
+                "--grain", grain.toFixed(2),
+                "--anchors", String(anchors_),
+                "--cells", cellsW + "x" + Math.max(2, Math.round(cellsW * 0.6)),
+                "--size", size]
                .concat(out ? ["--out", out] : [])
                .concat(extra || [])
     }
@@ -127,6 +132,8 @@ FloatingWindow {
                 Text { text: "click to reroll"; color: "#707B84"; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter; font.family: "Geist" }
             }
 
+            Knob { label: "anchors (colors in the field)"; from: 2; to: 7; step: 1; value: win.anchors_; onMoved: v => { win.anchors_ = v; win.render() } }
+            Knob { label: "cells (field detail)"; from: 3; to: 16; step: 1; value: win.cellsW; onMoved: v => { win.cellsW = v; win.render() } }
             Knob { label: "wave amplitude"; from: 0; to: 160; step: 1; value: win.waveAmp; onMoved: v => { win.waveAmp = v; win.render() } }
             Knob { label: "wave length"; from: 300; to: 3000; step: 10; value: win.waveLen; onMoved: v => { win.waveLen = v; win.render() } }
             Knob { label: "swirl"; from: -180; to: 180; step: 1; value: win.swirl; onMoved: v => { win.swirl = v; win.render() } }
