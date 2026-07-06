@@ -50,7 +50,8 @@ PanelWindow {
         width: Math.max(capText.implicitWidth + 14, 24)
         height: 24
         radius: 7
-        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
+        // Reference: light-mode keycaps are white and raised; dark stays tinted.
+        color: Theme.mode === "light" ? Theme.bg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
         border.color: Theme.hairline
         border.width: 1
         Text {
@@ -209,7 +210,7 @@ PanelWindow {
         color: Theme.bg
         // Radii from the reference palette: panel 24, field 15, cards 13.
         radius: 24
-        border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.5 : 0.10)
+        border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
         border.width: 1
         clip: true
 

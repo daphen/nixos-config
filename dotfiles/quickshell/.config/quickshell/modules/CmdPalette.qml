@@ -51,7 +51,7 @@ PanelWindow {
     readonly property string sans: "sans-serif"
     // Outer border: --app-container-border-color (fg @ .5 light / .1 dark).
     readonly property color panelBorder:
-        Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.5 : 0.10)
+        Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
 
     // ── ranking / grouping (ported from App.tsx) ──────────────────────
     readonly property var filterTabs: ["All", "Tabs", "Quickmarks", "Web"]
@@ -444,7 +444,7 @@ PanelWindow {
                     width: escText.implicitWidth + 16
                     height: 24
                     radius: 7
-                    color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
+                    color: Theme.mode === "light" ? Theme.bg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
                     border.color: Theme.hairline
                     border.width: 1
                     Text {

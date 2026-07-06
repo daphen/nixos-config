@@ -92,23 +92,23 @@
     },
     "light": {
       "background": {
-        "primary": "#FAF9F6",
-        "secondary": "#F2F1EE",
-        "tertiary": "#F0EFEC",
-        "selection": "#E7E5E1",
-        "surface": "#EDECE9",
-        "overlay": "#E0DFDC",
-        "prompt": "#E8EAED",
+        "primary": "#FFFFFF",
+        "secondary": "#F6F7F4",
+        "tertiary": "#F4F5F2",
+        "selection": "#F4F5F2",
+        "surface": "#F7F8F5",
+        "overlay": "#E9EAE7",
+        "prompt": "#EEEFEC",
         "success": "#DDDBCC",
         "error": "#F9CFC1",
         "warning": "#F5DECE",
         "info": "#D2D9CF"
       },
       "foreground": {
-        "primary": "#2D4A3D",
-        "secondary": "#575279",
-        "muted": "#6B6E7A",
-        "subtle": "#636463",
+        "primary": "#10100E",
+        "secondary": "#3C3C3A",
+        "muted": "#959693",
+        "subtle": "#989896",
         "white": "#DDDBD4",
         "bright_white": "#D5D1C5"
       },
@@ -153,7 +153,7 @@
         "highlight_err_dim": "#FFF8F0",
         "highlight_succ_word": "#B6E3FF",
         "highlight_err_word": "#FFD8B5",
-        "hairpin_alpha": "0.5"
+        "hairpin_alpha": "0.12"
       },
       "terminal": {
         "black": "#1C1C1C",
