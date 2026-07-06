@@ -1,10 +1,11 @@
 <!doctype html>
 <!--
   plan-ticket scan view. plan-render.py fills the double-brace slots from the plan
-  artifacts (<key>.md + .progress.json + .review.json). Read-only; nvim stays the driver.
+  artifacts (<key>.md + .progress.json + .review.json + .diagram.html). Read-only;
+  nvim stays the driver.
   Styling shared with review-pr via ui.css (inlined at STYLES) — keep the two aligned.
   Slots (braces omitted): MODE PALETTE STYLES KEY TITLE STATUS STATUS_CLASS BRANCH
-    PROGRESS SHAPE FLOW DECISIONS SURFACE VERIFICATION RECON
+    PROGRESS SHAPE DIAGRAM FLOW DECISIONS SURFACE VERIFICATION RECON
 -->
 <html lang="en" class="theme-{{MODE}}">
 <head>
@@ -24,6 +25,9 @@
   </header>
 
   <div class="shape">{{SHAPE}}</div>
+
+  <h2>How it works</h2>
+  <div class="flow">{{DIAGRAM}}</div>
 
   <h2>Flow <span class="count">{{PROGRESS}}</span></h2>
   {{FLOW}}
@@ -45,7 +49,7 @@
 <div class="navhint">j/k · h/l · u/d half-page · gg/G ends · ↵ expand · o open-in-nvim · Esc</div>
 <script>
 (function(){
-  var SEL = ".step, .dec, .frow, .vrow";
+  var SEL = ".step, .dec, .frow, .vrow, .node";
   var items = Array.prototype.slice.call(document.querySelectorAll(SEL)), i = -1, lastG = 0;
   var KEY = "planview:" + location.pathname;
   function focus(n){

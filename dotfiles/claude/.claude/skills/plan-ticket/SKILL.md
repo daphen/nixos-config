@@ -17,6 +17,8 @@ Never duplicate their state elsewhere.
   and the plan view. Always exists from PLAN onward.
 - `<plandir>/<key>.review.json` — produced by RECONCILE: hunk↔step correspondence,
   drift flags, verification results.
+- `<plandir>/<key>.diagram.html` — "How it works" fragment for the plan view,
+  written at FINALIZE (see there). Optional; the view shows a placeholder without it.
 
 `<key>` is the plan's identity: a Linear ticket id (`EVERY-1234`) — the default — or,
 for your own work, a short kebab-case slug of the task (`refactor-color-utils`). The
@@ -129,7 +131,16 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
 4. Result: a directive plan — shape, flow (decisions baked in), final surface area,
    verification, out of scope — no menus, questions, or markers. This is what
    `--go` implements literally.
-5. Set the plan's `> Status:` line to `finalized` (so the editor knows it's ready
+5. **Author the diagram** → `<plandir>/<key>.diagram.html`: a raw HTML fragment
+   showing *how the planned change works*, in the shape that fits it — data-flow
+   pipeline, before/after, state machine, sequence. Same component vocabulary as
+   review-pr's centrepiece (classes live in the shared ui.css): `.lane` (variants
+   `.be`/`.tr`/`.fe` for backend/transport/frontend tints) with a `.lane-tag`,
+   `.node` (inner `.file` for the real path, `.sub` for a one-liner), `.arrow`
+   (`.big` between lanes), `.split` for parallel nodes. Label real files/symbols
+   from the surface area; colours only via `--rv-*` vars, never hex. Where a node
+   maps to one surface file, add `data-file="<repo-relative>"` so `o` opens it.
+6. Set the plan's `> Status:` line to `finalized` (so the editor knows it's ready
    for `--go`). Leave `progress.json` otherwise unchanged.
 
 ## PHASE 1.75 — AMEND (`--amend`)
@@ -158,7 +169,9 @@ new scope to add; also honor any manual edits the user already made to the artif
    append a `flow[]` entry (`status: pending`) for each new `◆` step, KEEPING the
    existing entries and their statuses (finished steps stay `done`); set `amended_at`;
    leave `phase` as is (work already done stays done).
-5. Reset the review gate so the user re-approves the expanded plan before `--go`
+5. If the added scope changes how the change works, refresh
+   `<plandir>/<key>.diagram.html` to match (same component rules as FINALIZE).
+6. Reset the review gate so the user re-approves the expanded plan before `--go`
    continues: set `> Status:` to `draft` if you added a decision (the editor routes
    that to resolve → approve), else `amended` (routes to re-finalize). STOP — print
    only the artifact path. The user's plan buffer opens/reloads automatically; they

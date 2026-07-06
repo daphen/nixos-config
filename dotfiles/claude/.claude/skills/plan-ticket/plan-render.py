@@ -227,6 +227,9 @@ def render_html(md_path: Path) -> str:
         return None
     progress = load(".progress.json")
     review = load(".review.json")
+    diagram_p = md_path.with_name(md_path.stem + ".diagram.html")
+    diagram = diagram_p.read_text() if diagram_p.is_file() else \
+        '<div class="empty">No diagram yet — written at <code>--finalize</code>.</div>'
 
     secs = sections(md)
     title_m = re.search(r"^#\s+(.*)", md, flags=re.M)
@@ -260,6 +263,7 @@ def render_html(md_path: Path) -> str:
         "STATUS": status, "STATUS_CLASS": status_cls, "BRANCH": html.escape(branch),
         "PROGRESS": progress_txt,
         "SHAPE": md_block(find_section(secs, "the shape", "shape")) or '<span class="empty">—</span>',
+        "DIAGRAM": diagram,
         "FLOW": render_flow(progress, secs),
         "DECISIONS": render_decisions(secs),
         "SURFACE": render_surface(progress, review, secs),
