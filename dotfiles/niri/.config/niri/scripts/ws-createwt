@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -198,7 +199,14 @@ def main() -> int:
     #    no longer re-derives session paths itself.
     mode, sid = args.mode, args.session_id
     if mode == "auto":
-        claude_cmd = ["claude", "--continue"]
+        # `claude --continue` no longer falls back to a fresh session when
+        # the cwd has no conversation — it errors and exits, which killed
+        # the pane on brand-new worktrees. Check claude's project dir for
+        # the worktree (path munged with / and . -> -) and start fresh
+        # when it's empty.
+        proj = Path.home() / ".claude" / "projects" / re.sub(r"[/.]", "-", str(worktree_path))
+        has_session = proj.is_dir() and any(proj.glob("*.jsonl"))
+        claude_cmd = ["claude", "--continue"] if has_session else ["claude"]
     elif mode == "new":
         claude_cmd = ["claude"]
     elif mode == "resume":
