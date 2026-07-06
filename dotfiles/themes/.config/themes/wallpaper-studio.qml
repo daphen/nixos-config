@@ -309,7 +309,8 @@ FloatingWindow {
             }
         }
 
-        // ── controls ────────────────────────────────────────────────        Flickable {
+        // ── controls ────────────────────────────────────────────────
+        Flickable {
             id: panelScroll
             width: 360; height: parent.height
             contentHeight: panel.implicitHeight
