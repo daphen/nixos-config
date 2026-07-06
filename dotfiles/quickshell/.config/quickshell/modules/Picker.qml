@@ -40,6 +40,8 @@ PanelWindow {
     onTabChanged: selectedIndex = firstSelectable()
     // Opt-in Ctrl+Y: called with the focused item (yank/copy semantics).
     property var onYank: null
+    // Opt-in Ctrl+P: called with the focused item, then the picker closes.
+    property var onCtrlP: null
 
     property string query: search ? search.text : ""
     property int selectedIndex: 0
@@ -306,6 +308,13 @@ PanelWindow {
                         event.accepted = true
                     } else if (event.key === root.altKey && (event.modifiers & Qt.ControlModifier)) {
                         root.altActivate()
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier) && root.onCtrlP) {
+                        const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
+                        if (root.filtered.length > 0 && !root.filtered[idx].divider) {
+                            root.onCtrlP(root.filtered[idx])
+                            root.closeRequested()
+                        }
                         event.accepted = true
                     } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier) && root.onYank) {
                         const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))

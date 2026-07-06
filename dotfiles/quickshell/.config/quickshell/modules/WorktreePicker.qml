@@ -10,12 +10,22 @@ Picker {
     onCloseRequested: WorktreePickerState.open = false
 
     placeholder: "worktrees"
-    altLabel: "Enter: focus    Ctrl+W: close worktree"
+    altLabel: "Enter: focus    Ctrl+W: close worktree    Ctrl+P: plan"
     highlightField: "active"
     items: buildItems(NiriState.version, recencyFile.recency, NiriState.activeStack)
 
     onEnter: item => Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/ws-jump-adjacent", "lovable-" + item.name])
     onAltAction: item => Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/ws-close-worktree", item.name])
+    // Ctrl+P: open the worktree's live plan view. Key derivation mirrors
+    // plan-nvim's plan_key: a ticket number in the short name keys as
+    // EVERY-<num>; ad-hoc worktrees key as their slug.
+    onCtrlP: item => Quickshell.execDetached(["bash", "-c",
+        'n="$1"; num=$(grep -oE "[0-9]{2,}" <<<"$n" | head -1); ' +
+        'k="${num:+EVERY-$num}"; k="${k:-$n}"; ' +
+        'f="$HOME/personal/notes/storage/plans/$k.md"; ' +
+        'if [ -f "$f" ]; then exec python3 "$HOME/.claude/skills/plan-ticket/plan-view.py" "$k" --open; ' +
+        'else notify-send --app-name plan "no plan" "$k has no plan artifact"; fi',
+        "_", item.name])
 
     FileView {
         id: recencyFile
