@@ -342,6 +342,30 @@ PanelWindow {
                 renderType: Text.NativeRendering
                 anchors.verticalCenter: parent.verticalCenter
             }
+
+            // plan-ticket state for this worktree: phase icon + steps done
+            Text {
+                visible: PlanState.available
+                text: PlanState.icon
+                color: Theme.fg
+                font.family: Theme.iconFontFamily
+                font.pixelSize: Theme.fontSize + 2
+                font.weight: Theme.fontWeight
+                font.hintingPreference: Font.PreferFullHinting
+                renderType: Text.NativeRendering
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                visible: PlanState.available && PlanState.total > 0
+                text: PlanState.done + "/" + PlanState.total
+                color: Theme.fg
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize
+                font.weight: Theme.fontWeight
+                font.hintingPreference: Font.PreferFullHinting
+                renderType: Text.NativeRendering
+                anchors.verticalCenter: parent.verticalCenter
+            }
         }
     }
 }

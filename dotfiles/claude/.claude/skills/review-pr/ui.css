@@ -135,7 +135,9 @@ ul.intent li.info::before{content:"•";color:var(--rv-muted)}
 .foot{margin-top:40px;color:var(--rv-muted);font-size:12px;border-top:1px solid var(--rv-hair);padding-top:16px}
 /* nav cursor = picker selection: fg-relative tint + ring, neutral but unmissable
    (rows sit on already-tinted surface cards, so the deltas must be strong) */
-.nav-focus{outline:none;background:color-mix(in srgb,var(--rv-fg) 7%,transparent);
+/* solid mix, not a film over transparent — a translucent tint erases the
+   node/card fill underneath and drops muted text below readable contrast */
+.nav-focus{outline:none;background:color-mix(in srgb,var(--rv-fg) 7%,var(--rv-bg));
   box-shadow:0 0 0 1.5px color-mix(in srgb,var(--rv-fg) 35%,transparent)}
 .frow.nav-focus,.vrow.nav-focus,ul.intent li.nav-focus{border-radius:10px}
 /* expand: Enter on a focused item reveals its .more block + un-truncates its text */
