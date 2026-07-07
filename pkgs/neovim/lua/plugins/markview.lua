@@ -17,6 +17,33 @@ return {
 			n.sign_hl, n.icon_hl, n.border_hl = t.sign_hl, t.icon_hl, t.border_hl
 		end
 
+		-- Markview invents its own heading/code colors (blue-gray banners) and
+		-- re-applies them on ColorScheme, clobbering the colorscheme's groups.
+		-- Sync its groups from the theme's canonical markdown tokens (the
+		-- RenderMarkdown* groups both custom themes define on the elevation
+		-- ladder), deferred so we run after markview's own re-apply.
+		local function sync_markview_hl()
+			local function get(n)
+				return vim.api.nvim_get_hl(0, { name = n, link = false })
+			end
+			local code, inline, hbg = get("RenderMarkdownCode"), get("RenderMarkdownCodeInline"), get("RenderMarkdownH2Bg")
+			if not (code.bg or inline.bg) then return end -- non-custom theme: leave markview alone
+			vim.api.nvim_set_hl(0, "MarkviewCode", { bg = code.bg })
+			vim.api.nvim_set_hl(0, "MarkviewCodeInfo", { fg = get("Comment").fg, bg = code.bg })
+			vim.api.nvim_set_hl(0, "MarkviewInlineCode", { fg = inline.fg, bg = inline.bg })
+			for i = 1, 6 do
+				local h = get("@markup.heading." .. i .. ".markdown")
+				vim.api.nvim_set_hl(0, "MarkviewHeading" .. i, { fg = h.fg, bg = hbg.bg })
+				vim.api.nvim_set_hl(0, "MarkviewHeading" .. i .. "Sign", { fg = h.fg })
+			end
+		end
+		sync_markview_hl()
+		vim.api.nvim_create_autocmd("ColorScheme", {
+			callback = function()
+				vim.defer_fn(sync_markview_hl, 50)
+			end,
+		})
+
 		-- Set conceallevel for markdown files specifically
 		vim.api.nvim_create_autocmd("FileType", {
 			pattern = "markdown",
