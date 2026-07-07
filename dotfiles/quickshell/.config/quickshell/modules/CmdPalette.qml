@@ -237,7 +237,14 @@ PanelWindow {
         if (n === 0) return
         let i = selectedIndex + dir
         while (i >= 0 && i < n && entries[i] && entries[i].divider) i += dir
-        if (i >= 0 && i < n) { selectedIndex = i; list.positionViewAtIndex(i, ListView.Contain) }
+        if (i >= 0 && i < n) {
+            selectedIndex = i
+            list.positionViewAtIndex(i, ListView.Contain)
+            // Contain stops at the row's edge — show the list's own padding
+            // when the selection is at either end
+            if (i <= firstSelectable()) list.contentY = -list.topMargin
+            else if (i === n - 1) list.contentY = list.contentHeight - list.height + list.bottomMargin
+        }
     }
 
     // Enter = run: tab row activates the tab; URL rows navigate the

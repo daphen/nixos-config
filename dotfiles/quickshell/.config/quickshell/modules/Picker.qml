@@ -555,7 +555,11 @@ PanelWindow {
                     }
                 }
 
-                onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+                onCurrentIndexChanged: {
+                    positionViewAtIndex(currentIndex, ListView.Contain)
+                    if (currentIndex <= root.firstSelectable()) contentY = -topMargin
+                    else if (currentIndex === count - 1 && contentHeight > height) contentY = contentHeight - height + bottomMargin
+                }
             }
 
             Item {
