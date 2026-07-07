@@ -140,6 +140,10 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
    (`.big` between lanes), `.split` for parallel nodes. Label real files/symbols
    from the surface area; colours only via `--rv-*` vars, never hex. Where a node
    maps to one surface file, add `data-file="<repo-relative>"` so `o` opens it.
+   Node `.sub` text is **plain English for someone who hasn't read the plan** —
+   a full sentence saying what happens at this node and why it matters, never a
+   compressed jargon chain ("D1 probe: passthrough verified"). Together the
+   nodes must tell the change's whole story end to end.
 6. Set the plan's `> Status:` line to `finalized` (so the editor knows it's ready
    for `--go`). Leave `progress.json` otherwise unchanged.
 
