@@ -74,6 +74,9 @@ h2 .count{color:var(--rv-muted);opacity:.7;margin-left:8px;font-family:"GeistMon
    realize the same step, so the number is what makes the count track */
 .node .sdot{position:absolute;left:11px;top:12px;width:9px;height:9px;border-radius:50%;
   border:2px solid var(--rv-muted);background:transparent}
+/* tagged nodes: keep long titles clear of the corner dot + step number
+   (absolutely positioned — a full-width first line ran straight under them) */
+.node.pending,.node.active,.node.done{padding-left:58px;padding-right:58px}
 .node.done .sdot{background:var(--rv-green);border-color:var(--rv-green)}
 .node.active .sdot{background:var(--rv-orange);border-color:var(--rv-orange)}
 .node .snum{position:absolute;left:26px;top:9px;font-size:10.5px;font-weight:600;
