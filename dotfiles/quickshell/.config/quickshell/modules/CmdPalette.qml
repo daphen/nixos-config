@@ -36,7 +36,7 @@ PanelWindow {
         filterTab = 0
         scopedWindowId = null
         selectedIndex = 0
-        list.positionViewAtBeginning()
+        list.contentY = -list.topMargin
     }
 
     anchors { top: true; bottom: true; left: true; right: true }
@@ -60,7 +60,7 @@ PanelWindow {
     property var scopedWindowId: null
     property int selectedIndex: 0
 
-    onQueryChanged: { selectedIndex = firstSelectable(); list.positionViewAtBeginning() }
+    onQueryChanged: { selectedIndex = firstSelectable(); list.contentY = -list.topMargin }
     onFilterTabChanged: selectedIndex = firstSelectable()
 
     function niceUrl(u) {
@@ -516,6 +516,10 @@ PanelWindow {
                 model: root.entries
                 currentIndex: root.selectedIndex
                 topMargin: 10
+                // async data lands with contentY at 0 — the first item's top,
+                // swallowing topMargin; a top-selected row then touches the
+                // header. Snap to the true beginning whenever we're at the top.
+                onCountChanged: if (contentY <= 0) contentY = -topMargin
                 bottomMargin: 10
                 boundsBehavior: Flickable.StopAtBounds
 
