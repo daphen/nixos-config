@@ -20,21 +20,36 @@ PanelWindow {
     onOpenChanged: {
         if (open) {
             closeDelay.stop()
+            reassert.stop()
             active = true
             resetTransient()
             PaletteState.refresh()
             search.forceActiveFocus()
         } else {
             closeDelay.restart()
+            // Window switches made while cycling the chin happen UNDER this
+            // layer; when the layer drops, niri returns keyboard focus to the
+            // pre-palette window, silently undoing them. Re-assert the user's
+            // pick once the layer is gone so the final activation wins.
+            if (scopedWindowId != null && scopedWindowProfile) reassert.restart()
         }
     }
     Timer { id: closeDelay; interval: 300; onTriggered: root.active = false }
+    Timer {
+        id: reassert
+        interval: 420   // past closeDelay + unmap, before it reads as a second hop
+        onTriggered: {
+            if (root.scopedWindowId != null && root.scopedWindowProfile)
+                PaletteState.activateWindow(root.scopedWindowProfile, root.scopedWindowId)
+        }
+    }
 
     function resetTransient() {
         search.text = ""
         searchMode = null
         filterTab = 0
         scopedWindowId = null
+        scopedWindowProfile = null
         selectedIndex = 0
         list.positionViewAtBeginning()
     }
@@ -58,6 +73,7 @@ PanelWindow {
     property int filterTab: 0
     property string query: search ? search.text : ""
     property var scopedWindowId: null
+    property var scopedWindowProfile: null
     property int selectedIndex: 0
 
     onQueryChanged: { selectedIndex = firstSelectable(); list.positionViewAtBeginning() }
@@ -275,6 +291,7 @@ PanelWindow {
 
     function selectChinWindow(w) {
         scopedWindowId = w.id
+        scopedWindowProfile = w.profile
         PaletteState.activateWindow(w.profile, w.id)
     }
 
