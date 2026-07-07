@@ -253,11 +253,16 @@ def main() -> int:
     ])
 
     print("==> spawning nvim")
+    # Pin hunk signs + the C-f picker to the PR's diff (merge-base with main),
+    # and land directly in the changed-files picker — reviewing starts at the diff.
     nvim_id = spawn_and_wait([
         "kitty",
         "--working-directory", str(worktree_path),
         # direnv exec so LSPs pick up the devenv toolchain.
-        "-e", "bash", "-c", "direnv exec . nvim; exec fish",
+        "-e", "bash", "-c",
+        "export HUNK_SIGNS_BASE=$(git merge-base HEAD origin/main 2>/dev/null); "
+        "direnv exec . nvim \"+lua vim.defer_fn(function() vim.api.nvim_input('<C-f>') end, 250)\"; "
+        "exec fish",
     ])
 
     if nvim_id is not None:
