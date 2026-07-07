@@ -687,10 +687,15 @@ PanelWindow {
                 }
 
                 Row {
+                    id: chinRow
                     anchors.left: parent.left
                     anchors.leftMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
+                    // chips share the panel width — three fixed 220px pills overflowed
+                    readonly property int maxPill: Math.floor(
+                        (chinWrap.width - 28 - spacing * Math.max(0, PaletteState.chin.length - 1))
+                        / Math.max(1, PaletteState.chin.length))
                     Repeater {
                         model: PaletteState.chin
                         Rectangle {
@@ -700,7 +705,7 @@ PanelWindow {
                                 ? modelData.id === root.scopedWindowId
                                 : !!modelData.focused
                             height: 26
-                            width: Math.min(pillRow.implicitWidth + 16, 220)
+                            width: Math.min(pillRow.implicitWidth + 16, Math.min(220, chinRow.maxPill))
                             radius: 10
                             color: isActive ? Theme.selection
                                  : pillHover.hovered ? Theme.surface : "transparent"
@@ -722,7 +727,7 @@ PanelWindow {
                                     text: String(pill.modelData.activeTabTitle || ("Window " + pill.modelData.id))
                                     color: pill.isActive ? Theme.fg : Theme.fg_muted
                                     elide: Text.ElideRight
-                                    width: Math.min(implicitWidth, 150)
+                                    width: Math.min(implicitWidth, Math.min(150, chinRow.maxPill - 66))
                                     font.family: root.sans
                                     font.pixelSize: 12
                                     renderType: Text.NativeRendering
