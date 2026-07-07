@@ -422,6 +422,7 @@ PanelWindow {
                 width: parent.width
                 height: parent.height - inputWrap.height - tabsRow.height
                         - (footer.visible ? footer.height : 0)
+                        - (previewPane.visible ? previewPane.height : 0)
 
             ListView {
                 id: list
