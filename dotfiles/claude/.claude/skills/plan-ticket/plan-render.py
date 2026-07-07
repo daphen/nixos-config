@@ -17,6 +17,9 @@ from pathlib import Path
 HOME = Path(os.environ["HOME"])
 SKILL_DIR = Path(__file__).resolve().parent
 PHASE_CLASS = {"draft": "draft", "finalized": "finalized", "implementing": "implementing", "reconciled": "reconciled"}
+# display copy: internal phase keys are baked into progress.json + plan-nvim,
+# but the badge should speak plainly
+PHASE_LABEL = {"finalized": "ready to build", "implementing": "building", "reconciled": "verified"}
 
 
 def md_inline(s: str) -> str:
@@ -343,7 +346,7 @@ def render_html(md_path: Path) -> str:
     ui_css = ui_css_path.read_text() if ui_css_path.is_file() else ""
     fill = {
         "MODE": mode, "PALETTE": palette, "STYLES": ui_css, "KEY": key, "TITLE": md_inline(title),
-        "STATUS": status, "STATUS_CLASS": status_cls, "BRANCH": html.escape(branch),
+        "STATUS": PHASE_LABEL.get(status, status), "STATUS_CLASS": status_cls, "BRANCH": html.escape(branch),
         "PROGRESS": progress_txt,
         "SHAPE": md_block(find_section(secs, "the shape", "shape")) or '<span class="empty">—</span>',
         "DIAGRAM": dia_section,
