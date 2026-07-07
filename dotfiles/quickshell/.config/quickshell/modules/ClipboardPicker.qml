@@ -18,7 +18,8 @@ Picker {
     iconField: "icon"
     previewField: "filePath"
     enterLabel: "copy"
-    altLabel: "Ctrl+O: preview"
+    ctrlEnterAlt: true
+    altLabel: "Ctrl+Enter: open link / image   ·   Ctrl+O: preview"
 
     FileView {
         id: histFile
@@ -47,6 +48,24 @@ Picker {
             filePath: isImg ? e.filePath : "",
         }
     })
+
+    // Ctrl+Enter: open instead of copy — links route through
+    // browser-dispatch (pattern-based profile routing), images open in imv.
+    // Plain text has nothing to open; no-op.
+    onAltAction: item => {
+        if (!item) return
+        if (item.filePath) {
+            Quickshell.execDetached(["imv", item.filePath])
+            ClipboardPickerState.open = false
+            return
+        }
+        const v = String(item.value || "").trim()
+        if (/^https?:\/\/\S+$/.test(v)) {
+            Quickshell.execDetached([
+                Quickshell.env("HOME") + "/.config/niri/scripts/browser-dispatch", v])
+            ClipboardPickerState.open = false
+        }
+    }
 
     onEnter: item => {
         if (!item) return
