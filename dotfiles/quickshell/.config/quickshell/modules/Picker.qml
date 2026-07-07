@@ -391,13 +391,11 @@ PanelWindow {
                 model: root.filtered
                 currentIndex: root.selectedIndex
                 spacing: 2
-                topMargin: 8
-                // async data lands with contentY at 0 — the first item's top,
-                // swallowing topMargin; a top-selected row then touches the
-                // header. Snap to the true beginning whenever we're at the top.
-                onCountChanged: if (contentY <= 0) contentY = -topMargin
-                onContentHeightChanged: if (!moving && !dragging && contentY <= 0) contentY = -topMargin
-                bottomMargin: 10
+                // structural padding: header/footer are part of the content, so
+                // model resets and positionViewAt* respect them natively (topMargin
+                // lives outside the coordinate system and every reset ignored it)
+                header: Item { width: 1; height: 8 }
+                footer: Item { width: 1; height: 10 }
                 opacity: root.loading ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
                 add: Transition {
@@ -557,8 +555,9 @@ PanelWindow {
 
                 onCurrentIndexChanged: {
                     positionViewAtIndex(currentIndex, ListView.Contain)
-                    if (currentIndex <= root.firstSelectable()) contentY = -topMargin
-                    else if (currentIndex === count - 1 && contentHeight > height) contentY = contentHeight - height + bottomMargin
+                    // Contain stops at the row edge; at the ends, include the spacers
+                    if (currentIndex <= root.firstSelectable()) positionViewAtBeginning()
+                    else if (currentIndex === count - 1) positionViewAtEnd()
                 }
             }
 

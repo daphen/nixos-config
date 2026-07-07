@@ -36,8 +36,7 @@ PanelWindow {
         filterTab = 0
         scopedWindowId = null
         selectedIndex = 0
-        // after the model rebuild settles, not before (it would clobber this)
-        Qt.callLater(() => list.contentY = -list.topMargin)
+        list.positionViewAtBeginning()
     }
 
     anchors { top: true; bottom: true; left: true; right: true }
@@ -61,7 +60,7 @@ PanelWindow {
     property var scopedWindowId: null
     property int selectedIndex: 0
 
-    onQueryChanged: { selectedIndex = firstSelectable(); list.contentY = -list.topMargin }
+    onQueryChanged: { selectedIndex = firstSelectable(); list.positionViewAtBeginning() }
     onFilterTabChanged: selectedIndex = firstSelectable()
 
     function niceUrl(u) {
@@ -240,10 +239,9 @@ PanelWindow {
         if (i >= 0 && i < n) {
             selectedIndex = i
             list.positionViewAtIndex(i, ListView.Contain)
-            // Contain stops at the row's edge — show the list's own padding
-            // when the selection is at either end
-            if (i <= firstSelectable()) list.contentY = -list.topMargin
-            else if (i === n - 1) list.contentY = list.contentHeight - list.height + list.bottomMargin
+            // Contain stops at the row edge; at the ends, include the spacers
+            if (i <= firstSelectable()) list.positionViewAtBeginning()
+            else if (i === n - 1) list.positionViewAtEnd()
         }
     }
 
@@ -523,15 +521,10 @@ PanelWindow {
                 clip: true
                 model: root.entries
                 currentIndex: root.selectedIndex
-                topMargin: 10
-                // async data lands with contentY at 0 — the first item's top,
-                // swallowing topMargin; a top-selected row then touches the
-                // header. Snap to the true beginning whenever we're at the top.
-                onCountChanged: if (contentY <= 0) contentY = -topMargin
-                // a swapped JS-array model resets contentY to 0 even when the
-                // count is identical — contentHeight always moves on relayout
-                onContentHeightChanged: if (!moving && !dragging && contentY <= 0) contentY = -topMargin
-                bottomMargin: 10
+                // structural padding: header/footer are part of the content, so
+                // model resets and positionViewAt* respect them natively
+                header: Item { width: 1; height: 10 }
+                footer: Item { width: 1; height: 10 }
                 boundsBehavior: Flickable.StopAtBounds
 
                 Text {
