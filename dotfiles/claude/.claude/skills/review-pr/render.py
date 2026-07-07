@@ -17,7 +17,7 @@ SKILL_DIR = Path(__file__).resolve().parent
 
 SLOTS = [
     "title", "meta", "verdict_class", "verdict_badge", "verdict_why",
-    "diagram", "findings", "filemap", "intent", "verification",
+    "story", "diagram", "findings", "filemap", "intent", "verification",
 ]
 
 

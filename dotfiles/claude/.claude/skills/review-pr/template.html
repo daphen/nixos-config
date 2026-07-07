@@ -3,7 +3,7 @@
   review-pr render template. render.py fills the double-brace slots; never hand-edit output.
   Slots (names only, braces omitted here so this comment isn't substituted):
     MODE PALETTE STYLES TITLE META VERDICT_CLASS VERDICT_BADGE VERDICT_WHY
-    DIAGRAM FINDINGS FILEMAP INTENT VERIFICATION NUM
+    STORY DIAGRAM FINDINGS FILEMAP INTENT VERIFICATION NUM
   Styling is shared with plan-ticket via ui.css (inlined at STYLES) — keep the two aligned.
   Fragment component classes: .lane/.node/.arrow/.split (diagram), .finding + <pre> .ln[.bad|.good|.strike]
   + .note (findings), .grp/.frow/.bar (file map), ul.intent li, .verify div.
@@ -27,6 +27,8 @@
 
   <div class="verdict"><span class="badge {{VERDICT_CLASS}}">{{VERDICT_BADGE}}</span>
     <span class="why">{{VERDICT_WHY}}</span></div>
+
+  <div class="shape">{{STORY}}</div>
 
   <h2>How the change works</h2>
   <div class="flow">{{DIAGRAM}}</div>

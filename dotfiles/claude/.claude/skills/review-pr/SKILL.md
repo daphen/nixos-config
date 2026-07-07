@@ -104,6 +104,13 @@ hex**):
 - `verdict_class` / `verdict_badge` — class stays `approve|changes|comment`; the badge
   label speaks plainly: "approve", "needs changes", "comments". `verdict_why` — one
   plain-English line + a `<span class="note">` caveat, readable without the diff.
+- `story` — **the change explained from scratch**, right under the verdict, for a
+  reader who doesn't know the feature. Two to four short `<p>` paragraphs in this
+  shape: the setup (what exists today and why), the problem (what's wrong or
+  duplicated or missing), what the PR does about it — and, when it wasn't a
+  mechanical change, one paragraph on why. No file names, no jargon, no diff
+  knowledge assumed; write it like explaining the PR to a teammate who just walked
+  in. If a finding only makes sense inside this story, say where it fits.
 - `diagram` — **the centrepiece.** `.lane`/`.node`/`.arrow`/`.split` markup showing *how this change works*, chosen to fit the PR: data-flow pipeline, state machine, before/after, or sequence. Label real files/symbols. At least half the page's weight is this + the annotated code, not prose.
   Node `.sub` text is **plain English for someone who hasn't read the diff** — a full
   sentence saying what happens at this node and why it matters, never a compressed
