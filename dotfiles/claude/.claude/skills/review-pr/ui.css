@@ -160,8 +160,9 @@ ul.intent li.info::before{content:"•";color:var(--rv-muted)}
 .frow.nav-focus,.vrow.nav-focus,ul.intent li.nav-focus{border-radius:10px}
 /* expand: Enter on a focused item reveals its .more block + un-truncates its text */
 .more{display:none}
+/* expanded detail is primary reading content — ink, not a muted footnote */
 .expanded>.more,.expanded .more{display:block;margin-top:8px;padding-top:8px;border-top:1px solid var(--rv-hair);
-  font-size:12.5px;color:var(--rv-muted)}
+  font-size:13px;color:var(--rv-fg);line-height:1.55}
 .expanded .nm,.expanded .note{white-space:normal;overflow:visible;text-overflow:clip}
 .openable{cursor:pointer}
 /* chin chip, keycap-tinted like the picker footer */
