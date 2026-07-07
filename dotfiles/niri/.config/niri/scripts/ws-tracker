@@ -5,8 +5,9 @@ ws-tracker
 Watches niri's event stream and maintains the workspace-stack state:
 
     ~/.local/state/wt-stacks/ws/active
-        Most recently focused `lovable-<name>` workspace name. Single
-        source of truth for "which stack is active". ws-focus derives
+        Most recently focused worktree stack (`lovable-<name>`, excluding
+        main/deps — visiting main keeps the current worktree active).
+        Single source of truth for "which stack is active". ws-focus derives
         the inactive-stack window set live from this + `niri msg
         workspaces`, so we don't cache a window-id list here.
 
@@ -70,12 +71,18 @@ def niri_json(*args: str):
 
 
 def lovable_stack_name_by_id(ws_id: int) -> str | None:
-    """Return the workspace's name iff it's a `lovable-<x>` stack
-    (excludes the legacy bare `lovable` workspace)."""
+    """Return the workspace's name iff it's a worktree STACK. lovable-main
+    and lovable-deps are excluded: main is the shared half of every couple
+    and deps is a utility singleton — focusing either must not steal
+    "active worktree" (the Super+T dot, couple partner derivation and the
+    palette daemon all treat active as the non-main half)."""
     for w in (niri_json("workspaces") or []):
         if w.get("id") == ws_id:
             name = w.get("name") or ""
-            if name.startswith("lovable-") and name != "lovable":
+            if (
+                name.startswith("lovable-")
+                and name not in ("lovable", "lovable-main", "lovable-deps")
+            ):
                 return name
     return None
 
