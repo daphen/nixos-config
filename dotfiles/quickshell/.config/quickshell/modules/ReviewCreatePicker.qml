@@ -10,7 +10,7 @@ Picker {
     onCloseRequested: ReviewCreatePickerState.open = false
 
     placeholder: "search PRs — or paste a PR number / url"
-    altLabel: "Enter: review / open   ·   Ctrl+Enter: worktree   ·   Ctrl+Y: copy url   ·   Tab/Ctrl+H/L: switch"
+    altLabel: "Enter: review / open   ·   Ctrl+Enter: worktree   ·   Ctrl+Y: copy url"
 
     // Ctrl+Y: copy the focused PR's URL (mirrors the imv copy pattern:
     // wl-copy + a notification so the yank is visible).

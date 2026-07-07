@@ -23,6 +23,27 @@ PanelWindow {
     property bool freeText: false
     property var onAltAction: null
     property string altLabel: ""
+    // altLabel parsed into keycap hints: segments split on "·" or wide gaps,
+    // each "Keys: label" — Ctrl+Enter renders as [ctrl][↵], A/B as [a]/[b].
+    readonly property var altHints: {
+        const out = []
+        if (!altLabel) return out
+        const KEYMAP = { enter: "↵", tab: "⇥", ctrl: "ctrl", shift: "⇧", esc: "esc" }
+        for (const seg of altLabel.split(/\s*·\s*|\s{3,}/)) {
+            const m = seg.match(/^([^:]+):\s*(.*)$/)
+            if (!m) { if (seg.trim()) out.push({ parts: [], label: seg.trim() }); continue }
+            const parts = []
+            for (const alt of m[1].split("/")) {
+                if (parts.length) parts.push({ cap: false, t: "/" })
+                for (const k of alt.split("+")) {
+                    const lk = k.trim().toLowerCase()
+                    if (lk) parts.push({ cap: true, t: KEYMAP[lk] || lk })
+                }
+            }
+            out.push({ parts: parts, label: m[2] })
+        }
+        return out
+    }
     property int altKey: Qt.Key_W
     // Set by pickers whose items arrive asynchronously: shows a loading
     // indicator, and the list fades in once loading clears.
@@ -640,19 +661,46 @@ PanelWindow {
                         renderType: Text.NativeRendering
                     }
                 }
-                Text {
-                    visible: root.altLabel.length > 0
+                Row {
+                    visible: root.altHints.length > 0
                     anchors.right: parent.right
                     anchors.rightMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(implicitWidth, parent.width - footerHints.width - 48)
-                    text: root.altLabel
-                    color: Theme.fg_muted
-                    font.family: notch.sans
-                    font.pixelSize: 11
-                    renderType: Text.NativeRendering
-                    horizontalAlignment: Text.AlignRight
-                    elide: Text.ElideLeft
+                    spacing: 12
+                    Repeater {
+                        model: root.altHints
+                        Row {
+                            required property var modelData
+                            spacing: 5
+                            Repeater {
+                                model: modelData.parts
+                                Item {
+                                    required property var modelData
+                                    width: modelData.cap ? capEl.width : sepEl.implicitWidth
+                                    height: 24
+                                    KeyCap { id: capEl; visible: parent.modelData.cap; text: parent.modelData.t }
+                                    Text {
+                                        id: sepEl
+                                        visible: !parent.modelData.cap
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: parent.modelData.t
+                                        color: Theme.fg_muted
+                                        font.family: notch.sans
+                                        font.pixelSize: 11
+                                        renderType: Text.NativeRendering
+                                    }
+                                }
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: parent.modelData.label
+                                color: Theme.fg_muted
+                                font.family: notch.sans
+                                font.pixelSize: 12
+                                renderType: Text.NativeRendering
+                            }
+                        }
+                    }
                 }
             }
         }
