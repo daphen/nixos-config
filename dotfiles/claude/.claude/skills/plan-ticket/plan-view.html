@@ -110,6 +110,22 @@
     else if(e.key === "Escape" && i >= 0){ items[i].classList.remove("nav-focus"); i = -1; }
   });
 
+
+  // Mouse: click toggles a row's expanded state (links keep working).
+  document.addEventListener("click", function(e){
+    if(e.target.closest("a")) return;
+    var el = e.target.closest(SEL);
+    if(!el) return;
+    var n = items.indexOf(el);
+    if(n < 0) return;
+    if(i !== n){
+      if(i >= 0 && items[i]) items[i].classList.remove("nav-focus");
+      i = n;
+      el.classList.add("nav-focus");
+    }
+    el.classList.toggle("expanded");
+  });
+
   // Restore scroll + focused item across a live reload.
   try {
     var s = JSON.parse(sessionStorage.getItem(KEY) || "null");
