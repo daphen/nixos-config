@@ -196,6 +196,11 @@ new scope to add; also honor any manual edits the user already made to the artif
 1. Read `<plandir>/<key>.md` (normally already `--finalize`d into clean
    directives); honor the user's edits — their text wins.
 2. Refuse to start if any **Your call:** is `(unresolved)`; list them and stop.
+2b. **If the plan's `> Status:` is not `finalized`** (draft/amended with all
+   decisions resolved), run the FINALIZE phase first — bake directives, author
+   the diagram, set the status — then continue into implementation. The steps
+   are ordered; skipping finalize silently loses the diagram and leaves A/B
+   menus in the spec.
 3. Implement strictly within the surface area. Before touching any file NOT in the
    surface-area list, STOP and ask — record approved additions under `unplanned[]` with a why.
 4. Keep `<plandir>/<key>.progress.json` current as you work: `phase: "implementing"`,

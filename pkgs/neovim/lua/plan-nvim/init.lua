@@ -1228,6 +1228,100 @@ function M.reconcile()
 	end
 end
 
+-- <C-p>: the plan menu — ordered lifecycle picker. Each step shows its state
+-- (✓ done · → next · locked with the reason), so --go can't be run before
+-- --finalize by accident. The old board/panel stays reachable as an entry.
+function M.menu()
+	if not resolve_plan_path() then
+		vim.notify("plan: no plan found for this repo", vim.log.levels.INFO)
+		return
+	end
+	-- read_status needs the plan buffer text; read from disk when not loaded
+	local plan_lines = {}
+	local bufnr = vim.fn.bufnr(state.plan_path)
+	if bufnr > 0 and vim.api.nvim_buf_is_loaded(bufnr) then
+		plan_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+	else
+		plan_lines = vim.fn.readfile(state.plan_path)
+	end
+	local status, unres = "draft", 0
+	for _, line in ipairs(plan_lines) do
+		local s = line:match("^> Status:%s*`([%w]+)`")
+		if s then status = s end
+		if line:match("%*%*Your call:%*%*") and line:match("_%(unresolved%)_") then
+			unres = unres + 1
+		end
+	end
+	read_progress()
+	local phase = (state.progress or {}).phase
+	local finalized = status == "finalized" or phase == "implementing" or phase == "reconciled"
+	local implemented = phase == "implementing" or phase == "reconciled"
+
+	local function open_plan()
+		vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path))
+	end
+	local key = vim.fn.fnamemodify(state.plan_path, ":t:r")
+
+	-- lifecycle in canonical order; state derived, never reordered
+	local entries = {
+		{
+			label = ("Resolve decisions%s"):format(unres > 0 and (" — " .. unres .. " open") or ""),
+			done = unres == 0,
+			next_ = unres > 0,
+			run = function()
+				open_plan()
+				resolve_next_decision()
+			end,
+		},
+		{
+			label = "Finalize — bake decisions, author diagram",
+			done = finalized,
+			next_ = not finalized and unres == 0,
+			lock = unres > 0 and ("resolve " .. unres .. " decision(s) first") or nil,
+			run = M.finalize,
+		},
+		{
+			label = "Implement (--go)",
+			done = phase == "reconciled",
+			next_ = finalized and not implemented,
+			lock = not finalized and "finalize first" or nil,
+			run = M.go,
+		},
+		{
+			label = "Reconcile — verify code matches plan",
+			done = phase == "reconciled",
+			next_ = phase == "implementing",
+			lock = not implemented and "implement first" or nil,
+			run = M.reconcile,
+		},
+		{ label = "Amend — fold in new scope", run = M.amend },
+		{ label = "Ask the agent a question", run = function() open_plan(); M.ask() end },
+		{ label = "Open plan buffer", run = open_plan },
+		{
+			label = "Open live view (browser)",
+			run = function()
+				vim.fn.jobstart({ "python3", vim.fn.expand("~/.claude/skills/plan-ticket/plan-view.py"), key, "--open" }, { detach = true })
+			end,
+		},
+		{ label = "Progress board (panel)", run = function() M.steps(true) end },
+	}
+
+	local labels = {}
+	for _, e in ipairs(entries) do
+		local mark = e.done and "✓ " or e.next_ and "→ " or e.lock and "· " or "  "
+		labels[#labels + 1] = mark .. e.label .. (e.lock and ("   (" .. e.lock .. ")") or "")
+	end
+	vim.ui.select(labels, { prompt = "Plan · " .. key .. " · " .. (phase or status) }, function(_, idx)
+		if not idx then return end
+		local e = entries[idx]
+		if e.lock then
+			vim.notify("plan: " .. e.lock, vim.log.levels.WARN)
+			return
+		end
+		e.run()
+	end)
+end
+
 -- Jump to the first unresolved decision and open its resolve picker.
 resolve_next_decision = function()
 	for i, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
@@ -1363,7 +1457,7 @@ local function apply_buffer_maps(buf)
 		map("<CR>", M.act, "plan: act on object under cursor")
 		-- <C-p> opens the one command center (status + board + every action by hotkey),
 		-- same as in code buffers; <CR> still does the smart thing under the cursor.
-		map("<C-p>", function() M.steps(true) end, "plan: command center")
+		map("<C-p>", function() M.menu() end, "plan: menu")
 		vim.keymap.set("x", "<C-p>", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
 			{ buffer = buf, desc = "plan: ask about selection" })
 	end)
@@ -1397,7 +1491,7 @@ function M.setup()
 	-- Bare <C-p> opens the progress panel from any ordinary buffer (e.g. while
 	-- reading the code the agent is touching). Plan buffers shadow this with their
 	-- own <C-p> prefix, so the panel there is <C-p>s.
-	vim.keymap.set("n", "<C-p>", function() M.steps(true) end, { desc = "plan: command center" })
+	vim.keymap.set("n", "<C-p>", function() M.menu() end, { desc = "plan: menu" })
 
 	-- Buffer-local maps only inside a plan file, so they never clobber normal
 	-- markdown editing elsewhere. Set on open AND re-assert on every BufEnter,
