@@ -100,7 +100,11 @@ template documents in its header comment — **colours are `--rv-*` vars + `colo
 hex**):
 
 - `title` — the PR title.
-- `meta` — one line: PR #, author, state, base←head, +add/−del, file count, github + ticket links.
+- `meta` — a CHIP ROW, not prose: `<a class="mchip" href=…>#61712</a>`,
+  `<span class="mstate open|draft|merged|closed">state</span>`, author + file count as
+  `<span class="mchip mut">…</span>`, base←head as `<span class="mchip mut mbranch">…</span>`,
+  churn as `<span class="mchip"><span class="adds">+682</span> <span class="dels">−760</span></span>`,
+  the ticket as an `<a class="mchip">`, CI as `<span class="mstate pass|fail|pending">CI …</span>`.
 - `verdict_class` / `verdict_badge` — class stays `approve|changes|comment`; the badge
   label speaks plainly: "approve", "needs changes", "comments". `verdict_why` — one
   plain-English line + a `<span class="note">` caveat, readable without the diff.
