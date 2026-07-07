@@ -18,4 +18,5 @@ for p in /proc/[0-9]*; do
     case "$WIN_PIDS" in *" $pid "*) ;; *) kill "$pid" 2>/dev/null ;; esac
 done
 
-exec slqs-client
+# UI stderr to a log — permalink/jump debugging needs observable clicks
+exec slqs-client >> /tmp/slk-ui.log 2>&1
