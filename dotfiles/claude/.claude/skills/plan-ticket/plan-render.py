@@ -145,7 +145,14 @@ def decorate_diagram(diagram: str, secs: dict, progress):
         out.append(f'<div class="more">{md_block(strip_files_note(details[n - 1]))}</div>')
         pos = end
     out.append(diagram[pos:])
-    return "".join(out), tagged
+    html_out = "".join(out)
+    # untagged nodes are existing machinery, not work — stamp them so an
+    # unmarked corner reads as deliberate, not as a forgotten data-step
+    html_out = re.sub(
+        r'(<div(?![^>]*data-step=)[^>]*class="node[^"]*"[^>]*>)',
+        r'\1<span class="snum ctx">existing</span>',
+        html_out)
+    return html_out, tagged
 
 
 def render_flow(progress, secs: dict, only=None) -> str:
