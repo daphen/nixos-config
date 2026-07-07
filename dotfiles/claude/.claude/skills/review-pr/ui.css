@@ -11,7 +11,10 @@ body{margin:0;background:var(--rv-bg);color:var(--rv-fg);line-height:1.5;-webkit
   font-family:"Geist","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 .wrap{max-width:940px;margin:0 auto;padding:32px 24px 80px}
 a{color:var(--rv-blue);text-decoration:none}a:hover{text-decoration:underline}
-code{font-family:"GeistMono Nerd Font","JetBrains Mono",ui-monospace,monospace}
+/* optically match the sans around it and let long paths break mid-token
+   instead of forcing ragged early wraps */
+code{font-family:"GeistMono Nerd Font","JetBrains Mono",ui-monospace,monospace;
+  font-size:.93em;overflow-wrap:anywhere}
 
 header h1{font-size:20px;margin:0 0 6px;font-weight:600;letter-spacing:-.01em}
 header .meta{color:var(--rv-muted);font-size:14px}header .meta b{color:var(--rv-fg);font-weight:600}

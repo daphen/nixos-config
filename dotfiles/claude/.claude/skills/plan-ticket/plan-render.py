@@ -28,6 +28,7 @@ def md_inline(s: str) -> str:
     codes: list = []
     s = re.sub(r"`(.+?)`", lambda m: (codes.append(m.group(1)), f"\x00{len(codes)-1}\x00")[1], s)
     s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
+    s = re.sub(r"\*([^*\n]+)\*", r"<i>\1</i>", s)
     s = re.sub(r"\x00(\d+)\x00", lambda m: f"<code>{codes[int(m.group(1))]}</code>", s)
     return s
 
