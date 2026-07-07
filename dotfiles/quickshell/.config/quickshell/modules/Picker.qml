@@ -45,6 +45,9 @@ PanelWindow {
         return out
     }
     property int altKey: Qt.Key_W
+    // What Enter does, shown in the footer — pickers whose Enter isn't
+    // "open" override it so the hint can't contradict altLabel.
+    property string enterLabel: "open"
     // Opt-in image preview: items with a path in this field get a real-color
     // thumbnail, and Ctrl+O toggles a preview pane above the footer showing
     // the SELECTED item's image — it follows j/k, selection never moves.
@@ -699,7 +702,7 @@ PanelWindow {
                     KeyCap { text: "↵" }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "open"
+                        text: root.enterLabel
                         color: Theme.fg_muted
                         font.family: notch.sans
                         font.pixelSize: 12

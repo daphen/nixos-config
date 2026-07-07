@@ -17,7 +17,8 @@ Picker {
     subtitleField: "sub"
     iconField: "icon"
     previewField: "filePath"
-    altLabel: "Enter: copy   ·   Ctrl+O: preview"
+    enterLabel: "copy"
+    altLabel: "Ctrl+O: preview"
 
     FileView {
         id: histFile
