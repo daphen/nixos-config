@@ -98,13 +98,15 @@ def strip_files_note(detail: str) -> str:
     return re.sub(r"\s*_\(files:[^)]*\)_", "", detail)
 
 
-def inject_step_details(diagram: str, secs: dict) -> str:
-    """Nodes tagged data-step="N" get that ◆ step's full md body as their
-    expandable .more — same text as the flow section, sourced once. Only
-    the first node of a step gets it; siblings expanding to identical
-    walls of text read as a rendering bug."""
+def decorate_diagram(diagram: str, secs: dict, progress):
+    """Nodes tagged data-step="N" become the flow: they get the step's live
+    status (class + dot) and its full md body as the expandable .more — same
+    text as the plan, sourced once. Detail lands only on the first node of a
+    step; siblings expanding to identical walls of text read as a bug.
+    Returns (html, set of step numbers present in the diagram)."""
     details = flow_details(secs)
-    seen = set()
+    flow = (progress or {}).get("flow") or []
+    seen_detail, tagged = set(), set()
 
     def close_of(s: str, start: int) -> int:
         depth, i = 0, start
@@ -125,9 +127,17 @@ def inject_step_details(diagram: str, secs: dict) -> str:
     out, pos = [], 0
     for m in re.finditer(r'<div[^>]*class="node[^"]*"[^>]*data-step="(\d+)"[^>]*>', diagram):
         n = int(m.group(1))
-        if not (1 <= n <= len(details)) or n in seen:
+        if not (1 <= n <= len(details)):
             continue
-        seen.add(n)
+        tagged.add(n)
+        st = flow[n - 1].get("status", "pending") if n <= len(flow) else "pending"
+        tag = m.group(0).replace('class="node', f'class="node {st}', 1)
+        out.append(diagram[pos:m.start()])
+        out.append(tag + '<span class="sdot"></span>')
+        pos = m.end()
+        if n in seen_detail:
+            continue
+        seen_detail.add(n)
         end = close_of(diagram, m.start())
         if end < 0:
             continue
@@ -135,10 +145,10 @@ def inject_step_details(diagram: str, secs: dict) -> str:
         out.append(f'<div class="more">{md_block(strip_files_note(details[n - 1]))}</div>')
         pos = end
     out.append(diagram[pos:])
-    return "".join(out)
+    return "".join(out), tagged
 
 
-def render_flow(progress, secs: dict) -> str:
+def render_flow(progress, secs: dict, only=None) -> str:
     flow = (progress or {}).get("flow") or []
     if not flow:
         return '<div class="empty">No flow steps recorded yet.</div>'
@@ -157,6 +167,8 @@ def render_flow(progress, secs: dict) -> str:
 
     rows = []
     for idx, f in enumerate(flow):
+        if only is not None and idx + 1 not in only:
+            continue
         st = f.get("status", "pending")
         title = f.get("step", "")
         d = strip_files_note(detail_for(idx, title))
@@ -274,10 +286,6 @@ def render_html(md_path: Path) -> str:
         return None
     progress = load(".progress.json")
     review = load(".review.json")
-    diagram_p = md_path.with_name(md_path.stem + ".diagram.html")
-    diagram = diagram_p.read_text() if diagram_p.is_file() else \
-        '<div class="empty">No diagram yet — written at <code>--finalize</code>.</div>'
-    diagram = inject_step_details(diagram, sections(md))
 
     secs = sections(md)
     title_m = re.search(r"^#\s+(.*)", md, flags=re.M)
@@ -293,6 +301,26 @@ def render_html(md_path: Path) -> str:
     flow = (progress or {}).get("flow") or []
     done = sum(1 for f in flow if f.get("status") == "done")
     progress_txt = f"{done}/{len(flow)} steps" if flow else "—"
+
+    # The diagram IS the flow when it covers every step: nodes carry live
+    # status, and the list only renders as fallback (no diagram yet) or as
+    # the residual of steps an authored diagram forgot to tag.
+    diagram_p = md_path.with_name(md_path.stem + ".diagram.html")
+    if diagram_p.is_file():
+        dia_html, tagged = decorate_diagram(diagram_p.read_text(), secs, progress)
+        dia_section = (f'<h2>How it works <span class="count">{progress_txt}</span></h2>'
+                       f'<div class="flow">{dia_html}</div>')
+        residual = {n for n in range(1, len(flow) + 1) if n not in tagged}
+        if residual:
+            flow_section = ('<h2>Flow — steps not on the diagram</h2>'
+                            + render_flow(progress, secs, only=residual))
+        else:
+            flow_section = ""
+    else:
+        dia_section = ('<h2>How it works</h2><div class="flow">'
+                       '<div class="empty">No diagram yet — written at <code>--finalize</code>.</div></div>')
+        flow_section = (f'<h2>Flow <span class="count">{progress_txt}</span></h2>'
+                        + render_flow(progress, secs))
 
     mode = "light"
     mf = HOME / ".config" / "theme_mode"
@@ -311,8 +339,8 @@ def render_html(md_path: Path) -> str:
         "STATUS": status, "STATUS_CLASS": status_cls, "BRANCH": html.escape(branch),
         "PROGRESS": progress_txt,
         "SHAPE": md_block(find_section(secs, "the shape", "shape")) or '<span class="empty">—</span>',
-        "DIAGRAM": diagram,
-        "FLOW": render_flow(progress, secs),
+        "DIAGRAM": dia_section,
+        "FLOW": flow_section,
         "DECISIONS": render_decisions(secs),
         "SURFACE": render_surface(progress, review, secs),
         "VERIFICATION": render_verification(review),
