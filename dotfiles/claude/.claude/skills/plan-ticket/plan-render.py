@@ -133,7 +133,7 @@ def decorate_diagram(diagram: str, secs: dict, progress):
         st = flow[n - 1].get("status", "pending") if n <= len(flow) else "pending"
         tag = m.group(0).replace('class="node', f'class="node {st}', 1)
         out.append(diagram[pos:m.start()])
-        out.append(tag + '<span class="sdot"></span>')
+        out.append(tag + f'<span class="sdot"></span><span class="snum">◆{n}</span>')
         pos = m.end()
         if n in seen_detail:
             continue
