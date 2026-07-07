@@ -93,7 +93,9 @@ h2 .count{color:var(--rv-muted);opacity:.7;margin-left:8px;font-family:"GeistMon
 .grp h3{margin:0 0 10px;font-size:14px;color:var(--rv-fg);font-weight:600}
 .frow{display:flex;align-items:center;gap:9px;padding:6px 4px;border-bottom:1px solid var(--rv-hair);font-size:14px}
 .frow:last-child{border-bottom:0}
-.frow .nm{flex:1;min-width:0;color:var(--rv-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* basis auto: the name keeps its natural width and the bar shrinks —
+   a width:100% bar with nm basis 0 crushed names to nothing */
+.frow .nm{flex:1 1 auto;min-width:0;color:var(--rv-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .frow .ct{color:var(--rv-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .frow .note{color:var(--rv-muted);font-size:14px;flex:2;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* plan surface rows: two-line like picker rows — name + step chips on the
@@ -166,7 +168,7 @@ ul.intent li.info::before{content:"•";color:var(--rv-muted)}
 /* expanded detail is primary reading content — ink, not a muted footnote */
 .expanded>.more,.expanded .more{display:block;margin-top:8px;padding-top:8px;border-top:1px solid var(--rv-hair);
   font-size:14px;color:var(--rv-fg);line-height:1.55}
-.expanded .nm,.expanded .note{white-space:normal;overflow:visible;text-overflow:clip}
+.expanded .nm,.expanded .note{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
 .openable{cursor:pointer}
 /* chin chip, keycap-tinted like the picker footer */
 .navhint{position:fixed;bottom:12px;right:14px;font-size:11px;color:var(--rv-muted);
