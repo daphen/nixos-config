@@ -70,6 +70,8 @@ PanelWindow {
     // Natural height of the list (rows + spacing + margins) so the panel
     // can hug its content instead of showing a fixed-height void.
     readonly property int listContentHeight: {
+        // loading: give the dots a comfortable stage instead of an 18px slit
+        if (loading) return 96
         let h = 18
         for (let i = 0; i < filtered.length; i++) {
             const it = filtered[i]
