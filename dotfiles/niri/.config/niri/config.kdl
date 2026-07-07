@@ -872,7 +872,7 @@ binds {
     Super+Ctrl+Shift+d { spawn-sh "f=$HOME/.config/quickshell/dnd; if [ -e \"$f\" ]; then rm -f \"$f\"; else mkdir -p \"$(dirname \"$f\")\" && touch \"$f\"; fi"; }
 
     // Rofi keybinds
-    Super+Ctrl+V { spawn "kitty" "--class" "clipse" "-o" "initial_window_width=1000" "-o" "initial_window_height=750" "clipse"; }  // Open clipboard history (clipse in floating terminal)
+    Super+Ctrl+V { spawn "qs" "ipc" "call" "clipboard" "toggle"; }  // Clipboard history (quickshell picker over clipse's store)
     Super+Ctrl+J { spawn "qs" "ipc" "call" "emoji" "toggle"; }  // Open emoji picker (copy + auto-type)
     Super+Ctrl+B { spawn "qs" "ipc" "call" "bluetooth" "toggle"; }  // Open bluetooth menu
     Super+Ctrl+N { spawn "qs" "ipc" "call" "network" "toggle"; }    // Open wifi picker

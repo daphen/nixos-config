@@ -140,6 +140,29 @@ def place_window(win_id: int | None, workspace: str) -> None:
                 "--focus", "false", workspace)
 
 
+def seed_claude_trust(worktree_path: Path) -> None:
+    """Pre-seed Claude Code's per-project state for the worktree so the first
+    session skips the trust + external-includes prompts (a worktree of the
+    already-trusted main checkout carries the same content). Atomic rename to
+    tolerate concurrent sessions rewriting ~/.claude.json."""
+    cfg = Path(HOME) / ".claude.json"
+    try:
+        data = json.loads(cfg.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    entry = data.setdefault("projects", {}).setdefault(str(worktree_path), {})
+    if entry.get("hasTrustDialogAccepted"):
+        return
+    entry.update({
+        "hasTrustDialogAccepted": True,
+        "hasCompletedProjectOnboarding": True,
+        "hasClaudeMdExternalIncludesApproved": True,
+    })
+    tmp = cfg.with_name(".claude.json.wstmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    tmp.replace(cfg)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("name", help="worktree short name (creates branch daphen/<name>)")
@@ -244,6 +267,7 @@ def main() -> int:
     if args.background:
         place_window(wid, workspace)
 
+    seed_claude_trust(worktree_path)
     print(f"==> spawning claude session ({mode})")
     wid = spawn_and_wait([
         "kitty",
