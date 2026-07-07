@@ -13,7 +13,11 @@ This is where you see the new work sitting inside the pipeline — and confirm w
 adding the minimum. New steps may land at different points in the flow; say so.
 
 1. <existing step, for context>
-2. **◆ <new step>** — plain English. _(→ D1 · files: foo.go)_
+2. **◆ <new step>** — one bold lead sentence saying what this step does.
+   - short bullets for the how and the why — one point each, never a prose wall
+   - the live view shows this body verbatim as the step's (and diagram node's)
+     expandable detail, so structure it for reading
+   _(→ D1 · files: foo.go)_
 3. <existing step>
 4. **◆ <new step>** — happens later in the flow than step 2, because …
 5. <existing step> → done
