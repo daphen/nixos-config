@@ -143,7 +143,11 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
    Node `.sub` text is **plain English for someone who hasn't read the plan** —
    a full sentence saying what happens at this node and why it matters, never a
    compressed jargon chain ("D1 probe: passthrough verified"). Together the
-   nodes must tell the change's whole story end to end.
+   nodes must tell the change's whole story end to end. Tag every node that
+   realizes a `◆` step with `data-step="N"` (1-based, md order; several nodes
+   may share a step) — the renderer injects that step's full plan text as the
+   node's Enter-expandable detail, so diagram and flow always say the same
+   thing without writing it twice.
 6. Set the plan's `> Status:` line to `finalized` (so the editor knows it's ready
    for `--go`). Leave `progress.json` otherwise unchanged.
 

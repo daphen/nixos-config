@@ -92,6 +92,42 @@ def flow_details(secs: dict) -> list:
     return ["\n".join(it).strip() for it in items]
 
 
+def inject_step_details(diagram: str, secs: dict) -> str:
+    """Nodes tagged data-step="N" get that ◆ step's full md body as their
+    expandable .more — same text as the flow section, sourced once."""
+    details = flow_details(secs)
+
+    def close_of(s: str, start: int) -> int:
+        depth, i = 0, start
+        while i < len(s):
+            o, c = s.find("<div", i), s.find("</div>", i)
+            if c < 0:
+                return -1
+            if 0 <= o < c:
+                depth += 1
+                i = o + 4
+            else:
+                depth -= 1
+                if depth == 0:
+                    return c
+                i = c + 6
+        return -1
+
+    out, pos = [], 0
+    for m in re.finditer(r'<div[^>]*class="node[^"]*"[^>]*data-step="(\d+)"[^>]*>', diagram):
+        n = int(m.group(1))
+        if not (1 <= n <= len(details)):
+            continue
+        end = close_of(diagram, m.start())
+        if end < 0:
+            continue
+        out.append(diagram[pos:end])
+        out.append(f'<div class="more">{md_block(details[n - 1])}</div>')
+        pos = end
+    out.append(diagram[pos:])
+    return "".join(out)
+
+
 def render_flow(progress, secs: dict) -> str:
     flow = (progress or {}).get("flow") or []
     if not flow:
@@ -231,6 +267,7 @@ def render_html(md_path: Path) -> str:
     diagram_p = md_path.with_name(md_path.stem + ".diagram.html")
     diagram = diagram_p.read_text() if diagram_p.is_file() else \
         '<div class="empty">No diagram yet — written at <code>--finalize</code>.</div>'
+    diagram = inject_step_details(diagram, sections(md))
 
     secs = sections(md)
     title_m = re.search(r"^#\s+(.*)", md, flags=re.M)
