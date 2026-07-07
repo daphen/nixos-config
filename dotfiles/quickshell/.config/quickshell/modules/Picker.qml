@@ -396,6 +396,7 @@ PanelWindow {
                 // swallowing topMargin; a top-selected row then touches the
                 // header. Snap to the true beginning whenever we're at the top.
                 onCountChanged: if (contentY <= 0) contentY = -topMargin
+                onContentHeightChanged: if (!moving && !dragging && contentY <= 0) contentY = -topMargin
                 bottomMargin: 10
                 opacity: root.loading ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }

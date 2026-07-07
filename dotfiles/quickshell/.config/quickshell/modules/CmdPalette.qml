@@ -36,7 +36,8 @@ PanelWindow {
         filterTab = 0
         scopedWindowId = null
         selectedIndex = 0
-        list.contentY = -list.topMargin
+        // after the model rebuild settles, not before (it would clobber this)
+        Qt.callLater(() => list.contentY = -list.topMargin)
     }
 
     anchors { top: true; bottom: true; left: true; right: true }
@@ -520,6 +521,9 @@ PanelWindow {
                 // swallowing topMargin; a top-selected row then touches the
                 // header. Snap to the true beginning whenever we're at the top.
                 onCountChanged: if (contentY <= 0) contentY = -topMargin
+                // a swapped JS-array model resets contentY to 0 even when the
+                // count is identical — contentHeight always moves on relayout
+                onContentHeightChanged: if (!moving && !dragging && contentY <= 0) contentY = -topMargin
                 bottomMargin: 10
                 boundsBehavior: Flickable.StopAtBounds
 
