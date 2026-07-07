@@ -101,8 +101,15 @@ hex**):
 
 - `title` — the PR title.
 - `meta` — one line: PR #, author, state, base←head, +add/−del, file count, github + ticket links.
-- `verdict_class` / `verdict_badge` — `approve|changes|comment` and its label; `verdict_why` — one line + a `<span class="note">` caveat.
+- `verdict_class` / `verdict_badge` — class stays `approve|changes|comment`; the badge
+  label speaks plainly: "approve", "needs changes", "comments". `verdict_why` — one
+  plain-English line + a `<span class="note">` caveat, readable without the diff.
 - `diagram` — **the centrepiece.** `.lane`/`.node`/`.arrow`/`.split` markup showing *how this change works*, chosen to fit the PR: data-flow pipeline, state machine, before/after, or sequence. Label real files/symbols. At least half the page's weight is this + the annotated code, not prose.
+  Node `.sub` text is **plain English for someone who hasn't read the diff** — a full
+  sentence saying what happens at this node and why it matters, never a compressed
+  jargon chain ("D1 probe: passthrough verified"). Together the nodes must tell the
+  change's whole story end to end. Long explanations anywhere on the page are a lead
+  sentence + short bullets, never a prose wall.
 - `findings` — one `.finding` per issue, ranked blocker → should-fix → nit, **each an annotated `<pre>` of the actual hunk** (offending line `.ln.bad`, good line `.ln.good`). Not text cards describing invisible code. Put `data-file="<repo-relative path>" data-line="<line>"` on each `.finding` (and any file-anchored `.frow`) so `o` can open it in nvim.
   The reasoning under the hunk is **three labeled plain-English rows** — write them for
   someone who hasn't read the diff, no compressed jargon chains:
@@ -111,7 +118,9 @@ hex**):
   - `<p class="fix"><b>Fix:</b> …</p>` — the one-line change.
   Refuted candidates: `.ln.strike` on the suspected lines + a single `.note.drop` with `<b>Refuted:</b>` explaining in the same plain terms why it's not real.
 - `filemap` — `.grp` columns (by area) with per-file `.bar` change-size bars. Not a table.
-- `intent` — `<li>` items against the linked ticket (satisfied / missing / out-of-scope).
+- `intent` — `<li>` items against the linked ticket (satisfied / missing / out-of-scope),
+  each a full sentence someone who hasn't read the ticket can follow — name the behavior,
+  not internal shorthand.
 - `verification` — rows: what you actually ran + results, CI rollup for the rest.
 
 Build fragments straight from the diff you already read. To restyle *all* reviews, edit

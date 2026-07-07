@@ -73,7 +73,7 @@ def make_handler(html_path: Path, worktree):
                 ln = (q.get("line") or ["1"])[0]
                 ok = False
                 if worktree and f and NVIM_OPEN:
-                    ok = subprocess.run([NVIM_OPEN, str(worktree), f, ln]).returncode == 0
+                    ok = subprocess.run([NVIM_OPEN, str(worktree), f, ln, "--focus"]).returncode == 0
                 self.send_response(200 if ok else 500)
                 self.send_header("Content-Type", "text/plain")
                 self.end_headers()
