@@ -12,18 +12,22 @@ vim.o.background = "light"
 -- Color palette
 local c = {
   -- Background colors
-  bg = "#FAF9F6",
-  bg_secondary = "#F2F1EE",
-  bg_tertiary = "#F0EFEC",
-  bg_selection = "#E7E5E1",
-  bg_surface = "#EDECE9",
-  bg_overlay = "#E0DFDC",
+  bg = "#FFFFFF",
+  bg_secondary = "#F6F7F4",
+  bg_tertiary = "#F4F5F2",
+  bg_selection = "#F4F5F2",
+  bg_surface = "#F7F8F5",
+  bg_overlay = "#E9EAE7",
+  -- elevation ladder (derived by theme-processor: fg over surface1)
+  bg_surface1 = "#F7F8F5",
+  bg_surface2 = "#EDEEEB",
+  bg_surface3 = "#E5E5E3",
 
   -- Foreground colors
-  fg = "#2D4A3D",
-  fg_secondary = "#575279",
-  fg_muted = "#6B6E7A",
-  fg_subtle = "#636463",
+  fg = "#10100E",
+  fg_secondary = "#3C3C3A",
+  fg_muted = "#959693",
+  fg_subtle = "#989896",
 
   -- Accent colors
   red = "#7c3438",
@@ -44,13 +48,13 @@ local c = {
   keyword = "#396171",
   command = "#396171",
   operator = "#243560",
-  comment = "#6B6E7A",
+  comment = "#959693",
   string = "#396171",
   ["function"] = "#e16511",
   type = "#2a618d",
   number = "#7c3438",
   boolean = "#2a618d",
-  variable = "#2D4A3D",
+  variable = "#10100E",
   property = "#243560",
   method = "#e16511",
   tag = "#e16511",
@@ -204,7 +208,7 @@ hl("helpVim", { fg = c.fg })
 
 -- Markdown
 hl("markdownBlockquote", { fg = c.fg_subtle })
-hl("markdownCodeBlock", { bg = c.bg_secondary })
+hl("markdownCodeBlock", { bg = c.bg_surface1 })
 hl("markdownHeadingRule", { link = "markdownRule" })
 hl("markdownLinkText", { link = "String" })
 hl("markdownListMarker", { fg = c.fg })
@@ -278,7 +282,16 @@ hl("@markup.link.markdown_inline", { fg = c.fg })
 hl("@markup.list.checked.markdown", { link = "DiagnosticOk" })
 hl("@markup.list.unchecked.markdown", { link = "DiagnosticError" })
 hl("@markup.quote.markdown", { link = "markdownBlockquote" })
-hl("@markup.raw.markdown_inline", { fg = c.blue, bg = c.bg_secondary })
+hl("@markup.raw.markdown_inline", { fg = c.fg, bg = c.bg_surface2 })
+-- render-markdown.nvim: without these it invents its own blends (blue
+-- heading banners, cold code chips) that ignore the palette entirely.
+hl("RenderMarkdownCode", { bg = c.bg_surface1 })
+hl("RenderMarkdownCodeInline", { fg = c.fg, bg = c.bg_surface2 })
+for level = 1, 6 do
+  hl("RenderMarkdownH" .. level .. "Bg", { bg = c.bg_surface1 })
+end
+hl("RenderMarkdownBullet", { fg = c.fg_muted })
+hl("RenderMarkdownDash", { fg = c.bg_overlay })
 hl("@punctuation.special.markdown", { link = "@markup.quote.markdown" })
 
 for level = 1, 6 do

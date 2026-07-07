@@ -6,17 +6,49 @@ import re
 import os
 from pathlib import Path
 
+def _hex_to_rgb(h):
+    h = h.lstrip('#')
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+def _mix(base_hex, tint_hex, alpha):
+    b, t = _hex_to_rgb(base_hex), _hex_to_rgb(tint_hex)
+    return '#{:02X}{:02X}{:02X}'.format(
+        *(round(b[i] * (1 - alpha) + t[i] * alpha) for i in range(3)))
+
+# Elevation ladder: two authored anchors (bg + surface) per mode, higher
+# steps derived by compositing fg over surface1 — over surface, never bg,
+# so the steps inherit the palette's warmth (a neutral-bg mix reads cold).
+# Dark mode needs roughly double the alpha for the same perceived step.
+_LADDER_STEPS = {
+    'light': {'surface2': 0.045, 'surface3': 0.08},
+    'dark':  {'surface2': 0.09,  'surface3': 0.15},
+}
+
+def _add_derived(themes):
+    for mode, steps in _LADDER_STEPS.items():
+        if mode not in themes:
+            continue
+        bg = themes[mode].get('background', {})
+        fg = themes[mode].get('foreground', {}).get('primary')
+        s1 = bg.get('surface')
+        if not (fg and s1):
+            continue
+        bg['surface1'] = s1
+        for name, alpha in steps.items():
+            bg.setdefault(name, _mix(s1, fg, alpha))
+    return themes
+
 def load_colors(colors_file, theme_mode):
     """Load colors from JSON file for specified theme mode."""
     with open(colors_file, 'r') as f:
         data = json.load(f)
-    return data['themes'][theme_mode]
+    return _add_derived(data['themes'])[theme_mode]
 
 def load_all_colors(colors_file):
     """Load all colors from JSON file."""
     with open(colors_file, 'r') as f:
         data = json.load(f)
-    return data['themes']
+    return _add_derived(data['themes'])
 
 def get_nested_color(colors, path, max_depth=5, theme_context=None):
     """Get color value from nested path with recursive reference resolution."""

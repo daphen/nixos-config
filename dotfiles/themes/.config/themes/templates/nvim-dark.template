@@ -18,6 +18,10 @@ local c = {
   bg_selection = "{{dark.background.selection}}",
   bg_surface = "{{dark.background.surface}}",
   bg_overlay = "{{dark.background.overlay}}",
+  -- elevation ladder (derived by theme-processor: fg over surface1)
+  bg_surface1 = "{{dark.background.surface1}}",
+  bg_surface2 = "{{dark.background.surface2}}",
+  bg_surface3 = "{{dark.background.surface3}}",
 
   -- Foreground colors
   fg = "{{dark.foreground.primary}}",
@@ -204,7 +208,7 @@ hl("helpVim", { fg = c.fg })
 
 -- Markdown
 hl("markdownBlockquote", { fg = c.fg_subtle })
-hl("markdownCodeBlock", { bg = c.bg_secondary })
+hl("markdownCodeBlock", { bg = c.bg_surface1 })
 hl("markdownHeadingRule", { link = "markdownRule" })
 hl("markdownLinkText", { link = "String" })
 hl("markdownListMarker", { fg = c.fg })
@@ -278,7 +282,16 @@ hl("@markup.link.markdown_inline", { fg = c.fg })
 hl("@markup.list.checked.markdown", { link = "DiagnosticOk" })
 hl("@markup.list.unchecked.markdown", { link = "DiagnosticError" })
 hl("@markup.quote.markdown", { link = "markdownBlockquote" })
-hl("@markup.raw.markdown_inline", { fg = c.blue, bg = c.bg_secondary })
+hl("@markup.raw.markdown_inline", { fg = c.fg, bg = c.bg_surface2 })
+-- render-markdown.nvim: without these it invents its own blends (blue
+-- heading banners, cold code chips) that ignore the palette entirely.
+hl("RenderMarkdownCode", { bg = c.bg_surface1 })
+hl("RenderMarkdownCodeInline", { fg = c.fg, bg = c.bg_surface2 })
+for level = 1, 6 do
+  hl("RenderMarkdownH" .. level .. "Bg", { bg = c.bg_surface1 })
+end
+hl("RenderMarkdownBullet", { fg = c.fg_muted })
+hl("RenderMarkdownDash", { fg = c.bg_overlay })
 hl("@punctuation.special.markdown", { link = "@markup.quote.markdown" })
 
 for level = 1, 6 do
