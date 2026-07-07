@@ -282,13 +282,13 @@ hl("@markup.link.markdown_inline", { fg = c.fg })
 hl("@markup.list.checked.markdown", { link = "DiagnosticOk" })
 hl("@markup.list.unchecked.markdown", { link = "DiagnosticError" })
 hl("@markup.quote.markdown", { link = "markdownBlockquote" })
-hl("@markup.raw.markdown_inline", { fg = c.fg, bg = c.bg_surface2 })
+hl("@markup.raw.markdown_inline", { fg = c.fg, bg = c.bg_surface1 })
 -- render-markdown.nvim: without these it invents its own blends (blue
 -- heading banners, cold code chips) that ignore the palette entirely.
 hl("RenderMarkdownCode", { bg = c.bg_surface1 })
-hl("RenderMarkdownCodeInline", { fg = c.fg, bg = c.bg_surface2 })
+hl("RenderMarkdownCodeInline", { fg = c.fg, bg = c.bg_surface1 })
 for level = 1, 6 do
-  hl("RenderMarkdownH" .. level .. "Bg", { bg = c.bg_surface1 })
+  hl("RenderMarkdownH" .. level .. "Bg", { bg = c.bg_surface2 })
 end
 hl("RenderMarkdownBullet", { fg = c.fg_muted })
 hl("RenderMarkdownDash", { fg = c.bg_overlay })
