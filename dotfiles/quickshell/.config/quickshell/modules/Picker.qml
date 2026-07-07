@@ -45,6 +45,17 @@ PanelWindow {
         return out
     }
     property int altKey: Qt.Key_W
+    // Opt-in image preview: items with a path in this field get a real-color
+    // thumbnail, and Ctrl+O toggles a preview pane above the footer showing
+    // the SELECTED item's image — it follows j/k, selection never moves.
+    property string previewField: ""
+    property bool previewOpen: false
+    readonly property string previewSource: {
+        if (!previewField || filtered.length === 0) return ""
+        const idx = Math.max(0, Math.min(selectedIndex, filtered.length - 1))
+        const it = filtered[idx]
+        return (it && !it.divider && it[previewField]) ? String(it[previewField]) : ""
+    }
     // Set by pickers whose items arrive asynchronously: shows a loading
     // indicator, and the list fades in once loading clears.
     property bool loading: false
@@ -117,6 +128,7 @@ PanelWindow {
     visible: active
 
     onOpenChanged: {
+        previewOpen = false
         if (open) { closeDelay.stop(); active = true }
         else closeDelay.restart()
     }
@@ -230,6 +242,7 @@ PanelWindow {
         // Hug the content like the reference — footer sits right under the
         // last row; 480 caps long lists (the ListView scrolls past that).
         height: Math.min(480, inputWrap.height + tabsRow.height + root.listContentHeight + footer.height)
+                + (previewPane.visible ? previewPane.height : 0)
         Behavior on height { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
         color: Theme.bg
@@ -338,6 +351,9 @@ PanelWindow {
                             root.onCtrlP(root.filtered[idx])
                             root.closeRequested()
                         }
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_O && (event.modifiers & Qt.ControlModifier) && root.previewField.length > 0) {
+                        root.previewOpen = !root.previewOpen
                         event.accepted = true
                     } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier) && root.onYank) {
                         const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
@@ -484,22 +500,27 @@ PanelWindow {
 
                     Image {
                         id: rowIcon
+                        readonly property bool isThumb: root.previewField.length > 0 && rowItem.modelData
+                            && String(rowItem.modelData[root.previewField] || "").length > 0
                         readonly property bool active: !rowItem.isDivider && root.iconField.length > 0
                             && rowItem.modelData
                             && String(rowItem.modelData[root.iconField] || "").length > 0
-                        visible: false   // drawn by the MultiEffect below
+                        // thumbnails keep their real colors; plain icons are
+                        // drawn monochrome by the MultiEffect below
+                        visible: active && isThumb
                         source: active ? rowItem.modelData[root.iconField] : ""
-                        width: 16
-                        height: 16
-                        sourceSize.width: 32
-                        sourceSize.height: 32
-                        fillMode: Image.PreserveAspectFit
+                        width: isThumb ? 28 : 16
+                        height: isThumb ? 28 : 16
+                        sourceSize.width: isThumb ? 96 : 32
+                        sourceSize.height: isThumb ? 96 : 32
+                        asynchronous: true
+                        fillMode: isThumb ? Image.PreserveAspectCrop : Image.PreserveAspectFit
                         anchors.right: parent.right
                         anchors.rightMargin: 28
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     MultiEffect {
-                        visible: rowIcon.active
+                        visible: rowIcon.active && !rowIcon.isThumb
                         source: rowIcon
                         anchors.fill: rowIcon
                         colorization: 1.0
@@ -611,6 +632,40 @@ PanelWindow {
                     }
                 }
             }
+            }
+
+            // Preview pane (Ctrl+O): the selected item's image, following the
+            // selection — expands the panel, never moves the cursor.
+            Rectangle {
+                id: previewPane
+                width: parent.width
+                visible: root.previewOpen && root.previewSource.length > 0
+                height: visible ? 252 : 0
+                color: "transparent"
+                Rectangle {
+                    anchors.top: parent.top
+                    width: parent.width
+                    height: 1
+                    color: Theme.hairline
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    anchors.topMargin: 12
+                    radius: 13
+                    color: Theme.surface1
+                    border.color: Theme.hairline
+                    border.width: 1
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        source: previewPane.visible ? root.previewSource : ""
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        sourceSize.width: 1400
+                        mipmap: true
+                    }
+                }
             }
 
             Item {

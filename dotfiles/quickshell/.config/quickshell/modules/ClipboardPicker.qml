@@ -16,7 +16,8 @@ Picker {
     placeholder: "clipboard history"
     subtitleField: "sub"
     iconField: "icon"
-    altLabel: "Enter: copy"
+    previewField: "filePath"
+    altLabel: "Enter: copy   ·   Ctrl+O: preview"
 
     FileView {
         id: histFile
