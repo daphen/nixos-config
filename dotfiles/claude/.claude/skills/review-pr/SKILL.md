@@ -118,6 +118,9 @@ hex**):
   - `<p class="fix"><b>Fix:</b> …</p>` — the one-line change.
   Refuted candidates: `.ln.strike` on the suspected lines + a single `.note.drop` with `<b>Refuted:</b>` explaining in the same plain terms why it's not real.
 - `filemap` — `.grp` columns (by area) with per-file `.bar` change-size bars. Not a table.
+  Bar width is total churn (adds+deletes) on a fixed pixel scale: the biggest file gets
+  `width:180px`, every other bar `round(churn/max*180)px` — never percentages, so bars
+  stay comparable across rows and columns.
 - `intent` — `<li>` items against the linked ticket (satisfied / missing / out-of-scope),
   each a full sentence someone who hasn't read the ticket can follow — name the behavior,
   not internal shorthand.
