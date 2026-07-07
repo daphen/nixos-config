@@ -21,6 +21,9 @@ Singleton {
             "tertiary":    "#F4F5F2",
             "selection":   "#F4F5F2",
             "surface":     "#F7F8F5",
+            "surface1":    "#F7F8F5",
+            "surface2":    "#EDEEEB",
+            "surface3":    "#E5E5E3",
             "overlay":     "#E9EAE7",
             "prompt":      "#EEEFEC",
             "success_bg":  "#DDDBCC",
@@ -50,6 +53,9 @@ Singleton {
             "tertiary":    "#1B1B1B",
             "selection":   "#2E2E2E",
             "surface":     "#1B1B1B",
+            "surface1":    "#1B1B1B",
+            "surface2":    "#2E2E2E",
+            "surface3":    "#3A3A3A",
             "overlay":     "#292826",
             "prompt":      "#323A40",
             "success_bg":  "#313734",
@@ -80,6 +86,10 @@ Singleton {
     readonly property color tertiary:     palettes[mode].tertiary
     readonly property color selection:    palettes[mode].selection
     readonly property color surface:      palettes[mode].surface
+    // elevation ladder (derived by theme-processor): 1 texture, 2 structure, 3 engaged
+    readonly property color surface1:     palettes[mode].surface1
+    readonly property color surface2:     palettes[mode].surface2
+    readonly property color surface3:     palettes[mode].surface3
     readonly property color overlay:      palettes[mode].overlay
     readonly property color prompt:       palettes[mode].prompt
     readonly property color success_bg:   palettes[mode].success_bg

@@ -377,7 +377,7 @@ PanelWindow {
                     anchors.topMargin: 14
                     anchors.bottomMargin: 6
                     radius: 15
-                    color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
+                    color: Theme.surface2
                 }
 
                 Text {
@@ -444,7 +444,7 @@ PanelWindow {
                     width: escText.implicitWidth + 16
                     height: 24
                     radius: 7
-                    color: Theme.mode === "light" ? Theme.bg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
+                    color: Theme.mode === "light" ? Theme.bg : Theme.surface2
                     border.color: Theme.hairline
                     border.width: 1
                     Text {
@@ -598,7 +598,7 @@ PanelWindow {
                             width: rowItem.hasSubtitle ? 34 : 24
                             height: width
                             radius: rowItem.hasSubtitle ? 10 : 7
-                            color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06)
+                            color: Theme.surface2
                             Image {
                                 id: fav
                                 anchors.centerIn: parent

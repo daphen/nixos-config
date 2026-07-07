@@ -53,7 +53,7 @@ PanelWindow {
         height: 24
         radius: 7
         // Reference: light-mode keycaps are white and raised; dark stays tinted.
-        color: Theme.mode === "light" ? Theme.bg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
+        color: Theme.mode === "light" ? Theme.bg : Theme.surface2
         border.color: Theme.hairline
         border.width: 1
         Text {
@@ -251,7 +251,7 @@ PanelWindow {
                     anchors.topMargin: 14
                     anchors.bottomMargin: 6
                     radius: 15
-                    color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.07)
+                    color: Theme.surface2
                 }
 
                 Text {
