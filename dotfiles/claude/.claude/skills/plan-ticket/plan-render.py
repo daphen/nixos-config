@@ -92,10 +92,19 @@ def flow_details(secs: dict) -> list:
     return ["\n".join(it).strip() for it in items]
 
 
+def strip_files_note(detail: str) -> str:
+    """Drop the `_(files: …)_` machine annotation — the file map already
+    shows it as chips, and raw underscores read as broken markdown."""
+    return re.sub(r"\s*_\(files:[^)]*\)_", "", detail)
+
+
 def inject_step_details(diagram: str, secs: dict) -> str:
     """Nodes tagged data-step="N" get that ◆ step's full md body as their
-    expandable .more — same text as the flow section, sourced once."""
+    expandable .more — same text as the flow section, sourced once. Only
+    the first node of a step gets it; siblings expanding to identical
+    walls of text read as a rendering bug."""
     details = flow_details(secs)
+    seen = set()
 
     def close_of(s: str, start: int) -> int:
         depth, i = 0, start
@@ -116,13 +125,14 @@ def inject_step_details(diagram: str, secs: dict) -> str:
     out, pos = [], 0
     for m in re.finditer(r'<div[^>]*class="node[^"]*"[^>]*data-step="(\d+)"[^>]*>', diagram):
         n = int(m.group(1))
-        if not (1 <= n <= len(details)):
+        if not (1 <= n <= len(details)) or n in seen:
             continue
+        seen.add(n)
         end = close_of(diagram, m.start())
         if end < 0:
             continue
         out.append(diagram[pos:end])
-        out.append(f'<div class="more">{md_block(details[n - 1])}</div>')
+        out.append(f'<div class="more">{md_block(strip_files_note(details[n - 1]))}</div>')
         pos = end
     out.append(diagram[pos:])
     return "".join(out)
@@ -149,7 +159,7 @@ def render_flow(progress, secs: dict) -> str:
     for idx, f in enumerate(flow):
         st = f.get("status", "pending")
         title = f.get("step", "")
-        d = detail_for(idx, title)
+        d = strip_files_note(detail_for(idx, title))
         more = f'<div class="more">{md_block(d)}</div>' if d else ""
         rows.append(
             f'<div class="step {st}"><span class="dot"></span>'
