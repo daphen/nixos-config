@@ -21,6 +21,9 @@ Singleton {
             "bg_alt":      "{{light.background.secondary}}",
             "selection":   "{{light.background.selection}}",
             "surface":     "{{light.background.surface}}",
+            "surface1":    "{{light.background.surface1}}",
+            "surface2":    "{{light.background.surface2}}",
+            "surface3":    "{{light.background.surface3}}",
             "overlay":     "{{light.background.overlay}}",
             "prompt":      "{{light.background.prompt}}",
             "fg":          "{{light.foreground.primary}}",
@@ -43,6 +46,9 @@ Singleton {
             "bg_alt":      "{{dark.background.secondary}}",
             "selection":   "{{dark.background.selection}}",
             "surface":     "{{dark.background.surface}}",
+            "surface1":    "{{dark.background.surface1}}",
+            "surface2":    "{{dark.background.surface2}}",
+            "surface3":    "{{dark.background.surface3}}",
             "overlay":     "{{dark.background.overlay}}",
             "prompt":      "{{dark.background.prompt}}",
             "fg":          "{{dark.foreground.primary}}",
@@ -66,6 +72,10 @@ Singleton {
     readonly property color bg_alt:       palettes[mode].bg_alt
     readonly property color selection:    palettes[mode].selection
     readonly property color surface:      palettes[mode].surface
+    // elevation ladder (derived by theme-processor): 1 texture, 2 structure, 3 engaged
+    readonly property color surface1:     palettes[mode].surface1
+    readonly property color surface2:     palettes[mode].surface2
+    readonly property color surface3:     palettes[mode].surface3
     readonly property color overlay:      palettes[mode].overlay
     readonly property color prompt:       palettes[mode].prompt
     readonly property color fg:           palettes[mode].fg
@@ -101,11 +111,9 @@ Singleton {
     // 400 under NativeRendering ≈ the old 500 under distance fields
     readonly property int fontWeight: 400
 
-    // Solid warm highlight fill: fg tint composited over surface (never bg —
-    // neutral-bg tints read cold next to the palette's warm grays). Shared by
-    // the insert-mode composer fill and the mention-of-you background.
-    readonly property color tintFill: Qt.tint(surface,
-        Qt.rgba(fg.r, fg.g, fg.b, mode === "light" ? 0.07 : 0.14))
+    // Insert-mode composer fill + mention-of-you background: the ladder's
+    // "engaged" step (predates the ladder as a hand-computed near-identical tint).
+    readonly property color tintFill: surface3
 
     readonly property var avatarColors: [
         "#FF570D", "#97B5A6", "#7DD3FC", "#8A92A7",
