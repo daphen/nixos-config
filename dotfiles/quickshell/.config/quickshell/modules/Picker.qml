@@ -58,12 +58,22 @@ PanelWindow {
     // Opt-in Ctrl+W: called with the focused item (delete/remove semantics).
     property var onDelete: null
     property bool previewOpen: false
+    // Opt-in text preview: when the selected item has no image, Ctrl+O unfolds
+    // this field's full text in the pane (scrollable) — for long clips.
+    property string previewTextField: ""
     readonly property string previewSource: {
         if (!previewField || filtered.length === 0) return ""
         const idx = Math.max(0, Math.min(selectedIndex, filtered.length - 1))
         const it = filtered[idx]
         return (it && !it.divider && it[previewField]) ? String(it[previewField]) : ""
     }
+    readonly property string previewText: {
+        if (!previewTextField || previewSource.length > 0 || filtered.length === 0) return ""
+        const idx = Math.max(0, Math.min(selectedIndex, filtered.length - 1))
+        const it = filtered[idx]
+        return (it && !it.divider && it[previewTextField]) ? String(it[previewTextField]) : ""
+    }
+    readonly property bool hasPreview: previewSource.length > 0 || previewText.length > 0
     // Set by pickers whose items arrive asynchronously: shows a loading
     // indicator, and the list fades in once loading clears.
     property bool loading: false
@@ -395,7 +405,8 @@ PanelWindow {
                             root.closeRequested()
                         }
                         event.accepted = true
-                    } else if (event.key === Qt.Key_O && (event.modifiers & Qt.ControlModifier) && root.previewField.length > 0) {
+                    } else if (event.key === Qt.Key_O && (event.modifiers & Qt.ControlModifier)
+                            && (root.previewField.length > 0 || root.previewTextField.length > 0)) {
                         root.previewOpen = !root.previewOpen
                         event.accepted = true
                     } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier) && root.onYank) {
@@ -614,8 +625,12 @@ PanelWindow {
                         visible: !rowItem.isDivider
                         anchors.left: rowGlyph.active ? rowGlyph.right : (hlDot.visible ? hlDot.left : parent.left)
                         anchors.leftMargin: rowGlyph.active ? 10 : (hlDot.visible ? 16 : 28)
-                        anchors.right: rowIcon.active ? rowIcon.left : parent.right
-                        anchors.rightMargin: 28
+                        // Thumbnail pickers reserve the thumb column on EVERY row so
+                        // text and image labels share one right edge (no ragged
+                        // labels running under where thumbnails sit).
+                        anchors.right: root.previewField.length > 0 ? parent.right
+                                     : (rowIcon.active ? rowIcon.left : parent.right)
+                        anchors.rightMargin: root.previewField.length > 0 ? (root.thumbSize + 56) : 28
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
                         Text {
@@ -718,12 +733,13 @@ PanelWindow {
             }
             }
 
-            // Preview pane (Ctrl+O): the selected item's image, following the
-            // selection — expands the panel, never moves the cursor.
+            // Preview pane (Ctrl+O): the selected item's image, or — for a text
+            // item — its full text (scrollable). Follows selection, never moves
+            // the cursor.
             Rectangle {
                 id: previewPane
                 width: parent.width
-                visible: root.previewOpen && root.previewSource.length > 0
+                visible: root.previewOpen && root.hasPreview
                 height: visible ? 252 : 0
                 color: "transparent"
                 Rectangle {
@@ -741,6 +757,7 @@ PanelWindow {
                     border.color: Theme.hairline
                     border.width: 1
                     Image {
+                        visible: root.previewSource.length > 0
                         anchors.fill: parent
                         anchors.margins: 8
                         source: previewPane.visible ? root.previewSource : ""
@@ -748,6 +765,26 @@ PanelWindow {
                         asynchronous: true
                         sourceSize.width: 1400
                         mipmap: true
+                    }
+                    Flickable {
+                        visible: root.previewText.length > 0
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        contentWidth: width
+                        contentHeight: previewTextItem.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollBar.vertical: ScrollBar { width: 6; policy: ScrollBar.AsNeeded }
+                        Text {
+                            id: previewTextItem
+                            width: parent.width
+                            text: previewPane.visible ? root.previewText : ""
+                            color: Theme.fg
+                            wrapMode: Text.Wrap
+                            font.family: notch.sans
+                            font.pixelSize: 13
+                            renderType: Text.NativeRendering
+                        }
                     }
                 }
             }

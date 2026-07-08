@@ -19,6 +19,7 @@ Picker {
     badgeField: "badge"
     badgeColorField: "badgeColor"
     previewField: "filePath"
+    previewTextField: "value"
     thumbSize: 56
     enterLabel: "copy"
     ctrlEnterAlt: true
