@@ -105,7 +105,11 @@ Picker {
 
     items: histFile.entries.map(e => {
         const isImg = e.filePath && e.filePath !== "null"
-        const firstLine = String(e.value || "").trim().split("\n")[0]
+        // Chromium "copy image" also puts the source URL as UTF-16LE text (each
+        // char + a null byte); clipse stores it raw. Strip the nulls so it reads
+        // as a normal link instead of "h␀t␀t␀p␀…" mojibake.
+        const value = String(e.value || "").replace(/\u0000/g, "")
+        const firstLine = value.trim().split("\n")[0]
         const base = isImg ? String(e.filePath).split("/").pop() : ""
         // clipse generates temp names (12345-678.png) for clipboard images — a
         // clean "Image" reads better. A copied file keeps a meaningful name, so
@@ -134,7 +138,7 @@ Picker {
             icon: isImg ? "file://" + e.filePath : "",
             badge: badge,
             badgeColor: badgeColor,
-            value: e.value,
+            value: value,
             filePath: isImg ? e.filePath : "",
             recorded: e.recorded,
             cat: cat,
