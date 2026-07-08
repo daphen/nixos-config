@@ -284,9 +284,14 @@ def daemon() -> int:
         if new_externals:
             print(f"ws-tracker: reclaiming to {sorted(new_externals)}",
                   file=sys.stderr, flush=True)
-            reclaim_preferred_output()
-            for out in new_externals:
-                reset_heights_on_output(out)
+            # Two passes: niri's own workspace restore races our moves at
+            # hotplug, and windows that migrate after the first pass keep
+            # stale heights. Both calls are idempotent, so retrying is free.
+            for _ in range(2):
+                time.sleep(0.8)
+                reclaim_preferred_output()
+                for out in new_externals:
+                    reset_heights_on_output(out)
         known_outputs = new_outputs
 
     # event-stream returned EOF (niri restarted, IPC dropped, etc.).
