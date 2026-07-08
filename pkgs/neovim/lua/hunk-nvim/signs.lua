@@ -144,55 +144,74 @@ local function fetch_diff(relpath)
 	return table.concat(lines, "\n")
 end
 
+-- Line-level diff of two blocks via LCS (exact-match). Returns an ordered op
+-- list: {op="equal"|"add"|"del", ln=<new line>, text=<old text>}. Powers a
+-- GitHub-style view: unchanged lines are plain, added lines get a sign, removed
+-- lines become ghosts — no pairing guesswork, no "change" state.
+local function diff_lines(old, new)
+	local m, n = #old, #new
+	local dp = {}
+	for a = 0, m do dp[a] = {} for b = 0, n do dp[a][b] = 0 end end
+	for a = 1, m do for b = 1, n do
+		if old[a] == new[b].text then dp[a][b] = dp[a-1][b-1] + 1
+		else dp[a][b] = math.max(dp[a-1][b], dp[a][b-1]) end
+	end end
+	local ops, a, b = {}, m, n
+	while a > 0 or b > 0 do
+		if a > 0 and b > 0 and old[a] == new[b].text then
+			table.insert(ops, 1, { op = "equal", ln = new[b].ln }); a = a - 1; b = b - 1
+		elseif b > 0 and (a == 0 or dp[a][b-1] >= dp[a-1][b]) then
+			table.insert(ops, 1, { op = "add", ln = new[b].ln }); b = b - 1
+		else
+			table.insert(ops, 1, { op = "del", text = old[a] }); a = a - 1
+		end
+	end
+	return ops
+end
+
 -- Parse a unified diff patch. Returns:
---   marks       = {[new_line_n] = "add"|"change"|"delete_below"|"topdelete"}
---   deletes     = {[new_line_n] = {"deleted line content", ...}}  -- pure deletes
---   changes_old = {[new_line_n] = {"old line", ...}}                -- the deleted
---                        block, ghosted ONCE above the first changed line
+--   marks  = {[new_line_n] = "add"|"delete_below"|"topdelete"}
+--   ghosts = {[new_line_n] = {lines = {"old", ...}, above = bool}}  -- removed
+--            content shown inline as ghost lines at the position it was removed
 local function parse_patch(patch)
-	local marks, deletes, changes_old = {}, {}, {}
-	if not patch or patch == "" then return marks, deletes, changes_old end
+	local marks, ghosts = {}, {}
+	if not patch or patch == "" then return marks, ghosts end
 	local current_new = nil
 	local dels = {}   -- old-text of deletions in the current change block
-	local adds = {}   -- new-file line numbers of additions in the current block
+	local adds = {}   -- {ln, text} of additions in the current change block
 
-	-- Resolve one change block (a run of -/+ lines).
-	--  * Extra LEADING adds beyond the delete count are pure insertions (e.g.
-	--    comments added above an edited line) -> "add", not "change".
-	--  * The deleted lines are shown ONCE as a ghost block above the first
-	--    changed line -> a multi-line rewrite reads as before/after blocks,
-	--    never interleaved old/new/old/new.
+	-- Resolve one change block by aligning its deletes against its adds: matched
+	-- lines stay plain, unmatched adds get an "add" sign, unmatched deletes are
+	-- ghosted at their position (above the next real line, or below the last one).
 	local function resolve()
-		local D, A = #dels, #adds
-		if A > 0 and D > 1 then
-			-- Multi-line block rewrite: show the whole old block once, above the
-			-- first new line, and mark the whole new block "change". Avoids the
-			-- fragmented add / old-ghost / change split git produces when a
-			-- reworded paragraph aligns some new lines as adds and some as changes.
-			for i = 1, A do marks[adds[i]] = "change" end
-			changes_old[adds[1]] = dels
-		elseif A > 0 then
-			-- Pure adds (D==0) or a single-line edit (D==1) possibly with lines
-			-- inserted above it: leading adds stay insertions, the one deleted
-			-- line ghosts above the add that actually replaced it.
-			local paired = math.min(D, A)
-			for i = 1, A - paired do
-				if marks[adds[i]] == nil then marks[adds[i]] = "add" end
-			end
-			for i = 1, paired do
-				marks[adds[A - paired + i]] = "change"
-			end
-			if paired > 0 and D > 0 then
-				changes_old[adds[A - paired + 1]] = dels
-			end
-		elseif D > 0 then
-			local prev = (current_new or 1) - 1
-			if prev >= 1 then
-				if marks[prev] == nil then marks[prev] = "delete_below" end
-				deletes[prev] = dels
+		if #dels == 0 and #adds == 0 then return end
+		local ops = diff_lines(dels, adds)
+		local pending, last_ln = {}, nil
+		for _, op in ipairs(ops) do
+			if op.op == "del" then
+				table.insert(pending, op.text)
 			else
-				marks[current_new] = "topdelete"
-				deletes[current_new] = dels
+				if #pending > 0 then
+					ghosts[op.ln] = { lines = pending, above = true }
+					pending = {}
+				end
+				if op.op == "add" then marks[op.ln] = "add" end
+				last_ln = op.ln
+			end
+		end
+		if #pending > 0 then
+			if last_ln then
+				ghosts[last_ln] = { lines = pending, above = false }
+				marks[last_ln] = marks[last_ln] or "delete_below"
+			else
+				local prev = (current_new or 1) - 1
+				if prev >= 1 then
+					ghosts[prev] = { lines = pending, above = false }
+					marks[prev] = marks[prev] or "delete_below"
+				else
+					ghosts[current_new] = { lines = pending, above = true }
+					marks[current_new] = "topdelete"
+				end
 			end
 		end
 		dels, adds = {}, {}
@@ -206,7 +225,7 @@ local function parse_patch(patch)
 		elseif current_new then
 			local first = line:sub(1, 1)
 			if first == "+" and line:sub(1, 3) ~= "+++" then
-				table.insert(adds, current_new)
+				table.insert(adds, { ln = current_new, text = line:sub(2) })
 				current_new = current_new + 1
 			elseif first == "-" and line:sub(1, 3) ~= "---" then
 				table.insert(dels, line:sub(2))
@@ -217,7 +236,7 @@ local function parse_patch(patch)
 		end
 	end
 	resolve()
-	return marks, deletes, changes_old
+	return marks, ghosts
 end
 local function kind_to_sign(kind)
 	if kind == "add" then return "▎", "GitSignsAdd" end
@@ -231,37 +250,30 @@ local function kind_to_linehl(kind)
 	if kind == "change" then return "GitSignsChangeLn" end
 end
 
-local function draw(bufnr, marks, deletes, changes_old)
+local function draw(bufnr, marks, ghosts)
 	vim.api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
 	local line_count = vim.api.nvim_buf_line_count(bufnr)
-	for ln, kind in pairs(marks) do
+	local seen = {}
+	for ln in pairs(marks) do seen[ln] = true end
+	for ln in pairs(ghosts) do seen[ln] = true end
+	for ln in pairs(seen) do
 		if ln >= 1 and ln <= line_count then
-			local sign, sign_hl = kind_to_sign(kind)
-			local opts = {
-				sign_text = sign,
-				sign_hl_group = sign_hl,
-				line_hl_group = M.config.linehl and kind_to_linehl(kind) or nil,
-				invalidate = true,
-			}
-			if M.config.deleted_virt_lines then
-				if kind == "change" and changes_old and changes_old[ln] then
-					-- Show the whole deleted block as ghost lines above this
-					-- (the first changed line). New lines stay below, so a
-					-- multi-line rewrite reads as before-block / after-block.
-					local virt = {}
-					for _, dl in ipairs(changes_old[ln]) do
-						table.insert(virt, { { dl, "GitSignsDeleteVirtLn" } })
-					end
-					opts.virt_lines = virt
-					opts.virt_lines_above = true
-				elseif deletes[ln] and #deletes[ln] > 0 then
-					local virt = {}
-					for _, dl in ipairs(deletes[ln]) do
-						table.insert(virt, { { dl, "GitSignsDeleteVirtLn" } })
-					end
-					opts.virt_lines = virt
-					opts.virt_lines_above = (kind == "topdelete")
+			local opts = { invalidate = true }
+			local kind = marks[ln]
+			if kind then
+				local sign, sign_hl = kind_to_sign(kind)
+				opts.sign_text = sign
+				opts.sign_hl_group = sign_hl
+				opts.line_hl_group = M.config.linehl and kind_to_linehl(kind) or nil
+			end
+			local g = ghosts[ln]
+			if M.config.deleted_virt_lines and g and #g.lines > 0 then
+				local virt = {}
+				for _, dl in ipairs(g.lines) do
+					table.insert(virt, { { dl, "GitSignsDeleteVirtLn" } })
 				end
+				opts.virt_lines = virt
+				opts.virt_lines_above = g.above
 			end
 			pcall(vim.api.nvim_buf_set_extmark, bufnr, NS, ln - 1, 0, opts)
 		end
@@ -287,8 +299,8 @@ function M.refresh(bufnr)
 		vim.api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
 		return
 	end
-	local marks, deletes, changes_old = parse_patch(patch)
-	draw(bufnr, marks, deletes, changes_old)
+	local marks, ghosts = parse_patch(patch)
+	draw(bufnr, marks, ghosts)
 end
 
 local function debounced_refresh(bufnr)
