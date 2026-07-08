@@ -28,7 +28,10 @@ playback_artists = { fg = "{{accent.green}}" }
 playback_album = { fg = "{{accent.yellow}}" }
 playback_genres = { fg = "{{foreground.muted}}" }
 current_playing = { fg = "{{accent.yellow}}", modifiers = ["Bold"] }
-selection = { fg = "{{foreground.primary}}", bg = "{{background.selection}}", modifiers = ["Bold"] }
+# spotify-player forces the Reversed modifier on the selected row, so fg/bg are
+# swapped at render: authoring fg=surface2, bg=fg gives a subtle elevated-surface
+# highlight (surface2 bg + ink text) that matches selections in the rest of the themes.
+selection = { fg = "{{background.surface2}}", bg = "{{foreground.primary}}", modifiers = ["Bold"] }
 block_title = { fg = "{{foreground.muted}}", modifiers = ["Bold"] }
 playback_progress_bar = { fg = "{{accent.blue}}", bg = "{{background.selection}}" }
 table_header = { fg = "{{foreground.muted}}" }
