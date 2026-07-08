@@ -1,7 +1,13 @@
-# y — copy the share link of the currently playing track to the clipboard.
-# CopyLink is an action (popup-only as a command), so it's bound here via the
-# [[actions]] array with target = "PlayingTrack" to make it a direct in-app key.
+# Copy a track's share link to the clipboard. CopyLink is an action (not a
+# bindable command), so it's wired via [[actions]]:
+#   Y — the currently PLAYING track
+#   y — the track highlighted in the current list/table
+[[actions]]
+action = "CopyLink"
+key_sequence = "Y"
+target = "PlayingTrack"
+
 [[actions]]
 action = "CopyLink"
 key_sequence = "y"
-target = "PlayingTrack"
+target = "SelectedItem"
