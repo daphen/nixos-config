@@ -21,6 +21,7 @@ Singleton {
             "bg_alt":      "{{light.background.secondary}}",
             "selection":   "{{light.background.selection}}",
             "surface":     "{{light.background.surface}}",
+            "surface0":    "{{light.background.surface0}}",
             "surface1":    "{{light.background.surface1}}",
             "surface2":    "{{light.background.surface2}}",
             "surface3":    "{{light.background.surface3}}",
@@ -46,6 +47,7 @@ Singleton {
             "bg_alt":      "{{dark.background.secondary}}",
             "selection":   "{{dark.background.selection}}",
             "surface":     "{{dark.background.surface}}",
+            "surface0":    "{{dark.background.surface0}}",
             "surface1":    "{{dark.background.surface1}}",
             "surface2":    "{{dark.background.surface2}}",
             "surface3":    "{{dark.background.surface3}}",
@@ -73,6 +75,7 @@ Singleton {
     readonly property color selection:    palettes[mode].selection
     readonly property color surface:      palettes[mode].surface
     // elevation ladder (derived by theme-processor): 1 texture, 2 structure, 3 engaged
+    readonly property color surface0:     palettes[mode].surface0
     readonly property color surface1:     palettes[mode].surface1
     readonly property color surface2:     palettes[mode].surface2
     readonly property color surface3:     palettes[mode].surface3

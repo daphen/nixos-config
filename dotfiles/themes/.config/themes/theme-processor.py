@@ -34,6 +34,10 @@ def _add_derived(themes):
         if not (fg and s1):
             continue
         bg['surface1'] = s1
+        # surface0: the whisper step between bg and surface1 (chin bands,
+        # barely-raised wells). Midpoint of the two anchors keeps the warmth —
+        # an fg tint over a neutral bg would read cold.
+        bg.setdefault('surface0', _mix(bg.get('primary', s1), s1, 0.5))
         for name, alpha in steps.items():
             bg.setdefault(name, _mix(s1, fg, alpha))
     return themes

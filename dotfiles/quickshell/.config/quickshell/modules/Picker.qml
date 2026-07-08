@@ -684,7 +684,7 @@ PanelWindow {
                     anchors.leftMargin: 1
                     anchors.rightMargin: 1
                     anchors.bottomMargin: 1
-                    color: Theme.surface1
+                    color: Theme.surface0
                     bottomLeftRadius: 23
                     bottomRightRadius: 23
                 }
