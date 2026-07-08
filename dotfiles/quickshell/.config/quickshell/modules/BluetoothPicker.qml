@@ -13,11 +13,11 @@ Picker {
     subtitleField: "subtitle"
     highlightField: "connected"
     altKey: Qt.Key_R
+    enterLabel: "toggle connection"
     altLabel: {
         const a = Bluetooth.defaultAdapter
         if (!a) return ""
-        if (a.discovering) return "Enter: toggle connection    Ctrl+R: stop scanning"
-        return "Enter: toggle connection    Ctrl+R: scan for new devices"
+        return a.discovering ? "Ctrl+R: stop scanning" : "Ctrl+R: scan for new devices"
     }
 
     onEnter: item => {

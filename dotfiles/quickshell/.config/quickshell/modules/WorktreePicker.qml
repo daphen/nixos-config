@@ -10,7 +10,8 @@ Picker {
     onCloseRequested: WorktreePickerState.open = false
 
     placeholder: "worktrees"
-    altLabel: "Enter: focus    Ctrl+W: close worktree    Ctrl+P: plan"
+    enterLabel: "focus"
+    altLabel: "Ctrl+W: close worktree   ·   Ctrl+P: plan"
     highlightField: "active"
     items: buildItems(NiriState.version, recencyFile.recency, NiriState.activeStack)
 

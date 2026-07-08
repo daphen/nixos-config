@@ -12,9 +12,9 @@ Picker {
         ? "LoL workspace name (e.g. 1905-infer-path-b-source-type)"
         : "worktree name (e.g. 1905-infer-path-b-source-type)"
     freeText: true
-    altLabel: WorktreeNameInputPickerState.kind === "lol"
-        ? "Enter: ws-newlol → paste URL in kitty → ws-createlovbox"
-        : "Enter: ws-createwt (kitty asks claude session mode)"
+    enterLabel: WorktreeNameInputPickerState.kind === "lol"
+        ? "ws-newlol → paste URL → ws-createlovbox"
+        : "ws-createwt (kitty asks session mode)"
 
     onEnterText: text => {
         const name = text.replace(/[^a-zA-Z0-9-]/g, "")

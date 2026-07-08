@@ -13,7 +13,8 @@ Picker {
     subtitleField: "subtitle"
     highlightField: "active"
     altKey: Qt.Key_R
-    altLabel: "Enter: connect / disconnect    Ctrl+R: rescan"
+    enterLabel: "connect / disconnect"
+    altLabel: "Ctrl+R: rescan"
 
     property var networks: []
     property var savedSsids: ({})

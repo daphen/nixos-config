@@ -10,7 +10,8 @@ Picker {
     onCloseRequested: WorktreeCreatePickerState.open = false
 
     placeholder: "workspace"
-    altLabel: "Enter: open / create / resume    Ctrl+W: close worktree"
+    enterLabel: "open / create / resume"
+    altLabel: "Ctrl+W: close worktree"
     subtitleField: "kind"
     glyphField: "glyph"
     glyphColorField: "gcolor"
