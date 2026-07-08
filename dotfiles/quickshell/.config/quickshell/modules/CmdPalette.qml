@@ -415,6 +415,8 @@ PanelWindow {
                     anchors.bottomMargin: 6
                     radius: 15
                     color: Theme.surface1
+                    border.width: 1
+                    border.color: Theme.hairline
                 }
 
                 Text {
