@@ -164,7 +164,17 @@ local function parse_patch(patch)
 	--    never interleaved old/new/old/new.
 	local function resolve()
 		local D, A = #dels, #adds
-		if A > 0 then
+		if A > 0 and D > 1 then
+			-- Multi-line block rewrite: show the whole old block once, above the
+			-- first new line, and mark the whole new block "change". Avoids the
+			-- fragmented add / old-ghost / change split git produces when a
+			-- reworded paragraph aligns some new lines as adds and some as changes.
+			for i = 1, A do marks[adds[i]] = "change" end
+			changes_old[adds[1]] = dels
+		elseif A > 0 then
+			-- Pure adds (D==0) or a single-line edit (D==1) possibly with lines
+			-- inserted above it: leading adds stay insertions, the one deleted
+			-- line ghosts above the add that actually replaced it.
 			local paired = math.min(D, A)
 			for i = 1, A - paired do
 				if marks[adds[i]] == nil then marks[adds[i]] = "add" end
