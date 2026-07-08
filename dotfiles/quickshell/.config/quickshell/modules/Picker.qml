@@ -678,10 +678,15 @@ PanelWindow {
                 width: parent.width
                 height: 52
                 Rectangle {
+                    // inset inside the panel's 1px border (children paint over
+                    // the parent's border stroke); inner radius = outer − inset
                     anchors.fill: parent
+                    anchors.leftMargin: 1
+                    anchors.rightMargin: 1
+                    anchors.bottomMargin: 1
                     color: Theme.surface1
-                    bottomLeftRadius: 24
-                    bottomRightRadius: 24
+                    bottomLeftRadius: 23
+                    bottomRightRadius: 23
                 }
                 Rectangle {
                     anchors.top: parent.top
