@@ -126,7 +126,7 @@ PanelWindow {
     readonly property int listContentHeight: {
         // loading: give the dots a comfortable stage instead of an 18px slit
         if (loading) return 96
-        let h = 18
+        let h = 28   // header + footer spacers (14 + 14)
         for (let i = 0; i < filtered.length; i++) {
             const it = filtered[i]
             if (it && it.divider) h += 36
@@ -483,8 +483,8 @@ PanelWindow {
                 // structural padding: header/footer are part of the content, so
                 // model resets and positionViewAt* respect them natively (topMargin
                 // lives outside the coordinate system and every reset ignored it)
-                header: Item { width: 1; height: 8 }
-                footer: Item { width: 1; height: 10 }
+                header: Item { width: 1; height: 14 }
+                footer: Item { width: 1; height: 14 }
                 opacity: root.loading ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
                 add: Transition {
