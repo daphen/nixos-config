@@ -138,7 +138,10 @@ hl("TabLineSel", { fg = c.blue })
 hl("TermCursor", { link = "Cursor" })
 hl("Title", { link = "Directory" })
 hl("Todo", { link = "SpecialComment" })
-hl("Visual", { bg = c.bg_selection })
+-- surface3, not bg_selection: light selection is only ~3/255 off surface1, so
+-- a selection over inline code (surface1) is invisible. surface3 gives the
+-- same perceptual separation dark mode's selection already has.
+hl("Visual", { bg = c.bg_surface3 })
 hl("WarningMsg", { link = "Error" })
 hl("Whitespace", { link = "NonText" })
 hl("WinBar", { fg = c.fg })
@@ -465,7 +468,7 @@ hl("MiniCursorword", { link = "IlluminatedWordText" })
 hl("MatchArea", { link = "MatchParen" })
 
 -- mcauley-penney/visual-whitespace.nvim
-hl("VisualNonText", { fg = c.purple, bg = c.bg_selection })
+hl("VisualNonText", { fg = c.purple, bg = c.bg_surface3 })
 
 -- mcauley-penney/match-visual.nvim
 hl("VisualMatch", { link = "MatchParen" })
