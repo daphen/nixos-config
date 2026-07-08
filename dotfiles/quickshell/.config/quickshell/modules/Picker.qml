@@ -66,6 +66,10 @@ PanelWindow {
     // left; its color comes from glyphColorField (a color value on the item).
     property string glyphField: ""
     property string glyphColorField: ""
+    // Optional per-item category badge shown inline before the subtitle: a
+    // tinted pill labelled from badgeField, tinted from badgeColorField.
+    property string badgeField: ""
+    property string badgeColorField: ""
     // When true, Ctrl+Enter fires the alt action instead of the primary one.
     property bool ctrlEnterAlt: false
     // Opt-in tab bar: labels shown under the search field, Tab/Shift+Tab cycles.
@@ -73,6 +77,13 @@ PanelWindow {
     property var tabs: []
     property int tab: 0
     onTabChanged: selectedIndex = firstSelectable()
+    // Opt-in category filter shown in the chin (replaces the j/k/enter hints):
+    // [{key,label},…] with the first entry the unfiltered "all". Ctrl+Shift+H/L
+    // cycles; rows are kept when item[categoryField] === the active key.
+    property var categories: []
+    property string categoryField: ""
+    property int category: 0
+    onCategoryChanged: selectedIndex = firstSelectable()
     // Opt-in Ctrl+Y: called with the focused item (yank/copy semantics).
     property var onYank: null
     // Opt-in Ctrl+P: called with the focused item, then the picker closes.
@@ -80,6 +91,8 @@ PanelWindow {
 
     property string query: search ? search.text : ""
     property int selectedIndex: 0
+    readonly property color panelBorder: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b,
+                                                 Theme.mode === "light" ? 0.15 : 0.10)
 
     // Small keycap chip (esc, arrows, enter) — the reference-palette detail.
     component KeyCap: Rectangle {
@@ -155,13 +168,26 @@ PanelWindow {
     }
 
     readonly property var filtered: {
+        // Category filter first: a non-"all" category drops dividers and keeps
+        // only items whose categoryField matches the active key.
+        let base = items
+        if (categories.length > 1 && categoryField.length > 0
+            && category > 0 && category < categories.length) {
+            const key = categories[category].key
+            base = []
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i]
+                if (it.divider) continue
+                if (String(it[categoryField] || "") === key) base.push(it)
+            }
+        }
         const q = query.trim().toLowerCase()
-        if (q.length === 0) return items
+        if (q.length === 0) return base
         // While searching, drop section dividers — they're only meaningful
         // in the unfiltered, grouped view.
         const out = []
-        for (let i = 0; i < items.length; i++) {
-            const it = items[i]
+        for (let i = 0; i < base.length; i++) {
+            const it = base[i]
             if (it.divider) continue
             const label = String(it.label || "").toLowerCase()
             const sub = subtitleField && it[subtitleField] ? String(it[subtitleField]).toLowerCase() : ""
@@ -252,7 +278,7 @@ PanelWindow {
         color: Theme.bg
         // Radii from the reference palette: panel 24, field 15, cards 13.
         radius: 24
-        border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
+        border.color: root.panelBorder
         border.width: 1
         clip: true
 
@@ -364,6 +390,12 @@ PanelWindow {
                     } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier) && root.onYank) {
                         const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
                         if (root.filtered.length > 0 && !root.filtered[idx].divider) root.onYank(root.filtered[idx])
+                        event.accepted = true
+                    } else if (root.categories.length > 1
+                            && (event.key === Qt.Key_H || event.key === Qt.Key_L)
+                            && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
+                        const dir = event.key === Qt.Key_H ? -1 : 1
+                        root.category = (root.category + dir + root.categories.length) % root.categories.length
                         event.accepted = true
                     } else if (root.tabs.length > 1
                             && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab
@@ -581,15 +613,45 @@ PanelWindow {
                             renderType: Text.NativeRendering
                             elide: Text.ElideRight
                         }
-                        Text {
+                        Row {
                             width: parent.width
-                            visible: rowItem.hasSub
-                            text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
-                            color: Theme.fg_muted
-                            font.family: notch.sans
-                            font.pixelSize: 12
-                            renderType: Text.NativeRendering
-                            elide: Text.ElideRight
+                            visible: rowItem.hasSub || subBadge.active
+                            spacing: 6
+                            Rectangle {
+                                id: subBadge
+                                readonly property bool active: root.badgeField.length > 0 && rowItem.modelData
+                                    && String(rowItem.modelData[root.badgeField] || "").length > 0
+                                readonly property color tint: (root.badgeColorField && rowItem.modelData
+                                        && rowItem.modelData[root.badgeColorField])
+                                    ? rowItem.modelData[root.badgeColorField] : Theme.fg_muted
+                                visible: active
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: badgeLbl.implicitWidth + 12
+                                height: 16
+                                radius: 5
+                                color: Qt.rgba(tint.r, tint.g, tint.b, 0.16)
+                                Text {
+                                    id: badgeLbl
+                                    anchors.centerIn: parent
+                                    text: subBadge.active ? String(rowItem.modelData[root.badgeField]) : ""
+                                    color: subBadge.tint
+                                    font.family: notch.sans
+                                    font.pixelSize: 10
+                                    font.weight: 600
+                                    renderType: Text.NativeRendering
+                                }
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - (subBadge.active ? subBadge.width + parent.spacing : 0)
+                                visible: rowItem.hasSub
+                                text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
+                                color: Theme.fg_muted
+                                font.family: notch.sans
+                                font.pixelSize: 12
+                                renderType: Text.NativeRendering
+                                elide: Text.ElideRight
+                            }
                         }
                     }
 
@@ -696,8 +758,45 @@ PanelWindow {
                     height: 1
                     color: Theme.hairline
                 }
+                // Category tabs (opt-in) take the left slot, replacing the
+                // j/k/enter hints — Ctrl+Shift+H/L cycles, taps switch.
+                Row {
+                    id: footerCats
+                    visible: root.categories.length > 1
+                    anchors.left: parent.left
+                    anchors.leftMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+                    Repeater {
+                        model: root.categories
+                        Rectangle {
+                            required property var modelData
+                            required property int index
+                            readonly property bool isActive: index === root.category
+                            width: catLbl.implicitWidth + 16
+                            height: 26
+                            radius: 10
+                            color: isActive ? Theme.selection
+                                 : catHov.hovered ? Theme.surface : "transparent"
+                            border.color: isActive ? root.panelBorder : "transparent"
+                            border.width: 1
+                            Text {
+                                id: catLbl
+                                anchors.centerIn: parent
+                                text: parent.modelData.label
+                                color: parent.isActive ? Theme.fg : Theme.fg_muted
+                                font.family: notch.sans
+                                font.pixelSize: 12
+                                renderType: Text.NativeRendering
+                            }
+                            HoverHandler { id: catHov }
+                            TapHandler { onTapped: root.category = parent.index }
+                        }
+                    }
+                }
                 Row {
                     id: footerHints
+                    visible: root.categories.length <= 1
                     anchors.left: parent.left
                     anchors.leftMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
