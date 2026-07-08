@@ -147,8 +147,8 @@ end
 -- Parse a unified diff patch. Returns:
 --   marks       = {[new_line_n] = "add"|"change"|"delete_below"|"topdelete"}
 --   deletes     = {[new_line_n] = {"deleted line content", ...}}  -- pure deletes
---   changes_old = {[new_line_n] = "old text"}                      -- old version
---                                                                     for changes
+--   changes_old = {[new_line_n] = {"old line", ...}}                -- the deleted
+--                        block, ghosted ONCE above the first changed line
 local function parse_patch(patch)
 	local marks, deletes, changes_old = {}, {}, {}
 	if not patch or patch == "" then return marks, deletes, changes_old end
@@ -156,34 +156,24 @@ local function parse_patch(patch)
 	local dels = {}   -- old-text of deletions in the current change block
 	local adds = {}   -- new-file line numbers of additions in the current block
 
-	-- Resolve one change block (a run of -/+ lines). Deletes pair with the
-	-- TRAILING adds, so lines inserted above an edit (comments, guard clauses)
-	-- read as plain adds and a deleted line's ghost lands on the add that
-	-- actually replaced it — not on the first add in the block.
+	-- Resolve one change block (a run of -/+ lines).
+	--  * Extra LEADING adds beyond the delete count are pure insertions (e.g.
+	--    comments added above an edited line) -> "add", not "change".
+	--  * The deleted lines are shown ONCE as a ghost block above the first
+	--    changed line -> a multi-line rewrite reads as before/after blocks,
+	--    never interleaved old/new/old/new.
 	local function resolve()
 		local D, A = #dels, #adds
-		if D > 0 and A > 0 then
+		if A > 0 then
 			local paired = math.min(D, A)
 			for i = 1, A - paired do
 				if marks[adds[i]] == nil then marks[adds[i]] = "add" end
 			end
 			for i = 1, paired do
-				local ln = adds[A - paired + i]
-				marks[ln] = "change"
-				changes_old[ln] = dels[D - paired + i]
+				marks[adds[A - paired + i]] = "change"
 			end
-			if D > paired then
-				local extra = {}
-				for i = 1, D - paired do table.insert(extra, dels[i]) end
-				local anchor = adds[1]
-				local prev = anchor - 1
-				if prev >= 1 then
-					if marks[prev] == nil then marks[prev] = "delete_below" end
-					deletes[prev] = extra
-				else
-					marks[anchor] = "topdelete"
-					deletes[anchor] = extra
-				end
+			if paired > 0 and D > 0 then
+				changes_old[adds[A - paired + 1]] = dels
 			end
 		elseif D > 0 then
 			local prev = (current_new or 1) - 1
@@ -193,10 +183,6 @@ local function parse_patch(patch)
 			else
 				marks[current_new] = "topdelete"
 				deletes[current_new] = dels
-			end
-		elseif A > 0 then
-			for i = 1, A do
-				if marks[adds[i]] == nil then marks[adds[i]] = "add" end
 			end
 		end
 		dels, adds = {}, {}
@@ -249,10 +235,14 @@ local function draw(bufnr, marks, deletes, changes_old)
 			}
 			if M.config.deleted_virt_lines then
 				if kind == "change" and changes_old and changes_old[ln] then
-					-- Show the old version of this changed line as a ghost
-					-- line above. The new (current) line stays in the buffer
-					-- below, so the rendered effect is before/after stacked.
-					opts.virt_lines = { { { changes_old[ln], "GitSignsDeleteVirtLn" } } }
+					-- Show the whole deleted block as ghost lines above this
+					-- (the first changed line). New lines stay below, so a
+					-- multi-line rewrite reads as before-block / after-block.
+					local virt = {}
+					for _, dl in ipairs(changes_old[ln]) do
+						table.insert(virt, { { dl, "GitSignsDeleteVirtLn" } })
+					end
+					opts.virt_lines = virt
 					opts.virt_lines_above = true
 				elseif deletes[ln] and #deletes[ln] > 0 then
 					local virt = {}
