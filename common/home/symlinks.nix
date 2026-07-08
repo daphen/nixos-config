@@ -46,6 +46,7 @@ in {
     "themes".source = link "${dotfiles}/themes/.config/themes";
     "clipse/custom_theme.json".source = link "${dotfiles}/clipse/.config/clipse/custom_theme.json";
     "spotify-player/theme.toml".source = link "${dotfiles}/spotify-player/.config/spotify-player/theme.toml";
+    "spotify-player/keymap.toml".source = link "${dotfiles}/spotify-player/.config/spotify-player/keymap.toml";
     "reference/commands-reference.md".source = link "${dotfiles}/reference/.config/commands-reference.md";
     "swaylock/config".source = link "${dotfiles}/swaylock/.config/swaylock/config";
     "starship.toml".source = link "${dotfiles}/starship/.config/starship/starship.toml";

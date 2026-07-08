@@ -1,0 +1,7 @@
+# y — copy the share link of the currently playing track to the clipboard.
+# CopyLink is an action (popup-only as a command), so it's bound here via the
+# [[actions]] array with target = "PlayingTrack" to make it a direct in-app key.
+[[actions]]
+action = "CopyLink"
+key_sequence = "y"
+target = "PlayingTrack"
