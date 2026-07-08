@@ -187,6 +187,8 @@ def reclaim_preferred_output() -> None:
     workspaces = niri_json("workspaces") or []
     target = pick_external_output(workspaces)
     if target is None:
+        print("ws-tracker: reclaim skipped — no external hosts a workspace yet",
+              file=sys.stderr, flush=True)
         return
     for w in workspaces:
         name = w.get("name") or ""
@@ -194,6 +196,8 @@ def reclaim_preferred_output() -> None:
             continue
         if w.get("output") == target:
             continue
+        print(f"ws-tracker: moving {name} -> {target}",
+              file=sys.stderr, flush=True)
         niri_action(
             "move-workspace-to-monitor",
             "--reference", name, target,
@@ -272,9 +276,14 @@ def daemon() -> int:
         # output when a workspace migrates, so kitty windows end up
         # short of the new monitor's full height.
         new_outputs = output_set()
+        if new_outputs != known_outputs:
+            print(f"ws-tracker: outputs {sorted(known_outputs)} -> "
+                  f"{sorted(new_outputs)}", file=sys.stderr, flush=True)
         new_externals = {o for o in new_outputs
                          if o != LAPTOP_OUTPUT and o not in known_outputs}
         if new_externals:
+            print(f"ws-tracker: reclaiming to {sorted(new_externals)}",
+                  file=sys.stderr, flush=True)
             reclaim_preferred_output()
             for out in new_externals:
                 reset_heights_on_output(out)
