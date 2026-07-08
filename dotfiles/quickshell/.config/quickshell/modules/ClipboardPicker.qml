@@ -33,6 +33,24 @@ Picker {
         return root._hexRe.test(s) || /^(rgb|rgba|hsl|hsla)\(/i.test(s)
     }
 
+    function _ymd(d) {
+        const m = String(d.getMonth() + 1).padStart(2, "0")
+        const day = String(d.getDate()).padStart(2, "0")
+        return d.getFullYear() + "-" + m + "-" + day
+    }
+    // "today 10:44" / "yesterday 10:44" / "2026-07-05 10:44" for older. clipse
+    // records local time as "YYYY-MM-DD HH:MM:SS.fff".
+    function _relTime(rec) {
+        const s = String(rec || "")
+        if (s.length < 16) return s
+        const datePart = s.slice(0, 10)
+        const timePart = s.slice(11, 16)
+        const now = new Date()
+        if (datePart === root._ymd(now)) return "today " + timePart
+        if (datePart === root._ymd(new Date(now.getTime() - 86400000))) return "yesterday " + timePart
+        return datePart + " " + timePart
+    }
+
     FileView {
         id: histFile
         path: Quickshell.env("HOME") + "/.config/clipse/clipboard_history.json"
@@ -62,15 +80,16 @@ Picker {
         const cat = isImg ? "image" : (isLink ? "link" : (isColor ? "color" : "text"))
         const label = isImg ? (generated ? "Image" : base)
                     : (firstLine.length > 0 ? firstLine : "(whitespace)")
-        // Category badge colors come from the theme palette; a color entry's
-        // badge tints to the actual copied color (its own swatch).
-        const badgeColor = cat === "image" ? Theme.purple
-                         : cat === "link" ? Theme.blue
+        // Category badge colors from the theme palette — the muted accents
+        // (blue/purple/pink) read alike, so use the distinct hues: sky for
+        // links, green for images. A color entry tints to its own swatch.
+        const badgeColor = cat === "image" ? Theme.green
+                         : cat === "link" ? Theme.sky
                          : cat === "color" ? (root._hexRe.test(firstLine) ? firstLine : Theme.cyan)
                          : ""
         return {
             label: label,
-            sub: (e.pinned ? "pinned · " : "") + String(e.recorded || "").slice(0, 16),
+            sub: (e.pinned ? "pinned · " : "") + root._relTime(e.recorded),
             icon: isImg ? "file://" + e.filePath : "",
             badge: cat === "text" ? "" : cat,
             badgeColor: badgeColor,

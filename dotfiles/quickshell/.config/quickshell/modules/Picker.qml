@@ -617,6 +617,17 @@ PanelWindow {
                             width: parent.width
                             visible: rowItem.hasSub || subBadge.active
                             spacing: 6
+                            // Timestamp first so every row's time aligns at the
+                            // same x; the category badge trails it.
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: rowItem.hasSub
+                                text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
+                                color: Theme.fg_muted
+                                font.family: notch.sans
+                                font.pixelSize: 12
+                                renderType: Text.NativeRendering
+                            }
                             Rectangle {
                                 id: subBadge
                                 readonly property bool active: root.badgeField.length > 0 && rowItem.modelData
@@ -640,17 +651,6 @@ PanelWindow {
                                     font.weight: 600
                                     renderType: Text.NativeRendering
                                 }
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width - (subBadge.active ? subBadge.width + parent.spacing : 0)
-                                visible: rowItem.hasSub
-                                text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
-                                color: Theme.fg_muted
-                                font.family: notch.sans
-                                font.pixelSize: 12
-                                renderType: Text.NativeRendering
-                                elide: Text.ElideRight
                             }
                         }
                     }
