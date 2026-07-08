@@ -61,6 +61,8 @@ h2 .count{color:var(--rv-muted);opacity:.7;margin-left:8px;font-family:"GeistMon
 .flow{display:flex;flex-direction:column;align-items:center}
 /* .be/.tr/.fe variants stay valid markup but render neutral — no colored washes */
 .lane{width:100%;border-radius:13px;padding:14px 16px 18px;border:1px solid var(--rv-hair);background:var(--rv-surface)}
+/* consecutive nodes/splits with no arrow between them still get air */
+.lane>.node+.node,.lane>.node+.split,.lane>.split+.node,.lane>.split+.split{margin-top:10px}
 .lane-tag{font-size:10.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--rv-muted);margin-bottom:10px}
 .node{background:var(--rv-bg);border:1px solid var(--rv-hair);border-radius:10px;padding:9px 13px;margin:0 auto;
   max-width:680px;text-align:center;font-size:15px;font-weight:600;position:relative}
