@@ -40,8 +40,12 @@ Picker {
     items: histFile.entries.map(e => {
         const isImg = e.filePath && e.filePath !== "null"
         const firstLine = String(e.value || "").trim().split("\n")[0]
+        // clipse bakes "📷 <tempname>.png" into an image entry's value — the
+        // thumbnail already shows what it is, so a clean "Image" label reads better.
+        const label = isImg ? "Image"
+                    : (firstLine.length > 0 ? firstLine : "(whitespace)")
         return {
-            label: firstLine.length > 0 ? firstLine : "(whitespace)",
+            label: label,
             sub: (e.pinned ? "pinned · " : "") + String(e.recorded || "").split(".")[0],
             icon: isImg ? "file://" + e.filePath : "",
             value: e.value,
