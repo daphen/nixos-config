@@ -94,7 +94,8 @@ PanelWindow {
         Text {
             id: capText
             anchors.centerIn: parent
-            color: Theme.fg_muted
+            // action ink, not passive muted (reference: cap glyphs ~#666)
+            color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
             font.family: notch.sans
             font.pixelSize: 12
             font.weight: 500
@@ -677,6 +678,12 @@ PanelWindow {
                 width: parent.width
                 height: 52
                 Rectangle {
+                    anchors.fill: parent
+                    color: Theme.surface1
+                    bottomLeftRadius: 24
+                    bottomRightRadius: 24
+                }
+                Rectangle {
                     anchors.top: parent.top
                     width: parent.width
                     height: 1
@@ -693,7 +700,7 @@ PanelWindow {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "move"
-                        color: Theme.fg_muted
+                        color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans
                         font.pixelSize: 12
                         renderType: Text.NativeRendering
@@ -703,7 +710,7 @@ PanelWindow {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.enterLabel
-                        color: Theme.fg_muted
+                        color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans
                         font.pixelSize: 12
                         renderType: Text.NativeRendering
@@ -714,7 +721,7 @@ PanelWindow {
                         visible: root.tabs.length > 1
                         anchors.verticalCenter: parent.verticalCenter
                         text: "switch"
-                        color: Theme.fg_muted
+                        color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans
                         font.pixelSize: 12
                         renderType: Text.NativeRendering
@@ -743,7 +750,7 @@ PanelWindow {
                                         visible: !parent.modelData.cap
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: parent.modelData.t
-                                        color: Theme.fg_muted
+                                        color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                                         font.family: notch.sans
                                         font.pixelSize: 11
                                         renderType: Text.NativeRendering
@@ -753,7 +760,7 @@ PanelWindow {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: parent.modelData.label
-                                color: Theme.fg_muted
+                                color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                                 font.family: notch.sans
                                 font.pixelSize: 12
                                 renderType: Text.NativeRendering
