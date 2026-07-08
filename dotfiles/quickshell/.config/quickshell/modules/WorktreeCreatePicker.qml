@@ -12,6 +12,8 @@ Picker {
     placeholder: "workspace"
     altLabel: "Enter: open / create / resume    Ctrl+W: close worktree"
     subtitleField: "kind"
+    glyphField: "glyph"
+    glyphColorField: "gcolor"
     highlightField: "active"
     altKey: Qt.Key_W
 
@@ -95,14 +97,19 @@ Picker {
         }
 
         const activeBare = (activeStack || "").replace(/^lovable-/, "")
+        // Actions read as actions: accent "+" glyph, plain title, a subtitle
+        // that says what happens — not a cryptic WT/LoL tag.
         const create = [
-            { action: "create-local", label: "+ Create local worktree", kind: "WT" },
-            { action: "create-lol",   label: "+ Create Lovable-on-Lovable", kind: "LoL" },
+            { action: "create-local", label: "Create local worktree", glyph: "+", gcolor: Theme.cursor,
+              kind: "branch + worktree + window stack" },
+            { action: "create-lol",   label: "Create Lovable-on-Lovable", glyph: "+", gcolor: Theme.cursor,
+              kind: "remote sandbox project" },
         ]
+        // WT is the default — only remote sandboxes earn a subtitle.
         const wsItems = existing.map(n => ({
             name: n,
             label: n,
-            kind: lolNames[n] ? "LoL" : "WT",
+            kind: lolNames[n] ? "remote sandbox" : "",
             active: n === activeBare,
         }))
 
@@ -122,11 +129,11 @@ Picker {
                 name: n,
                 target: r.target || "",
                 label: n,
-                kind: r.kind === "lol" ? "LoL" : "WT",
+                kind: r.kind === "lol" ? "remote sandbox" : "",
             })
         }
 
-        let out = create.slice()
+        let out = [{ divider: true, label: "create" }].concat(create)
         if (wsItems.length) {
             out.push({ divider: true, label: "open" })
             out = out.concat(wsItems)
