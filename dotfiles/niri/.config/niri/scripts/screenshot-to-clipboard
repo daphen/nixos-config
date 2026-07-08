@@ -24,8 +24,9 @@ if grim -g "$SELECTION" "$SCREENSHOT_FILE"; then
     # Notify user
     notify-send "Screenshot" "Copied to clipboard"
 
-    # Clean up old screenshots (keep last 10)
-    ls -t "$SCREENSHOT_DIR"/screenshot-*.png 2>/dev/null | tail -n +11 | xargs -r rm
+    # Clean up old screenshots (keep last 100 — the clipboard picker matches
+    # these files' timestamps to label entries "screenshot" vs "image")
+    ls -t "$SCREENSHOT_DIR"/screenshot-*.png 2>/dev/null | tail -n +101 | xargs -r rm
 else
     # Screenshot failed
     notify-send "Screenshot" "Failed to capture screenshot" --urgency=critical

@@ -35,6 +35,40 @@ Picker {
         return root._hexRe.test(s) || /^(rgb|rgba|hsl|hsla)\(/i.test(s)
     }
 
+    // clipse can't tell a screenshot from a pasted image, but both niri's
+    // built-in screenshots (~/Pictures/Screenshots) and the selection script
+    // (/tmp/screenshot-*) leave a datestamped file. Scan their mtimes on open;
+    // an image whose recorded time matches one (±4s) was screenshotted.
+    property var shotTimes: []
+    Process {
+        id: shotScan
+        running: root.open
+        command: ["bash", "-c",
+            "stat -c %Y \"$HOME\"/Pictures/Screenshots/*.png /tmp/screenshot-*.png 2>/dev/null"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const out = []
+                for (const l of (this.text || "").split("\n")) {
+                    const n = parseInt(l.trim())
+                    if (!isNaN(n)) out.push(n)
+                }
+                root.shotTimes = out
+            }
+        }
+    }
+    function _recEpoch(rec) {
+        const s = String(rec || "")
+        if (s.length < 19) return 0
+        return new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10),
+                        +s.slice(11, 13), +s.slice(14, 16), +s.slice(17, 19)).getTime() / 1000
+    }
+    function _isShot(rec) {
+        const t = root._recEpoch(rec)
+        for (let i = 0; i < shotTimes.length; i++)
+            if (Math.abs(shotTimes[i] - t) <= 4) return true
+        return false
+    }
+
     function _ymd(d) {
         const m = String(d.getMonth() + 1).padStart(2, "0")
         const day = String(d.getDate()).padStart(2, "0")
@@ -77,10 +111,15 @@ Picker {
         // clean "Image" reads better. A copied file keeps a meaningful name, so
         // show that verbatim.
         const generated = /^\d+-\d+\.[a-z0-9]+$/i.test(base)
+        const shot = isImg && generated && root._isShot(e.recorded)
         const isColor = !isImg && root._isColor(firstLine)
         const isLink = !isImg && /^https?:\/\/\S+$/i.test(firstLine)
+        // cat stays "image" for screenshots too, so the Images filter groups both;
+        // the badge/label carry the screenshot-vs-image distinction.
         const cat = isImg ? "image" : (isLink ? "link" : (isColor ? "color" : "text"))
-        const label = isImg ? (generated ? "Image" : base)
+        const badge = isImg ? (shot ? "screenshot" : "image")
+                    : (cat === "text" ? "" : cat)
+        const label = isImg ? (generated ? (shot ? "Screenshot" : "Image") : base)
                     : (firstLine.length > 0 ? firstLine : "(whitespace)")
         // Category badge colors from the theme palette — the muted accents
         // (blue/purple/pink) read alike, so use the distinct hues: sky for
@@ -93,7 +132,7 @@ Picker {
             label: label,
             sub: (e.pinned ? "pinned · " : "") + root._relTime(e.recorded),
             icon: isImg ? "file://" + e.filePath : "",
-            badge: cat === "text" ? "" : cat,
+            badge: badge,
             badgeColor: badgeColor,
             value: e.value,
             filePath: isImg ? e.filePath : "",
