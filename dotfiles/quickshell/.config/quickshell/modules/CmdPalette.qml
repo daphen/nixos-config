@@ -703,13 +703,23 @@ PanelWindow {
                 }
             }
 
-            // ── chin: strong top border + pills ──────────────────────
+            // ── chin: surface0 band + top border + pills ─────────────
             Item {
                 id: chinWrap
                 width: parent.width
                 height: PaletteState.chin.length > 0 ? 54 : 0
                 visible: height > 0
 
+                Rectangle {
+                    // whisper band, inset inside the panel's 1px border
+                    anchors.fill: parent
+                    anchors.leftMargin: 1
+                    anchors.rightMargin: 1
+                    anchors.bottomMargin: 1
+                    color: Theme.surface0
+                    bottomLeftRadius: 23
+                    bottomRightRadius: 23
+                }
                 Rectangle {
                     anchors.top: parent.top
                     width: parent.width
