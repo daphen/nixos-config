@@ -211,6 +211,18 @@ PanelWindow {
         // Web templates keep insertion order; modest score keeps the group
         // below real hits and the Go-to row, but on top when nothing hits.
         groups.push({ id: "websites", heading: "Web Search", items: webItems, maxScore: q ? 500 : 0 })
+        // Actions: quickmark the current tab. Rankable like everything else
+        // ("add", "quickmark", "mark" all hit it); hidden if already marked.
+        if (cur && !(PaletteState.quickmarks || []).some(m => m.url === cur.url)) {
+            const addItem = {
+                kind: "addqm", qmName: cur.title || cur.url, qmUrl: cur.url || "",
+                title: "Add current tab to quickmarks",
+                subtitle: niceUrl(cur.url || ""), faviconPath: cur.faviconPath || "",
+            }
+            const ra = rank([addItem])
+            groups.push({ id: "actions", heading: "Actions", items: q ? ra.items : [addItem],
+                          maxScore: ra.maxScore })
+        }
 
         // Cross-group URL dedupe (tabs > quickmarks > websites).
         const seen = ({})
@@ -269,7 +281,9 @@ PanelWindow {
         const idx = Math.max(0, Math.min(selectedIndex, entries.length - 1))
         const e = entries[idx]
         if (!e || e.divider) return
-        if (e.kind === "tab" && !inNewTab) {
+        if (e.kind === "addqm") {
+            if (e.qmUrl) PaletteState.quickmarkAdd(e.qmName, e.qmUrl)
+        } else if (e.kind === "tab" && !inNewTab) {
             if (!e.isCurrent) PaletteState.activateTab(e.tabId, e.windowId)
         } else if (e.url) {
             PaletteState.gotoUrl(e.url, inNewTab || !!e.forceNewTab)
