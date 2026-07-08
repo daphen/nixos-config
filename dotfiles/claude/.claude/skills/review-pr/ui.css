@@ -84,7 +84,10 @@ h2 .count{color:var(--rv-muted);opacity:.7;margin-left:8px;font-family:"GeistMon
 .node .snum.ctx{left:11px;color:var(--rv-muted);font-weight:500;letter-spacing:.04em}
 .more p{margin:0 0 6px}.more p:last-child{margin-bottom:0}
 .more ul{margin:4px 0 0;padding-left:18px}.more li{margin:3px 0}
-.split{display:flex;gap:12px;max-width:900px;margin:0 auto}.split .node{flex:1}
+/* min-width:0 lets nodes shrink below the min-content of long mono paths —
+   without it a 3-node split blows out of the lane */
+.split{display:flex;gap:12px;max-width:900px;margin:0 auto}.split .node{flex:1;min-width:0}
+.node .file{overflow-wrap:anywhere}
 .arrow{color:var(--rv-muted);text-align:center;font-size:13px;line-height:1;padding:6px 0}
 .arrow.big{padding:10px 0;color:var(--rv-fg)}
 .tag-nit,.tag-drop{position:absolute;top:-9px;right:10px;font-size:9.5px;font-weight:600;letter-spacing:.04em;
@@ -188,6 +191,11 @@ ul.intent li.info::before{content:"•";color:var(--rv-muted)}
 .frow.nav-focus,.vrow.nav-focus,ul.intent li.nav-focus{border-radius:10px}
 /* expand: Enter on a focused item reveals its .more block + un-truncates its text */
 .more{display:none}
+/* rows/nodes carrying expandable detail advertise it — chevron flips open */
+.node:has(> .more),.step:has(.more){position:relative}
+.node:has(> .more)::after,.step:has(.more)::after{content:"⌄";position:absolute;right:11px;top:9px;
+  font-size:12px;line-height:1;color:var(--rv-muted);transition:transform .12s}
+.node.expanded:has(> .more)::after,.step.expanded:has(.more)::after{transform:rotate(180deg)}
 /* expanded detail is primary reading content — ink, not a muted footnote */
 .expanded>.more,.expanded .more{display:block;margin-top:8px;padding-top:8px;border-top:1px solid var(--rv-hair);
   font-size:14px;color:var(--rv-fg);line-height:1.55}

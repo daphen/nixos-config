@@ -136,10 +136,21 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
    pipeline, before/after, state machine, sequence. Same component vocabulary as
    review-pr's centrepiece (classes live in the shared ui.css): `.lane` (neutral
    surface; `.be`/`.tr`/`.fe` are semantic-only markers) with a `.lane-tag`,
-   `.node` (inner `.file` for the real path, `.sub` for a one-liner), `.arrow`
-   (`.big` between lanes), `.split` for parallel nodes. Label real files/symbols
-   from the surface area; colours only via `--rv-*` vars, never hex. Where a node
-   maps to one surface file, add `data-file="<repo-relative>"` so `o` opens it.
+   `.node`, `.arrow` (`.big` between lanes; always give arrows glyph text like
+   `↓ what flows here`), `.split` for parallel nodes. A node's exact shape:
+
+   ```html
+   <div class="node" data-file="path/to/file.go" data-step="2">plain-english title
+     <span class="file">path/to/file.go</span>
+     <span class="sub">One full sentence of what happens here.</span>
+   </div>
+   ```
+
+   The bare text BEFORE the spans is the title and is mandatory — never lead
+   with the file path (a title-less node renders the mono path as its heading,
+   which reads broken). Label real files/symbols from the surface area; colours
+   only via `--rv-*` vars, never hex. Where a node maps to one surface file,
+   add `data-file="<repo-relative>"` so `o` opens it.
    Node `.sub` text is **plain English for someone who hasn't read the plan** —
    a full sentence saying what happens at this node and why it matters, never a
    compressed jargon chain ("D1 probe: passthrough verified"). Together the

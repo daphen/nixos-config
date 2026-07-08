@@ -156,6 +156,9 @@ def decorate_diagram(diagram: str, secs: dict, progress):
         r'(<div(?![^>]*data-step=)[^>]*class="node[^"]*"[^>]*>)',
         r'\1<span class="snum ctx">existing</span>',
         html_out)
+    # off-contract diagrams sometimes emit glyphless arrows — an empty
+    # arrow renders as a dead gap between lanes
+    html_out = re.sub(r'(<div class="arrow[^"]*">)(</div>)', r"\1↓\2", html_out)
     return html_out, tagged
 
 
