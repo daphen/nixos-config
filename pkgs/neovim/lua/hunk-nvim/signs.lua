@@ -153,52 +153,76 @@ local function parse_patch(patch)
 	local marks, deletes, changes_old = {}, {}, {}
 	if not patch or patch == "" then return marks, deletes, changes_old end
 	local current_new = nil
-	local pending = {}
+	local dels = {}   -- old-text of deletions in the current change block
+	local adds = {}   -- new-file line numbers of additions in the current block
 
-	local function flush_pending()
-		if #pending == 0 then return end
-		local prev = (current_new or 1) - 1
-		if prev >= 1 then
-			if marks[prev] == nil then marks[prev] = "delete_below" end
-			deletes[prev] = pending
-		else
-			marks[current_new] = "topdelete"
-			deletes[current_new] = pending
+	-- Resolve one change block (a run of -/+ lines). Deletes pair with the
+	-- TRAILING adds, so lines inserted above an edit (comments, guard clauses)
+	-- read as plain adds and a deleted line's ghost lands on the add that
+	-- actually replaced it — not on the first add in the block.
+	local function resolve()
+		local D, A = #dels, #adds
+		if D > 0 and A > 0 then
+			local paired = math.min(D, A)
+			for i = 1, A - paired do
+				if marks[adds[i]] == nil then marks[adds[i]] = "add" end
+			end
+			for i = 1, paired do
+				local ln = adds[A - paired + i]
+				marks[ln] = "change"
+				changes_old[ln] = dels[D - paired + i]
+			end
+			if D > paired then
+				local extra = {}
+				for i = 1, D - paired do table.insert(extra, dels[i]) end
+				local anchor = adds[1]
+				local prev = anchor - 1
+				if prev >= 1 then
+					if marks[prev] == nil then marks[prev] = "delete_below" end
+					deletes[prev] = extra
+				else
+					marks[anchor] = "topdelete"
+					deletes[anchor] = extra
+				end
+			end
+		elseif D > 0 then
+			local prev = (current_new or 1) - 1
+			if prev >= 1 then
+				if marks[prev] == nil then marks[prev] = "delete_below" end
+				deletes[prev] = dels
+			else
+				marks[current_new] = "topdelete"
+				deletes[current_new] = dels
+			end
+		elseif A > 0 then
+			for i = 1, A do
+				if marks[adds[i]] == nil then marks[adds[i]] = "add" end
+			end
 		end
-		pending = {}
+		dels, adds = {}, {}
 	end
 
 	for line in (patch .. "\n"):gmatch("([^\n]*)\n") do
 		local n_start = line:match("^@@ %-%d+,?%d* %+(%d+)")
 		if n_start then
-			flush_pending()
+			resolve()
 			current_new = tonumber(n_start)
-			pending = {}
 		elseif current_new then
 			local first = line:sub(1, 1)
 			if first == "+" and line:sub(1, 3) ~= "+++" then
-				if #pending > 0 then
-					marks[current_new] = "change"
-					-- Pair the - with this +; remember the old text so we
-					-- can render it as a ghost line above the new content.
-					changes_old[current_new] = pending[1]
-					table.remove(pending, 1)
-				else
-					marks[current_new] = marks[current_new] or "add"
-				end
+				table.insert(adds, current_new)
 				current_new = current_new + 1
 			elseif first == "-" and line:sub(1, 3) ~= "---" then
-				table.insert(pending, line:sub(2))
+				table.insert(dels, line:sub(2))
 			elseif first == " " or first == "" then
-				flush_pending()
+				resolve()
 				current_new = current_new + 1
 			end
 		end
 	end
-	flush_pending()
+	resolve()
 	return marks, deletes, changes_old
 end
-
 local function kind_to_sign(kind)
 	if kind == "add" then return "▎", "GitSignsAdd" end
 	if kind == "change" then return "▎", "GitSignsChange" end
