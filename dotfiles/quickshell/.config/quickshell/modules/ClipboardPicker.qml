@@ -110,20 +110,17 @@ Picker {
         // as a normal link instead of "h␀t␀t␀p␀…" mojibake.
         const value = String(e.value || "").replace(/\u0000/g, "")
         const firstLine = value.trim().split("\n")[0]
-        const base = isImg ? String(e.filePath).split("/").pop() : ""
-        // clipse generates temp names (12345-678.png) for clipboard images — a
-        // clean "Image" reads better. A copied file keeps a meaningful name, so
-        // show that verbatim.
-        const generated = /^\d+-\d+\.[a-z0-9]+$/i.test(base)
-        const shot = isImg && generated && root._isShot(e.recorded)
+        const shot = isImg && root._isShot(e.recorded)
         const isColor = !isImg && root._isColor(firstLine)
         const isLink = !isImg && /^https?:\/\/\S+$/i.test(firstLine)
-        // cat stays "image" for screenshots too, so the Images filter groups both;
-        // the badge/label carry the screenshot-vs-image distinction.
         const cat = isImg ? "image" : (isLink ? "link" : (isColor ? "color" : "text"))
-        const badge = isImg ? (shot ? "screenshot" : "image")
-                    : (cat === "text" ? "" : cat)
-        const label = isImg ? (generated ? (shot ? "Screenshot" : "Image") : base)
+        // Image entries always badge "image" (the type); the label carries the
+        // detail — "Screenshot" for detected screenshots, else the file format
+        // (clipse normalizes everything to PNG, so pasted images read "PNG").
+        const ext = isImg ? (String(e.filePath).split(".").pop() || "").toUpperCase() : ""
+        const fmt = ext === "JPG" ? "JPEG" : (ext || "Image")
+        const badge = isImg ? "image" : (cat === "text" ? "" : cat)
+        const label = isImg ? (shot ? "Screenshot" : fmt)
                     : (firstLine.length > 0 ? firstLine : "(whitespace)")
         // Category badge colors from the theme palette — the muted accents
         // (blue/purple/pink) read alike, so use the distinct hues: sky for
