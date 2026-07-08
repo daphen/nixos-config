@@ -291,7 +291,7 @@ PanelWindow {
                     anchors.topMargin: 14
                     anchors.bottomMargin: 6
                     radius: 15
-                    color: Theme.surface2
+                    color: Theme.surface1
                 }
 
                 Text {
