@@ -52,6 +52,11 @@ PanelWindow {
     // thumbnail, and Ctrl+O toggles a preview pane above the footer showing
     // the SELECTED item's image — it follows j/k, selection never moves.
     property string previewField: ""
+    // Thumbnail edge (rows carrying a previewField image get this size); rows
+    // with a thumbnail grow taller to fit it. Default keeps the compact icon.
+    property int thumbSize: 28
+    // Opt-in Ctrl+W: called with the focused item (delete/remove semantics).
+    property var onDelete: null
     property bool previewOpen: false
     readonly property string previewSource: {
         if (!previewField || filtered.length === 0) return ""
@@ -125,6 +130,8 @@ PanelWindow {
         for (let i = 0; i < filtered.length; i++) {
             const it = filtered[i]
             if (it && it.divider) h += 36
+            else if (previewField.length > 0 && it && String(it[previewField] || "").length > 0)
+                h += Math.max(60, thumbSize + 16)
             else h += (subtitleField.length > 0 && it && String(it[subtitleField] || "").length > 0) ? 60 : 44
             if (i > 0) h += 2
         }
@@ -374,6 +381,10 @@ PanelWindow {
                             || (event.key === Qt.Key_K && (event.modifiers & Qt.ControlModifier))) {
                         root.step(-1)
                         event.accepted = true
+                    } else if (event.key === Qt.Key_W && (event.modifiers & Qt.ControlModifier) && root.onDelete) {
+                        const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
+                        if (root.filtered.length > 0 && !root.filtered[idx].divider) root.onDelete(root.filtered[idx])
+                        event.accepted = true
                     } else if (event.key === root.altKey && (event.modifiers & Qt.ControlModifier)) {
                         root.altActivate()
                         event.accepted = true
@@ -487,8 +498,12 @@ PanelWindow {
                     property bool isDivider: !!(modelData && modelData.divider)
                     readonly property bool hasSub: !isDivider && root.subtitleField.length > 0
                         && modelData && String(modelData[root.subtitleField] || "").length > 0
+                    readonly property bool hasThumb: !isDivider && root.previewField.length > 0
+                        && modelData && String(modelData[root.previewField] || "").length > 0
                     width: list.width
-                    height: isDivider ? 36 : (hasSub ? 60 : 44)
+                    height: isDivider ? 36
+                          : hasThumb ? Math.max(60, root.thumbSize + 16)
+                          : hasSub ? 60 : 44
 
                     // ListView owns delegate x/y — the inset highlight must be
                     // an inner rectangle, never an x-offset on the root.
@@ -548,10 +563,10 @@ PanelWindow {
                         // drawn monochrome by the MultiEffect below
                         visible: active && isThumb
                         source: active ? rowItem.modelData[root.iconField] : ""
-                        width: isThumb ? 28 : 16
-                        height: isThumb ? 28 : 16
-                        sourceSize.width: isThumb ? 96 : 32
-                        sourceSize.height: isThumb ? 96 : 32
+                        width: isThumb ? root.thumbSize : 16
+                        height: isThumb ? root.thumbSize : 16
+                        sourceSize.width: isThumb ? root.thumbSize * 2 : 32
+                        sourceSize.height: isThumb ? root.thumbSize * 2 : 32
                         asynchronous: true
                         fillMode: isThumb ? Image.PreserveAspectCrop : Image.PreserveAspectFit
                         anchors.right: parent.right

@@ -19,9 +19,10 @@ Picker {
     badgeField: "badge"
     badgeColorField: "badgeColor"
     previewField: "filePath"
+    thumbSize: 56
     enterLabel: "copy"
     ctrlEnterAlt: true
-    altLabel: "Ctrl+Enter: open link / image   ·   Ctrl+O: preview"
+    altLabel: "Ctrl+Enter: open   ·   Ctrl+O: preview   ·   Ctrl+W: delete"
     categoryField: "cat"
     categories: [{ key: "all", label: "All" }, { key: "image", label: "Images" },
                  { key: "link", label: "Links" }, { key: "color", label: "Colors" }]
@@ -95,6 +96,7 @@ Picker {
             badgeColor: badgeColor,
             value: e.value,
             filePath: isImg ? e.filePath : "",
+            recorded: e.recorded,
             cat: cat,
         }
     })
@@ -115,6 +117,21 @@ Picker {
                 Quickshell.env("HOME") + "/.config/niri/scripts/browser-dispatch", v])
             ClipboardPickerState.open = false
         }
+    }
+
+    // Ctrl+W: drop the entry from clipse's store. Optimistic in-memory update
+    // for instant feedback; the file rewrite (matched on the unique recorded
+    // timestamp) is the source of truth and re-syncs via watchChanges.
+    onDelete: item => {
+        if (!item || !item.recorded) return
+        histFile.entries = histFile.entries.filter(e => e.recorded !== item.recorded)
+        Quickshell.execDetached(["python3", "-c",
+            "import json,sys,os\n" +
+            "p=os.path.expanduser('~/.config/clipse/clipboard_history.json')\n" +
+            "d=json.load(open(p))\n" +
+            "d['clipboardHistory']=[e for e in d.get('clipboardHistory',[]) if e.get('recorded')!=sys.argv[1]]\n" +
+            "t=p+'.tmp'; json.dump(d,open(t,'w')); os.replace(t,p)\n",
+            String(item.recorded)])
     }
 
     onEnter: item => {
