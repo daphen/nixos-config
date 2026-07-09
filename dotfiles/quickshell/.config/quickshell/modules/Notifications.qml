@@ -95,7 +95,7 @@ Singleton {
         return out
     }
 
-    readonly property var trayApps: ["slack", "slk", "discord", "endcord", "kitty"]
+    readonly property var trayApps: ["slack", "slk", "discord", "endcord", "kitty", "mlqs"]
     function isTrayApp(n) {
         return !!(n && root.trayApps.indexOf((n.appName || "").toLowerCase()) !== -1)
     }
