@@ -17,21 +17,23 @@ Item {
         const ___ = Notifications.focusedApp   // re-evaluate when window focus changes
         const model = Notifications.server ? Notifications.server.trackedNotifications : null
         const tracked = model ? model.values : []
-        const counts = { slack: 0, discord: 0 }
+        const counts = { slack: 0, discord: 0, mail: 0 }
         for (let i = 0; i < tracked.length; i++) {
             if (Notifications.isSeen(tracked[i])) continue
             const app = (tracked[i].appName || "").toLowerCase()
             if (app === "slack" || app === "slk") counts.slack++
             else if (app === "discord" || app === "endcord") counts.discord++
+            else if (app === "mlqs") counts.mail++
         }
         // Don't badge the client you're focused on — you're already in it. The
         // toast still flashes and history is untouched; only the bar badge is hidden.
         const covers = Notifications.focusedAppCovers[Notifications.focusedApp] || []
         if (covers.indexOf("slack") !== -1 || covers.indexOf("slk") !== -1) counts.slack = 0
         if (covers.indexOf("discord") !== -1 || covers.indexOf("endcord") !== -1) counts.discord = 0
+        if (covers.indexOf("mlqs") !== -1) counts.mail = 0
         return counts
     }
-    readonly property int total: inboxCounts.slack + inboxCounts.discord
+    readonly property int total: inboxCounts.slack + inboxCounts.discord + inboxCounts.mail
 
     implicitWidth: visible ? row.implicitWidth + Theme.modulePadH * 2 : 0
     implicitHeight: parent ? parent.height : Theme.barHeight
@@ -51,7 +53,8 @@ Item {
         Repeater {
             model: [
                 { app: "slack",   icon: "󰒱", count: root.inboxCounts.slack },
-                { app: "discord", icon: "󰙯", count: root.inboxCounts.discord }
+                { app: "discord", icon: "󰙯", count: root.inboxCounts.discord },
+                { app: "mail",    icon: "󰇮", count: root.inboxCounts.mail }
             ]
             delegate: Row {
                 required property var modelData

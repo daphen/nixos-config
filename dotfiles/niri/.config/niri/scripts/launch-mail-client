@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Launch the native QML mail client (mlqs). Runs from the repo until it's
+# nix-packaged: ensures the daemon is up, then opens the Quickshell UI.
+# niri-jump-or-exec focuses an existing window instead of calling this.
+export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
+
+MLQS_DIR="$HOME/personal/mlqs"
+
+if ! pgrep -x mlqs >/dev/null 2>&1; then
+    setsid "$MLQS_DIR/mlqs" >> /tmp/mlqs-daemon.log 2>&1 &
+    sleep 0.5
+fi
+
+# Reap windowless mlqs UI orphans (same failure mode as slqs: a failed config
+# load leaves quickshell alive without a window, blocking niri-jump-or-exec).
+WIN_PIDS=" $(niri msg --json windows 2>/dev/null | python3 -c 'import json,sys;[print(w.get("pid")) for w in json.load(sys.stdin)]' 2>/dev/null | tr "\n" " ") "
+for p in /proc/[0-9]*; do
+    exe=$(readlink "$p/exe" 2>/dev/null) || continue
+    case "$exe" in *quickshell*) ;; *) continue ;; esac
+    case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in *mlqs/ui*) ;; *) continue ;; esac
+    pid=${p#/proc/}
+    case "$WIN_PIDS" in *" $pid "*) ;; *) kill "$pid" 2>/dev/null ;; esac
+done
+
+exec quickshell -p "$MLQS_DIR/ui/shell.qml" >> /tmp/mlqs-ui.log 2>&1

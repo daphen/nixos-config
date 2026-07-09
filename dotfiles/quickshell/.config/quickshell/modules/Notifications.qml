@@ -102,7 +102,7 @@ Singleton {
     // Slack/Discord messages are durable history: kept across "seen", never
     // cleared on focus, bounded only by messageMax. Claude (kitty) prompts are
     // transient — cleared the moment you act on the session that raised them.
-    readonly property var messageApps: ["slack", "slk", "discord", "endcord"]
+    readonly property var messageApps: ["slack", "slk", "discord", "endcord", "mlqs"]
     function isMessageApp(n) {
         return !!(n && root.isMessageAppName(n.appName))
     }
@@ -190,7 +190,8 @@ Singleton {
         "kitty":          ["kitty"],
         // the native QML clients share app_id org.quickshell — keyed by title below
         "discord-client": ["discord", "endcord"],
-        "slk-client":     ["slack", "slk"]
+        "slk-client":     ["slack", "slk"],
+        "mail-client":    ["mlqs"]
     })
 
     readonly property string focusedApp: {
@@ -199,7 +200,7 @@ Singleton {
         // slqs/dsqrd are both org.quickshell; tell them apart by window title.
         if (app === "org.quickshell") {
             const t = NiriState.focusedTitle()
-            if (t === "discord-client" || t === "slk-client") return t
+            if (t === "discord-client" || t === "slk-client" || t === "mail-client") return t
         }
         return app
     }

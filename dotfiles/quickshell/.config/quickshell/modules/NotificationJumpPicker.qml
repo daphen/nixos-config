@@ -73,6 +73,7 @@ Picker {
         const a = (appName || "").toLowerCase()
         if (a === "slack" || a === "slk" || a === "slqs") return Qt.resolvedUrl("../assets/slack.svg")
         if (a === "discord" || a === "endcord" || a === "dsqrd") return Qt.resolvedUrl("../assets/discord.svg")
+        if (a === "mlqs") return Qt.resolvedUrl("../assets/mail.svg")
         if (a === "kitty") return Qt.resolvedUrl("../assets/claude.svg")
         return ""
     }
