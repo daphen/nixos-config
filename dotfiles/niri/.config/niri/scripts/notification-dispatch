@@ -80,6 +80,8 @@ case "$app" in
         exec "$DIR/kitty-osc-jump" "$id"
         ;;
     mlqs)
+        # invoke → the daemon's default action opens the conversation; then focus
+        qs ipc call notifications invoke "$id" >/dev/null 2>&1 || true
         qs ipc call notifications dismiss "$id" >/dev/null 2>&1 || true
         exec "$DIR/niri-jump-or-exec" "title:mail-client" "$DIR/launch-mail-client"
         ;;
