@@ -18,6 +18,19 @@ Picker {
 
     placeholder: "notification"
     iconField: "icon"
+    // Ctrl+O unfolds the notification body (clipboard-picker convention)
+    previewTextField: "body"
+    // Ctrl+R marks read in place: mail invokes the daemon's "read" action
+    // (server-side mark-read); everything else just clears from the center
+    onCtrlR: item => {
+        const n = item.notif
+        if (n && n.actions) {
+            for (let i = 0; i < n.actions.length; i++)
+                if (n.actions[i].identifier === "read") { n.actions[i].invoke(); break }
+        }
+        Notifications.markSeenById(item.id)
+        if (n) Notifications.clearOne(n)
+    }
 
     items: buildItems(Notifications.tracked, Notifications.seenGen,
                       Notifications.retained, Notifications.retainedGen)
@@ -82,14 +95,14 @@ Picker {
         const wid = (n.hints && n.hints["niri-window"] !== undefined) ? String(n.hints["niri-window"]) : ""
         return {
             id: n.id, notif: n, app: n.appName || "", summary: n.summary || "", windowId: wid,
-            label: n.summary || n.appName || "notification", icon: _icon(n.appName),
+            body: n.body || "", label: n.summary || n.appName || "notification", icon: _icon(n.appName),
         }
     }
 
     function mkItemRetained(e) {
         return {
             id: e.id, notif: null, app: e.app, summary: e.summary, windowId: e.windowId,
-            label: e.summary || e.app || "notification", icon: _icon(e.app),
+            body: e.summary || "", label: e.summary || e.app || "notification", icon: _icon(e.app),
         }
     }
 

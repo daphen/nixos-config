@@ -57,6 +57,9 @@ PanelWindow {
     property int thumbSize: 28
     // Opt-in Ctrl+W: called with the focused item (delete/remove semantics).
     property var onDelete: null
+    // Opt-in Ctrl+R: called with the focused item (mark-read semantics);
+    // the picker stays open so a pile can be cleared in one visit.
+    property var onCtrlR: null
     property bool previewOpen: false
     // Opt-in text preview: when the selected item has no image, Ctrl+O unfolds
     // this field's full text in the pane (scrollable) — for long clips.
@@ -408,6 +411,10 @@ PanelWindow {
                     } else if (event.key === Qt.Key_O && (event.modifiers & Qt.ControlModifier)
                             && (root.previewField.length > 0 || root.previewTextField.length > 0)) {
                         root.previewOpen = !root.previewOpen
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_R && (event.modifiers & Qt.ControlModifier) && root.onCtrlR) {
+                        const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
+                        if (root.filtered.length > 0 && !root.filtered[idx].divider) root.onCtrlR(root.filtered[idx])
                         event.accepted = true
                     } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier) && root.onYank) {
                         const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
