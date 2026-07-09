@@ -45,6 +45,10 @@
       url = "git+ssh://git@github.com/daphen/dsqrd";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    mlqs = {
+      url = "git+ssh://git@github.com/daphen/mlqs";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     # Niri flake - provides proper niri build with all dependencies.
     # We use niri-unstable from this flake (tracks master, includes v26.04+).

@@ -147,6 +147,26 @@
         "type": "github"
       }
     },
+    "mlqs": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1783606189,
+        "narHash": "sha256-mKjKSzIwxYxaY9xOp6vJTXbaJYwQcUVYHlQQNBjRTm4=",
+        "ref": "refs/heads/main",
+        "rev": "a30528c079f8f30a489443cb68c590c7a7057361",
+        "revCount": 86,
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/mlqs"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/mlqs"
+      }
+    },
     "niri-flake": {
       "inputs": {
         "niri-stable": "niri-stable",
@@ -378,6 +398,7 @@
         "dsqrd": "dsqrd",
         "helium-nix": "helium-nix",
         "home-manager": "home-manager",
+        "mlqs": "mlqs",
         "niri-flake": "niri-flake",
         "nixpkgs": "nixpkgs_2",
         "nixpkgs-apps": "nixpkgs-apps",

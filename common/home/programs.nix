@@ -11,6 +11,8 @@ let
   slqsClient = inputs.slqs.packages.${pkgs.system}.slqs-client;
   dsqrdDaemon = inputs.dsqrd.packages.${pkgs.system}.dsqrd;
   dsqrdClient = inputs.dsqrd.packages.${pkgs.system}.dsqrd-client;
+  mlqsDaemon = inputs.mlqs.packages.${pkgs.system}.mlqs;
+  mlqsClient = inputs.mlqs.packages.${pkgs.system}.mlqs-client;
   # nvim — the converged config (0.12, lz.n, native LSP), with the desktop
   # "full" profile (extras like pyright gated behind NVIM_PROFILE=full and
   # layered onto PATH). Lua lives in ~/nixos/pkgs/neovim and is read live from
@@ -73,6 +75,8 @@ in
     slqsClient
     dsqrdDaemon
     dsqrdClient
+    mlqsDaemon
+    mlqsClient
   ];
 
   # wpm-daemon — burst-based WPM counter. Reads /dev/input/event* (needs
