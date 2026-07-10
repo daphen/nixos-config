@@ -4,6 +4,7 @@ import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import "."
+import "../QsLib" as Lib
 
 PanelWindow {
     id: root
@@ -112,26 +113,10 @@ PanelWindow {
     readonly property color panelBorder: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b,
                                                  Theme.mode === "light" ? 0.15 : 0.10)
 
-    // Small keycap chip (esc, arrows, enter) — the reference-palette detail.
-    component KeyCap: Rectangle {
-        property alias text: capText.text
-        width: Math.max(capText.implicitWidth + 14, 24)
-        height: 24
-        radius: 7
-        // Reference: light-mode keycaps are white and raised; dark stays tinted.
-        color: Theme.mode === "light" ? Theme.bg : Theme.surface2
-        border.color: Theme.hairline
-        border.width: 1
-        Text {
-            id: capText
-            anchors.centerIn: parent
-            // action ink, not passive muted (reference: cap glyphs ~#666)
-            color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
-            font.family: notch.sans
-            font.pixelSize: 12
-            font.weight: 500
-            renderType: Text.NativeRendering
-        }
+    // Small keycap chip (esc, arrows, enter) — canonical family recipe
+    // from QsLib; one source for picker chins, app statusbars, hint caps.
+    component KeyCap: Lib.KeyCap {
+        anchors.verticalCenter: parent.verticalCenter
     }
 
     // Natural height of the list (rows + spacing + margins) so the panel

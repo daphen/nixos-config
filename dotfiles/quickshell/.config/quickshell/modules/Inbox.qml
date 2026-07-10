@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import "."
+import "../QsLib" as Lib
 
 Item {
     id: root
@@ -52,9 +53,9 @@ Item {
 
         Repeater {
             model: [
-                { app: "slack",   icon: "󰒱", count: root.inboxCounts.slack },
-                { app: "discord", icon: "󰙯", count: root.inboxCounts.discord },
-                { app: "mail",    icon: "󰇮", count: root.inboxCounts.mail }
+                { app: "slack",   icon: "circle-hashtag", count: root.inboxCounts.slack },
+                { app: "discord", icon: "msg-smile", count: root.inboxCounts.discord },
+                { app: "mail",    icon: "envelope", count: root.inboxCounts.mail }
             ]
             delegate: Row {
                 required property var modelData
@@ -62,14 +63,10 @@ Item {
                 spacing: 4
                 anchors.verticalCenter: parent.verticalCenter
 
-                Text {
-                    text: modelData.icon
+                Lib.Icon {
+                    name: modelData.icon
                     color: Theme.cursor
-                    font.family: Theme.iconFontFamily
-                    font.pixelSize: Theme.fontSize
-                    font.weight: Theme.fontWeight
-                    font.hintingPreference: Font.PreferFullHinting
-                    renderType: Text.NativeRendering
+                    width: 15; height: 15
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
