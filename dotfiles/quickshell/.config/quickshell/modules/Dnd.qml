@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import "."
+import "../QsLib" as Lib
 
 Item {
     id: root
@@ -15,15 +16,10 @@ Item {
         onClicked: DndState.toggle()
     }
 
-    Text {
-        id: text
-        anchors.centerIn: parent
-        text: "󰂛"
-        color: Theme.fg
-        font.family: Theme.iconFontFamily
-        font.pixelSize: Theme.fontSize
-        font.weight: Theme.fontWeight
-        font.hintingPreference: Font.PreferFullHinting
-        renderType: Text.NativeRendering
+    Lib.Icon {
+        name: "bell"
+        color: Theme.cursor
+        width: 15; height: 15
+        anchors.verticalCenter: parent.verticalCenter
     }
 }

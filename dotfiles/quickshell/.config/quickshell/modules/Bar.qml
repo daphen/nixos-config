@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import "."
+import "../QsLib" as Lib
 
 PanelWindow {
     id: bar
@@ -151,14 +152,10 @@ PanelWindow {
                 spacing: 8
                 anchors.verticalCenter: parent.verticalCenter
 
-                Text {
-                    text: "󰌌" // nf-md-keyboard
+                Lib.Icon {
+                    name: "keyboard"
                     color: Theme.fg
-                    font.family: Theme.iconFontFamily
-                    font.pixelSize: Theme.fontSize + 2
-                    font.weight: Theme.fontWeight
-                    font.hintingPreference: Font.PreferFullHinting
-                    renderType: Text.NativeRendering
+                    width: 15; height: 15
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
@@ -199,14 +196,10 @@ PanelWindow {
                     id: spendRow
                     spacing: 8
 
-                    Text {
-                        text: "󰚩" // nf-md-robot
+                    Lib.Icon {
+                        name: "magic-wand"
                         color: Theme.fg
-                        font.family: Theme.iconFontFamily
-                        font.pixelSize: Theme.fontSize + 2
-                        font.weight: Theme.fontWeight
-                        font.hintingPreference: Font.PreferFullHinting
-                        renderType: Text.NativeRendering
+                        width: 15; height: 15
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
@@ -249,14 +242,10 @@ PanelWindow {
                     id: todoRow
                     spacing: 8
 
-                    Text {
-                        text: "" // nf-fa-tasks
+                    Lib.Icon {
+                        name: "clipboard-check"
                         color: Theme.fg
-                        font.family: Theme.iconFontFamily
-                        font.pixelSize: Theme.fontSize + 2
-                        font.weight: Theme.fontWeight
-                        font.hintingPreference: Font.PreferFullHinting
-                        renderType: Text.NativeRendering
+                        width: 15; height: 15
                         anchors.verticalCenter: parent.verticalCenter
                     }
 

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.UPower
 import "."
+import "../QsLib" as Lib
 
 Item {
     id: root
@@ -21,24 +22,16 @@ Item {
         anchors.centerIn: parent
         spacing: 6
 
-        Text {
-            text: {
-                if (chargeState === UPowerDeviceState.Charging) return "󰂄"
-                if (chargeState === UPowerDeviceState.FullyCharged) return "󰚥"
-                const buckets = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
-                const idx = Math.min(9, Math.max(0, Math.floor(percentage / 10)))
-                return buckets[idx]
-            }
+        Lib.Icon {
+            name: percentage > 50 ? "battery-high" : "battery"
             color: {
+                if (chargeState === UPowerDeviceState.Charging
+                    || chargeState === UPowerDeviceState.FullyCharged) return Theme.green
                 if (percentage < 15) return Theme.red
                 if (percentage < 30) return Theme.yellow
                 return Theme.fg
             }
-            font.family: Theme.iconFontFamily
-            font.pixelSize: Theme.fontSize
-            font.weight: Theme.fontWeight
-            font.hintingPreference: Font.PreferFullHinting
-            renderType: Text.NativeRendering
+            width: 15; height: 15
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {

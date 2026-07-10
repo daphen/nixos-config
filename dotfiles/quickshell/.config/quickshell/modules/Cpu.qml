@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "."
+import "../QsLib" as Lib
 
 Item {
     id: root
@@ -46,14 +47,10 @@ Item {
         anchors.centerIn: parent
         spacing: 6
 
-        Text {
-            text: "󰍛"
+        Lib.Icon {
+            name: "gauge-3"
             color: Theme.fg
-            font.family: Theme.iconFontFamily
-            font.pixelSize: Theme.fontSize
-            font.weight: Theme.fontWeight
-            font.hintingPreference: Font.PreferFullHinting
-            renderType: Text.NativeRendering
+            width: 15; height: 15
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
