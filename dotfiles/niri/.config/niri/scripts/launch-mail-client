@@ -2,6 +2,7 @@
 # Launch the native QML mail client. The packaged mlqs-client wrapper ensures
 # the mlqs daemon is running, then opens the Quickshell UI from the Nix store.
 # niri-jump-or-exec focuses an existing window instead of calling this.
+export QML2_IMPORT_PATH="$HOME/.local/share/qml"
 export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
 
 # Reap windowless mlqs UI orphans (failed config load leaves quickshell alive

@@ -3,6 +3,7 @@
 # the dsqrd daemon is running (it serves data + live gateway events), then opens
 # the Quickshell UI pointed at dsqrd's socket. niri-jump-or-exec focuses an
 # existing window instead of calling this when one is already open.
+export QML2_IMPORT_PATH="$HOME/.local/share/qml"
 export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
 
 # Reap windowless dsqrd UI orphans before launching. A failed config load leaves
