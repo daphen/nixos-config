@@ -89,4 +89,8 @@ in {
   # like everything else. Its content (transcripts, credentials, settings,
   # plugins) is gitignored — only themes/ is tracked (dev-env ships those).
   home.file.".claude".source = link "${config.home.homeDirectory}/nixos/dotfiles/claude/.claude";
+
+  # QsLib — shared QML module (Theme, nucleo icons, family components) for
+  # the bar and all quickshell apps. Resolved via QML2_IMPORT_PATH.
+  home.file.".local/share/qml/QsLib".source = link "${dotfiles}/qslib/.local/share/qml/QsLib";
 }

@@ -331,6 +331,9 @@ PYEOF
         "quickshell-client")
             # Native QML Slack/Discord client. Dual-theme like the bar: the
             # generated Theme.qml inlines both palettes and picks at runtime.
+            # QsLib shared module gets the same dual-theme singleton
+            local qslib_path="$DOTFILES_DIR/qslib/.local/share/qml/QsLib/Theme.qml"
+            cp "$dotfiles_path" "$qslib_path" 2>/dev/null || true
             local client_path="$HOME/personal/slk-gui-proto/Theme.qml"
             if [[ -d "$HOME/personal/slk-gui-proto" ]]; then
                 cp "$generated_file" "$client_path"

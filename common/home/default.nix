@@ -31,10 +31,13 @@ in
     # already-running processes (yazi, nvim, claude TUI). theme-manager
     # repoints this symlink between light/dark on toggle.
     FZF_DEFAULT_OPTS_FILE = "${config.home.homeDirectory}/.config/fzf/opts.conf";
+    # QsLib shared QML module (dotfiles/qslib) for quickshell apps + bar.
+    QML2_IMPORT_PATH = "${config.home.homeDirectory}/.local/share/qml";
   };
 
   systemd.user.sessionVariables = {
     GSETTINGS_SCHEMA_DIR = gsettingsSchemaDir;
+    QML2_IMPORT_PATH = "${config.home.homeDirectory}/.local/share/qml";
   };
 
   xdg.enable = true;
