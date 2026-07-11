@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
@@ -49,6 +50,7 @@ PanelWindow {
     property string nSummary: ""
     property string nBody: ""
     property string nImage: ""
+    property string nAppIcon: ""
     property string nWindowId: ""
     property int extraCount: 0         // arrivals that replaced content this show
 
@@ -67,6 +69,7 @@ PanelWindow {
         nBody = (n.body || "").replace(/<[^>]+>/g, "").replace(/\n/g, "  ")
         const img = n.image || ""
         nImage = img ? (img.startsWith("/") ? "file://" + img : img) : ""
+        nAppIcon = Notifications.appIconFor(n.appName)
         nWindowId = (n.hints && n.hints["niri-window"] !== undefined)
             ? String(n.hints["niri-window"]) : ""
         extraCount = wasOpen ? extraCount + 1 : 0
@@ -219,9 +222,27 @@ PanelWindow {
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
                     }
+                    // no avatar → the app's brand glyph; unknown app → monogram
+                    Image {
+                        id: appGlyph
+                        anchors.centerIn: parent
+                        width: 15; height: 15
+                        visible: false
+                        source: root.nAppIcon
+                        sourceSize.width: 30; sourceSize.height: 30
+                        asynchronous: true
+                    }
+                    MultiEffect {
+                        anchors.fill: appGlyph
+                        source: appGlyph
+                        visible: avatar.status !== Image.Ready && appGlyph.status === Image.Ready
+                        colorization: 1
+                        colorizationColor: Theme.fg_secondary
+                    }
                     Text {
                         anchors.centerIn: parent
                         visible: avatar.status !== Image.Ready
+                                 && (root.nAppIcon === "" || appGlyph.status !== Image.Ready)
                         text: root.nSummary.length ? root.nSummary[0].toUpperCase() : "•"
                         color: Theme.fg_muted
                         font.family: Theme.fontFamily

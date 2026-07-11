@@ -95,6 +95,18 @@ Singleton {
         return out
     }
 
+    // Brand glyph for an app's notifications (white-fill SVGs under assets/,
+    // tinted by the consumer). Used by both the Super+i picker and the island's
+    // no-avatar fallback.
+    function appIconFor(appName) {
+        const a = (appName || "").toLowerCase()
+        if (a === "slack" || a === "slk" || a === "slqs") return Qt.resolvedUrl("../assets/slack.svg")
+        if (a === "discord" || a === "endcord" || a === "dsqrd") return Qt.resolvedUrl("../assets/discord.svg")
+        if (a === "mlqs") return Qt.resolvedUrl("../assets/mail.svg")
+        if (a === "kitty") return Qt.resolvedUrl("../assets/claude.svg")
+        return ""
+    }
+
     readonly property var trayApps: ["slack", "slk", "discord", "endcord", "kitty", "mlqs"]
     function isTrayApp(n) {
         return !!(n && root.trayApps.indexOf((n.appName || "").toLowerCase()) !== -1)

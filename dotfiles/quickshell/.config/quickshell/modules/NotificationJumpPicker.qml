@@ -78,18 +78,7 @@ Picker {
         ])
     }
 
-    // Monochrome brand icon for the row, tinted to the theme via MultiEffect.
-    // slqs deliberately tags its notifications AppName "slk" (the old TUI's
-    // name, kept for downstream consumers) and dsqrd uses "Discord"; map the
-    // raw ids to a bundled white-fill SVG under assets/.
-    function _icon(appName) {
-        const a = (appName || "").toLowerCase()
-        if (a === "slack" || a === "slk" || a === "slqs") return Qt.resolvedUrl("../assets/slack.svg")
-        if (a === "discord" || a === "endcord" || a === "dsqrd") return Qt.resolvedUrl("../assets/discord.svg")
-        if (a === "mlqs") return Qt.resolvedUrl("../assets/mail.svg")
-        if (a === "kitty") return Qt.resolvedUrl("../assets/claude.svg")
-        return ""
-    }
+    function _icon(appName) { return Notifications.appIconFor(appName) }
 
     function mkItemLive(n) {
         const wid = (n.hints && n.hints["niri-window"] !== undefined) ? String(n.hints["niri-window"]) : ""
