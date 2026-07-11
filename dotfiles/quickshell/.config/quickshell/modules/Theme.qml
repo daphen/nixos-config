@@ -119,6 +119,8 @@ Singleton {
     readonly property color notch:    bg
     readonly property color pill:     Qt.rgba(bg.r, bg.g, bg.b, 0.85)
     readonly property color hairline: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha)
+    // softer hairpin for low-emphasis outlines (unread pills, quiet chips)
+    readonly property color hairlineSoft: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha * 0.6)
     readonly property color dimmedFg: Qt.rgba(fg.r, fg.g, fg.b, dimmedFgAlpha)
 
     readonly property int barHeight:     44

@@ -100,6 +100,8 @@ Singleton {
     readonly property real hairlineAlpha: palettes[mode].hairlineAlpha
     readonly property real dimmedFgAlpha: palettes[mode].dimmedFgAlpha
     readonly property color hairline: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha)
+    // softer hairpin for low-emphasis outlines (unread pills, quiet chips)
+    readonly property color hairlineSoft: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha * 0.6)
     readonly property color dimmedFg: Qt.rgba(fg.r, fg.g, fg.b, dimmedFgAlpha)
     // Hover/selection tint derived from fg, so it shows in light mode (the old
     // hardcoded white-alpha overlays were invisible on light backgrounds).
