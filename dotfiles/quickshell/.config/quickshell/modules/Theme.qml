@@ -119,6 +119,10 @@ Singleton {
     readonly property color notch:    bg
     readonly property color pill:     Qt.rgba(bg.r, bg.g, bg.b, 0.85)
     readonly property color hairline: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha)
+    // picker-grammar card geometry (shared with the client apps)
+    readonly property int radiusCard: 24
+    readonly property int insetCard:  14
+    readonly property int radiusInner: radiusCard - insetCard
     // softer hairpin for low-emphasis outlines (unread pills, quiet chips)
     readonly property color hairlineSoft: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha * 0.6)
     readonly property color dimmedFg: Qt.rgba(fg.r, fg.g, fg.b, dimmedFgAlpha)

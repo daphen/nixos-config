@@ -109,6 +109,11 @@ Singleton {
 
     readonly property int radius:    12
     readonly property int radiusSm:  7
+    // picker-grammar card geometry: floating surfaces sit at radiusCard,
+    // nested boxes inset by insetCard and use radiusInner (outer − inset)
+    readonly property int radiusCard: 24
+    readonly property int insetCard:  14
+    readonly property int radiusInner: radiusCard - insetCard
     readonly property int padding:   12
     readonly property int paddingSm: 6
     readonly property int fontSize:  14
