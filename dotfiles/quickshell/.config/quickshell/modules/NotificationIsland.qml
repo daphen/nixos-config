@@ -136,17 +136,29 @@ PanelWindow {
     // so the joint is invisible: the capsule's top overlaps the notch's
     // bottom border and shares its exact colors.
     // 4 logical px so the capsule's top edge lands on an integer physical
+    // Fullscreen content covers the bar (top layer), so there is no notch
+    // to grow out of — detach: sit flush near the top edge as a free
+    // capsule, fully rounded, with its own top border. Fullscreen is
+    // inferred from the focused window filling the screen height (nothing
+    // else reaches past the bar's exclusive zone).
+    readonly property bool detached: {
+        const _ = NiriState.version
+        const w = NiriState.windows[NiriState.focusedWindowId()]
+        if (!w || !w.layout || !w.layout.window_size || w.is_floating) return false
+        return root.screen && w.layout.window_size[1] >= root.screen.height
+    }
+
     // pixel at 1.75 scale — a fractional edge leaves an antialiased row
     // that lets the notch border bleed through.
-    readonly property int seamOverlap: 4
+    readonly property int seamOverlap: detached ? 0 : 4
     Rectangle {
         id: capsule
         anchors.horizontalCenter: parent.horizontalCenter
-        y: Theme.barHeight - root.seamOverlap
+        y: root.detached ? 8 : Theme.barHeight - root.seamOverlap
         height: root.open ? Math.max(52, content.implicitHeight + 22) + root.seamOverlap : 0
         width: root.open ? Math.min(content.implicitWidth + 32, 560) : 48
-        topLeftRadius: 0
-        topRightRadius: 0
+        topLeftRadius: root.detached ? bottomLeftRadius : 0
+        topRightRadius: root.detached ? bottomRightRadius : 0
         bottomLeftRadius: Math.min(height / 2, Theme.notchRadius + 6)
         bottomRightRadius: Math.min(height / 2, Theme.notchRadius + 6)
         // Root is fill-colored so the part tucked inside the notch is
@@ -159,8 +171,8 @@ PanelWindow {
             anchors.fill: parent
             anchors.topMargin: root.seamOverlap
             color: Theme.hairline
-            topLeftRadius: 0
-            topRightRadius: 0
+            topLeftRadius: capsule.topLeftRadius
+            topRightRadius: capsule.topRightRadius
             bottomLeftRadius: capsule.bottomLeftRadius
             bottomRightRadius: capsule.bottomRightRadius
             clip: true
@@ -172,11 +184,12 @@ PanelWindow {
                 anchors.bottomMargin: 1
                 // Rounded rects antialias every edge; a flush top edge
                 // leaves a partial-alpha row that tints the seam. Overshoot
-                // the top so the parent's clip cuts it with a hard edge.
-                anchors.topMargin: -2
+                // the top so the parent's clip cuts it with a hard edge —
+                // except detached, where the top border is real.
+                anchors.topMargin: root.detached ? 1 : -2
                 color: Theme.notch
-                topLeftRadius: 0
-                topRightRadius: 0
+                topLeftRadius: root.detached ? Math.max(0, capsule.topLeftRadius - 1) : 0
+                topRightRadius: root.detached ? Math.max(0, capsule.topRightRadius - 1) : 0
                 bottomLeftRadius: Math.max(0, capsule.bottomLeftRadius - 1)
                 bottomRightRadius: Math.max(0, capsule.bottomRightRadius - 1)
             }
