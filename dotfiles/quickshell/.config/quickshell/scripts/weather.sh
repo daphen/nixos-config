@@ -19,7 +19,7 @@ case "$condition_lower" in
   *"overcast"*)                       icon="󰖐" ;;
   *"partly cloudy"*|*"patchy"*)       icon="󰖕" ;;
   *"cloudy"*|*"cloud"*)               icon="󰖐" ;;
-  *"clear"*|*"sunny"*)                icon="󰖙" ;;
+  *"clear"*|*"sunny"*)                icon="󰖨" ;;   # filled sun (white-balance-sunny)
   *)                                  icon="󰖐" ;;
 esac
 

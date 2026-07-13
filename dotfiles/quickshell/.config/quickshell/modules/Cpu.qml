@@ -50,8 +50,8 @@ Item {
         Lib.Icon {
             name: "chip"
             color: Theme.fg
-            // airy line-glyph: +1px optical compensation vs solid neighbors
-            width: 16; height: 16
+            // the chip's drawn body is compact in its grid — largest bump
+            width: 18; height: 18
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
