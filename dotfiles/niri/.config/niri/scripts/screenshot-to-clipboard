@@ -21,8 +21,8 @@ if grim -g "$SELECTION" "$SCREENSHOT_FILE"; then
     # Create/update symlink to latest screenshot
     ln -sf "$SCREENSHOT_FILE" "$LATEST_LINK"
 
-    # Notify user
-    notify-send "Screenshot" "Copied to clipboard"
+    # Notify user — the screenshot itself is the notification icon
+    notify-send -h "string:image-path:$SCREENSHOT_FILE" "Screenshot" "Copied to clipboard"
 
     # Clean up old screenshots (keep last 100 — the clipboard picker matches
     # these files' timestamps to label entries "screenshot" vs "image")
