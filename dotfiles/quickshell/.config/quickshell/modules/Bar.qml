@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import "."
 import "../QsLib" as Lib
@@ -196,11 +197,24 @@ PanelWindow {
                     id: spendRow
                     spacing: 8
 
-                    Lib.Icon {
-                        name: "magic-wand"
-                        color: Theme.fg
+                    // the Claude spark — same brand asset as its notifications
+                    Item {
                         width: 15; height: 15
                         anchors.verticalCenter: parent.verticalCenter
+                        Image {
+                            id: claudeGlyph
+                            anchors.fill: parent
+                            source: Qt.resolvedUrl("../assets/claude.svg")
+                            sourceSize.width: 15; sourceSize.height: 15
+                            visible: false
+                            asynchronous: true
+                        }
+                        MultiEffect {
+                            anchors.fill: claudeGlyph
+                            source: claudeGlyph
+                            colorization: 1
+                            colorizationColor: Theme.fg
+                        }
                     }
 
                     Text {
