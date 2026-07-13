@@ -23,6 +23,9 @@ done
 # it skip the restart, leaving the UI with no daemon at all.
 for pid in $KILLED; do
     for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+    # still up after 5s of SIGTERM patience — force it, a half-dead daemon
+    # makes the wrapper below skip the restart and the UI comes up empty
+    kill -9 "$pid" 2>/dev/null || true
 done
 
 
