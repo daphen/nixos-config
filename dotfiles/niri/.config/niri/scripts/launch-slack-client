@@ -8,14 +8,12 @@ export QML2_IMPORT_PATH="$HOME/.local/share/qml"
 export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
 
 # Replace a stale daemon: after a rebuild the running slqs may be an older
-# store build (the wrapper only ensures one exists). Kill it if its binary
-# differs from the current profile's — the wrapper below respawns it.
+# store build. pgrep by name — a full /proc sweep costs ~2s of forks.
 CURRENT=$(readlink -f "$(command -v slqs)" 2>/dev/null)
-for p in /proc/[0-9]*; do
-    exe=$(readlink "$p/exe" 2>/dev/null) || continue
-    case "$exe" in */bin/slqs) ;; *) continue ;; esac
+for pid in $(pgrep -x slqs 2>/dev/null); do
+    exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || continue
     if [ -n "$CURRENT" ] && [ "$exe" != "$CURRENT" ]; then
-        kill "${p#/proc/}" 2>/dev/null
+        kill "$pid" 2>/dev/null
     fi
 done
 
