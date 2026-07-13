@@ -145,8 +145,12 @@ fi
 
 # For a plain forward (not an explicit new window), focus the profile's home
 # window first so Chromium opens the URL as a tab THERE, not in whatever work
-# window happened to be active last. A short settle lets Chromium register the
-# Wayland activation before it decides which window receives the URL.
+# window happened to be active last. All work windows share one Chromium
+# instance, so the ONLY lever on which window receives a forwarded URL is
+# which window Chromium considers "last active" — and that's driven by the
+# compositor activating it. We must (1) confirm niri actually moved focus and
+# (2) let Chromium drain the activation event before handing off, or the
+# singleton still routes the URL to the previously-active (worktree) window.
 if [[ -z "$NEW_WINDOW" ]]; then
     if [[ "$PROFILE" == "work" ]]; then
         TARGET=$(main_window_id "$BROWSER_CLASS_WORK")
@@ -155,7 +159,14 @@ if [[ -z "$NEW_WINDOW" ]]; then
     fi
     if [[ -n "$TARGET" ]]; then
         niri msg action focus-window --id "$TARGET" >/dev/null 2>&1
-        sleep 0.2
+        for _ in $(seq 1 20); do
+            foc=$(niri msg --json windows 2>/dev/null | python3 -c '
+import json, sys
+print(next((w["id"] for w in json.load(sys.stdin) if w.get("is_focused")), ""))' 2>/dev/null)
+            [[ "$foc" == "$TARGET" ]] && break
+            sleep 0.05
+        done
+        sleep 0.4
     fi
 fi
 
