@@ -156,7 +156,8 @@ PanelWindow {
         anchors.horizontalCenter: parent.horizontalCenter
         y: root.detached ? 8 : Theme.barHeight - root.seamOverlap
         height: root.open ? Math.max(52, content.implicitHeight + 22) + root.seamOverlap : 0
-        width: root.open ? Math.min(content.implicitWidth + 32, 560) : 48
+        // floor keeps one-word notifications from rendering as stubby pills
+        width: root.open ? Math.min(Math.max(content.implicitWidth + 32, 300), 560) : 48
         topLeftRadius: root.detached ? bottomLeftRadius : 0
         topRightRadius: root.detached ? bottomRightRadius : 0
         bottomLeftRadius: Math.min(height / 2, Theme.notchRadius + 6)
