@@ -382,7 +382,8 @@ PanelWindow {
             root.cycleChin(event.key === Qt.Key_L ? 1 : -1); event.accepted = true
         } else if ((event.key === Qt.Key_H || event.key === Qt.Key_L) && ctrl) {
             const dir = event.key === Qt.Key_L ? 1 : -1
-            root.filterTab = (root.filterTab + dir + root.filterTabs.length) % root.filterTabs.length
+            const n = root.filterTabs.length - 1   // "?" lives behind the badge, not in the cycle
+            root.filterTab = (root.filterTab + dir + n) % n
             event.accepted = true
         } else if ((event.key === Qt.Key_D || event.key === Qt.Key_W) && ctrl) {
             // ⌃w matches browser muscle memory; ⌃d kept as the original bind
@@ -568,7 +569,7 @@ PanelWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
                     Repeater {
-                        model: root.filterTabs
+                        model: root.filterTabs.filter(t => t !== "?")
                         Rectangle {
                             required property var modelData
                             required property int index
@@ -591,6 +592,21 @@ PanelWindow {
                             HoverHandler { id: tabHover }
                             TapHandler { onTapped: root.filterTab = parent.index }
                         }
+                    }
+                }
+
+                Lib.KeyCap {
+                    readonly property bool helpActive: root.filterTab === root.filterTabs.length - 1
+                    anchors.right: parent.right
+                    anchors.rightMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "?"
+                    textColor: helpActive ? Theme.fg
+                             : Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
+                    border.color: helpActive ? Theme.fg_muted : Theme.hairline
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    TapHandler {
+                        onTapped: root.filterTab = parent.helpActive ? 0 : root.filterTabs.length - 1
                     }
                 }
 
