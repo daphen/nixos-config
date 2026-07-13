@@ -9,9 +9,12 @@ export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
 # Replace a stale daemon (python process): match by cmdline via pgrep -f,
 # compare the store path it runs from against the current profile.
 CUR_STORE=$(dirname "$(dirname "$(readlink -f "$(command -v dsqrd)")")")
-for pid in $(pgrep -f "bin/dsqrd|dsqrd-wrapped" 2>/dev/null); do
+for pid in $(pgrep -f "dsqrd" 2>/dev/null); do
     cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || continue
-    case "$cmdline" in *quickshell*|*launch-discord*) continue ;; esac
+    # daemon runs as `python3 .../share/dsqrd/dsqrd.py` — match broadly,
+    # exclude the UI, this script, and unrelated hits
+    case "$cmdline" in *quickshell*|*launch-discord*|*pgrep*) continue ;; esac
+    case "$cmdline" in *dsqrd*) ;; *) continue ;; esac
     if [ -n "$CUR_STORE" ] && [ "${cmdline#*"$CUR_STORE"}" = "$cmdline" ]; then
         kill "$pid" 2>/dev/null
     fi
