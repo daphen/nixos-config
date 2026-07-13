@@ -48,7 +48,7 @@ Item {
         spacing: 6
 
         Lib.Icon {
-            name: "gauge-3"
+            name: "chip"
             color: Theme.fg
             width: 15; height: 15
             anchors.verticalCenter: parent.verticalCenter
