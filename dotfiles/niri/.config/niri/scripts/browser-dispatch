@@ -41,7 +41,8 @@ is_personal_url() {
 }
 
 is_work_url() {
-    [[ "$1" =~ lovable ]]
+    [[ "$1" =~ lovable ]] || \
+    [[ "$1" =~ ^https?://(www\.)?github\.com/lovablelabs(/|$) ]]
 }
 
 # ── Profile selection ─────────────────────────────────────────────────────────
