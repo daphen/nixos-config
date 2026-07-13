@@ -67,10 +67,24 @@ pick_last_focused_profile() {
     fi
 }
 
+# Work context is workspace-shaped: anything opened while a lovable-*
+# workspace (main worktree included) is focused belongs in the work
+# profile. URL rules still win — youtube stays personal everywhere.
+on_work_workspace() {
+    niri msg --json workspaces 2>/dev/null | python3 -c '
+import json, sys
+for w in json.load(sys.stdin):
+    if w.get("is_focused") and (w.get("name") or "").startswith("lovable-"):
+        sys.exit(0)
+sys.exit(1)
+'
+}
+
 if [[ -n "$FORCED_PROFILE" ]]; then
     PROFILE="$FORCED_PROFILE"
 else
     PROFILE=$(pick_last_focused_profile)
+    if on_work_workspace; then PROFILE="work"; fi
     if is_work_url "$URL"; then PROFILE="work"; fi
     if is_personal_url "$URL"; then PROFILE="personal"; fi
 fi
