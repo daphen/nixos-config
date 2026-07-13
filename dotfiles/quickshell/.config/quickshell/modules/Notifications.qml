@@ -104,6 +104,7 @@ Singleton {
         if (a === "discord" || a === "endcord" || a === "dsqrd") return Qt.resolvedUrl("../assets/discord.svg")
         if (a === "mlqs") return Qt.resolvedUrl("../assets/mail.svg")
         if (a === "kitty") return Qt.resolvedUrl("../assets/claude.svg")
+        if (a === "screenshot") return Qt.resolvedUrl("../assets/camera.svg")
         return ""
     }
 
