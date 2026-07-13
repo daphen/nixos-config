@@ -2,7 +2,8 @@
 
 data=$(curl -s 'wttr.in/Stockholm?format=%C|%t')
 condition=$(echo "$data" | cut -d'|' -f1 | xargs)
-temp=$(echo "$data" | cut -d'|' -f2 | tr -d ' ')
+# wttr prefixes positive temps with '+' — strip it, keep a real '-'
+temp=$(echo "$data" | cut -d'|' -f2 | tr -d ' ' | sed 's/^+//')
 
 condition_lower=$(echo "$condition" | tr '[:upper:]' '[:lower:]')
 
