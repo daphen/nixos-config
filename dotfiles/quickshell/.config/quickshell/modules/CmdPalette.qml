@@ -153,33 +153,21 @@ PanelWindow {
         const scope = scopedWindowId
 
         if (ftab === "?") {
+            // keys as the title, action as the muted subtitle — no prose
             const help = [
-                ["Navigation", [
-                    ["↵", "open — tab: focus it · quickmark/url/web: current tab"],
-                    ["⌃↵", "open in a new tab"],
-                    ["⇧↵", "web-search the raw query"],
-                    ["⌃j / ⌃k", "move selection"],
-                    ["⌃h / ⌃l", "switch filter (All · Tabs · Quickmarks · Web · ?)"],
-                    ["⌃⇧h / ⌃⇧l", "cycle window scope in the chin"],
-                ]],
-                ["Tab actions", [
-                    ["⌃w  (or ⌃d)", "close the focused tab"],
-                    ["⌃m", "quickmark the focused tab"],
-                ]],
-                ["Modes", [
-                    ["⌃/", "toggle this cheat sheet"],
-                    ["tab", "enter web-search mode"],
-                    ["backspace on empty", "leave search mode"],
-                    ["esc", "close the palette"],
-                ]],
+                ["\u23ce   \u2303\u23ce", "open \u00b7 open in new tab"],
+                ["\u2303j   \u2303k", "move"],
+                ["\u2303h   \u2303l", "switch filter"],
+                ["\u2303\u21e7h   \u2303\u21e7l", "window scope"],
+                ["\u2303w", "close tab"],
+                ["\u2303m", "quickmark tab"],
+                ["tab", "web-search mode"],
+                ["\u2303/", "toggle this sheet"],
             ]
-            const out = []
-            for (const [heading, rows] of help) {
-                out.push({ divider: true, label: heading })
-                for (const [keys, what] of rows)
-                    out.push({ kind: "help", title: keys + "    —    " + what,
-                               url: "", subtitle: "", faviconPath: "" })
-            }
+            const out = [{ divider: true, label: "Keybinds" }]
+            for (const [keys, what] of help)
+                out.push({ kind: "help", title: keys, subtitle: what,
+                           url: "", faviconPath: "" })
             return out
         }
 
