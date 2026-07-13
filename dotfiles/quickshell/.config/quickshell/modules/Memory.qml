@@ -36,7 +36,8 @@ Item {
         Lib.Icon {
             name: "layers-3"
             color: Theme.fg
-            width: 15; height: 15
+            // airy line-glyph: +1px optical compensation vs solid neighbors
+            width: 16; height: 16
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
