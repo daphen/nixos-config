@@ -36,7 +36,9 @@ Item {
                 if (percentage < 30) return Theme.yellow
                 return Theme.fg
             }
-            width: 15; height: 15
+            // the battery glyph is squat in its grid — render a touch larger
+            // so it optically matches the taller neighbors
+            width: 17; height: 17
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
