@@ -336,7 +336,9 @@ PYEOF
             cp "$generated_file" "$qslib_path"
             # keep app-vendored QsLib snapshots shipping the current theme
             local vend
-            for vend in "$HOME/personal/mlqs/ui/vendor/QsLib"; do
+            for vend in "$HOME/personal/mlqs/ui/vendor/QsLib" \
+                        "$HOME/personal/slqs/ui/vendor/QsLib" \
+                        "$HOME/personal/dsqrd/ui/vendor/QsLib"; do
                 [[ -d "$vend" ]] && cp "$generated_file" "$vend/Theme.qml"
             done
             log_success "Applied QsLib client theme (managed + vendored)"
