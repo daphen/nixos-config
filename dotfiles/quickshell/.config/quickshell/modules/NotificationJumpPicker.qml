@@ -19,6 +19,9 @@ Picker {
 
     placeholder: "notification"
     iconField: "icon"
+    // right-slot hints; drop the redundant j/k "move" on the left
+    navHint: false
+    altLabel: "ctrl+r: mark read · ctrl+o: expand"
     // Ctrl+O unfolds the notification body (clipboard-picker convention)
     previewTextField: "body"
     // Ctrl+R marks read in place: mail invokes the daemon's "read" action

@@ -49,6 +49,9 @@ PanelWindow {
     // What Enter does, shown in the footer — pickers whose Enter isn't
     // "open" override it so the hint can't contradict altLabel.
     property string enterLabel: "open"
+    // j/k "move" hint in the footer's left slot — obvious noise in pickers
+    // whose right slot already carries richer hints; opt out to drop it.
+    property bool navHint: true
     // Opt-in image preview: items with a path in this field get a real-color
     // thumbnail, and Ctrl+O toggles a preview pane above the footer showing
     // the SELECTED item's image — it follows j/k, selection never moves.
@@ -861,9 +864,10 @@ PanelWindow {
                     anchors.leftMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
-                    KeyCap { text: "j" }
-                    KeyCap { text: "k" }
+                    KeyCap { visible: root.navHint; text: "j" }
+                    KeyCap { visible: root.navHint; text: "k" }
                     Text {
+                        visible: root.navHint
                         anchors.verticalCenter: parent.verticalCenter
                         text: "move"
                         color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
@@ -871,7 +875,7 @@ PanelWindow {
                         font.pixelSize: 12
                         renderType: Text.NativeRendering
                     }
-                    Item { width: 8; height: 1 }
+                    Item { visible: root.navHint; width: 8; height: 1 }
                     KeyCap { text: "↵" }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
