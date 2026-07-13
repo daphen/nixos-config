@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import "."
+import "../QsLib" as Lib
 
 // Command palette — quickshell port of the chromium-palette popup.
 // Data + actions come from PaletteState (palette-daemon over the UI
@@ -363,12 +364,27 @@ PanelWindow {
             const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
             const e = root.entries[idx]
             if (e && !e.divider && e.kind === "tab" && e.url) {
-                // name from the title, trimmed to something quickmark-shaped
-                const name = (e.title || e.url).trim().slice(0, 48)
-                PaletteState.quickmarkAdd(name, e.url)
+                const already = (PaletteState.quickmarks || []).some(q => q.url === e.url)
+                if (already) {
+                    markToast.show("already quickmarked")
+                } else {
+                    // name from the title, trimmed to something quickmark-shaped
+                    const name = (e.title || e.url).trim().slice(0, 48)
+                    PaletteState.quickmarkAdd(name, e.url)
+                    markToast.show("quickmarked: " + name)
+                }
             }
             event.accepted = true
         }
+    }
+
+    // transient confirmation for silent actions (quickmark, …)
+    Lib.FeedbackPill {
+        id: markToast
+        z: 300
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 90
     }
 
     // ── visuals: faithful clone of the original popup ─────────────────
