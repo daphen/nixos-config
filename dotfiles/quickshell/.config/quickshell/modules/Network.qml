@@ -55,7 +55,8 @@ Item {
         Lib.Icon {
             name: "signal-2"
             color: Theme.fg
-            width: 15; height: 15
+            // signal fan occupies a corner of its grid — biggest optical bump
+            width: 17; height: 17
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
