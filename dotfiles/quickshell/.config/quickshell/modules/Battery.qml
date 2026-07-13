@@ -23,9 +23,12 @@ Item {
         spacing: 6
 
         Lib.Icon {
-            name: chargeState === UPowerDeviceState.Charging ? "battery-charging"
+            // bolt whenever on AC (charging, holding at full, or charge-limited)
+            name: chargeState === UPowerDeviceState.Charging
+                  || chargeState === UPowerDeviceState.FullyCharged
+                  || chargeState === UPowerDeviceState.PendingCharge ? "battery-charging"
                 : percentage > 95 ? "battery-full"
-                : percentage > 50 ? "battery-high" : "battery"
+                : percentage > 20 ? "battery-high" : "battery"
             color: {
                 if (chargeState === UPowerDeviceState.Charging
                     || chargeState === UPowerDeviceState.FullyCharged) return Theme.green
