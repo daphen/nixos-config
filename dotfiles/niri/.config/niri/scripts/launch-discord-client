@@ -8,6 +8,7 @@ export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
 
 # Replace a stale daemon (python process): match by cmdline via pgrep -f,
 # compare the store path it runs from against the current profile.
+KILLED=""
 CUR_STORE=$(dirname "$(dirname "$(readlink -f "$(command -v dsqrd)")")")
 for pid in $(pgrep -f "dsqrd" 2>/dev/null); do
     cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || continue
@@ -16,8 +17,15 @@ for pid in $(pgrep -f "dsqrd" 2>/dev/null); do
     case "$cmdline" in *quickshell*|*launch-discord*|*pgrep*) continue ;; esac
     case "$cmdline" in *dsqrd*) ;; *) continue ;; esac
     if [ -n "$CUR_STORE" ] && [ "${cmdline#*"$CUR_STORE"}" = "$cmdline" ]; then
-        kill "$pid" 2>/dev/null
+        kill "$pid" 2>/dev/null && KILLED="$KILLED $pid"
     fi
+done
+
+# Wait for the killed daemon to actually exit — the wrapper below checks for a
+# running daemon, and a dying process would make it skip the restart, leaving
+# the UI with no daemon at all.
+for pid in $KILLED; do
+    for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
 done
 
 # Reap windowless dsqrd UI orphans before launching. A failed config load leaves

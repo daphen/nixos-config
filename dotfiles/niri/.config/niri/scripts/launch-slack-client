@@ -10,12 +10,21 @@ export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
 # Replace a stale daemon: after a rebuild the running slqs may be an older
 # store build. pgrep by name — a full /proc sweep costs ~2s of forks.
 CURRENT=$(readlink -f "$(command -v slqs)" 2>/dev/null)
+KILLED=""
 for pid in $(pgrep -x slqs 2>/dev/null); do
     exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || continue
     if [ -n "$CURRENT" ] && [ "$exe" != "$CURRENT" ]; then
-        kill "$pid" 2>/dev/null
+        kill "$pid" 2>/dev/null && KILLED="$KILLED $pid"
     fi
 done
+
+# Wait for the killed daemon to actually exit — the wrapper below checks for a
+# running daemon, and a dying process (graceful shutdown takes ~1s) would make
+# it skip the restart, leaving the UI with no daemon at all.
+for pid in $KILLED; do
+    for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+done
+
 
 # Reap windowless slqs UI orphans before launching. A failed config load leaves
 # quickshell alive without mapping a window; niri-jump-or-exec then can't focus
