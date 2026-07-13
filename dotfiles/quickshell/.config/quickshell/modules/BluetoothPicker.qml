@@ -4,6 +4,7 @@ import Quickshell.Bluetooth
 import "."
 
 Picker {
+    emptyText: "no devices"
     id: root
 
     open: BluetoothPickerState.open

@@ -4,6 +4,7 @@ import Quickshell.Io
 import "."
 
 Picker {
+    emptyText: "no lovssh history yet"
     id: root
 
     open: LovboxPickerState.open

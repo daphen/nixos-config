@@ -4,6 +4,7 @@ import Quickshell.Io
 import "."
 
 Picker {
+    emptyText: "no matching emoji"
     id: root
 
     open: EmojiPickerState.open

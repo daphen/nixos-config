@@ -11,6 +11,7 @@ import "."
 // channel/thread) and focuses the window. Slack/Discord messages stay as
 // history; Claude prompts clear when you act on them.
 Picker {
+    emptyText: "no notifications"
     id: root
 
     open: NotificationJumpPickerState.open

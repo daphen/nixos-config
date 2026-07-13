@@ -353,10 +353,20 @@ PanelWindow {
             const dir = event.key === Qt.Key_L ? 1 : -1
             root.filterTab = (root.filterTab + dir + root.filterTabs.length) % root.filterTabs.length
             event.accepted = true
-        } else if (event.key === Qt.Key_D && ctrl) {
+        } else if ((event.key === Qt.Key_D || event.key === Qt.Key_W) && ctrl) {
+            // ⌃w matches browser muscle memory; ⌃d kept as the original bind
             const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
             const e = root.entries[idx]
             if (e && !e.divider && e.kind === "tab") PaletteState.closeTab(e.tabId)
+            event.accepted = true
+        } else if (event.key === Qt.Key_M && ctrl) {
+            const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
+            const e = root.entries[idx]
+            if (e && !e.divider && e.kind === "tab" && e.url) {
+                // name from the title, trimmed to something quickmark-shaped
+                const name = (e.title || e.url).trim().slice(0, 48)
+                PaletteState.quickmarkAdd(name, e.url)
+            }
             event.accepted = true
         }
     }

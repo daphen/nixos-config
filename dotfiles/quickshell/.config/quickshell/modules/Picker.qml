@@ -81,6 +81,9 @@ PanelWindow {
     // Set by pickers whose items arrive asynchronously: shows a loading
     // indicator, and the list fades in once loading clears.
     property bool loading: false
+    // Shown centered when the picker has nothing to list (and isn't loading).
+    // Pickers override with their own flavor ("no networks found", …).
+    property string emptyText: "nothing here"
     // Optional per-item colored status glyph (a Nerd Font char) at the row's
     // left; its color comes from glyphColorField (a color value on the item).
     property string glyphField: ""
@@ -124,6 +127,8 @@ PanelWindow {
     readonly property int listContentHeight: {
         // loading: give the dots a comfortable stage instead of an 18px slit
         if (loading) return 96
+        // empty: room for the empty-state line
+        if (filtered.length === 0) return 72
         let h = 28   // header + footer spacers (14 + 14)
         for (let i = 0; i < filtered.length; i++) {
             const it = filtered[i]
@@ -694,6 +699,17 @@ PanelWindow {
                     if (currentIndex <= root.firstSelectable()) positionViewAtBeginning()
                     else if (currentIndex === count - 1) positionViewAtEnd()
                 }
+            }
+
+            Text {
+                renderType: Text.NativeRendering
+                anchors.centerIn: parent
+                visible: !root.loading && root.filtered.length === 0
+                text: root.emptyText
+                color: Theme.fg_muted
+                font.family: Theme.fontFamily
+                font.hintingPreference: Font.PreferNoHinting
+                font.pixelSize: 12
             }
 
             Item {

@@ -8,6 +8,7 @@ import "."
 // JSON is watched live, image entries render their thumbnail, Enter copies
 // (text via wl-copy argv, images by mime from the file extension).
 Picker {
+    emptyText: "clipboard history is empty"
     id: root
 
     open: ClipboardPickerState.open

@@ -4,6 +4,7 @@ import Quickshell.Io
 import "."
 
 Picker {
+    emptyText: "no networks found"
     id: root
 
     open: NetworkPickerState.open
@@ -46,6 +47,8 @@ Picker {
 
     function refresh() {
         if (!root.active) return
+        // cold open: show the loading dots until the first scan lands
+        if (root.items.length === 0) root.loading = true
         listProc.running = true
         savedProc.running = true
     }
@@ -79,6 +82,7 @@ Picker {
                     out.push({ active, ssid, signal, security })
                 }
                 root.networks = out
+                root.loading = false
             }
         }
     }

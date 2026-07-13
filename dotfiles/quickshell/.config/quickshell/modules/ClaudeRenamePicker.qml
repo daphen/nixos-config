@@ -3,6 +3,7 @@ import Quickshell
 import "."
 
 Picker {
+    emptyText: "no claude sessions"
     id: root
 
     open: ClaudeRenamePickerState.open
