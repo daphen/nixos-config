@@ -23,7 +23,7 @@ Item {
         spacing: 6
 
         Lib.Icon {
-            name: percentage > 50 ? "battery-high" : "battery"
+            name: percentage > 95 ? "battery-full" : percentage > 50 ? "battery-high" : "battery"
             color: {
                 if (chargeState === UPowerDeviceState.Charging
                     || chargeState === UPowerDeviceState.FullyCharged) return Theme.green
