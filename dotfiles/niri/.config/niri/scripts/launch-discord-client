@@ -6,6 +6,18 @@
 export QML2_IMPORT_PATH="$HOME/.local/share/qml"
 export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
 
+# Replace a stale daemon: after a rebuild the running dsqrd may be an older
+# store build (the wrapper only ensures one exists). Kill it if its binary
+# differs from the current profile's — the wrapper below respawns it.
+CURRENT=$(readlink -f "$(command -v dsqrd)" 2>/dev/null)
+for p in /proc/[0-9]*; do
+    exe=$(readlink "$p/exe" 2>/dev/null) || continue
+    case "$exe" in */bin/dsqrd) ;; *) continue ;; esac
+    if [ -n "$CURRENT" ] && [ "$exe" != "$CURRENT" ]; then
+        kill "${p#/proc/}" 2>/dev/null
+    fi
+done
+
 # Reap windowless dsqrd UI orphans before launching. A failed config load leaves
 # quickshell alive without mapping a window; niri-jump-or-exec then can't focus
 # it, so each launch piled up another. Scoped to dsqrd by its store UI path.
