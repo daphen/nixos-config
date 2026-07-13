@@ -9,6 +9,7 @@ Item {
 
     property string kind: "disconnected"
     property string label: "Disconnected"
+    property int strength: 0
 
     implicitWidth: row.implicitWidth + Theme.modulePadH * 2
     implicitHeight: parent ? parent.height : Theme.barHeight
@@ -17,8 +18,8 @@ Item {
         id: proc
         running: true
         command: ["sh", "-c",
-            "ssid=$(nmcli -t -f ACTIVE,SSID dev wifi 2>/dev/null | awk -F: '/^yes:/ {sub(/^yes:/, \"\"); print; exit}'); " +
-            "if [ -n \"$ssid\" ]; then echo \"wifi $ssid\"; else " +
+            "line=$(nmcli -t -f ACTIVE,SIGNAL,SSID dev wifi 2>/dev/null | awk -F: '/^yes:/ {sig=$2; ssid=$3; for(i=4;i<=NF;i++) ssid=ssid \":\" $i; print sig, ssid; exit}'); " +
+            "if [ -n \"$line\" ]; then echo \"wifi $line\"; else " +
             "  eth=$(nmcli -t -f TYPE,DEVICE connection show --active 2>/dev/null | awk -F: '/^802-3-ethernet:/ {print $2; exit}'); " +
             "  if [ -n \"$eth\" ]; then echo \"eth $eth\"; else echo \"none\"; fi; " +
             "fi"
@@ -28,7 +29,9 @@ Item {
                 const t = this.text.trim()
                 if (t.startsWith("wifi ")) {
                     root.kind = "wifi"
-                    root.label = t.substring(5)
+                    const m = t.match(/^wifi (\d+) (.*)$/)
+                    root.strength = m ? parseInt(m[1]) : 100
+                    root.label = m ? m[2] : t.substring(5)
                 } else if (t.startsWith("eth ")) {
                     root.kind = "eth"
                     root.label = t.substring(4)
@@ -53,7 +56,10 @@ Item {
         spacing: 6
 
         Lib.Icon {
-            name: "signal-2"
+            // custom thick-stroke wifi fan, arcs by signal strength
+            name: root.kind === "eth" ? "plug-2"
+                : root.strength > 66 ? "wifi-3"
+                : root.strength > 33 ? "wifi-2" : "wifi-1"
             color: Theme.fg
             // signal fan occupies a corner of its grid — biggest optical bump
             width: 17; height: 17
