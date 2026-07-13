@@ -167,6 +167,7 @@ PanelWindow {
                     ["⌃m", "quickmark the focused tab"],
                 ]],
                 ["Modes", [
+                    ["⌃/", "toggle this cheat sheet"],
                     ["tab", "enter web-search mode"],
                     ["backspace on empty", "leave search mode"],
                     ["esc", "close the palette"],
@@ -390,6 +391,10 @@ PanelWindow {
             const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
             const e = root.entries[idx]
             if (e && !e.divider && e.kind === "tab") PaletteState.closeTab(e.tabId)
+            event.accepted = true
+        } else if (event.key === Qt.Key_Slash && ctrl) {
+            const helpIdx = root.filterTabs.length - 1
+            root.filterTab = root.filterTab === helpIdx ? 0 : helpIdx
             event.accepted = true
         } else if (event.key === Qt.Key_M && ctrl) {
             const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
