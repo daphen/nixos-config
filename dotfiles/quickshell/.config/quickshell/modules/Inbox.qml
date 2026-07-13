@@ -1,7 +1,7 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import "."
-import "../QsLib" as Lib
 
 Item {
     id: root
@@ -53,9 +53,9 @@ Item {
 
         Repeater {
             model: [
-                { app: "slack",   icon: "circle-hashtag", count: root.inboxCounts.slack },
-                { app: "discord", icon: "msg-smile", count: root.inboxCounts.discord },
-                { app: "mail",    icon: "envelope", count: root.inboxCounts.mail }
+                { app: "slack",   count: root.inboxCounts.slack },
+                { app: "discord", count: root.inboxCounts.discord },
+                { app: "mlqs",    count: root.inboxCounts.mail }
             ]
             delegate: Row {
                 required property var modelData
@@ -63,11 +63,24 @@ Item {
                 spacing: 4
                 anchors.verticalCenter: parent.verticalCenter
 
-                Lib.Icon {
-                    name: modelData.icon
-                    color: Theme.cursor
+                // brand glyphs (shared map with the island + super+i picker)
+                Item {
                     width: 15; height: 15
                     anchors.verticalCenter: parent.verticalCenter
+                    Image {
+                        id: brand
+                        anchors.fill: parent
+                        source: Notifications.appIconFor(modelData.app)
+                        sourceSize.width: 15; sourceSize.height: 15
+                        visible: false
+                        asynchronous: true
+                    }
+                    MultiEffect {
+                        anchors.fill: brand
+                        source: brand
+                        colorization: 1
+                        colorizationColor: Theme.cursor
+                    }
                 }
                 Text {
                     visible: modelData.count > 1
