@@ -154,11 +154,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783863890,
-        "narHash": "sha256-Eu12tuWPXBUZx84arelCOrGwuelXX7mMZAiQPRFLFZs=",
+        "lastModified": 1783927854,
+        "narHash": "sha256-6wF7yy7M9+ICVPNu+f8vJjNR7oDyiRd6sb7Do0KQ8HE=",
         "ref": "refs/heads/main",
-        "rev": "1a1e55722108737d1774b7cfd01d2c0c5520427c",
-        "revCount": 110,
+        "rev": "84907ffbdfc019e34f3a344bf5230701534f048f",
+        "revCount": 111,
         "type": "git",
         "url": "ssh://git@github.com/daphen/mlqs"
       },
