@@ -17,12 +17,22 @@ for p in /proc/[0-9]*; do
     fi
 done
 
-# Warm summon: q hides the UI instead of quitting, so a current-build
-# instance usually exists — remap it over IPC (~60ms) instead of cold
-# starting quickshell. Falls through when there's nothing to summon.
-CUR_UI="$(dirname "$(dirname "$(readlink -f "$(command -v mlqs)")")")/share/mlqs/ui"
-if qs -p "$CUR_UI" ipc call mail summon >/dev/null 2>&1; then
-    exit 0
+# Warm summon: q hides the UI (the process stays warm) — poke the daemon,
+# which broadcasts to the hidden window; it remaps in ~100ms. Fall through
+# to a cold start only when no window appears.
+if printf '{"type":"summonui"}\n' | python3 -c '
+import socket, sys, os
+s = socket.socket(socket.AF_UNIX)
+s.settimeout(0.5)
+s.connect(os.environ["XDG_RUNTIME_DIR"] + "/mlqs.sock")
+s.sendall(sys.stdin.buffer.read())
+' 2>/dev/null; then
+    for _ in $(seq 1 12); do
+        if niri msg --json windows 2>/dev/null | grep -q '"title": *"mail-client"'; then
+            exit 0
+        fi
+        sleep 0.05
+    done
 fi
 
 # Reap windowless mlqs UI orphans (failed config load leaves quickshell alive
