@@ -17,6 +17,14 @@ for p in /proc/[0-9]*; do
     fi
 done
 
+# Warm summon: q hides the UI instead of quitting, so a current-build
+# instance usually exists — remap it over IPC (~60ms) instead of cold
+# starting quickshell. Falls through when there's nothing to summon.
+CUR_UI="$(dirname "$(dirname "$(readlink -f "$(command -v mlqs)")")")/share/mlqs/ui"
+if qs -p "$CUR_UI" ipc call mail summon >/dev/null 2>&1; then
+    exit 0
+fi
+
 # Reap windowless mlqs UI orphans (failed config load leaves quickshell alive
 # without a window, blocking niri-jump-or-exec).
 WIN_PIDS=" $(niri msg --json windows 2>/dev/null | python3 -c 'import json,sys;[print(w.get("pid")) for w in json.load(sys.stdin)]' 2>/dev/null | tr "\n" " ") "
