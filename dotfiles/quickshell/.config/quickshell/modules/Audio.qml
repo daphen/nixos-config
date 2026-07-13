@@ -33,7 +33,7 @@ Item {
         spacing: 6
 
         Lib.Icon {
-            name: root.bluetooth ? "headset" : (muted || volume <= 0.33) ? "volume" : "volume-up"
+            name: root.bluetooth ? "headphones" : (muted || volume <= 0.33) ? "volume" : "volume-up"
             color: muted ? Theme.red : Theme.fg
             width: 15; height: 15
             anchors.verticalCenter: parent.verticalCenter
