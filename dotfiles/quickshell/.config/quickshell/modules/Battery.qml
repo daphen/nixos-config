@@ -29,11 +29,11 @@ Item {
                   || chargeState === UPowerDeviceState.PendingCharge ? "battery-charging"
                 : percentage > 95 ? "battery-full"
                 : percentage > 20 ? "battery-high" : "battery"
+            // ink like the neighbors — the bolt already communicates AC;
+            // color only escalates for genuinely low battery
             color: {
-                if (chargeState === UPowerDeviceState.Charging
-                    || chargeState === UPowerDeviceState.FullyCharged) return Theme.green
-                if (percentage < 15) return Theme.red
-                if (percentage < 30) return Theme.yellow
+                if (percentage < 15 && chargeState !== UPowerDeviceState.Charging) return Theme.red
+                if (percentage < 30 && chargeState !== UPowerDeviceState.Charging) return Theme.yellow
                 return Theme.fg
             }
             // the battery glyph is squat in its grid — render a touch larger
