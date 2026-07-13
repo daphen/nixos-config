@@ -334,7 +334,12 @@ PYEOF
             local qslib_path="$DOTFILES_DIR/qslib/.local/share/qml/QsLib/Theme.qml"
             mkdir -p "$(dirname "$qslib_path")"
             cp "$generated_file" "$qslib_path"
-            log_success "Applied QsLib client theme (managed)"
+            # keep app-vendored QsLib snapshots shipping the current theme
+            local vend
+            for vend in "$HOME/personal/mlqs/ui/vendor/QsLib"; do
+                [[ -d "$vend" ]] && cp "$generated_file" "$vend/Theme.qml"
+            done
+            log_success "Applied QsLib client theme (managed + vendored)"
             ;;
         "kitty")
             local target_dir is_managed
