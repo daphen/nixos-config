@@ -25,12 +25,24 @@ Picker {
     // (server-side mark-read); everything else just clears from the center
     onCtrlR: item => {
         const n = item.notif
+        let fired = false
         if (n && n.actions) {
             for (let i = 0; i < n.actions.length; i++)
-                if (n.actions[i].identifier === "read") { n.actions[i].invoke(); break }
+                if (n.actions[i].identifier === "read") { n.actions[i].invoke(); fired = true; break }
         }
+        if (!fired) root.mailFallback(item, "read")
         Notifications.markSeenById(item.id)
         if (n) Notifications.clearOne(n)
+    }
+
+    // Mail history entries outlive their live Notification — the mlqs daemon
+    // keeps each id's deep-link, so re-dispatch over its socket instead.
+    function mailFallback(item, action) {
+        if ((item.app || "").toLowerCase() !== "mlqs" || item.id === undefined) return
+        Quickshell.execDetached([
+            Quickshell.env("HOME") + "/.config/niri/scripts/mlqs-notifact",
+            String(item.id), action
+        ])
     }
 
     items: buildItems(Notifications.tracked, Notifications.seenGen,
@@ -64,12 +76,14 @@ Picker {
         }
         // Fire the live default action (slk/dsqrd opens the channel/thread).
         // Only present while the notification is still live.
+        let fired = false
         if (n && n.actions) {
             const acts = n.actions
             for (let i = 0; i < acts.length; i++) {
-                if (acts[i].identifier === "default") { acts[i].invoke(); break }
+                if (acts[i].identifier === "default") { acts[i].invoke(); fired = true; break }
             }
         }
+        if (!fired) root.mailFallback(item, "default")
         // Claude prompts clear on interact (no live action; just remove).
         if (!isMsg && n) Notifications.clearOne(n)
         // Focus the window/app.
