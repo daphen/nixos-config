@@ -68,6 +68,37 @@ pick_last_focused_profile() {
     fi
 }
 
+# The "home" window for a profile — where forwarded URLs should tab in.
+# All work windows share ONE Chromium instance (one --user-data-dir), so a
+# forwarded URL otherwise lands in whichever work window was last active —
+# usually a worktree preview, or a new window if that was an app-mode one.
+# We focus this window first so the tab opens in it. Priority: the window on
+# the persistent lovable-main workspace, then the stashed launch id, then any
+# window not parked on a worktree stack.
+main_window_id() {
+    local cls="$1" stored
+    stored=$(cat "/tmp/${cls}-window-id" 2>/dev/null)
+    CLS="$cls" STORED="$stored" python3 -c '
+import json, os, subprocess, sys
+cls, stored = os.environ["CLS"], os.environ["STORED"]
+def q(k): return json.loads(subprocess.run(["niri","msg","--json",k],
+                                            capture_output=True, text=True).stdout)
+wins = q("windows")
+name = {s["id"]: (s.get("name") or "") for s in q("workspaces")}
+mine = [w for w in wins if w.get("app_id") == cls]
+def ws(w): return name.get(w.get("workspace_id"), "")
+for w in mine:
+    if ws(w) == "lovable-main": print(w["id"]); sys.exit(0)
+if stored.isdigit() and any(w["id"] == int(stored) for w in mine):
+    print(int(stored)); sys.exit(0)
+for w in mine:
+    n = ws(w)
+    if not (n.startswith("lovable-") and n != "lovable-main"):
+        print(w["id"]); sys.exit(0)
+sys.exit(1)
+' 2>/dev/null
+}
+
 # Work context is workspace-shaped: anything opened while a lovable-*
 # workspace (main worktree included) is focused belongs in the work
 # profile. URL rules still win — youtube stays personal everywhere.
@@ -110,6 +141,22 @@ if [[ -n "$APP_MODE" ]]; then
         --user-data-dir="$DATA_DIR" \
         --profile-directory="$BROWSER_PROFILE" \
         --app="$URL" >/dev/null 2>&1
+fi
+
+# For a plain forward (not an explicit new window), focus the profile's home
+# window first so Chromium opens the URL as a tab THERE, not in whatever work
+# window happened to be active last. A short settle lets Chromium register the
+# Wayland activation before it decides which window receives the URL.
+if [[ -z "$NEW_WINDOW" ]]; then
+    if [[ "$PROFILE" == "work" ]]; then
+        TARGET=$(main_window_id "$BROWSER_CLASS_WORK")
+    else
+        TARGET=$(main_window_id "$BROWSER_CLASS_PERSONAL")
+    fi
+    if [[ -n "$TARGET" ]]; then
+        niri msg action focus-window --id "$TARGET" >/dev/null 2>&1
+        sleep 0.2
+    fi
 fi
 
 if [[ "$PROFILE" == "work" ]]; then
