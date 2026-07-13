@@ -70,7 +70,7 @@ PanelWindow {
         Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
 
     // ── ranking / grouping (ported from App.tsx) ──────────────────────
-    readonly property var filterTabs: ["All", "Tabs", "Quickmarks", "Web"]
+    readonly property var filterTabs: ["All", "Tabs", "Quickmarks", "Web", "?"]
     property int filterTab: 0
     property string query: search ? search.text : ""
     property var scopedWindowId: null
@@ -151,6 +151,36 @@ PanelWindow {
         const q = query.trim().toLowerCase()
         const ftab = filterTabs[filterTab]
         const scope = scopedWindowId
+
+        if (ftab === "?") {
+            const help = [
+                ["Navigation", [
+                    ["↵", "open — tab: focus it · quickmark/url/web: current tab"],
+                    ["⌃↵", "open in a new tab"],
+                    ["⇧↵", "web-search the raw query"],
+                    ["⌃j / ⌃k", "move selection"],
+                    ["⌃h / ⌃l", "switch filter (All · Tabs · Quickmarks · Web · ?)"],
+                    ["⌃⇧h / ⌃⇧l", "cycle window scope in the chin"],
+                ]],
+                ["Tab actions", [
+                    ["⌃w  (or ⌃d)", "close the focused tab"],
+                    ["⌃m", "quickmark the focused tab"],
+                ]],
+                ["Modes", [
+                    ["tab", "enter web-search mode"],
+                    ["backspace on empty", "leave search mode"],
+                    ["esc", "close the palette"],
+                ]],
+            ]
+            const out = []
+            for (const [heading, rows] of help) {
+                out.push({ divider: true, label: heading })
+                for (const [keys, what] of rows)
+                    out.push({ kind: "help", title: keys + "    —    " + what,
+                               url: "", subtitle: "", faviconPath: "" })
+            }
+            return out
+        }
 
         const tabs = (PaletteState.tabs || []).slice()
         tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))
@@ -281,7 +311,7 @@ PanelWindow {
         if (entries.length === 0) return
         const idx = Math.max(0, Math.min(selectedIndex, entries.length - 1))
         const e = entries[idx]
-        if (!e || e.divider) return
+        if (!e || e.divider || e.kind === "help") return
         if (e.kind === "addqm") {
             if (e.qmUrl) PaletteState.quickmarkAdd(e.qmName, e.qmUrl)
         } else if (e.kind === "tab" && !inNewTab) {
