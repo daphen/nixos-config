@@ -284,17 +284,11 @@ PanelWindow {
         width: 760
         // Hug the content like the reference — footer sits right under the
         // last row; 480 caps long lists (the ListView scrolls past that).
+        // Tracks previewPane.height, which animates itself (Vaul) — so the notch
+        // grows in lockstep with the expanding box. No Behavior here: it would
+        // lag behind the pane's own animation and clip the box mid-reveal.
         height: Math.min(480, inputWrap.height + tabsRow.height + root.listContentHeight + footer.height)
-                + (previewPane.visible ? previewPane.height : 0)
-        // Ctrl+O expand (and any content resize): match the app panel toggle —
-        // Vaul curve, 0.2s cubic-bezier(0.165, 0.84, 0.44, 1).
-        Behavior on height {
-            NumberAnimation {
-                duration: 200
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: [0.165, 0.84, 0.44, 1.0, 1.0, 1.0]
-            }
-        }
+                + previewPane.height
 
         color: Theme.bg
         // Radii from the reference palette: panel 24, field 15, cards 13.
@@ -758,8 +752,18 @@ PanelWindow {
             Rectangle {
                 id: previewPane
                 width: parent.width
-                visible: root.previewOpen && root.hasPreview
-                height: visible ? 252 : 0
+                // animate our own height (Vaul); the notch tracks it. visible
+                // stays true while shrinking so the close animates out too.
+                height: (root.previewOpen && root.hasPreview) ? 252 : 0
+                visible: height > 1
+                clip: true
+                Behavior on height {
+                    NumberAnimation {
+                        duration: 200
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: [0.165, 0.84, 0.44, 1.0, 1.0, 1.0]
+                    }
+                }
                 color: "transparent"
                 Rectangle {
                     anchors.top: parent.top
