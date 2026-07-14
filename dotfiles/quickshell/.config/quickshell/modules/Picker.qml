@@ -286,7 +286,15 @@ PanelWindow {
         // last row; 480 caps long lists (the ListView scrolls past that).
         height: Math.min(480, inputWrap.height + tabsRow.height + root.listContentHeight + footer.height)
                 + (previewPane.visible ? previewPane.height : 0)
-        Behavior on height { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        // Ctrl+O expand (and any content resize): match the app panel toggle —
+        // Vaul curve, 0.2s cubic-bezier(0.165, 0.84, 0.44, 1).
+        Behavior on height {
+            NumberAnimation {
+                duration: 200
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: [0.165, 0.84, 0.44, 1.0, 1.0, 1.0]
+            }
+        }
 
         color: Theme.bg
         // Radii from the reference palette: panel 24, field 15, cards 13.
