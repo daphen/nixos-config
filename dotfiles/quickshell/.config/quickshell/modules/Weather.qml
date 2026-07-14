@@ -17,7 +17,11 @@ Item {
         running: true
         command: ["bash", Quickshell.env("HOME") + "/.config/quickshell/scripts/weather.sh"]
         stdout: StdioCollector {
-            onStreamFinished: root.output = this.text.trim()
+            onStreamFinished: {
+                root.output = this.text.trim()
+                // a failed/empty poll shouldn't blank the module for 15 min
+                if (root.output.length === 0) retry.restart()
+            }
         }
     }
 
@@ -27,6 +31,9 @@ Item {
         running: true
         onTriggered: proc.running = true
     }
+
+    // short backoff after an empty result (network not up yet, wttr.in blip)
+    Timer { id: retry; interval: 45 * 1000; onTriggered: proc.running = true }
 
     Text {
         id: text
