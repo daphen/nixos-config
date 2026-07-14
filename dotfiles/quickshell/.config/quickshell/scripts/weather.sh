@@ -17,11 +17,11 @@ case "$condition_lower" in
   *"light snow"*|*"patchy light snow"*) icon="󰖘" ;;
   *"snow"*|*"ice"*)                   icon="󰖘" ;;
   *"mist"*|*"fog"*)                   icon="󰖑" ;;
-  *"overcast"*)                       icon="󰖐" ;;
-  *"partly cloudy"*|*"patchy"*)       icon="󰖕" ;;
-  *"cloudy"*|*"cloud"*)               icon="󰖐" ;;
+  *"overcast"*)                       icon="󰅟" ;;   # filled cloud (nf-md-cloud)
+  *"partly cloudy"*|*"patchy"*)       icon="󰖕" ;;   # no filled variant — sun+cloud
+  *"cloudy"*|*"cloud"*)               icon="󰅟" ;;   # filled cloud
   *"clear"*|*"sunny"*)                icon="󰖨" ;;   # filled sun (white-balance-sunny)
-  *)                                  icon="󰖐" ;;
+  *)                                  icon="󰅟" ;;   # default: filled cloud
 esac
 
 echo "$icon $temp"
