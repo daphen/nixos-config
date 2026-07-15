@@ -116,6 +116,9 @@ PanelWindow {
     property var onYank: null
     // Opt-in Ctrl+P: called with the focused item, then the picker closes.
     property var onCtrlP: null
+    // Opt-in Ctrl+O: called with the focused item, then the picker closes.
+    // Only reachable when no preview pane is configured (preview owns Ctrl+O).
+    property var onCtrlO: null
 
     property string query: search ? search.text : ""
     property int selectedIndex: 0
@@ -426,6 +429,13 @@ PanelWindow {
                     } else if (event.key === Qt.Key_O && (event.modifiers & Qt.ControlModifier)
                             && (root.previewField.length > 0 || root.previewTextField.length > 0)) {
                         root.previewOpen = !root.previewOpen
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_O && (event.modifiers & Qt.ControlModifier) && root.onCtrlO) {
+                        const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
+                        if (root.filtered.length > 0 && !root.filtered[idx].divider) {
+                            root.onCtrlO(root.filtered[idx])
+                            root.closeRequested()
+                        }
                         event.accepted = true
                     } else if (event.key === Qt.Key_R && (event.modifiers & Qt.ControlModifier) && root.onCtrlR) {
                         const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))

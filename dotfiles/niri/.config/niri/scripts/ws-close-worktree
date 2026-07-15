@@ -5,12 +5,14 @@ ws-close-worktree <name>
 Tear down a lovable worktree's session WITHOUT touching the on-disk
 worktree:
 
-  1. Closes every window on the `lovable-<name>` workspace.
-  2. Runs `devenv kill` in the worktree directory to free dev ports
-     (best effort).
-  3. Unnames the workspace so niri can garbage-collect it. niri keeps
+  1. Closes every window on the `lovable-<name>` workspace, then
+     immediately unnames it so niri can garbage-collect it (niri keeps
      NAMED workspaces around even when empty — only unnamed empty
-     trailing workspaces auto-disappear.
+     trailing workspaces auto-disappear). Unnaming early also makes the
+     worktree picker drop the row instantly instead of after the waits
+     below.
+  2. Runs `devenv kill` in the worktree directory to free dev ports
+     (best effort) and reaps the dev stack.
 
 The git worktree at ~/work/lovable.daphen-<name> stays on disk —
 re-opening it later via Super+Ctrl+T (rofi-ws-startwt) is fast
@@ -86,6 +88,16 @@ def main() -> int:
                 ["niri", "msg", "action", "close-window", "--id", str(wid)],
                 capture_output=True, timeout=2,
             )
+
+    # Unname NOW, before the slow waits below — the worktree picker keys
+    # rows off the `lovable-` name, so this is what makes the entry vanish.
+    # Window closing (by id) and the cwd-based reap don't need the name.
+    subprocess.run(
+        ["niri", "msg", "action", "unset-workspace-name", workspace],
+        capture_output=True, timeout=2,
+    )
+
+    if ws is not None:
         # Wait briefly for windows to actually close so devenv kill
         # doesn't race a process-compose still holding the dir.
         for _ in range(20):
@@ -152,14 +164,7 @@ def main() -> int:
                     pass
             time.sleep(0.5)
 
-    # 3. Unname the workspace so niri can garbage-collect it. Without
-    #    this it lingers as an empty named workspace forever.
-    subprocess.run(
-        ["niri", "msg", "action", "unset-workspace-name", workspace],
-        capture_output=True, timeout=2,
-    )
-
-    # 4. Clear active-stack state if it pointed here.
+    # 3. Clear active-stack state if it pointed here.
     active_file = HOME / ".local/state/wt-stacks/ws/active"
     try:
         if active_file.read_text().strip() == workspace:

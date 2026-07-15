@@ -12,7 +12,16 @@ Picker {
     placeholder: "search PRs — or paste a PR number / url"
     refreshing: prProc.running
     enterLabel: "review / open"
-    altLabel: "Ctrl+Enter: worktree   ·   Ctrl+Y: copy url"
+    altLabel: "Ctrl+Enter: worktree   ·   Ctrl+O: open   ·   Ctrl+Y: copy url"
+
+    // Ctrl+O: open the focused PR on GitHub in the work browser — works from
+    // both tabs (Enter on the reviews tab starts a claude review instead).
+    onCtrlO: item => {
+        const u = (item && (item.url || item.target)) || ""
+        if (!u) return
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/browser-dispatch",
+            "--profile=work", "--new-window", u])
+    }
 
     // Ctrl+Y: copy the focused PR's URL (mirrors the imv copy pattern:
     // wl-copy + a notification so the yank is visible).
