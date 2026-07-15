@@ -41,6 +41,7 @@ and trying to figure out what to touch for a given task.
 | `nixos-portable-config` | `~/nixos-portable-config` | Retired — fully replaced by `nix run github:daphen/nixos-config#dev-env`. No remaining references; the repo + local clone can be deleted. |
 | `palette-daemon` | `~/personal/palette-daemon` | Rust + webkit6 |
 | `chromium-palette` | `~/personal/chromium-palette` | Solid app served by palette-daemon |
+| `newtab` | `~/personal/newtab` | React infinite-canvas NTP extension (owns chrome://newtab) |
 | `wpm-daemon` | `~/personal/wpm-daemon` | Rust evdev daemon |
 | `bastardkb-qmk` | `~/work/bastardkb-qmk` | Charybdis firmware fork |
 

@@ -100,8 +100,11 @@ in
 
   # palette-daemon as a user systemd service, mirroring mako's pattern
   # (PartOf graphical-session.target, ExecCondition gate on
-  # WAYLAND_DISPLAY). The chromium-palette popup bundle still lives in
-  # ~/personal/chromium-palette/dist; PALETTE_POPUP_DIST pins it.
+  # WAYLAND_DISPLAY). Runs headless — quickshell renders the palette
+  # UI, so the popup bundle isn't loaded by the daemon; the SW half of
+  # chromium-palette is loaded unpacked from
+  # ~/personal/chromium-palette/dist. (PALETTE_POPUP_DIST would pin a
+  # popup dist path, but headless mode makes it moot.)
   systemd.user.services.palette-daemon = {
     Unit = {
       Description = "Palette Daemon (browser state mirror for the quickshell palette)";
