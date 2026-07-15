@@ -6,7 +6,9 @@ import "../QsLib" as Lib
 Item {
     id: root
 
-    implicitWidth: visible ? text.implicitWidth + Theme.modulePadH * 2 : 0
+    // dangling `text` ref (the old Text badge) made this 0px wide — DND could
+    // be active with no visible trace in the bar
+    implicitWidth: visible ? icon.width + Theme.modulePadH * 2 : 0
     implicitHeight: parent ? parent.height : Theme.barHeight
     visible: DndState.active
 
@@ -17,9 +19,10 @@ Item {
     }
 
     Lib.Icon {
-        name: "bell"
+        id: icon
+        name: "bell-slash"
         color: Theme.cursor
         width: 15; height: 15
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.centerIn: parent
     }
 }
