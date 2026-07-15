@@ -5,6 +5,9 @@
 
 [options]
 suppress_default_binds = true
+# shrink: scale DOWN to fit the window, never up — small screenshots used to
+# blow up pixelated to window size ('s' still cycles modes at runtime)
+scaling_mode = shrink
 
 [binds]
 q = quit
