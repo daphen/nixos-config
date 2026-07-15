@@ -11,7 +11,10 @@ Picker {
 
     placeholder: "search PRs — or paste a PR number / url"
     enterLabel: "review / open"
+    // the trailing marker is the background refresh being visible: cached
+    // rows paint instantly on open, and this disappears when fresh data lands
     altLabel: "Ctrl+Enter: worktree   ·   Ctrl+Y: copy url"
+              + (prProc.running ? "   ·   ↻ refreshing…" : "")
 
     // Ctrl+Y: copy the focused PR's URL (mirrors the imv copy pattern:
     // wl-copy + a notification so the yank is visible).
