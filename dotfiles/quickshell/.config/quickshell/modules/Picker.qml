@@ -12,6 +12,9 @@ PanelWindow {
     property bool open: false
     signal closeRequested()
     property string placeholder: "Search…"
+    // Background-refresh indicator: a small spinner between the input and the
+    // esc cap. Set by pickers that warm-paint from cache while fetching.
+    property bool refreshing: false
     property var items: []
     property string subtitleField: ""
     property string highlightField: ""
@@ -357,6 +360,23 @@ PanelWindow {
                     anchors.verticalCenter: searchField.verticalCenter
                     text: "esc"
                     TapHandler { onTapped: root.closeRequested() }
+                }
+
+                Lib.Icon {
+                    id: refreshSpinner
+                    visible: root.refreshing
+                    anchors.right: escCap.left
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: searchField.verticalCenter
+                    width: 14; height: 14
+                    name: "loader"
+                    color: Theme.fg_muted
+                    RotationAnimator on rotation {
+                        running: refreshSpinner.visible
+                        from: 0; to: 360
+                        duration: 900
+                        loops: Animation.Infinite
+                    }
                 }
 
             TextField {

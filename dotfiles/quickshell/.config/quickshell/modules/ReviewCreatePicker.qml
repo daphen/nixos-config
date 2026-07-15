@@ -9,10 +9,8 @@ Picker {
     open: ReviewCreatePickerState.open
     onCloseRequested: ReviewCreatePickerState.open = false
 
-    // the placeholder doubles as the refresh signal: cached rows paint
-    // instantly on open, and this flips back once fresh data lands
-    placeholder: prProc.running ? "search PRs — refreshing…"
-                                : "search PRs — or paste a PR number / url"
+    placeholder: "search PRs — or paste a PR number / url"
+    refreshing: prProc.running
     enterLabel: "review / open"
     altLabel: "Ctrl+Enter: worktree   ·   Ctrl+Y: copy url"
 
