@@ -35,6 +35,10 @@ in {
       link "${dotfiles}/quickmarks/.config/net.imput.helium/NativeMessagingHosts/com.daphen.quickmarks.json";
     "helium-work/NativeMessagingHosts/com.daphen.quickmarks.json".source =
       link "${dotfiles}/quickmarks/.config/net.imput.helium/NativeMessagingHosts/com.daphen.quickmarks.json";
+    # Helium also consults its branded default config dir for native
+    # messaging hosts regardless of --user-data-dir — cover it too.
+    "net.imput.helium/NativeMessagingHosts/com.daphen.quickmarks.json".source =
+      link "${dotfiles}/quickmarks/.config/net.imput.helium/NativeMessagingHosts/com.daphen.quickmarks.json";
     "kanata".source = link "${dotfiles}/kanata/.config/kanata";
     "niri/config.kdl".source = link "${dotfiles}/niri/.config/niri/config.kdl";
     "niri/scripts".source = link "${dotfiles}/niri/.config/niri/scripts";

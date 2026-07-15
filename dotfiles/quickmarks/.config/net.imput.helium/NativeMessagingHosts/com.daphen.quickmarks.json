@@ -1,9 +1,10 @@
 {
   "name": "com.daphen.quickmarks",
   "description": "Reads ~/.config/quickmarks/<profile>-quickmarks for Chromium Palette",
-  "path": "/home/daphen/dotfiles/quickmarks/bin/quickmarks-host",
+  "path": "/home/daphen/nixos/dotfiles/quickmarks/bin/quickmarks-host",
   "type": "stdio",
   "allowed_origins": [
-    "chrome-extension://jhcalijhjhockpiigeakdiigdfhkkhhl/"
+    "chrome-extension://jhcalijhjhockpiigeakdiigdfhkkhhl/",
+    "chrome-extension://pklfcofelacbglahfbjfecgpjkoogakf/"
   ]
 }
