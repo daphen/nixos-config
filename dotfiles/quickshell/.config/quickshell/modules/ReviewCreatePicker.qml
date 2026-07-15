@@ -29,22 +29,18 @@ Picker {
 
     // reviews tab: PRs where I'm a reviewer (requested + reviewed, my state).
     // my PRs tab: my open PRs with review decision + CI rollup.
-    property var requestedNodes: []
-    property var reviewedNodes: []
-    property var mineNodes: []
-
+    // Nodes live in the State singleton: cached results paint instantly and
+    // the fetch refreshes them in place — no empty flash on every open.
     onActiveChanged: {
         if (active) {
-            root.requestedNodes = []
-            root.reviewedNodes = []
-            root.mineNodes = []
-            root.loading = true
+            root.loading = !ReviewCreatePickerState.hasCache
             prProc.running = true
         }
     }
 
-    items: root.tab === 1 ? buildMine(root.mineNodes)
-                          : buildItems(root.requestedNodes, root.reviewedNodes, root.query)
+    items: root.tab === 1 ? buildMine(ReviewCreatePickerState.mineNodes)
+                          : buildItems(ReviewCreatePickerState.requestedNodes,
+                                       ReviewCreatePickerState.reviewedNodes, root.query)
 
     // Enter — reviews tab: lightweight review (claude in the main checkout;
     // the skill fetches via gh and serves the visual itself). my-PRs tab:
@@ -80,19 +76,11 @@ Picker {
             "mine:search(query:$q3,type:ISSUE,first:40){nodes{... on PullRequest{number title url headRefName state isDraft reviewDecision latestReviews(first:1){totalCount} commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}}' " +
             "-f q1=\"repo:$repo is:pr is:open review-requested:@me -author:@me sort:updated-desc\" " +
             "-f q2=\"repo:$repo is:pr reviewed-by:@me -author:@me sort:updated-desc\" " +
-            "-f q3=\"repo:$repo is:pr author:@me sort:updated-desc\""]
+            "-f q3=\"repo:$repo is:pr author:@me sort:updated-desc\" " +
+            "| tee \"$(mkdir -p \"$HOME/.cache/quickshell\" && echo \"$HOME/.cache/quickshell/review-prs.json\")\""]
         stdout: StdioCollector {
             onStreamFinished: {
-                try {
-                    const d = (JSON.parse(this.text || "{}").data) || {}
-                    root.requestedNodes = (d.requested && d.requested.nodes) || []
-                    root.reviewedNodes = (d.reviewed && d.reviewed.nodes) || []
-                    root.mineNodes = (d.mine && d.mine.nodes) || []
-                } catch (e) {
-                    root.requestedNodes = []
-                    root.reviewedNodes = []
-                    root.mineNodes = []
-                }
+                ReviewCreatePickerState.parse(this.text)
                 root.loading = false
             }
         }
