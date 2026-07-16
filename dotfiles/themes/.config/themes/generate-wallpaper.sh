@@ -14,7 +14,9 @@ trap 'pkill -P $$ 2>/dev/null; exit 130' TERM INT
 
 THEMES_DIR="$HOME/.config/themes"
 COLORS_FILE="$THEMES_DIR/colors.json"
-OUT_DIR="$HOME/Pictures/Wallpapers/generated"
+# top-level dir: waypaper browses it with subfolders off — a generated/
+# subdir kept saves out of its picker
+OUT_DIR="$HOME/Pictures/Wallpapers"
 MODE="${1:-both}"
 SEED=$RANDOM
 SIZE="3840x2400"

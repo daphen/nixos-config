@@ -1,6 +1,10 @@
 #version 440
 // GPU renderer for wallpaper-studio: mesh gradients and chroma streaks.
 // One implementation for preview and save — WYSIWYG by construction.
+// compile: qsb --glsl "100 es,120,150" --hlsl 50 --msl 12 -o wallpaper.frag.qsb wallpaper.frag
+// (qsb lives in the qtshadertools nix package)
+// A running quickshell instance caches compiled shaders per-URL — after a
+// recompile the studio PROCESS must be restarted; QML hot-reload won't do it.
 
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
@@ -44,6 +48,20 @@ float vnoise(vec2 p) {
     float a = hash12(i), b = hash12(i + vec2(1, 0));
     float c = hash12(i + vec2(0, 1)), d = hash12(i + vec2(1, 1));
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float fbm(vec2 p) {
+    float a = 0.5, f = 0.0;
+    for (int i = 0; i < 5; i++) { f += a * vnoise(p); p = p * 2.03 + 17.7; a *= 0.5; }
+    return f;
+}
+
+vec2 rotAbout(vec2 uv, float deg) {
+    vec2 c = uv - 0.5;
+    c.x *= ASPECT;
+    float th = radians(deg), cs = cos(th), sn = sin(th);
+    c = vec2(c.x * cs - c.y * sn, c.x * sn + c.y * cs);
+    c.x /= ASPECT;
+    return c + 0.5;
 }
 
 void getAnchor(int i, out vec4 A, out vec3 C) {
@@ -98,21 +116,221 @@ vec3 glowField(vec2 uv) {
     return acc;
 }
 
-// 1-D mesh along y: anchors are color STOPS (x ignored) — constant along
-// x gives clean bands; IDW interpolates between stops without sorting.
-vec3 bandsField(vec2 uv) {
+// 1-D mesh over a scalar coordinate: anchors are color STOPS (ay = stop
+// position, ax ignored); IDW interpolates between stops without sorting.
+// bands feeds it uv.y; stripes/conic/radial/rings/folds feed it their own t.
+vec3 stopsField(float t) {
     float soft = mix(0.002, 0.05, clamp(blurK / 220.0, 0.0, 1.0));
     vec3 num = vec3(0.0);
     float den = 0.0;
     for (int i = 0; i < 8; i++) {
         vec4 A; vec3 C; getAnchor(i, A, C);
         if (A.w < 0.5) continue;
-        float dy = uv.y - A.y;
-        float w = (A.z * A.z) / (dy * dy + soft);
+        float dt = t - A.y;
+        float w = (A.z * A.z) / (dt * dt + soft);
         num += C * w;
         den += w;
     }
     return den > 0.0 ? num / den : baseColor.rgb;
+}
+
+// mirror a repeating coordinate so stop cycles reverse instead of seam-snapping
+float pingpong(float t) { return 1.0 - abs(1.0 - 2.0 * fract(t)); }
+
+vec3 stripesField(vec2 uv) {
+    float period = max(waveLen, 60.0) / 3840.0;
+    return stopsField(pingpong(uv.x / period));
+}
+
+vec3 conicField(vec2 uv) {
+    vec2 c = uv - 0.5;
+    c.x *= ASPECT;
+    float t = atan(c.y, c.x) / 6.28318530718 + 0.5;
+    return stopsField(pingpong(t));
+}
+
+vec3 radialField(vec2 uv) {
+    vec2 c = uv - 0.5;
+    c.x *= ASPECT;
+    // 0.943 = center-to-corner distance in aspect space; t=1 lands on corners
+    return stopsField(clamp(length(c) / 0.943, 0.0, 1.0));
+}
+
+vec3 ringsField(vec2 uv) {
+    vec2 c = uv - 0.5;
+    c.x *= ASPECT;
+    float period = max(waveLen, 60.0) / 3840.0;
+    return stopsField(pingpong(length(c) / period));
+}
+
+// anchors as soft solid discs painted in order over the base
+vec3 ballsField(vec2 uv) {
+    vec3 col = baseColor.rgb;
+    float soft = mix(0.002, 0.12, clamp(blurK / 220.0, 0.0, 1.0));
+    for (int i = 0; i < 8; i++) {
+        vec4 A; vec3 C; getAnchor(i, A, C);
+        if (A.w < 0.5) continue;
+        float r = 0.16 * A.z;
+        float d = sqrt(d2(uv, A.xy));
+        col = mix(col, C, 1.0 - smoothstep(r - soft, r + soft, d));
+    }
+    return col;
+}
+
+// pixel-mosaic of the mesh field: sample it at square cell centers only
+vec3 blocksField(vec2 uv) {
+    float nx = 3840.0 / max(waveLen, 120.0);
+    vec2 g = vec2(nx, nx / ASPECT);
+    return meshField((floor(uv * g) + 0.5) / g);
+}
+
+// draped light sheets: triple domain-warped fbm mapped through the color
+// stops, shaded by the field's slope (after mattrothenberg/fold-gradient).
+// ── FoldGradient port (mattrothenberg/fold-gradient, MIT) ──────────────
+// Faithful port of the real shader: SQUARED value-noise (crisp peaks),
+// triple domain-warped fbm, screen-space derivative NORMAL lighting with a
+// sharp specular crest (the "crystal" ray-edges the eyeballed version could
+// never get), ribbon banding, ACES tonemap. Own noise fns so the other
+// styles stay untouched. Knobs map onto the studio's existing uniforms.
+mat2 rot2(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+float fg_hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031 + seedF * 0.017);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+float fg_vnoise(vec2 p) {
+    vec2 ip = floor(p), u = fract(p); u = u * u * (3.0 - 2.0 * u);
+    float r = mix(mix(fg_hash12(ip),          fg_hash12(ip + vec2(1, 0)), u.x),
+                  mix(fg_hash12(ip + vec2(0, 1)), fg_hash12(ip + vec2(1, 1)), u.x), u.y);
+    return r * r;   // squared → sharp peaks, the "crystal" grain
+}
+const mat2 FG_M2 = mat2(0.8, -0.6, 0.6, 0.8);
+float fg_fbm(vec2 p) {
+    float f = 0.0;
+    f += 0.5000 * fg_vnoise(p); p = FG_M2 * p * 2.02;
+    f += 0.2500 * fg_vnoise(p); p = FG_M2 * p * 2.03;
+    f += 0.1250 * fg_vnoise(p);
+    return f / 0.875;
+}
+float fg_pat(vec2 p, out float hue) {
+    vec2 q = vec2(fg_fbm(p), fg_fbm(p + vec2(5.2, 1.3)));
+    vec2 r = vec2(fg_fbm(p + 4.0 * q + vec2(1.7, 9.2)), fg_fbm(p + 4.0 * q + vec2(8.3, 2.8)));
+    hue = clamp(r.x * 0.95 + 0.03, 0.0, 1.0);
+    return fg_fbm(p + 1.76 * r);
+}
+// active anchors (c0..c7) as an ordered color ramp
+vec3 fg_palette(float x) {
+    int n = 0;
+    for (int i = 0; i < 8; i++) { vec4 A; vec3 C; getAnchor(i, A, C); if (A.w > 0.5) n++; }
+    if (n < 2) n = 2;
+    x = clamp(x, 0.0, 1.0) * float(n - 1);
+    int idx = int(floor(x)); float f = fract(x);
+    vec3 ca = baseColor.rgb, cb = baseColor.rgb; int seen = 0;
+    for (int i = 0; i < 8; i++) {
+        vec4 A; vec3 C; getAnchor(i, A, C); if (A.w < 0.5) continue;
+        if (seen == idx) ca = C;
+        if (seen == min(idx + 1, n - 1)) cb = C;
+        seen++;
+    }
+    return mix(ca, cb, smoothstep(0.0, 1.0, f));
+}
+vec3 foldsField(vec2 uv) {
+    float asp = ASPECT;
+    // knob mapping → FoldGradient uniforms
+    float u_softness    = clamp(blurK, 0.0, 2.0);
+    float u_rotation    = angleDeg;
+    float u_folds       = clamp(waveLen, 1.0, 24.0);
+    float u_ribbon      = clamp(chromeAmt, 0.0, 1.0);
+    float u_ribbonWidth = clamp(streakLen, 0.1, 2.0);
+    float u_saturation  = clamp(waveAmp, 0.0, 2.0);
+    vec3  u_back        = baseColor.rgb * 0.22;
+    vec3  u_shadow      = baseColor.rgb * 0.06;
+
+    vec2 dir = normalize(vec2(0.66, 0.75));
+    vec2 perp = vec2(-dir.y, dir.x);
+    float sm = 0.045 + (2.0 - u_softness) * 0.075;
+    float jit = 0.0;   // no per-pixel jitter: dither reads as spray at preview res
+
+    mat2 R = rot2(radians(u_rotation));
+    float zsc = 29.16 / u_folds;
+    vec2 pBase = vec2((uv.x - 0.5) * asp, uv.y - 0.5) * R * zsc;
+    vec2 wDir  = vec2(dir.x * asp,  dir.y ) * R * zsc;
+    vec2 wPerp = vec2(perp.x * asp, perp.y) * R * zsc;
+
+    float bandGain = 1.0;
+    if (u_ribbon > 0.001) {
+        float t = dot(pBase, normalize(wPerp)) / 3.24 / (0.16 * max(u_ribbonWidth, 0.05));
+        t += 0.35 * sin(t * 1.7 + 2.1);
+        float band = floor(t), fb = fract(t);
+        float k = smoothstep(0.0, 0.16, fb);
+        float bA = band - 1.0, bB = band;
+        float s = dot(pBase, normalize(wDir)) / 3.24;
+        float shear = mix(fg_hash12(vec2(bA, 7.7)), fg_hash12(vec2(bB, 7.7)), k);
+        pBase += normalize(wDir) * (shear - 0.5) * 4.5 * u_ribbon;
+        float c = mix(fg_hash12(vec2(bA, 9.1)), fg_hash12(vec2(bB, 9.1)), k) - 0.5;
+        float hl = 0.42 + 0.40 * mix(fg_hash12(vec2(bA, 11.3)), fg_hash12(vec2(bB, 11.3)), k);
+        float cap = 1.0 - smoothstep(hl - 0.24, hl + 0.14, abs(s - c * 0.8));
+        float e = mix(fg_hash12(vec2(bA, 3.3)), fg_hash12(vec2(bB, 3.3)), k);
+        bandGain = mix(1.0, (0.62 + 1.25 * e * e) * cap * 1.3, u_ribbon);
+        float fo = mix(fg_hash12(vec2(bA, 5.5)), fg_hash12(vec2(bB, 5.5)), k);
+        sm *= mix(1.0, 0.70 + 1.25 * fo, u_ribbon);
+    }
+
+    vec3 L = normalize(vec3(0.55, 0.35, 0.55));
+    vec3 HL = normalize(L + vec3(0.0, 0.0, 1.0));
+    float lum = 0.0, hue = 0.0, wsum = 0.0, bloom = 0.0;
+    float fscale = mix(1.0, 0.52, clamp(u_ribbon, 0.0, 1.0));
+    for (int i = -6; i <= 6; i++) {
+        float fi = (float(i) + jit) / 6.0;
+        float w = exp(-fi * fi * 2.5);
+        vec2 off = wDir * (fi * sm) + wPerp * (fi * sm * 0.11);
+        float hh; float h = fg_pat((pBase + off) * fscale, hh);
+        vec2 g = vec2(dFdx(h) / max(dFdx(uv.x), 1e-6),
+                      dFdy(h) / max(dFdy(uv.y), 1e-6)) * 0.0016;
+        vec3 N = normalize(vec3(-g, 0.5));
+        float diff = clamp(dot(N, L), 0.0, 1.0);
+        float crest = pow(clamp(dot(N, HL), 0.0, 1.0), 16.0);
+        float ribbon = smoothstep(0.14, 0.92, h);
+        float baseW = mix(0.34, 0.72, u_ribbon);
+        float diffW = mix(0.90, 0.08, u_ribbon);
+        float crestW = mix(0.60, 0.0, u_ribbon);
+        float sheen = pow(h, 5.0) * 0.45 * u_ribbon;
+        float lv = (ribbon * (baseW + diff * diffW) + crest * crestW + sheen) * smoothstep(0.02, 0.45, h);
+        lum += lv * w; hue += hh * w; wsum += w;
+        bloom += smoothstep(0.55, 1.0, lv) * w;
+    }
+    lum /= wsum; hue /= wsum; bloom /= wsum;
+    lum *= bandGain;
+    vec2 qc = (uv - 0.5); qc.x *= asp; lum *= 1.0 - dot(qc, qc) * 0.45;
+    vec3 grad = fg_palette(hue * 0.62 + lum * 0.42);
+    vec3 col = mix(u_back, u_shadow, smoothstep(0.015, 0.30, lum));
+    col = mix(col, grad, smoothstep(0.22, 0.72, lum));
+    col += grad * bloom * 0.55;
+    // ACES filmic tonemap + gamma + saturation
+    col = clamp((col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14), 0.0, 1.0);
+    col = pow(col, vec3(1.0 / 2.2));
+    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    col = clamp(mix(vec3(luma), col, u_saturation), 0.0, 1.0);
+    return col;
+}
+
+// organic noise field for flow: gently domain-warped fbm mapped through the
+// color STOPS (anchors as an ordered ramp, à la Raycast Flow's colors[]).
+// streaksAt then motion-blurs this along the rotation axis → flowing aurora
+// sheets. Kept to 3 fbm calls since streaksAt evaluates it once per smear tap.
+vec3 flowNoise(vec2 uv) {
+    // LOW frequency + few octaves = big soft shapes ("shading"); 5-octave fbm
+    // here made fine striations that the directional smear drew into visible
+    // brush strokes. Two smooth vnoise octaves, gently warped, keep it soft.
+    float z = mix(4.2, 1.2, clamp((waveLen - 300.0) / 2700.0, 0.0, 1.0));
+    vec2 p = (uv - 0.5) * z;
+    p.x *= ASPECT;
+    vec2 w = vec2(vnoise(p + vec2(3.1, 7.4)), vnoise(p + vec2(8.3, 2.8)));
+    float f = 0.65 * vnoise(p + 1.1 * w) + 0.35 * vnoise(p * 2.0 + 3.0 * w);
+    float t = clamp((f - 0.30) / 0.40, 0.0, 1.0);
+    // bias toward the first (dark) stop → black dominates, brights sparse
+    t = pow(t, 2.0);
+    return stopsField(t);
 }
 
 vec2 warp(vec2 uv) {
@@ -153,9 +371,9 @@ vec3 streaksAt(vec2 uv) {
         float wL = 1.0 - smoothstep(0.82, 1.0, au);
         float wS = 1.0 - smoothstep(0.10, 0.16, au);       // short core layer
         vec2 sp = ruv + vec2(t * halfLen, 0.0);
-        // flow = the full-canvas mesh field smeared directionally (silk
-        // folds); streaks = hot cores on a stage.
-        vec3 s = (styleMode > 1.5) ? meshField(sp) : glowField(sp);
+        // flow = an organic noise field smeared directionally (Raycast Flow
+        // aurora sheets); streaks = hot cores on a stage.
+        vec3 s = (styleMode > 1.5) ? flowNoise(sp) : glowField(sp);
         accL += s * wL; wsumL += wL;
         accS += s * wS; wsumS += wS;
     }
@@ -175,8 +393,10 @@ vec3 streaksAt(vec2 uv) {
 vec3 finish(vec3 c) {
     if (styleMode < 0.5) return c;   // mesh keeps its natural range
     if (styleMode > 1.5) {
-        // flow: gentle S-curve only — the field is already full-range
-        c = mix(c, c * c * (3.0 - 2.0 * c), 0.35);
+        // flow: firmer S-curve + saturation lift → vivid streaks on black
+        c = mix(c, c * c * (3.0 - 2.0 * c), 0.55);
+        float l = dot(c, vec3(0.299, 0.587, 0.114));
+        c = clamp(l + (c - l) * 1.35, 0.0, 1.0);
         return c;
     }
     if (modeLight < 0.5) {
@@ -192,17 +412,20 @@ vec3 finish(vec3 c) {
     return c;
 }
 
-// the composed scene for the cheap field styles (mesh, bands)
+// the composed scene for the cheap field styles (everything but streaks/flow)
 vec3 sceneMB(vec2 uv) {
-    if (styleMode > 2.5) {
-        vec2 c = uv - 0.5;
-        c.x *= ASPECT;
-        float th = radians(-angleDeg);
-        float cs = cos(th), sn = sin(th);
-        c = vec2(c.x * cs - c.y * sn, c.x * sn + c.y * cs);
-        c.x /= ASPECT;
-        return bandsField(warp(c + 0.5));
+    int s = int(styleMode + 0.5);
+    if (s == 3 || s == 4 || s == 5 || s == 7 || s == 10) {   // angled t-styles
+        vec2 w = warp(rotAbout(uv, -angleDeg));
+        if (s == 3)  return stopsField(w.y);
+        if (s == 4)  return stripesField(w);
+        if (s == 5)  return conicField(w);
+        if (s == 7)  return ringsField(w);
+        return foldsField(w);
     }
+    if (s == 6) return radialField(warp(uv));
+    if (s == 8) return ballsField(warp(uv));
+    if (s == 9) return blocksField(warp(uv));
     return meshField(warp(uv));
 }
 
