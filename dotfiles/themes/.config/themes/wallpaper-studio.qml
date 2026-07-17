@@ -29,6 +29,26 @@ FloatingWindow {
     property string status: ""
     property int selected: 0
     property int anchorsRev: 0
+    property real tNow: 0        // seconds, drives u_time; folds/flow animate
+    property bool playing: true  // space toggles the animation loop
+    // Paper static-mesh-gradient controls (pmesh style) — reference defaults
+    property real pmPositions: 23
+    property real pmWaveX: 0.53
+    property real pmWaveXShift: 0.0
+    property real pmWaveY: 0.95
+    property real pmWaveYShift: 0.64
+    property real pmMixing: 0.5
+    property real pmGrainMix: 0.0
+    property real pmGrainOverlay: 0.24
+    // Paper warp controls (warp style) — reference "checks" preset defaults
+    property real wProportion: 0.45
+    property real wSoftness: 1.0
+    property real wShape: 0
+    property real wShapeScale: 0.1
+    property real wDistortion: 0.25
+    property real wSwirl: 0.8
+    property real wSwirlIter: 10
+    property real wScale: 1.0
 
     ListModel { id: anchorsModel }
     function touchAnchors() { anchorsRev++; saveState() }
@@ -86,7 +106,21 @@ FloatingWindow {
     property int layerBlend: 0    // 0 normal, 1 screen, 2 multiply, 3 overlay
     property real gGrain: 0
     property real gBlur: 0
-    readonly property var styleNames: ["mesh", "streaks", "flow", "bands", "stripes", "conic", "radial", "rings", "balls", "blocks", "folds"]
+    // fluted-glass layer params (global; the composite reads them for whichever
+    // layer has style "glass"). Defaults ≈ Paper's default fluted glass.
+    property real glSize: 0.5
+    property real glAngle: 90
+    property real glShape: 1
+    property real glDistShape: 2
+    property real glDistortion: 0.5
+    property real glShadows: 0.5
+    property real glHighlights: 0.5
+    property real glBlur: 0.1
+    // dither layer params (global; composite reads them for the "dither" layer)
+    property real dPxSize: 4
+    property real dType: 3
+    property real dLevels: 4
+    readonly property var styleNames: ["mesh", "streaks", "flow", "bands", "stripes", "conic", "radial", "rings", "balls", "blocks", "folds", "pmesh", "warp", "glass", "dither"]
     readonly property var stopStyles: ["bands", "stripes", "conic", "radial", "rings", "folds"]
 
     function snapshotCtx() {
@@ -97,7 +131,13 @@ FloatingWindow {
         }
         return { seed: seed, waveAmp: waveAmp, waveLen: waveLen, swirl: swirl,
                  blurV: blurV, grain: grain, angle: angle, streak: streak,
-                 chrome: chrome, aberration: aberration, postBlur: postBlur, anchors: a }
+                 chrome: chrome, aberration: aberration, postBlur: postBlur,
+                 pmPositions: pmPositions, pmWaveX: pmWaveX, pmWaveXShift: pmWaveXShift,
+                 pmWaveY: pmWaveY, pmWaveYShift: pmWaveYShift, pmMixing: pmMixing,
+                 pmGrainMix: pmGrainMix, pmGrainOverlay: pmGrainOverlay,
+                 wProportion: wProportion, wSoftness: wSoftness, wShape: wShape,
+                 wShapeScale: wShapeScale, wDistortion: wDistortion, wSwirl: wSwirl,
+                 wSwirlIter: wSwirlIter, wScale: wScale, anchors: a }
     }
     function applyCtx(c) {
         seed = c.seed; waveAmp = c.waveAmp; waveLen = c.waveLen; swirl = c.swirl
@@ -105,6 +145,22 @@ FloatingWindow {
         if (c.chrome !== undefined) chrome = c.chrome
         if (c.aberration !== undefined) aberration = c.aberration
         postBlur = c.postBlur !== undefined ? c.postBlur : 0
+        pmPositions = c.pmPositions !== undefined ? c.pmPositions : 23
+        pmWaveX = c.pmWaveX !== undefined ? c.pmWaveX : 0.53
+        pmWaveXShift = c.pmWaveXShift !== undefined ? c.pmWaveXShift : 0.0
+        pmWaveY = c.pmWaveY !== undefined ? c.pmWaveY : 0.95
+        pmWaveYShift = c.pmWaveYShift !== undefined ? c.pmWaveYShift : 0.64
+        pmMixing = c.pmMixing !== undefined ? c.pmMixing : 0.5
+        pmGrainMix = c.pmGrainMix !== undefined ? c.pmGrainMix : 0.0
+        pmGrainOverlay = c.pmGrainOverlay !== undefined ? c.pmGrainOverlay : 0.24
+        wProportion = c.wProportion !== undefined ? c.wProportion : 0.5
+        wSoftness = c.wSoftness !== undefined ? c.wSoftness : 1.0
+        wShape = c.wShape !== undefined ? c.wShape : 0
+        wShapeScale = c.wShapeScale !== undefined ? c.wShapeScale : 0.5
+        wDistortion = c.wDistortion !== undefined ? c.wDistortion : 0.25
+        wSwirl = c.wSwirl !== undefined ? c.wSwirl : 0.8
+        wSwirlIter = c.wSwirlIter !== undefined ? c.wSwirlIter : 10
+        wScale = c.wScale !== undefined ? c.wScale : 1.0
         anchorsModel.clear()
         for (const x of c.anchors) anchorsModel.append(x)
         selected = 0
@@ -113,6 +169,25 @@ FloatingWindow {
     function defaultKnobs() {
         waveAmp = 50; waveLen = 1600; swirl = 30; blurV = 80; grain = 0.12
         angle = 25; streak = 220; chrome = 0.5; aberration = 6; postBlur = 0
+        pmPositions = 23; pmWaveX = 0.53; pmWaveXShift = 0.0; pmWaveY = 0.95
+        pmWaveYShift = 0.64; pmMixing = 0.5; pmGrainMix = 0.0; pmGrainOverlay = 0.24
+        wProportion = 0.45; wSoftness = 1.0; wShape = 0; wShapeScale = 0.1
+        wDistortion = 0.25; wSwirl = 0.8; wSwirlIter = 10; wScale = 1.0
+    }
+    function loadPost(p) {
+        gGrain = p && p.grain !== undefined ? p.grain : 0
+        gBlur = p && p.blur !== undefined ? p.blur : 0
+        glSize = p && p.glSize !== undefined ? p.glSize : 0.5
+        glAngle = p && p.glAngle !== undefined ? p.glAngle : 90
+        glShape = p && p.glShape !== undefined ? p.glShape : 1
+        glDistShape = p && p.glDistShape !== undefined ? p.glDistShape : 2
+        glDistortion = p && p.glDistortion !== undefined ? p.glDistortion : 0.5
+        glShadows = p && p.glShadows !== undefined ? p.glShadows : 0.5
+        glHighlights = p && p.glHighlights !== undefined ? p.glHighlights : 0.5
+        glBlur = p && p.glBlur !== undefined ? p.glBlur : 0.1
+        dPxSize = p && p.dPxSize !== undefined ? p.dPxSize : 4
+        dType = p && p.dType !== undefined ? p.dType : 3
+        dLevels = p && p.dLevels !== undefined ? p.dLevels : 4
     }
 
     function snapshotLayer() {
@@ -162,19 +237,21 @@ FloatingWindow {
         const wasStop = stopStyles.includes(style)
         style = s
         if (wasStop !== stopStyles.includes(s)) resetAnchors()
-        layersRev++
-        saveState()
+        saveState()   // sync the new style into layers[] FIRST...
+        layersRev++   // ...then bump so glassIdx re-reads the updated array
     }
     function switchMode(m) {
         if (m === mode) return
         syncSelected()
-        comps[mode] = { layers: layers, post: { grain: gGrain, blur: gBlur } }
+        comps[mode] = { layers: layers, post: { grain: gGrain, blur: gBlur,
+            glSize: glSize, glAngle: glAngle, glShape: glShape, glDistShape: glDistShape,
+            glDistortion: glDistortion, glShadows: glShadows, glHighlights: glHighlights, glBlur: glBlur,
+            dPxSize: dPxSize, dType: dType, dLevels: dLevels } }
         mode = m
         const c = comps[mode]
         if (c && c.layers && c.layers.length) {
             layers = c.layers
-            gGrain = c.post ? c.post.grain : 0
-            gBlur = c.post ? c.post.blur : 0
+            loadPost(c.post)
             loadLayer(0)
         } else {
             layers = []
@@ -201,7 +278,10 @@ FloatingWindow {
     }
     function saveState() {
         syncSelected()
-        comps[mode] = { layers: layers, post: { grain: gGrain, blur: gBlur } }
+        comps[mode] = { layers: layers, post: { grain: gGrain, blur: gBlur,
+            glSize: glSize, glAngle: glAngle, glShape: glShape, glDistShape: glDistShape,
+            glDistortion: glDistortion, glShadows: glShadows, glHighlights: glHighlights, glBlur: glBlur,
+            dPxSize: dPxSize, dType: dType, dLevels: dLevels } }
         try {
             stateFile.setText(JSON.stringify({ version: 2, mode: mode, style: style, legend: showLegend,
                                                selLayer: selLayer, comps: comps, contexts: contexts }))
@@ -217,8 +297,7 @@ FloatingWindow {
                 comps = st.comps
                 const c = comps[mode]
                 layers = c.layers
-                gGrain = c.post ? c.post.grain : 0
-                gBlur = c.post ? c.post.blur : 0
+                loadPost(c.post)
                 loadLayer(Math.min(st.selLayer || 0, layers.length - 1))
                 return true
             }
@@ -294,6 +373,19 @@ FloatingWindow {
             const pos = [[0.15, 0.2], [0.6, 0.1], [0.85, 0.5], [0.35, 0.75], [0.75, 0.9]]
             for (let i = 0; i < 5; i++)
                 anchorsModel.append({ ax: pos[i][0], ay: pos[i][1], hex: cols[i], size: 0.9 + (i % 2) * 0.4 })
+            selected = 0
+            touchAnchors()
+            return
+        }
+        if (style === "pmesh" || style === "warp" || style === "glass" || style === "dither") {
+            // colours only — pmesh positions are procedural, warp is a
+            // noise-warped ramp, glass ignores anchors (refracts below);
+            // anchor xy is unused by all three
+            const cols = mode === "dark"
+                ? ["#013b65", "#03738c", "#a3d3ff", "#f2faef"]
+                : ["#f2faef", "#a3d3ff", "#03738c", "#013b65"]
+            for (let i = 0; i < 4; i++)
+                anchorsModel.append({ ax: 0.5, ay: 0.5, hex: cols[i], size: 1.0 })
             selected = 0
             touchAnchors()
             return
@@ -458,6 +550,13 @@ FloatingWindow {
     }
     Timer { id: statusClear; interval: 2500; onTriggered: win.status = "" }
 
+    // Drives u_time at display refresh so the shader animates live (the
+    // sheets drift). elapsedTime is seconds — matches Paper's u_time scale.
+    FrameAnimation {
+        running: win.playing
+        onTriggered: win.tNow = elapsedTime
+    }
+
     // ── AI generation ───────────────────────────────────────────────
     // The AI never touches pixels: it emits state for the same schema the
     // app persists, so generations render through the identical shader.
@@ -543,6 +642,14 @@ Pick the style that best fits the description unless one is named.`
             grain: clampN(o.grain, 0, 0.5, 0.12), angle: clampN(o.angle, -60, 60, 25),
             streak: clampN(o.streak, 40, 400, 220), chrome: clampN(o.chrome, 0, 1, 0.5),
             aberration: clampN(o.aberration, 0, 20, 6), postBlur: clampN(o.postBlur, 0, 200, 0),
+            pmPositions: clampN(o.pmPositions, 0, 100, 23), pmWaveX: clampN(o.pmWaveX, 0, 1, 0.53),
+            pmWaveXShift: clampN(o.pmWaveXShift, 0, 1, 0.0), pmWaveY: clampN(o.pmWaveY, 0, 1, 0.95),
+            pmWaveYShift: clampN(o.pmWaveYShift, 0, 1, 0.64), pmMixing: clampN(o.pmMixing, 0, 1, 0.5),
+            pmGrainMix: clampN(o.pmGrainMix, 0, 1, 0.0), pmGrainOverlay: clampN(o.pmGrainOverlay, 0, 1, 0.24),
+            wProportion: clampN(o.wProportion, 0, 1, 0.5), wSoftness: clampN(o.wSoftness, 0, 1, 1.0),
+            wShape: clampN(o.wShape, 0, 2, 0), wShapeScale: clampN(o.wShapeScale, 0, 1, 0.5),
+            wDistortion: clampN(o.wDistortion, 0, 1, 0.25), wSwirl: clampN(o.wSwirl, 0, 1, 0.8),
+            wSwirlIter: clampN(o.wSwirlIter, 0, 20, 10), wScale: clampN(o.wScale, 0.1, 4, 1.0),
             anchors: o.anchors.slice(0, 8).map(x => ({
                 ax: clampN(x.ax, 0, 1, 0.5), ay: clampN(x.ay, 0, 1, 0.5),
                 hex: /^#[0-9a-fA-F]{6}$/.test(x.hex) ? x.hex : (palette[0] || "#888888"),
@@ -682,6 +789,23 @@ Pick the style that best fits the description unless one is named.`
         property real seedF: win.lKnob(li, "seed")
         property real chromeAmt: win.lKnob(li, "chrome")
         property real postBlur: win.lKnob(li, "postBlur")
+        property real u_time: win.tNow
+        property real pmPositions: win.pmPositions
+        property real pmWaveX: win.pmWaveX
+        property real pmWaveXShift: win.pmWaveXShift
+        property real pmWaveY: win.pmWaveY
+        property real pmWaveYShift: win.pmWaveYShift
+        property real pmMixing: win.pmMixing
+        property real pmGrainMix: win.pmGrainMix
+        property real pmGrainOverlay: win.pmGrainOverlay
+        property real wProportion: win.wProportion
+        property real wSoftness: win.wSoftness
+        property real wShape: win.wShape
+        property real wShapeScale: win.wShapeScale
+        property real wDistortion: win.wDistortion
+        property real wSwirl: win.wSwirl
+        property real wSwirlIter: win.wSwirlIter
+        property real wScale: win.wScale
     }
 
     Row {
@@ -723,6 +847,7 @@ Pick the style that best fits the description unless one is named.`
             else if (k === Qt.Key_N) win.addLayer()
             else if (k === Qt.Key_M) win.switchMode(win.mode === "dark" ? "light" : "dark")
             else if (k === Qt.Key_T) { win.showLegend = !win.showLegend; win.saveState() }
+            else if (k === Qt.Key_Space) win.playing = !win.playing
             else if (k >= Qt.Key_1 && k <= Qt.Key_4) {
                 const i = k - Qt.Key_1
                 if (i < win.layers.length) win.switchLayer(i)
@@ -768,6 +893,19 @@ Pick the style that best fits the description unless one is named.`
                 property real gGrain: win.gGrain
                 property real gBlur: win.gBlur
                 property real seedF: win.seed
+                property real glassIdx: { win.layersRev; let gi = -1; for (let i = 0; i < win.layers.length; i++) if (win.layers[i].style === "glass") gi = i; return gi }
+                property real glSize: win.glSize
+                property real glAngle: win.glAngle
+                property real glShape: win.glShape
+                property real glDistShape: win.glDistShape
+                property real glDistortion: win.glDistortion
+                property real glShadows: win.glShadows
+                property real glHighlights: win.glHighlights
+                property real glBlur: win.glBlur
+                property real ditherIdx: { win.layersRev; let di = -1; for (let i = 0; i < win.layers.length; i++) if (win.layers[i].style === "dither") di = i; return di }
+                property real dPxSize: win.dPxSize
+                property real dType: win.dType
+                property real dLevels: win.dLevels
             }
 
             // rounded-corner frame: a thick border whose inner radius bites
@@ -983,17 +1121,48 @@ Pick the style that best fits the description unless one is named.`
                     Knob { visible: ["streaks", "flow", "folds"].includes(win.style); label: win.style === "folds" ? "ribbon" : "chrome"; from: 0; to: 1; step: 0.02; extValue: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
                     Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chromatic shift"; from: 0; to: 20; step: 1; extValue: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
                     Knob { visible: win.style === "streaks" || win.style === "flow"; label: "streak length"; from: 40; to: 400; step: 5; extValue: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
-                    Knob { visible: !["mesh", "radial", "balls", "blocks"].includes(win.style); label: win.style === "folds" ? "rotation" : "angle"; from: -60; to: 60; step: 1; extValue: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
-                    Knob { visible: win.style !== "folds"; label: "wave amplitude"; from: 0; to: 160; step: 1; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
+                    Knob { visible: !["mesh", "radial", "balls", "blocks", "pmesh", "warp", "glass", "dither"].includes(win.style); label: win.style === "folds" ? "rotation" : "angle"; from: -60; to: 60; step: 1; extValue: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
+                    Knob { visible: !["folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: "wave amplitude"; from: 0; to: 160; step: 1; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
                     Knob { visible: win.style === "folds"; label: "saturation"; from: 0; to: 2; step: 0.05; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
                     Knob { visible: win.style === "folds"; label: "ribbon width"; from: 0.1; to: 2; step: 0.05; extValue: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
-                    Knob { visible: win.style !== "folds"; label: ["stripes", "rings"].includes(win.style) ? "period" : win.style === "blocks" ? "block size" : "wave length"; from: 300; to: 3000; step: 10; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
+                    Knob { visible: !["folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: ["stripes", "rings"].includes(win.style) ? "period" : win.style === "blocks" ? "block size" : "wave length"; from: 300; to: 3000; step: 10; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
                     Knob { visible: win.style === "folds"; label: "zoom"; from: 1; to: 24; step: 1; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
-                    Knob { visible: win.style !== "folds"; label: "swirl"; from: -180; to: 180; step: 1; extValue: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
-                    Knob { visible: !["streaks", "folds"].includes(win.style); label: "softness"; from: 10; to: 220; step: 1; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
+                    Knob { visible: !["folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: "swirl"; from: -180; to: 180; step: 1; extValue: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
+                    Knob { visible: !["streaks", "folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: "softness"; from: 10; to: 220; step: 1; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
                     Knob { visible: win.style === "folds"; label: "softness"; from: 0; to: 2; step: 0.05; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
-                    Knob { visible: !["streaks", "flow", "folds"].includes(win.style); label: "soft blur"; from: 0; to: 200; step: 2; extValue: win.postBlur; onMoved: v => { win.postBlur = v; win.saveState() } }
-                    Knob { visible: win.style !== "folds"; label: "grain"; from: 0; to: 0.5; step: 0.01; extValue: win.grain; onMoved: v => { win.grain = v; win.saveState() } }
+                    Knob { visible: !["streaks", "flow", "folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: "soft blur"; from: 0; to: 200; step: 2; extValue: win.postBlur; onMoved: v => { win.postBlur = v; win.saveState() } }
+                    Knob { visible: !["folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: "grain"; from: 0; to: 0.5; step: 0.01; extValue: win.grain; onMoved: v => { win.grain = v; win.saveState() } }
+                    // Paper static-mesh-gradient controls — mirror its panel 1:1
+                    Knob { visible: win.style === "pmesh"; label: "positions"; from: 0; to: 100; step: 1; extValue: win.pmPositions; onMoved: v => { win.pmPositions = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "wave X"; from: 0; to: 1; step: 0.01; extValue: win.pmWaveX; onMoved: v => { win.pmWaveX = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "wave X shift"; from: 0; to: 1; step: 0.01; extValue: win.pmWaveXShift; onMoved: v => { win.pmWaveXShift = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "wave Y"; from: 0; to: 1; step: 0.01; extValue: win.pmWaveY; onMoved: v => { win.pmWaveY = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "wave Y shift"; from: 0; to: 1; step: 0.01; extValue: win.pmWaveYShift; onMoved: v => { win.pmWaveYShift = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "mixing"; from: 0; to: 1; step: 0.01; extValue: win.pmMixing; onMoved: v => { win.pmMixing = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "grain mixer"; from: 0; to: 1; step: 0.01; extValue: win.pmGrainMix; onMoved: v => { win.pmGrainMix = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "grain overlay"; from: 0; to: 1; step: 0.01; extValue: win.pmGrainOverlay; onMoved: v => { win.pmGrainOverlay = v; win.saveState() } }
+                    // Paper warp controls
+                    Knob { visible: win.style === "warp"; label: "shape (0 chk·1 str·2 edge)"; from: 0; to: 2; step: 1; extValue: win.wShape; onMoved: v => { win.wShape = v; win.saveState() } }
+                    Knob { visible: win.style === "warp"; label: "shape scale"; from: 0; to: 1; step: 0.01; extValue: win.wShapeScale; onMoved: v => { win.wShapeScale = v; win.saveState() } }
+                    Knob { visible: win.style === "warp"; label: "proportion"; from: 0; to: 1; step: 0.01; extValue: win.wProportion; onMoved: v => { win.wProportion = v; win.saveState() } }
+                    Knob { visible: win.style === "warp"; label: "softness"; from: 0; to: 1; step: 0.01; extValue: win.wSoftness; onMoved: v => { win.wSoftness = v; win.saveState() } }
+                    Knob { visible: win.style === "warp"; label: "distortion"; from: 0; to: 1; step: 0.01; extValue: win.wDistortion; onMoved: v => { win.wDistortion = v; win.saveState() } }
+                    Knob { visible: win.style === "warp"; label: "swirl"; from: 0; to: 1; step: 0.01; extValue: win.wSwirl; onMoved: v => { win.wSwirl = v; win.saveState() } }
+                    Knob { visible: win.style === "warp"; label: "swirl iterations"; from: 0; to: 20; step: 1; extValue: win.wSwirlIter; onMoved: v => { win.wSwirlIter = v; win.saveState() } }
+                    Knob { visible: win.style === "warp"; label: "scale (zoom)"; from: 0.1; to: 4; step: 0.05; extValue: win.wScale; onMoved: v => { win.wScale = v; win.saveState() } }
+                    // Fluted-glass layer controls — refracts the layers beneath it
+                    Knob { visible: win.style === "glass"; label: "flute density"; from: 0; to: 1; step: 0.01; extValue: win.glSize; onMoved: v => { win.glSize = v; win.saveState() } }
+                    Knob { visible: win.style === "glass"; label: "angle"; from: 0; to: 180; step: 1; extValue: win.glAngle; onMoved: v => { win.glAngle = v; win.saveState() } }
+                    Knob { visible: win.style === "glass"; label: "grid (1ln·2irr·3wv·4zz·5pat)"; from: 1; to: 5; step: 1; extValue: win.glShape; onMoved: v => { win.glShape = v; win.saveState() } }
+                    Knob { visible: win.style === "glass"; label: "distort (1prsm·2lens·3ctr·4csc·5flat)"; from: 1; to: 5; step: 1; extValue: win.glDistShape; onMoved: v => { win.glDistShape = v; win.saveState() } }
+                    Knob { visible: win.style === "glass"; label: "distortion"; from: 0; to: 1; step: 0.01; extValue: win.glDistortion; onMoved: v => { win.glDistortion = v; win.saveState() } }
+                    Knob { visible: win.style === "glass"; label: "shadows"; from: 0; to: 1; step: 0.01; extValue: win.glShadows; onMoved: v => { win.glShadows = v; win.saveState() } }
+                    Knob { visible: win.style === "glass"; label: "highlights"; from: 0; to: 1; step: 0.01; extValue: win.glHighlights; onMoved: v => { win.glHighlights = v; win.saveState() } }
+                    Knob { visible: win.style === "glass"; label: "blur"; from: 0; to: 1; step: 0.01; extValue: win.glBlur; onMoved: v => { win.glBlur = v; win.saveState() } }
+                    // Dither layer controls — ordered-dithers the layers beneath it
+                    Knob { visible: win.style === "dither"; label: "pixel size"; from: 1; to: 16; step: 1; extValue: win.dPxSize; onMoved: v => { win.dPxSize = v; win.saveState() } }
+                    Knob { visible: win.style === "dither"; label: "type (1rnd·2b2·3b4·4b8)"; from: 1; to: 4; step: 1; extValue: win.dType; onMoved: v => { win.dType = v; win.saveState() } }
+                    Knob { visible: win.style === "dither"; label: "levels (per channel)"; from: 2; to: 8; step: 1; extValue: win.dLevels; onMoved: v => { win.dLevels = v; win.saveState() } }
                 }
 
                 Card {

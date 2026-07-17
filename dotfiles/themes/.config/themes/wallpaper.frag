@@ -30,6 +30,13 @@ layout(std140, binding = 0) uniform buf {
     float seedF;       // noise seed
     float chromeAmt;   // brushed-filament strength 0..1
     float postBlur;    // soft blur over the composed scene (mesh/bands), px at 3840
+    float u_time;      // seconds; animates the folds/flow fields (0 = frozen)
+    // Paper static-mesh-gradient controls (style 11) — own uniforms, no reuse
+    float pmPositions; float pmWaveX; float pmWaveXShift; float pmWaveY;
+    float pmWaveYShift; float pmMixing; float pmGrainMix; float pmGrainOverlay;
+    // Paper warp controls (style 12)
+    float wProportion; float wSoftness; float wShape; float wShapeScale;
+    float wDistortion; float wSwirl; float wSwirlIter; float wScale;
 };
 
 const float ASPECT = 1.6;   // 16:10 canvas
@@ -215,7 +222,8 @@ float fg_fbm(vec2 p) {
 float fg_pat(vec2 p, out float hue) {
     vec2 q = vec2(fg_fbm(p), fg_fbm(p + vec2(5.2, 1.3)));
     vec2 r = vec2(fg_fbm(p + 4.0 * q + vec2(1.7, 9.2)), fg_fbm(p + 4.0 * q + vec2(8.3, 2.8)));
-    hue = clamp(r.x * 0.95 + 0.03, 0.0, 1.0);
+    hue = clamp(r.x * 0.95 + 0.03, 0.0, 1.0);   // hue from bounded r (no drift)
+    r += u_time * 0.045;                        // time animates sheet motion only
     return fg_fbm(p + 1.76 * r);
 }
 // active anchors (c0..c7) as an ordered color ramp
@@ -312,6 +320,132 @@ vec3 foldsField(vec2 uv) {
     float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
     col = clamp(mix(vec3(luma), col, u_saturation), 0.0, 1.0);
     return col;
+}
+
+// ── Paper static-mesh-gradient (paper-design/shaders, MIT) ─────────────
+// Faithful port: inverse-distance colour spots (placed procedurally from a
+// seed, à la Paper's getPosition), two-axis wave warp, and SMOOTH value-
+// noise film grain (not white-noise) — the reason Paper's grain reads lush,
+// not like sandpaper. Own pm_* uniforms so nothing collides with the other
+// styles. Anchors supply the colours; positions come from the seed.
+float pm_hash21(vec2 p) {
+    p = fract(p * vec2(0.3183099, 0.3678794)) + 0.1;
+    p += dot(p, p + 19.19);
+    return fract(p.x * p.y);
+}
+float pm_vnoise(vec2 st) {
+    vec2 ip = floor(st), f = fract(st);
+    float a = pm_hash21(ip), b = pm_hash21(ip + vec2(1, 0));
+    float c = pm_hash21(ip + vec2(0, 1)), d = pm_hash21(ip + vec2(1, 1));
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+vec2 pm_rotate(vec2 uv, float th) { return mat2(cos(th), sin(th), -sin(th), cos(th)) * uv; }
+vec2 pm_getPos(int i, float t) {
+    float a = float(i) * 0.37;
+    float b = 0.6 + mod(float(i), 3.0) * 0.3;
+    float c = 0.8 + mod(float(i + 1), 4.0) * 0.25;
+    return 0.5 + 0.5 * vec2(sin(t * b + a), cos(t * c + a * 1.5));
+}
+vec3 pmeshField(vec2 uv) {
+    vec2 grainUV = uv * 1000.0;
+    float mixerGrain = 0.4 * pmGrainMix * (pm_vnoise(grainUV) - 0.5);
+
+    float center = 1.0 - smoothstep(0.0, 1.0, length(uv - 0.5));
+    for (float i = 1.0; i <= 2.0; i++) {
+        uv.x += pmWaveX * center / i * cos(6.28318530718 * pmWaveXShift + i * 2.0 * smoothstep(0.0, 1.0, uv.y));
+        uv.y += pmWaveY * center / i * cos(6.28318530718 * pmWaveYShift + i * 2.0 * smoothstep(0.0, 1.0, uv.x));
+    }
+
+    vec3 color = vec3(0.0);
+    float totalWeight = 0.0;
+    float positionSeed = 25.0 + 0.33 * pmPositions;
+    float mixing = pow(pmMixing, 0.7);
+    float power = mix(2.0, 1.0, mixing);
+    int seen = 0;
+    for (int i = 0; i < 8; i++) {
+        vec4 A; vec3 C; getAnchor(i, A, C); if (A.w < 0.5) continue;
+        vec2 pos = pm_getPos(seen, positionSeed) + mixerGrain;
+        seen++;
+        float dist = pow(length(uv - pos), power);
+        float w = 1.0 / (dist + 1e-3);
+        float sharpness = mix(mix(0.0, 8.0, clamp(w, 0.0, 1.0)), 1.0, mixing);
+        w = pow(w, sharpness);
+        color += C * w;
+        totalWeight += w;
+    }
+    if (seen == 0) return baseColor.rgb;
+    color /= max(1e-4, totalWeight);
+
+    // smooth value-noise film grain overlay (two rotated octaves → b/w flecks)
+    float go = pm_vnoise(pm_rotate(grainUV, 1.0) + vec2(3.0));
+    go = mix(go, pm_vnoise(pm_rotate(grainUV, 2.0) + vec2(-1.0)), 0.5);
+    go = pow(go, 1.3);
+    float gv = go * 2.0 - 1.0;
+    float gs = pow(pmGrainOverlay * abs(gv), 0.8);
+    color = mix(color, vec3(step(0.0, gv)), 0.35 * gs);
+    return color;
+}
+
+// ── Paper warp (paper-design/shaders, MIT) ─────────────────────────────
+// Faithful port: noise + swirl domain-warp over a base pattern (checks /
+// stripes / edge), coloured through the anchor ramp with soft stepped mix.
+// Paper samples a noise texture; we use procedural value noise instead.
+// Own w* uniforms; animated via u_time.
+vec3 warpField(vec2 uv) {
+    // base pattern frequency: too small a span → noise sees <1 cell → smooth
+    // bands. ~5 units across the frame gives Paper's marbled turbulence.
+    float zoom = clamp(wScale, 0.1, 4.0);
+    vec2 p = vec2((uv.x - 0.5) * ASPECT, uv.y - 0.5) * (5.0 / zoom);
+
+    float t = 0.0625 * (u_time + 118.0);
+    float n1 = pm_vnoise(p * 1.0 + t);
+    float n2 = pm_vnoise(p * 2.0 - t);
+    float angle = n1 * 6.28318530718;
+    p.x += 4.0 * wDistortion * n2 * cos(angle);
+    p.y += 4.0 * wDistortion * n2 * sin(angle);
+
+    for (int i = 1; i <= 20; i++) {
+        if (i >= int(wSwirlIter)) break;
+        float f = float(i);
+        p.x += wSwirl / f * cos(t + f * 1.5 * p.y);
+        p.y += wSwirl / f * cos(t + f * 1.0 * p.x);
+    }
+
+    float proportion = clamp(wProportion, 0.0, 1.0);
+    float shape = 0.0;
+    if (wShape < 0.5) {
+        vec2 cu = p * (0.5 + 3.5 * wShapeScale);
+        shape = 0.5 + 0.5 * sin(cu.x) * cos(cu.y);
+        shape += 0.48 * sign(proportion - 0.5) * pow(abs(proportion - 0.5), 0.5);
+    } else if (wShape < 1.5) {
+        vec2 su = p * (2.0 * wShapeScale);
+        float f = fract(su.y);
+        shape = smoothstep(0.0, 0.55, f) * (1.0 - smoothstep(0.45, 1.0, f));
+        shape += 0.48 * sign(proportion - 0.5) * pow(abs(proportion - 0.5), 0.5);
+    } else {
+        float ss = 5.0 * (1.0 - wShapeScale);
+        float e0 = 0.45 - ss, e1 = 0.55 + ss;
+        shape = smoothstep(min(e0, e1), max(e0, e1), 1.0 - p.y + 0.3 * (proportion - 0.5));
+    }
+
+    vec3 cols[8]; int n = 0;
+    for (int i = 0; i < 8; i++) { vec4 A; vec3 C; getAnchor(i, A, C); if (A.w > 0.5) { cols[n] = C; n++; } }
+    if (n < 1) return baseColor.rgb;
+    float mixer = shape * float(n - 1);
+    float aa = fwidth(shape);
+    vec3 gradient = cols[0];
+    for (int i = 1; i < 8; i++) {
+        if (i >= n) break;
+        float m = clamp(mixer - float(i - 1), 0.0, 1.0);
+        float localStart = floor(m);
+        float softness = 0.5 * wSoftness + fwidth(m);
+        float smoothed = smoothstep(max(0.0, 0.5 - softness - aa), min(1.0, 0.5 + softness + aa), m - localStart);
+        float stepped = localStart + smoothed;
+        m = mix(stepped, m, wSoftness);
+        gradient = mix(gradient, cols[i], m);
+    }
+    return gradient;
 }
 
 // organic noise field for flow: gently domain-warped fbm mapped through the
@@ -426,6 +560,10 @@ vec3 sceneMB(vec2 uv) {
     if (s == 6) return radialField(warp(uv));
     if (s == 8) return ballsField(warp(uv));
     if (s == 9) return blocksField(warp(uv));
+    if (s == 11) return pmeshField(uv);   // Paper mesh: own warp + grain
+    if (s == 12) return warpField(uv);    // Paper warp: own noise/swirl warp
+    if (s == 13) return vec3(0.0);        // glass: refracts below in composite
+    if (s == 14) return vec3(0.0);        // dither: filters below in composite
     return meshField(warp(uv));
 }
 
@@ -458,8 +596,11 @@ void main() {
         col.b = streaksAt(uv - off).b;
         col = finish(col);
     }
-    // film grain
-    float g = (hash12(uv * vec2(3840.0, 2400.0)) - 0.5) * grainAmt;
-    col = clamp(col + g, 0.0, 1.0);
+    // film grain — folds (10) and pmesh (11) do their own; skip the harsh
+    // white-noise pass for them (it reads as sandpaper at preview res)
+    if (styleMode < 9.5) {
+        float g = (hash12(uv * vec2(3840.0, 2400.0)) - 0.5) * grainAmt;
+        col = clamp(col + g, 0.0, 1.0);
+    }
     fragColor = vec4(col, 1.0) * qt_Opacity;
 }
