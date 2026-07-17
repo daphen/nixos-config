@@ -19,7 +19,7 @@
     "amdgpu.sg_display=0" # fix DCN3.5 idle power opt stalls (video freeze + audio static)
     "amdgpu.abmlevel=0" # disable adaptive backlight modulation — caps OLED at ~76% with content-driven dimming
     "resume=/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0"
-    "resume_offset=421093376"
+    "resume_offset=11794432"
     "nvidia.NVreg_DynamicPowerManagement=0x02"
     # Prevent ACPI EC from waking the system during s2idle.
     "acpi.ec_no_wakeup=1"
@@ -54,7 +54,10 @@
 
   # Swap file for hibernate (s2idle wake doesn't work — user always resumes from
   # hibernate after the delay timer fires. Keep delay short for quick resume.)
-  swapDevices = [{ device = "/swapfile"; size = 65 * 1024; }];
+  # Sized > RAM (61G) + dGPU VRAM (16G): PreserveVideoMemoryAllocations copies
+  # VRAM into RAM before the image is written, so a 65G file couldn't hold a
+  # heavy session's image → NV_ERR_NO_MEMORY, corrupt image, failed resume.
+  swapDevices = [{ device = "/swapfile"; size = 80 * 1024; }];
   boot.resumeDevice = "/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0";
   systemd.sleep.settings.Sleep.HibernateDelaySec = "5min";
   services.logind.settings.Login.HandleLidSwitch = "suspend-then-hibernate";
