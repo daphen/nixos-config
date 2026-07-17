@@ -77,7 +77,7 @@ in
     terminal = false;
     type = "Application";
     categories = [ "Network" "WebBrowser" ];
-    mimeType = [ "x-scheme-handler/http" "x-scheme-handler/https" "text/html" ];
+    mimeType = [ "x-scheme-handler/http" "x-scheme-handler/https" "text/html" "x-scheme-handler/spotify" ];
     noDisplay = true;
   };
 
@@ -97,6 +97,7 @@ in
       "x-scheme-handler/http" = "browser-dispatch.desktop";
       "x-scheme-handler/https" = "browser-dispatch.desktop";
       "text/html" = "browser-dispatch.desktop";
+      "x-scheme-handler/spotify" = "browser-dispatch.desktop";
     };
   };
 

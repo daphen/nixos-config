@@ -33,6 +33,47 @@ for arg in "$@"; do
     esac
 done
 
+# ── Spotify: play in spotify-player instead of opening a browser ───────────────
+# Catches spotify: URIs and open.spotify.com/<type>/<id> links (locale prefix
+# tolerated). Only track/album/playlist/artist are supported by the CLI —
+# anything else (episode, show, user) falls through to the browser.
+if [[ "$URL" =~ ^spotify: || "$URL" =~ ^https?://open\.spotify\.com/ ]]; then
+    stype="" sid=""
+    if [[ "$URL" =~ spotify:([a-z]+):([A-Za-z0-9]+) ]]; then
+        stype="${BASH_REMATCH[1]}" sid="${BASH_REMATCH[2]}"
+    elif [[ "$URL" =~ open\.spotify\.com/(intl-[a-z-]+/)?([a-z]+)/([A-Za-z0-9]+) ]]; then
+        stype="${BASH_REMATCH[2]}" sid="${BASH_REMATCH[3]}"
+    fi
+    if [[ -n "$sid" && "$stype" =~ ^(track|album|playlist|artist)$ ]]; then
+        # Open (or focus) the spotify-player TUI in a terminal, then play the
+        # link on it. The running TUI registers as the Connect device the CLI
+        # (playback start) controls, so the terminal shows what's playing.
+        if pgrep -x spotify_player >/dev/null 2>&1; then
+            "$(dirname "$0")/niri-jump-or-exec" spotify-player \
+                "kitty --class spotify-player -e spotify_player" >/dev/null 2>&1
+        else
+            setsid kitty --class spotify-player -e spotify_player >/dev/null 2>&1 </dev/null &
+        fi
+        # Wait until spotify-player's Connect device is registered AND active —
+        # librespot takes a few seconds, and playback start 404s without an
+        # active device. Poll (up to ~10s), then force-connect as a fallback.
+        active=""
+        for _ in $(seq 1 40); do
+            if spotify_player get key devices 2>/dev/null | grep -q '"is_active":true'; then
+                active=1; break
+            fi
+            sleep 0.25
+        done
+        [[ -z "$active" ]] && spotify_player connect --name spotify-player >/dev/null 2>&1
+        if [[ "$stype" == track ]]; then
+            spotify_player playback start track --id "$sid" >/dev/null 2>&1
+        else
+            spotify_player playback start context --id "$sid" "$stype" >/dev/null 2>&1
+        fi
+        exit 0
+    fi
+fi
+
 # ── URL routing rules ─────────────────────────────────────────────────────────
 
 is_personal_url() {
