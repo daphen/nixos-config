@@ -48,27 +48,31 @@ if [[ "$URL" =~ ^spotify: || "$URL" =~ ^https?://open\.spotify\.com/ ]]; then
         # Open (or focus) the spotify-player TUI in a terminal, then play the
         # link on it. The running TUI registers as the Connect device the CLI
         # (playback start) controls, so the terminal shows what's playing.
-        if pgrep -x spotify_player >/dev/null 2>&1; then
+        # Detect the running TUI by its niri window (app-id), NOT pgrep: the
+        # spotify_player CLI subcommands (get/playback/…) share the process
+        # name, so pgrep gives false positives and we'd skip launching.
+        if niri msg windows 2>/dev/null | grep -q '"spotify-player"'; then
             "$(dirname "$0")/niri-jump-or-exec" spotify-player \
                 "kitty --class spotify-player -e spotify_player" >/dev/null 2>&1
         else
             setsid kitty --class spotify-player -e spotify_player >/dev/null 2>&1 </dev/null &
         fi
-        # Wait until spotify-player's Connect device is registered AND active —
-        # librespot takes a few seconds, and playback start 404s without an
-        # active device. Poll (up to ~10s), then force-connect as a fallback.
+        # Wait until spotify-player's Connect device is registered AND active
+        # (librespot takes a few seconds; playback start 404s without an active
+        # device). Every CLI call is `timeout`-wrapped — the client hangs while
+        # its server isn't ready yet, which otherwise piles up zombie processes.
         active=""
-        for _ in $(seq 1 40); do
-            if spotify_player get key devices 2>/dev/null | grep -q '"is_active":true'; then
+        for _ in $(seq 1 30); do
+            if timeout 2 spotify_player get key devices 2>/dev/null | grep -q '"is_active":true'; then
                 active=1; break
             fi
-            sleep 0.25
+            sleep 0.5
         done
-        [[ -z "$active" ]] && spotify_player connect --name spotify-player >/dev/null 2>&1
+        [[ -z "$active" ]] && timeout 3 spotify_player connect --name spotify-player >/dev/null 2>&1
         if [[ "$stype" == track ]]; then
-            spotify_player playback start track --id "$sid" >/dev/null 2>&1
+            timeout 5 spotify_player playback start track --id "$sid" >/dev/null 2>&1
         else
-            spotify_player playback start context --id "$sid" "$stype" >/dev/null 2>&1
+            timeout 5 spotify_player playback start context --id "$sid" "$stype" >/dev/null 2>&1
         fi
         exit 0
     fi
