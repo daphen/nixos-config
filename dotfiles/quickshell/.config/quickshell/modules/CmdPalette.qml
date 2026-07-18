@@ -77,14 +77,20 @@ PanelWindow {
     property var scopedWindowProfile: null
     property int selectedIndex: 0
 
+    // History feeds the History tab always, and the All tab under a query
+    // (empty-query All stays calm — recents live in the History tab).
+    function historyWanted() {
+        const ft = filterTabs[filterTab]
+        return ft === "History" || (ft === "All" && query.trim().length > 0)
+    }
     onQueryChanged: {
         selectedIndex = firstSelectable(); list.positionViewAtBeginning()
-        if (filterTabs[filterTab] === "History") histDebounce.restart()
+        if (historyWanted()) histDebounce.restart()
     }
     onFilterTabChanged: {
         selectedIndex = firstSelectable()
-        // entering the tab fetches immediately; typing goes through the debounce
-        if (filterTabs[filterTab] === "History") PaletteState.searchHistory(query.trim())
+        // entering a tab fetches immediately; typing goes through the debounce
+        if (historyWanted()) PaletteState.searchHistory(query.trim())
     }
     Timer { id: histDebounce; interval: 150; onTriggered: PaletteState.searchHistory(root.query.trim()) }
 
@@ -189,18 +195,20 @@ PanelWindow {
         }
 
         if (ftab === "History") {
-            // Chrome already ranks history.search results (recency for an
-            // empty query, its own matcher otherwise) — render in order,
-            // no local re-rank; the daemon query IS the filter.
+            // The tab is a timeline: recency order, always (Chrome's text
+            // queries return relevance order — resort). The daemon query IS
+            // the filter, no local re-rank.
             const _h = PaletteState.historyGen
-            const items = (PaletteState.historyEntries || []).map(h => ({
-                kind: "history",
-                title: h.title || h.url || "Untitled",
-                url: h.url || "",
-                subtitle: (relTime(h.lastVisitTime) ? relTime(h.lastVisitTime) + "  ·  " : "")
-                          + niceUrl(h.url || ""),
-                faviconPath: h.faviconPath || "",
-            }))
+            const items = (PaletteState.historyEntries || []).slice()
+                .sort((a, b) => (b.lastVisitTime || 0) - (a.lastVisitTime || 0))
+                .map(h => ({
+                    kind: "history",
+                    title: h.title || h.url || "Untitled",
+                    url: h.url || "",
+                    subtitle: (relTime(h.lastVisitTime) ? relTime(h.lastVisitTime) + "  ·  " : "")
+                              + niceUrl(h.url || ""),
+                    faviconPath: h.faviconPath || "",
+                }))
             if (items.length === 0) return []
             const out = [{ divider: true, label: "History" }]
             for (const it of items) out.push(it)
@@ -252,7 +260,6 @@ PanelWindow {
             return { items: scored.map(x => x.e), maxScore: scored.length ? scored[0].s : 0 }
         }
 
-        let groups = []
         const rt = rank(q ? tabItems.concat(currentItems) : tabItems)
         const rq = rank(qmItems)
         // Address-bar Enter semantics: a URL-looking query navigates by
@@ -260,13 +267,41 @@ PanelWindow {
         // better), in which case the hit stays on top. Weak fuzzy noise
         // (score 1) doesn't count as a hit.
         const hasHit = Math.max(rt.maxScore, rq.maxScore) >= 1000
-        if (urlItems.length) groups.push({ id: "url", heading: "Open URL", items: urlItems, maxScore: hasHit ? 999 : 99999 })
-        if (currentItems.length && !q) groups.push({ id: "tabs", heading: "Current Tab", items: currentItems, maxScore: 0 })
-        groups.push({ id: "tabs", heading: "Open Tabs", items: rt.items, maxScore: rt.maxScore })
-        groups.push({ id: "quickmarks", heading: "Quickmarks", items: rq.items, maxScore: rq.maxScore })
-        // Web templates keep insertion order; modest score keeps the group
-        // below real hits and the Go-to row, but on top when nothing hits.
-        groups.push({ id: "websites", heading: "Web Search", items: webItems, maxScore: q ? 500 : 0 })
+
+        // History in All: only under a query (recents live in the History
+        // tab). Chrome did the matching; the local score filter just drops
+        // stale entries from the previous keystroke instantly. Order:
+        // visit count, then recency. Capped so it can't drown the list.
+        let histItems = []
+        if (q) {
+            const _h = PaletteState.historyGen
+            histItems = (PaletteState.historyEntries || [])
+                .filter(h => scoreMatch(q, matchText({ title: h.title || "", url: h.url || "" })) > 0)
+                .sort((a, b) => (b.visitCount || 0) - (a.visitCount || 0)
+                             || (b.lastVisitTime || 0) - (a.lastVisitTime || 0))
+                .slice(0, 8)
+                .map(h => ({
+                    kind: "history",
+                    title: h.title || h.url || "Untitled",
+                    url: h.url || "",
+                    subtitle: (relTime(h.lastVisitTime) ? relTime(h.lastVisitTime) + "  ·  " : "")
+                              + niceUrl(h.url || ""),
+                    faviconPath: h.faviconPath || "",
+                }))
+        }
+
+        // Fixed hierarchy — groups never rank-shuffle past each other:
+        // Open URL (unless a tab/quickmark hit beats it) → Current Tab →
+        // Open Tabs → Quickmarks → History → Web Search → Actions.
+        // Array order doubles as cross-group dedupe priority.
+        let groups = []
+        if (urlItems.length && !hasHit) groups.push({ id: "url", heading: "Open URL", items: urlItems })
+        if (currentItems.length && !q) groups.push({ id: "tabs", heading: "Current Tab", items: currentItems })
+        groups.push({ id: "tabs", heading: "Open Tabs", items: rt.items })
+        groups.push({ id: "quickmarks", heading: "Quickmarks", items: rq.items })
+        if (urlItems.length && hasHit) groups.push({ id: "url", heading: "Open URL", items: urlItems })
+        groups.push({ id: "history", heading: "History", items: histItems })
+        groups.push({ id: "websites", heading: "Web Search", items: webItems })
         // Actions: quickmark the current tab. Rankable like everything else
         // ("add", "quickmark", "mark" all hit it); hidden if already marked.
         if (cur && !(PaletteState.quickmarks || []).some(m => m.url === cur.url)) {
@@ -276,11 +311,11 @@ PanelWindow {
                 subtitle: niceUrl(cur.url || ""), faviconPath: cur.faviconPath || "",
             }
             const ra = rank([addItem])
-            groups.push({ id: "actions", heading: "Actions", items: q ? ra.items : [addItem],
-                          maxScore: ra.maxScore })
+            groups.push({ id: "actions", heading: "Actions", items: q ? ra.items : [addItem] })
         }
 
-        // Cross-group URL dedupe (tabs > quickmarks > websites).
+        // Cross-group URL dedupe in hierarchy order — a URL that's already
+        // an open tab renders as its tab row, not a history/quickmark echo.
         const seen = ({})
         for (let gi = 0; gi < groups.length; gi++) {
             groups[gi].items = groups[gi].items.filter(e => {
@@ -292,7 +327,6 @@ PanelWindow {
         }
 
         let nonEmpty = groups.filter(g => g.items.length > 0)
-        if (q) nonEmpty.sort((a, b) => b.maxScore - a.maxScore)
 
         if (ftab === "Tabs") nonEmpty = nonEmpty.filter(g => g.id === "tabs")
         else if (ftab === "Quickmarks") nonEmpty = nonEmpty.filter(g => g.id === "quickmarks")

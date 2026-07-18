@@ -71,20 +71,23 @@ Singleton {
         path: Quickshell.env("XDG_RUNTIME_DIR") + "/palette-ui.sock"
         connected: true
         parser: SplitParser { onRead: data => root.onLine(data) }
-        onConnectionStateChanged: {
-            root.daemonConnected = sock.connected
-            if (!sock.connected) reconnect.restart()
-        }
+        onConnectionStateChanged: root.daemonConnected = sock.connected
     }
-    // Two-tick re-dial (same pattern as the chat clients): flipping
+    // Persistent re-dial: runs WHILE disconnected, not one-shot off a state
+    // change — a dial that fails against a still-down daemon used to leave
+    // the socket wedged forever (no change event → no retry). Two-phase
+    // drop/dial across separate ticks, same as the chat clients: flipping
     // connected in one shot races the disconnect against the connect.
     Timer {
         id: reconnect
-        interval: 2000
-        property bool dropping: false
+        interval: 1000
+        repeat: true
+        running: !sock.connected
+        property bool dropping: true
+        onRunningChanged: if (running) dropping = true
         onTriggered: {
-            if (!dropping) { sock.connected = false; dropping = true; restart() }
-            else { sock.connected = true; dropping = false }
+            if (dropping) { sock.connected = false; dropping = false }
+            else { sock.connected = true; dropping = true }
         }
     }
 
