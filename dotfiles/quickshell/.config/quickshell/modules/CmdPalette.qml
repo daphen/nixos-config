@@ -70,15 +70,32 @@ PanelWindow {
         Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
 
     // ── ranking / grouping (ported from App.tsx) ──────────────────────
-    readonly property var filterTabs: ["All", "Tabs", "Quickmarks", "Web", "?"]
+    readonly property var filterTabs: ["All", "Tabs", "Quickmarks", "History", "Web", "?"]
     property int filterTab: 0
     property string query: search ? search.text : ""
     property var scopedWindowId: null
     property var scopedWindowProfile: null
     property int selectedIndex: 0
 
-    onQueryChanged: { selectedIndex = firstSelectable(); list.positionViewAtBeginning() }
-    onFilterTabChanged: selectedIndex = firstSelectable()
+    onQueryChanged: {
+        selectedIndex = firstSelectable(); list.positionViewAtBeginning()
+        if (filterTabs[filterTab] === "History") histDebounce.restart()
+    }
+    onFilterTabChanged: {
+        selectedIndex = firstSelectable()
+        // entering the tab fetches immediately; typing goes through the debounce
+        if (filterTabs[filterTab] === "History") PaletteState.searchHistory(query.trim())
+    }
+    Timer { id: histDebounce; interval: 150; onTriggered: PaletteState.searchHistory(root.query.trim()) }
+
+    function relTime(ms) {
+        if (!ms) return ""
+        const s = (Date.now() - ms) / 1000
+        if (s < 60) return "just now"
+        if (s < 3600) return Math.floor(s / 60) + "m ago"
+        if (s < 86400) return Math.floor(s / 3600) + "h ago"
+        return Math.floor(s / 86400) + "d ago"
+    }
 
     function niceUrl(u) {
         if (!u) return ""
@@ -168,6 +185,25 @@ PanelWindow {
             for (const [keys, what] of help)
                 out.push({ kind: "help", title: keys, subtitle: what,
                            url: "", faviconPath: "" })
+            return out
+        }
+
+        if (ftab === "History") {
+            // Chrome already ranks history.search results (recency for an
+            // empty query, its own matcher otherwise) — render in order,
+            // no local re-rank; the daemon query IS the filter.
+            const _h = PaletteState.historyGen
+            const items = (PaletteState.historyEntries || []).map(h => ({
+                kind: "history",
+                title: h.title || h.url || "Untitled",
+                url: h.url || "",
+                subtitle: (relTime(h.lastVisitTime) ? relTime(h.lastVisitTime) + "  ·  " : "")
+                          + niceUrl(h.url || ""),
+                faviconPath: h.faviconPath || "",
+            }))
+            if (items.length === 0) return []
+            const out = [{ divider: true, label: "History" }]
+            for (const it of items) out.push(it)
             return out
         }
 

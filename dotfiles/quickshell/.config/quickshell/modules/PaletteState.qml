@@ -22,6 +22,12 @@ Singleton {
     // Bumped on every state push so bindings recompute.
     property int gen: 0
 
+    // History search results (request/response, not state-push: history is
+    // query-shaped). reqId correlates replies; stale ones are discarded.
+    property var historyEntries: []
+    property int historyGen: 0
+    property int _histReq: 0
+
     function toggle() { open = !open }
     function show()   { open = true }
     function hide()   { open = false }
@@ -35,11 +41,23 @@ Singleton {
     function quickmarkAdd(name, url)      { send({ cmd: "quickmark-add", name: name, url: url }) }
     function closeTab(tabId)              { send({ cmd: "close-tab", tabId: tabId }) }
     function refresh()                    { send({ cmd: "refresh" }) }
+    function searchHistory(query) {
+        _histReq++
+        send({ cmd: "history-search", reqId: _histReq, query: query || "" })
+    }
 
     function onLine(data) {
         let m
         try { m = JSON.parse(data) } catch (e) { return }
-        if (!m || m.type !== "state") return
+        if (!m) return
+        if (m.type === "history") {
+            if (m.reqId === root._histReq) {   // stale replies lose
+                root.historyEntries = m.entries || []
+                root.historyGen++
+            }
+            return
+        }
+        if (m.type !== "state") return
         root.profile = m.profile || ""
         root.tabs = m.tabs || []
         root.chin = m.chin || []
