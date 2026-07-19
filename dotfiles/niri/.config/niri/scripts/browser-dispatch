@@ -45,24 +45,44 @@ if [[ "$URL" =~ ^spotify: || "$URL" =~ ^https?://open\.spotify\.com/ ]]; then
         stype="${BASH_REMATCH[2]}" sid="${BASH_REMATCH[3]}"
     fi
     if [[ -n "$sid" && "$stype" =~ ^(track|album|playlist|artist)$ ]]; then
-        # Open (or focus) the spotify-player TUI in a terminal, then play the
-        # link on it. The running TUI registers as the Connect device the CLI
-        # (playback start) controls, so the terminal shows what's playing.
-        # Detect the running TUI by its niri window (app-id), NOT pgrep: the
-        # spotify_player CLI subcommands (get/playback/…) share the process
-        # name, so pgrep gives false positives and we'd skip launching.
-        if niri msg windows 2>/dev/null | grep -q '"spotify-player"'; then
-            "$(dirname "$0")/niri-jump-or-exec" spotify-player \
-                "kitty --class spotify-player -e spotify_player" >/dev/null 2>&1
+        # The TUI's client-API port is the source of truth for "an instance
+        # is running" — window matching lied whenever the player was launched
+        # outside our kitty class, and a duplicate spawn dies on the port
+        # anyway. (Port must match client_port in spotify-player's app.toml.)
+        SP_PORT=24915
+        # NB: spotify-player's client API is a UDP socket (ss -uln, not -tln)
+        sp_up() { ss -uln 2>/dev/null | grep -q ":${SP_PORT} "; }
+
+        if sp_up; then
+            # Focus the existing window if one is visible — match loosely
+            # (app-id OR title), and NEVER spawn from the focus path.
+            niri msg --json windows 2>/dev/null | python3 -c '
+import json, subprocess, sys
+try: wins = json.load(sys.stdin)
+except Exception: sys.exit(0)
+for w in wins:
+    s = ((w.get("app_id") or "") + " " + (w.get("title") or "")).lower()
+    if "spotify" in s:
+        subprocess.run(["niri", "msg", "action", "focus-window", "--id", str(w["id"])])
+        break
+' >/dev/null 2>&1
         else
             setsid kitty --class spotify-player -e spotify_player >/dev/null 2>&1 </dev/null &
+            # Wait for the TUI to bind its port BEFORE any spotify_player CLI
+            # call: with no server up, the CLI runs standalone — it grabs the
+            # port itself and the freshly-spawned TUI dies on bind (the
+            # "window opens then instantly closes" failure).
+            for _ in $(seq 1 60); do
+                sp_up && break
+                sleep 0.25
+            done
+            sp_up || exit 0   # TUI never came up; don't poke a dead server
         fi
-        # Wait until spotify-player's Connect device is registered AND active
-        # (librespot takes a few seconds; playback start 404s without an active
-        # device). Every CLI call is `timeout`-wrapped — the client hangs while
-        # its server isn't ready yet, which otherwise piles up zombie processes.
+        # Server is up — CLI calls now connect as clients (timeout-wrapped:
+        # the client can still hang during server startup hiccups). Wait for
+        # the Connect device to be active; playback start 404s without one.
         active=""
-        for _ in $(seq 1 30); do
+        for _ in $(seq 1 20); do
             if timeout 2 spotify_player get key devices 2>/dev/null | grep -q '"is_active":true'; then
                 active=1; break
             fi

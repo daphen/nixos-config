@@ -16,7 +16,9 @@ notify_timeout_in_secs = 0
 notify_transient = false
 tracks_playback_limit = 50
 app_refresh_duration_in_ms = 32
-playback_refresh_duration_in_ms = 0
+# poll playback state — 0 (event-driven only) left the Playback pane on
+# "Loading…" forever when playback was started by the CLI (link handler)
+playback_refresh_duration_in_ms = 1000
 page_size_in_rows = 20
 play_icon = "▶"
 pause_icon = "▌▌"
