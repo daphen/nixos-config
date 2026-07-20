@@ -23,17 +23,17 @@ Item {
         spacing: 6
 
         Lib.Icon {
-            // bolt whenever on AC (charging, holding at full, or charge-limited)
-            name: chargeState === UPowerDeviceState.Charging
-                  || chargeState === UPowerDeviceState.FullyCharged
-                  || chargeState === UPowerDeviceState.PendingCharge ? "battery-charging"
+            // bolt whenever on AC — read the AC line (UPower.onBattery), not
+            // the battery's charge state: a full battery on AC reports
+            // "Discharging" (trickle) on this EC and the bolt vanished
+            name: !UPower.onBattery ? "battery-charging"
                 : percentage > 95 ? "battery-full"
                 : percentage > 20 ? "battery-high" : "battery"
             // ink like the neighbors — the bolt already communicates AC;
             // color only escalates for genuinely low battery
             color: {
-                if (percentage < 15 && chargeState !== UPowerDeviceState.Charging) return Theme.red
-                if (percentage < 30 && chargeState !== UPowerDeviceState.Charging) return Theme.yellow
+                if (percentage < 15 && UPower.onBattery) return Theme.red
+                if (percentage < 30 && UPower.onBattery) return Theme.yellow
                 return Theme.fg
             }
             // the battery glyph is squat in its grid — render a touch larger
