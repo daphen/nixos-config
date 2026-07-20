@@ -49,7 +49,7 @@ in
     "amdgpu.sg_display=0" # fix DCN3.5 idle power opt stalls (video freeze + audio static)
     "amdgpu.abmlevel=0" # disable adaptive backlight modulation — caps OLED at ~76% with content-driven dimming
     "resume=/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0"
-    "resume_offset=11794432"
+    "resume_offset=18552832"
     "nvidia.NVreg_DynamicPowerManagement=0x02"
     # Prevent ACPI EC from waking the system during s2idle.
     "acpi.ec_no_wakeup=1"
