@@ -252,13 +252,13 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#df9001"
+        active-color "#6F6F6E"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#999999"
+        inactive-color "#E2E2E1"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -282,13 +282,13 @@ layout {
         // If you enable the border, you probably want to disable the focus ring.
 
         width 4
-        active-color "#df9001"
+        active-color "#6F6F6E"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
-        active-gradient from="#df9001" to="#df9001" angle=180
+        active-gradient from="#6F6F6E" to="#6F6F6E" angle=180
         // Matches waybar-notch light theme hairline
         // (foreground.primary @ 50% alpha).
-        inactive-color "#999999"
+        inactive-color "#E2E2E1"
 
         // Color of the border around windows that request your attention.
         urgent-color "#9b0000"
@@ -466,12 +466,40 @@ window-rule {
 // media-viewer.sh that the QML chat clients (slqs/dsqrd) call. Float them so
 // they overlay the client without reflowing the tile; niri centers floating
 // windows on focus by default.
+// slqs/dsqrd file-attach picker (kitty + yazi chooser) floats over the client.
+window-rule {
+    match app-id=r#"^slqs-upload$"#
+    open-floating true
+    default-column-width { fixed 1100; }
+    default-window-height { fixed 800; }
+}
+
 window-rule {
     match app-id=r#"^imv$"#
     match app-id=r#"^mpv$"#
     open-floating true
-    default-column-width { fixed 2400; }
-    default-window-height { fixed 1200; }
+    // no fixed size: media-viewer.sh requests 75%/85% of the focused output
+    // via -W/-H / --geometry. A forced size here fights that request — imv
+    // lays out for the size it asked for, gets configured differently, and
+    // the image lands off-center (and 2400 overflowed the laptop screen).
+}
+
+// 1Password: same summon-read-discard shape as mail — float it.
+window-rule {
+    match app-id=r#"^1password$"#
+    open-floating true
+    default-column-width { fixed 1400; }
+    default-window-height { fixed 950; }
+}
+
+// The mail client is a read-and-discard surface: float it centered over
+// whatever you're doing (Super+M summons, q dismisses) instead of
+// claiming a tile.
+window-rule {
+    match app-id=r#"^org.quickshell$"# title="^mail-client$"
+    open-floating true
+    default-column-width { fixed 1700; }
+    default-window-height { fixed 1100; }
 }
 
 // Example: block out two password managers from screen capture.
@@ -494,7 +522,7 @@ window-rule {
 window-rule {
     geometry-corner-radius 10
     clip-to-geometry true
-    opacity 0.92
+    opacity 0.98
     draw-border-with-background false
 }
 
@@ -570,6 +598,15 @@ window-rule {
     default-window-height { proportion 1.0; }
 }
 
+// Native chat clients (slqs/dsqrd) — same fixed width as the kitty
+// columns. Title match is safe here (unlike browsers): the QML
+// FloatingWindow sets its title before the surface maps.
+window-rule {
+    match app-id=r#"^org\.quickshell$"# title=r#"^(slk|discord)-client$"#
+    default-column-width { fixed 1500; }
+    default-window-height { proportion 1.0; }
+}
+
 // Float calculator, file pickers, and other dialogs
 window-rule {
     match title=r#"(?i)calculator"#
@@ -602,7 +639,7 @@ window-rule {
 
 // Devenv deps singleton: floats so it never claims a tiled column
 // slot. ws-tracker still drags it onto the active stack workspace
-// so Super+M shows it overlaid on whatever stack is in front, but
+// so it can be overlaid on whatever stack is in front, but
 // floating moves don't shift tiled column indices, so the viewport
 // stays stable when switching worktrees.
 
@@ -653,7 +690,7 @@ window-rule {
 window-rule {
     match is-active=false
     exclude app-id=r#"^(browser-personal|browser-work)$"#
-    opacity 0.86
+    opacity 0.85
 }
 
 binds {
@@ -674,7 +711,9 @@ binds {
     // Suggested binds for running programs: app launcher, screen locker.
     Super+Space hotkey-overlay-title="Run an Application" { spawn "qs" "ipc" "call" "launcher" "toggle"; }
     Super+Return { spawn "qs" "ipc" "call" "launcher" "toggle"; }
-    Super+P { spawn "1password"; }
+    // 1Password lives in the tray (close-to-tray default): focus the window
+    // if mapped, else spawn — which summons the tray instance (~instant)
+    Super+P { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 1password 1password"; }
     Super+Ctrl+q hotkey-overlay-title="Force Kill Focused Window" { spawn "/home/daphen/.config/niri/scripts/force-kill-focused"; }
     Super+Shift+Ctrl+q hotkey-overlay-title="Lock the Screen" { spawn "swaylock"; }
 
@@ -715,7 +754,7 @@ binds {
 
     Super+f hotkey-overlay-title="Toggle Command Palette" { spawn-sh "$HOME/.config/niri/scripts/palette-toggle"; }
     Super+Shift+m hotkey-overlay-title="Add Quickmark" { spawn "palette-ipc" "add-quickmark"; }
-    Super+m { spawn-sh "$HOME/.config/niri/scripts/ws-focus devenv"; }
+    Super+m hotkey-overlay-title="Mail" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:mail-client $HOME/.config/niri/scripts/launch-mail-client"; }
     // Super+Ctrl+M: focus the lovable-main workspace (always-on
     // home for deps + main-context claude + main browser). On first
     // press of a session it'll spawn missing windows; subsequent
@@ -830,6 +869,10 @@ binds {
     // Maximize window (take full screen space) with Super+Ctrl+F
     Super+Ctrl+f { maximize-column; }
 
+    // Toggle the focused window between floating and the tiled stack — e.g. "pin"
+    // a floating dsqrd image into the stack while new images still open floating.
+    Super+Ctrl+Shift+f { toggle-window-floating; }
+
     // Toggle overview mode with Super+Tab
     Super+Tab { toggle-overview; }
 
@@ -862,7 +905,6 @@ binds {
 
     // Screen recording (wf-recorder + slurp). Same keybind toggles start/stop.
     Super+Shift+r { spawn "/home/daphen/.config/niri/scripts/record-toggle" "region"; }   // Record region
-    Super+Ctrl+Shift+r { spawn "/home/daphen/.config/niri/scripts/record-toggle" "screen"; }  // Record current monitor
 
     // Color picker
     Super+Ctrl+c { spawn "/home/daphen/.config/niri/scripts/pick-color"; }  // Pick color from screen

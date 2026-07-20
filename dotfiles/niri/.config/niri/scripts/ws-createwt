@@ -163,6 +163,23 @@ def seed_claude_trust(worktree_path: Path) -> None:
     tmp.replace(cfg)
 
 
+def seed_env_local(worktree_path: Path) -> None:
+    """Seed the main checkout's go/api/.env.local (gitignored, machine-specific
+    API overrides — e.g. the dead-NATS workaround) into the worktree, so global
+    env fixes never need re-applying per worktree. Seed-if-absent: an existing
+    customized file is never clobbered."""
+    src = LOVABLE_DIR / "go" / "api" / ".env.local"
+    dst = worktree_path / "go" / "api" / ".env.local"
+    if not src.is_file() or dst.exists():
+        return
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(src.read_bytes())
+        print("==> seeded go/api/.env.local from main checkout")
+    except OSError as e:
+        print(f"warn: could not seed .env.local: {e}", file=sys.stderr)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("name", help="worktree short name (creates branch daphen/<name>)")
@@ -245,14 +262,17 @@ def main() -> int:
 
     # 4. Spawn the 4 stack windows. They land as columns on the focused
     #    workspace; in background mode each is relocated off it (--focus false).
-    print("==> spawning devenv wt")
+    print("==> spawning devenv wt --no-next")
     wid = spawn_and_wait([
         "kitty",
         "--working-directory", str(worktree_path),
-        "-e", "bash", "-c", "direnv exec . devenv wt; exec fish",
+        "-e", "bash", "-c", "direnv exec . devenv wt --no-next; exec fish",
     ])
-    if args.background:
-        place_window(wid, workspace)
+    # Unconditional: spawns land on whatever workspace is focused at spawn
+    # time, and user activity can steal focus mid-stack (windows then pile
+    # into the wrong workspace). Explicit relocation is a no-op when focus
+    # held.
+    place_window(wid, workspace)
 
     # Browser-agnostic: route through browser-dispatch with an explicit
     # work-profile + new-window override. Switching default browser later
@@ -264,10 +284,14 @@ def main() -> int:
         "--new-window",
         preview_url,
     ])
-    if args.background:
-        place_window(wid, workspace)
+    # Unconditional: spawns land on whatever workspace is focused at spawn
+    # time, and user activity can steal focus mid-stack (windows then pile
+    # into the wrong workspace). Explicit relocation is a no-op when focus
+    # held.
+    place_window(wid, workspace)
 
     seed_claude_trust(worktree_path)
+    seed_env_local(worktree_path)
     print(f"==> spawning claude session ({mode})")
     wid = spawn_and_wait([
         "kitty",
@@ -275,8 +299,11 @@ def main() -> int:
         "--working-directory", str(worktree_path),
         "-e", *claude_cmd,
     ])
-    if args.background:
-        place_window(wid, workspace)
+    # Unconditional: spawns land on whatever workspace is focused at spawn
+    # time, and user activity can steal focus mid-stack (windows then pile
+    # into the wrong workspace). Explicit relocation is a no-op when focus
+    # held.
+    place_window(wid, workspace)
 
     print("==> spawning nvim" + (" (plan mode)" if args.plan else ""))
     # Plan mode only: plan-nvim auto-opens the ticket's plan once the agent's
@@ -292,8 +319,7 @@ def main() -> int:
         "--working-directory", str(worktree_path),
         "-e", "bash", "-c", nvim_cmd,
     ])
-    if args.background:
-        place_window(nvim_id, workspace)
+    place_window(nvim_id, workspace)
 
     # Land focus on the new claude (col 3) so the user is at the prompt —
     # skipped in background mode, which deliberately leaves focus put.
