@@ -8,6 +8,32 @@ description: Turn a Linear ticket OR an ad-hoc task you describe in chat into a 
 Three-phase workflow. North star: **containment** — the surface area is a hard
 boundary, and the artifact lets the user see and prove the work stayed small.
 
+## Design principles (David's standing constraints — apply to EVERY plan)
+
+These bind every plan and every decision point. When a plan or a D-option
+violates one, say so explicitly and prefer the option that doesn't; when the
+ticket itself pushes against one, flag it rather than absorb it silently.
+
+1. **Simplest possible, smallest surface area, always.** The default answer is
+   the least code that satisfies the ticket. Fewer files, fewer new
+   abstractions, fewer moving parts. A bigger design needs a stated reason in
+   the plan, not the reverse. This is the containment north star, restated as a
+   design value, not just a boundary check.
+2. **As little inheritance as possible.** Prefer composition, plain functions,
+   and explicit wiring over class hierarchies, base classes, mixins, or
+   deep type/interface inheritance. If a plan introduces an inheritance chain,
+   call it out and justify it against a composition alternative.
+3. **Align with existing patterns as far as possible.** New code should look
+   like the code already around it — reuse the established helper, module shape,
+   naming, and convention rather than introducing a parallel way to do the same
+   thing. Before proposing a new mechanism, search for the existing one and
+   prefer extending it. A deviation from an established pattern is a decision
+   point, not a default.
+
+Surface these in the plan: the "surface area" section already proves #1; the
+decision points are where #2 and #3 get adjudicated (name the existing pattern
+being followed, or flag the inheritance/deviation being introduced).
+
 Three artifacts, keyed to the plan, are the seam between this skill, the neovim
 plugin, and the live plan view (plan-view.py, opened as an app window on --go).
 Never duplicate their state elsewhere.
@@ -65,6 +91,18 @@ checked against it), not the progress metric. Keep `flow[]` entries aligned 1:1 
 - `--amend` → **AMEND** (fold new scope into the plan mid-ticket)
 - `--go` → **IMPLEMENT**
 - `--reconcile` → **RECONCILE**
+
+## Model contract (phase-dependent)
+Planning/finalize/amend/reconcile run on **Fable** (David's session default);
+implementation runs on **default Opus**. You cannot switch models yourself —
+`/model` is a user command. So at the START of `--go`: check which model you are
+(your system prompt names it). If you are NOT an Opus model, STOP before touching
+any file and reply exactly: "Model check: I'm on <model>. Run `/model opus` and
+resend --go so implementation runs on Opus per the model contract." Conversely, if
+`--reconcile` arrives while you're on Opus, proceed (don't block) but note the
+model in the reconciliation. The orchestrator session normally sends `/model`
+switches via wt-send before relaying `--go`; this check is the backstop for when
+David drives the session directly.
 
 ---
 
