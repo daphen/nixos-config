@@ -928,6 +928,7 @@ binds {
     // Rofi keybinds
     Super+Ctrl+V { spawn "qs" "ipc" "call" "clipboard" "toggle"; }  // Clipboard history (quickshell picker over clipse's store)
     Super+Ctrl+J { spawn "qs" "ipc" "call" "emoji" "toggle"; }  // Open emoji picker (copy + auto-type)
+    Super+Ctrl+I { spawn "qs" "ipc" "call" "timers" "toggle"; }  // Timers (set/cancel countdowns)
     Super+Ctrl+B { spawn "qs" "ipc" "call" "bluetooth" "toggle"; }  // Open bluetooth menu
     Super+Ctrl+N { spawn "qs" "ipc" "call" "network" "toggle"; }    // Open wifi picker
     Super+Ctrl+Shift+B { spawn-sh "$HOME/.config/niri/scripts/waybar-theme --cycle"; }  // Cycle waybar theme
