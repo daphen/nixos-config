@@ -182,6 +182,18 @@ Singleton {
         return ""
     }
 
+    // The workspace currently VISIBLE on a given output — per-monitor state,
+    // unlike focusedWorkspaceName() which is global (per-screen bars must not
+    // mirror the other monitor's badge).
+    function activeWorkspaceName(output) {
+        const _ = version
+        for (const id in workspaces) {
+            const ws = workspaces[id]
+            if (ws.output === output && ws.is_active) return ws.name || ""
+        }
+        return ""
+    }
+
     function focusedTitle() {
         const _ = version
         for (const id in windows) {
