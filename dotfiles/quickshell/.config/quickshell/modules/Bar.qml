@@ -97,7 +97,6 @@ PanelWindow {
             Network {}
             Audio {}
             Battery {}
-            Timers {}
             Clock {}
         }
     }
@@ -280,6 +279,68 @@ PanelWindow {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: TodoListPickerState.toggle()
+                }
+            }
+
+            Item {
+                visible: TimerState.items.length > 0
+                width: timerRow.implicitWidth
+                height: timerRow.implicitHeight
+                anchors.verticalCenter: parent.verticalCenter
+
+                // Rung state: red pulsing chip behind the entry — a silent
+                // vanish + notification alone is missable. Click dismisses.
+                Rectangle {
+                    visible: TimerState.ringing
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: -7
+                    width: timerRow.implicitWidth + 14
+                    height: 24
+                    radius: 8
+                    color: Theme.red
+                    SequentialAnimation on opacity {
+                        running: TimerState.ringing
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.45; duration: 450; easing.type: Easing.InOutQuad }
+                        NumberAnimation { to: 1.0;  duration: 450; easing.type: Easing.InOutQuad }
+                    }
+                }
+
+                Row {
+                    id: timerRow
+                    spacing: 8
+
+                    Lib.Icon {
+                        name: "timer-2"
+                        color: TimerState.ringing ? Theme.bg : Theme.fg
+                        width: 15; height: 15
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: {
+                            if (TimerState.items.length === 0) return ""
+                            if (TimerState.ringing) {
+                                const r = TimerState.items.find(t => t.rang)
+                                return (r && r.label ? r.label + " " : "") + "0:00"
+                            }
+                            return TimerState.fmt(TimerState.items[0].end - TimerState.now)
+                                + (TimerState.items.length > 1 ? " +" + (TimerState.items.length - 1) : "")
+                        }
+                        color: TimerState.ringing ? Theme.bg : Theme.fg
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize
+                        font.weight: Theme.fontWeight
+                        font.hintingPreference: Font.PreferFullHinting
+                        renderType: Text.NativeRendering
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: TimerState.ringing ? TimerState.dismissRung() : TimerState.toggle()
                 }
             }
         }

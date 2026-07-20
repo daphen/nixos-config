@@ -65,40 +65,66 @@ Singleton {
         return h > 0 ? h + ":" + p(m) + ":" + p(s) : m + ":" + p(s)
     }
 
+    // Any expired-but-undismissed timer — drives the bar's red ring state.
+    readonly property bool ringing: items.some(t => t.rang)
+
+    // Expiry keeps the timer as a `rang` entry (red in the bar + picker)
+    // until explicitly dismissed — a notification alone is missable.
+    function dismissRung() {
+        if (!ringing) return
+        items = items.filter(t => !t.rang)
+        saveState()
+    }
+
     Timer {
         interval: 500
         repeat: true
         running: root.items.length > 0
         onTriggered: {
             root.now = Date.now()
-            const due = root.items.filter(t => t.end <= root.now)
+            const due = root.items.filter(t => t.end <= root.now && !t.rang)
             if (due.length === 0) return
             for (const t of due)
                 Quickshell.execDetached(["notify-send", "-u", "critical", "-a", "Timer",
                     "Time's up" + (t.label ? ": " + t.label : ""), ""])
-            root.items = root.items.filter(t => t.end > root.now)
+            root.items = root.items.map(t =>
+                (t.end <= root.now && !t.rang) ? Object.assign({}, t, { rang: true }) : t)
             root.saveState()
         }
     }
 
+    // A fresh singleton (config reload) must never persist before its own
+    // load finished — saving the initial empty items wiped running timers
+    // when a mutation raced the async read (2026-07-20).
+    property bool hydrated: false
     function saveState() {
+        if (!hydrated) return
         try { store.setText(JSON.stringify({ items: items })) } catch (e) {}
     }
     FileView {
         id: store
         path: root.path
+        onLoadFailed: root.hydrated = true   // no file yet — nothing to lose
         onLoaded: {
             try {
                 const st = JSON.parse(store.text())
-                // fire anything that expired while the shell was away
-                const alive = (st.items || []).filter(t => t && t.end > Date.now())
-                for (const t of (st.items || []).filter(t => t && t.end <= Date.now()))
-                    Quickshell.execDetached(["notify-send", "-u", "critical", "-a", "Timer",
-                        "Time's up" + (t.label ? ": " + t.label : ""), ""])
-                alive.sort((a, b) => a.end - b.end)
-                root.items = alive
-                if (alive.length !== (st.items || []).length) root.saveState()
-            } catch (e) {}
+                // anything that expired while the shell was away rings now
+                // (notify once, keep the red state until dismissed)
+                let changed = false
+                const loaded = (st.items || []).filter(t => t && t.end).map(t => {
+                    if (t.end <= Date.now() && !t.rang) {
+                        Quickshell.execDetached(["notify-send", "-u", "critical", "-a", "Timer",
+                            "Time's up" + (t.label ? ": " + t.label : ""), ""])
+                        changed = true
+                        return Object.assign({}, t, { rang: true })
+                    }
+                    return t
+                })
+                loaded.sort((a, b) => a.end - b.end)
+                root.items = loaded
+                root.hydrated = true
+                if (changed) root.saveState()
+            } catch (e) { root.hydrated = true }
         }
     }
 
@@ -113,5 +139,6 @@ Singleton {
             root.add(p.ms, p.label)
             return "started " + root.fmt(p.ms) + (p.label ? " — " + p.label : "")
         }
+        function dismiss() { root.dismissRung() }
     }
 }
