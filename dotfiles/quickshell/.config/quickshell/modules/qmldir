@@ -18,6 +18,9 @@ Dnd 1.0 Dnd.qml
 Inbox 1.0 Inbox.qml
 singleton Notifications 1.0 Notifications.qml
 singleton DndState 1.0 DndState.qml
+singleton TimerState 1.0 TimerState.qml
+TimerPicker 1.0 TimerPicker.qml
+Timers 1.0 Timers.qml
 singleton PlanState 1.0 PlanState.qml
 singleton LauncherState 1.0 LauncherState.qml
 Launcher 1.0 Launcher.qml

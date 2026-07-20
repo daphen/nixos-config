@@ -25,6 +25,7 @@ ShellRoot {
     WorktreeNameInputPicker {}
     LovboxPicker {}
     BluetoothPicker {}
+    TimerPicker {}
     NetworkPicker {}
     AsusProfilePicker {}
     EmojiPicker {}

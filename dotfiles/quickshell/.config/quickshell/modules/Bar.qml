@@ -97,6 +97,7 @@ PanelWindow {
             Network {}
             Audio {}
             Battery {}
+            Timers {}
             Clock {}
         }
     }
