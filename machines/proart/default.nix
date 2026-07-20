@@ -1,5 +1,35 @@
 { config, pkgs, ... }:
 
+let
+  # Finds the U2725QE's DP connector by EDID and forces amdgpu's DSC policy
+  # so 4K120 fits the monitor's HBR2-capped USB4 tunnel (see the comment at
+  # the udev rule below). Debounced: trigger_hotplug fires another udev
+  # change event, and the runtime dsc_clock_en read breaks the loop.
+  u2725qeDsc = pkgs.writeShellScriptBin "u2725qe-dsc" ''
+    set -eu
+    for conn in /sys/class/drm/card*-DP-*; do
+      ${pkgs.gnugrep}/bin/grep -qs "U2725QE" "$conn/edid" || continue
+      [ "$(cat "$conn/status")" = "connected" ] || continue
+      base=$(basename "$conn")          # e.g. card2-DP-5
+      card=''${base%%-*}                # card2
+      name=''${base#*-}                 # DP-5
+      pci=$(basename "$(readlink -f "/sys/class/drm/$card/device")")
+      d="/sys/kernel/debug/dri/$pci/$name"
+      [ -e "$d/dsc_clock_en" ] || continue
+      # already streaming with DSC → done (breaks the hotplug event loop)
+      [ "$(head -c1 "$d/dsc_clock_en")" = "1" ] && continue
+      stamp=/run/u2725qe-dsc.stamp
+      now=$(date +%s)
+      if [ -f "$stamp" ]; then
+        last=$(stat -c %Y "$stamp")
+        [ $((now - last)) -lt 8 ] && continue
+      fi
+      touch "$stamp"
+      echo 0x1 > "$d/dsc_clock_en"
+      echo 1 > "$d/trigger_hotplug"
+    done
+  '';
+in
 {
   imports = [
     ../../common
@@ -181,7 +211,20 @@
     SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x040300", ACTION=="add", RUN+="${pkgs.bash}/bin/sh -c 'echo %k > /sys/bus/pci/drivers/snd_hda_intel/unbind 2>/dev/null || true'"
     KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="676d", TAG+="uaccess", MODE="0666"
     SUBSYSTEM=="usb", ATTRS{idVendor}=="676d", TAG+="uaccess", MODE="0666"
+    ACTION=="add|change", SUBSYSTEM=="drm", KERNEL=="card[0-9]*", RUN+="${u2725qeDsc}/bin/u2725qe-dsc"
   '';
+
+  # Dell U2725QE over the single TB4 cable: the monitor's USB4 DP tunnel
+  # caps at HBR2 (its firmware skips BW-allocation mode with AMD hosts) and
+  # amdgpu never tries DSC on DPIA links by itself, so the kernel prunes
+  # 4K@120. Forcing the connector's DSC policy makes the mode validate —
+  # 4K120 compressed fits HBR2 easily and the panel decodes DSC natively.
+  # The udev rule above re-applies it on every connect; niri then picks up
+  # the 120Hz mode from its output config. dsc_clock_en reads back the
+  # RUNTIME state (1 once the 120Hz stream runs), which both makes the
+  # script idempotent and terminates the udev change-event loop that the
+  # trigger_hotplug itself causes.
+  environment.systemPackages = [ u2725qeDsc ];
 
   # ASUS control daemon — manages keyboard lighting, fan curves, etc.
   services.asusd.enable = true;
