@@ -454,15 +454,6 @@ PanelWindow {
                         font.family: notch.sans; font.pixelSize: 12
                         renderType: Text.NativeRendering
                     }
-                    Item { width: 8; height: 1 }
-                    KeyCap { text: "0-9" }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "type"
-                        color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
-                        font.family: notch.sans; font.pixelSize: 12
-                        renderType: Text.NativeRendering
-                    }
                 }
                 Row {
                     anchors.right: parent.right
