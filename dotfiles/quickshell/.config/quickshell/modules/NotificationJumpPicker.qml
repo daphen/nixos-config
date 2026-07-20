@@ -96,13 +96,13 @@ Picker {
         ])
     }
 
-    function _icon(appName) { return Notifications.appIconFor(appName) }
+    function _icon(appName, appIcon) { return Notifications.appIconFor(appName, appIcon) }
 
     function mkItemLive(n) {
         const wid = (n.hints && n.hints["niri-window"] !== undefined) ? String(n.hints["niri-window"]) : ""
         return {
             id: n.id, notif: n, app: n.appName || "", summary: n.summary || "", windowId: wid,
-            body: n.body || "", label: n.summary || n.appName || "notification", icon: _icon(n.appName),
+            body: n.body || "", label: n.summary || n.appName || "notification", icon: _icon(n.appName, n.appIcon),
         }
     }
 

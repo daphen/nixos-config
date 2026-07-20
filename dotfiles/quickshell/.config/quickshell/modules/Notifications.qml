@@ -98,7 +98,11 @@ Singleton {
     // Brand glyph for an app's notifications (white-fill SVGs under assets/,
     // tinted by the consumer). Used by both the Super+i picker and the island's
     // no-avatar fallback.
-    function appIconFor(appName) {
+    function appIconFor(appName, appIcon) {
+        // A notification's own icon can override the per-app brand glyph —
+        // mlqs sends x-office-calendar for meeting reminders so they don't
+        // wear the mail icon.
+        if ((appIcon || "") === "x-office-calendar") return Qt.resolvedUrl("../assets/calendar.svg")
         const a = (appName || "").toLowerCase()
         if (a === "slack" || a === "slk" || a === "slqs") return Qt.resolvedUrl("../assets/slack.svg")
         if (a === "discord" || a === "endcord" || a === "dsqrd") return Qt.resolvedUrl("../assets/discord.svg")

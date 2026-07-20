@@ -69,7 +69,7 @@ PanelWindow {
         nBody = (n.body || "").replace(/<[^>]+>/g, "").replace(/\n/g, "  ")
         const img = n.image || ""
         nImage = img ? (img.startsWith("/") ? "file://" + img : img) : ""
-        nAppIcon = Notifications.appIconFor(n.appName)
+        nAppIcon = Notifications.appIconFor(n.appName, n.appIcon)
         nWindowId = (n.hints && n.hints["niri-window"] !== undefined)
             ? String(n.hints["niri-window"]) : ""
         extraCount = wasOpen ? extraCount + 1 : 0
