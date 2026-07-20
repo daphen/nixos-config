@@ -22,11 +22,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784379430,
-        "narHash": "sha256-4gLoVtx5za6vu6H+WSj3WkqPcfq/agGwtHChrRsCbpE=",
+        "lastModified": 1784535659,
+        "narHash": "sha256-TZiXcLRj45AmNUSSj6piXj2b81MQ22EYYwaLguPBrFo=",
         "ref": "refs/heads/main",
-        "rev": "63cfd2e0dc252be6aedaceebcd62a83834e39599",
-        "revCount": 173,
+        "rev": "b1ce8d37332c60196a3f30085487558c1e76d6d1",
+        "revCount": 175,
         "type": "git",
         "url": "ssh://git@github.com/daphen/dsqrd"
       },
@@ -359,11 +359,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784377383,
-        "narHash": "sha256-5XJK8PefkSvkSGz995mcTIfy89ScCFDI2qjIeaRzfUs=",
+        "lastModified": 1784537208,
+        "narHash": "sha256-Pr455JYn8QCWFwvZgPkHfGB/4eVBGgBbU2QeuJaDTHE=",
         "ref": "refs/heads/main",
-        "rev": "eea734063927c09156c49478b455f4c6cc0fda93",
-        "revCount": 58,
+        "rev": "893b6d047f6b3590ca21a4a0da5471350c218ec4",
+        "revCount": 59,
         "type": "git",
         "url": "ssh://git@github.com/daphen/palette-daemon"
       },
@@ -440,11 +440,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784379414,
-        "narHash": "sha256-d5iooIYL8KxODRp1nOZ95VNaVK+9d3Gng0jjPQKDsQA=",
+        "lastModified": 1784535661,
+        "narHash": "sha256-Qulcl7uG6+hYxZlwDZ30fOHr3c7xYd/Q0RSJkF8sXuc=",
         "ref": "refs/heads/main",
-        "rev": "205908a5ea3cd1752f4e216ae5a19e4cc8040ca7",
-        "revCount": 186,
+        "rev": "6165a090e518857ee0ea010224795999905492b6",
+        "revCount": 189,
         "type": "git",
         "url": "ssh://git@github.com/daphen/slqs"
       },

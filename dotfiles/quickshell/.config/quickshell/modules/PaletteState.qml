@@ -33,7 +33,8 @@ Singleton {
     function hide()   { open = false }
 
     function send(obj) {
-        if (sock.connected) sock.write(JSON.stringify(obj) + "\n")
+        const s = sockLoader.item
+        if (s && s.connected) s.write(JSON.stringify(obj) + "\n")
     }
     function activateTab(tabId, windowId) { send({ cmd: "activate-tab", tabId: tabId, windowId: windowId }) }
     function gotoUrl(url, newTab)         { send({ cmd: "goto", url: url, newTab: !!newTab }) }
@@ -66,29 +67,26 @@ Singleton {
         root.gen++
     }
 
-    Socket {
-        id: sock
-        path: Quickshell.env("XDG_RUNTIME_DIR") + "/palette-ui.sock"
-        connected: true
-        parser: SplitParser { onRead: data => root.onLine(data) }
-        onConnectionStateChanged: root.daemonConnected = sock.connected
-    }
-    // Persistent re-dial: runs WHILE disconnected, not one-shot off a state
-    // change — a dial that fails against a still-down daemon used to leave
-    // the socket wedged forever (no change event → no retry). Two-phase
-    // drop/dial across separate ticks, same as the chat clients: flipping
-    // connected in one shot races the disconnect against the connect.
-    Timer {
-        id: reconnect
-        interval: 1000
-        repeat: true
-        running: !sock.connected
-        property bool dropping: true
-        onRunningChanged: if (running) dropping = true
-        onTriggered: {
-            if (dropping) { sock.connected = false; dropping = false }
-            else { sock.connected = true; dropping = true }
+    // The Socket lives in a Loader so every re-dial gets a BRAND-NEW object:
+    // after enough socket-file churn (daemon crash-loop clobbering the path),
+    // a Socket wedges in a state where flipping `connected` never dials again
+    // — the 2026-07-20 palette outage. Recreating the object is the only
+    // reliable recovery, so the watchdog below rebuilds it while offline.
+    Loader {
+        id: sockLoader
+        active: true
+        sourceComponent: Socket {
+            path: Quickshell.env("XDG_RUNTIME_DIR") + "/palette-ui.sock"
+            connected: true
+            parser: SplitParser { onRead: data => root.onLine(data) }
+            onConnectionStateChanged: root.daemonConnected = connected
         }
+    }
+    Timer {
+        interval: 2000
+        repeat: true
+        running: !root.daemonConnected
+        onTriggered: { sockLoader.active = false; sockLoader.active = true }
     }
 
     IpcHandler {
