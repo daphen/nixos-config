@@ -17,6 +17,10 @@ PanelWindow {
     property bool refreshing: false
     property var items: []
     property string subtitleField: ""
+    // Opt-in computed subtitle: a function of the item, re-evaluated whenever
+    // anything it reads changes (QML tracks reads through calls) — so live
+    // text like a ticking countdown never has to churn the items array.
+    property var subtitleFn: null
     property string highlightField: ""
     // Optional per-item field holding an image source; renders a theme-tinted
     // monochrome icon at the right of the row (e.g. the notification center's
@@ -25,6 +29,12 @@ PanelWindow {
     property var onEnter: function(item) {}
     property var onEnterText: function(text) {}
     property bool freeText: false
+    // Opt-in: Enter fires onEnter but keeps the picker open (toggle-style
+    // pickers clearing a pile in one visit — todos).
+    property bool enterKeepsOpen: false
+    // Opt-in: Enter with a query that matched nothing — called with the raw
+    // text, input clears, picker stays open ("type a new one + enter" adds).
+    property var onEmptyEnter: null
     property var onAltAction: null
     property string altLabel: ""
     // altLabel parsed into keycap hints: segments split on "·" or wide gaps,
@@ -144,6 +154,7 @@ PanelWindow {
             if (it && it.divider) h += 36
             else if (previewField.length > 0 && it && String(it[previewField] || "").length > 0)
                 h += Math.max(60, thumbSize + 16)
+            else if (subtitleFn && it && String(subtitleFn(it) || "").length > 0) h += 60
             else h += (subtitleField.length > 0 && it && String(it[subtitleField] || "").length > 0) ? 60 : 44
             if (i > 0) h += 2
         }
@@ -232,12 +243,16 @@ PanelWindow {
             closeRequested()
             return
         }
-        if (filtered.length === 0) return
+        if (filtered.length === 0) {
+            const text = query.trim()
+            if (onEmptyEnter && text.length > 0) { onEmptyEnter(text); search.text = "" }
+            return
+        }
         const idx = Math.max(0, Math.min(selectedIndex, filtered.length - 1))
         const item = filtered[idx]
         if (item && item.divider) return
         onEnter(item)
-        closeRequested()
+        if (!enterKeepsOpen) closeRequested()
     }
 
     function altActivate() {
@@ -539,8 +554,9 @@ PanelWindow {
                     required property var modelData
                     required property int index
                     property bool isDivider: !!(modelData && modelData.divider)
-                    readonly property bool hasSub: !isDivider && root.subtitleField.length > 0
-                        && modelData && String(modelData[root.subtitleField] || "").length > 0
+                    readonly property bool hasSub: !isDivider && modelData && (
+                        root.subtitleFn ? String(root.subtitleFn(modelData) || "").length > 0
+                        : (root.subtitleField.length > 0 && String(modelData[root.subtitleField] || "").length > 0))
                     readonly property bool hasThumb: !isDivider && root.previewField.length > 0
                         && modelData && String(modelData[root.previewField] || "").length > 0
                     width: list.width
@@ -684,7 +700,9 @@ PanelWindow {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: rowItem.hasSub
-                                text: rowItem.modelData && root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
+                                text: !rowItem.modelData ? ""
+                                    : root.subtitleFn ? String(root.subtitleFn(rowItem.modelData) || "")
+                                    : root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
                                 color: Theme.fg_muted
                                 font.family: notch.sans
                                 font.pixelSize: 12
