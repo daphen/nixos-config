@@ -96,5 +96,20 @@ return {
 			setup_mini_files()
 			mini_files.open()
 		end, { desc = "Open file explorer (cwd)" })
+
+		-- Directory buffers (nvim <dir>, :e <dir>) open mini.files, not netrw
+		vim.api.nvim_create_autocmd("BufEnter", {
+			group = vim.api.nvim_create_augroup("MiniFilesDirectory", { clear = true }),
+			callback = function(args)
+				local path = vim.api.nvim_buf_get_name(args.buf)
+				if path == "" or vim.fn.isdirectory(path) ~= 1 then return end
+				vim.schedule(function()
+					if not vim.api.nvim_buf_is_valid(args.buf) then return end
+					vim.bo[args.buf].buflisted = false
+					setup_mini_files()
+					mini_files.open(path)
+				end)
+			end,
+		})
 	end,
 }

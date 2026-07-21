@@ -1,5 +1,9 @@
 local opt = vim.opt
 
+-- netrw off — directories open in mini.files (autocmd in plugins/mini.lua)
+vim.g.loaded_netrw = 1
+vim.g.loaded_netrwPlugin = 1
+
 -- line number
 opt.relativenumber = true
 opt.number = true
