@@ -7,7 +7,9 @@ copy-command = "wl-copy"
 save-after-copy = true
 early-exit = true
 actions-on-enter = ["save-to-clipboard"]
-actions-on-escape = ["exit"]
+# no exit on esc: esc keeps its built-in behavior (reset crop / abort edit);
+# close without copying via Super+Ctrl+W (niri) or the window button
+actions-on-escape = []
 # the screenshot script sends its own notification
 disable-notifications = true
 corner-roundness = 8
