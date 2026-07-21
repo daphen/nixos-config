@@ -4,13 +4,12 @@ import Quickshell.Wayland
 import "."
 import "../QsLib" as Lib
 
-// Command palette — quickshell port of the chromium-palette popup.
+// Command palette (Super+F) — THE palette UI; the old in-browser popup
+// (chromium-palette App.tsx) is retired, the extension is bridge-only.
 // Data + actions come from PaletteState (palette-daemon over the UI
-// socket); ranking, grouping and keybinds are ported 1:1 from the
-// Solid app (App.tsx). Visuals are a faithful clone of the original
-// SCSS (App.scss/Entry.scss/index.scss): 600×480, radius 14, strong
-// fg-tinted outer border, full-width hairline section separators,
-// borderless 17px input, sans-serif type.
+// socket). Visuals: 600×480, radius 14, strong fg-tinted outer border,
+// full-width hairline section separators, borderless 17px input,
+// sans-serif type.
 PanelWindow {
     id: root
 
@@ -69,7 +68,7 @@ PanelWindow {
     readonly property color panelBorder:
         Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
 
-    // ── ranking / grouping (ported from App.tsx) ──────────────────────
+    // ── ranking / grouping ────────────────────────────────────────────
     readonly property var filterTabs: ["All", "Tabs", "Quickmarks", "History", "Web", "?"]
     property int filterTab: 0
     property string query: search ? search.text : ""
@@ -109,7 +108,7 @@ PanelWindow {
     }
 
     // Token-prefix 10000 > substring ~1000 (boundary/position bonus) >
-    // fuzzy subsequence 1 (last-resort tiebreak). Tiers mirror App.tsx.
+    // fuzzy subsequence 1 (last-resort tiebreak).
     // The fuzzy tier only counts when the matched letters sit in a tight
     // window (span ≤ 2× query) — "twtr" finds twitter, but a query
     // scattered letter-by-letter across a long title is noise, not a match.
@@ -394,7 +393,7 @@ PanelWindow {
     }
 
     // Drop a stale chin scope when the daemon reports a different
-    // focused window (external focus changes) — port of App.tsx logic.
+    // focused window (external focus changes).
     Connections {
         target: PaletteState
         function onGenChanged() {
@@ -493,7 +492,7 @@ PanelWindow {
         anchors.bottomMargin: 90
     }
 
-    // ── visuals: faithful clone of the original popup ─────────────────
+    // ── visuals ───────────────────────────────────────────────────────
     Rectangle {
         id: dim
         anchors.fill: parent
