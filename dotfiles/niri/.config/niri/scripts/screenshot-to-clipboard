@@ -13,10 +13,12 @@ OUTPUT=$(niri msg --json focused-output | jq -r .name)
 # GTK init run concurrently with the capture. GSK's default vulkan backend
 # stalls seconds on NVIDIA init; ngl starts fast AND keeps GPU-quality
 # scaling of the 4K preview (cairo was fast but blurry).
-if grim -l 0 ${OUTPUT:+-o "$OUTPUT"} - | GSK_RENDERER=ngl "$SATTY" \
+if grim -l 0 ${OUTPUT:+-o "$OUTPUT"} - | GSK_RENDERER=gl "$SATTY" \
         --filename - \
         --initial-tool crop \
         --output-filename "$SCREENSHOT_FILE" \
+        --actions-on-enter save-to-clipboard \
+        --actions-on-escape exit \
         --copy-command wl-copy --save-after-copy --early-exit \
    && [ -s "$SCREENSHOT_FILE" ]; then
     ln -sf "$SCREENSHOT_FILE" "$LATEST_LINK"
