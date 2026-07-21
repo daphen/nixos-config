@@ -578,7 +578,6 @@ PanelWindow {
                     opacity: 0.85
                     font.family: Theme.fontFamily
                     font.pixelSize: 16
-                    renderType: Text.NativeRendering
                 }
 
                 Rectangle {
@@ -599,7 +598,6 @@ PanelWindow {
                         font.family: root.sans
                         font.pixelSize: 12
                         font.weight: 600
-                        renderType: Text.NativeRendering
                     }
                 }
 
@@ -620,7 +618,6 @@ PanelWindow {
                         text: PaletteState.daemonConnected ? "Type to search..." : "palette-daemon offline…"
                         color: Theme.fg_muted
                         font: search.font
-                        renderType: Text.NativeRendering
                     }
                 }
 
@@ -644,7 +641,6 @@ PanelWindow {
                         font.pixelSize: 11
                         font.weight: 500
                         font.letterSpacing: 0.5
-                        renderType: Text.NativeRendering
                     }
                 }
             }
@@ -679,7 +675,6 @@ PanelWindow {
                                 font.family: root.sans
                                 font.pixelSize: 12
                                 font.weight: 500
-                                renderType: Text.NativeRendering
                             }
                             HoverHandler { id: tabHover }
                             TapHandler { onTapped: root.filterTab = parent.index }
@@ -733,7 +728,6 @@ PanelWindow {
                     color: Theme.fg_muted
                     font.family: root.sans
                     font.pixelSize: 13
-                    renderType: Text.NativeRendering
                 }
 
                 delegate: Item {
@@ -759,7 +753,6 @@ PanelWindow {
                         font.weight: 600
                         font.capitalization: Font.AllUppercase
                         font.letterSpacing: 1.2
-                        renderType: Text.NativeRendering
                     }
                     Text {
                         visible: rowItem.isDivider
@@ -779,7 +772,6 @@ PanelWindow {
                         opacity: 0.7
                         font.family: root.sans
                         font.pixelSize: 11
-                        renderType: Text.NativeRendering
                     }
 
                     // Entry: inset 6px, radius 8, padding 8 12.
@@ -828,7 +820,6 @@ PanelWindow {
                                 font.family: root.sans
                                 font.pixelSize: rowItem.hasSubtitle ? 13 : 10
                                 font.weight: 600
-                                renderType: Text.NativeRendering
                             }
                         }
 
@@ -847,7 +838,6 @@ PanelWindow {
                                 font.family: root.sans
                                 font.pixelSize: 15
                                 font.weight: 500
-                                renderType: Text.NativeRendering
                             }
                             Text {
                                 width: parent.width
@@ -857,7 +847,6 @@ PanelWindow {
                                 elide: Text.ElideRight
                                 font.family: root.sans
                                 font.pixelSize: 12
-                                renderType: Text.NativeRendering
                             }
                         }
 
@@ -937,7 +926,6 @@ PanelWindow {
                                     width: Math.min(implicitWidth, Math.min(150, chinRow.maxPill - 66))
                                     font.family: root.sans
                                     font.pixelSize: 12
-                                    renderType: Text.NativeRendering
                                 }
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
@@ -955,7 +943,6 @@ PanelWindow {
                                         font.pixelSize: 10
                                         font.weight: 600
                                         font.letterSpacing: 0.5
-                                        renderType: Text.NativeRendering
                                     }
                                 }
                             }

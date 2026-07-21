@@ -262,7 +262,6 @@ PanelWindow {
                         font.family: Theme.fontFamily
                         font.pixelSize: 13
                         font.weight: 700
-                        renderType: Text.NativeRendering
                     }
                 }
             }
@@ -282,7 +281,6 @@ PanelWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: 13
                     font.weight: 600
-                    renderType: Text.NativeRendering
                 }
                 Text {
                     id: bodyText
@@ -295,7 +293,6 @@ PanelWindow {
                     width: parent.width
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize - 1
-                    renderType: Text.NativeRendering
                 }
             }
 
@@ -314,7 +311,6 @@ PanelWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
                     font.weight: 700
-                    renderType: Text.NativeRendering
                 }
             }
         }

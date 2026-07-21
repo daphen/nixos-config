@@ -170,7 +170,6 @@ PanelWindow {
                     font.pixelSize: Theme.fontSize + 7
                     font.weight: Theme.fontWeight
                     font.hintingPreference: Font.PreferFullHinting
-                    renderType: Text.NativeRendering
                     anchors.verticalCenter: parent.verticalCenter
                     // The glyph sits in the x-height band; its box's empty
                     // descender space makes true-center look high.
@@ -184,7 +183,6 @@ PanelWindow {
                     font.pixelSize: Theme.fontSize
                     font.weight: Theme.fontWeight
                     font.hintingPreference: Font.PreferFullHinting
-                    renderType: Text.NativeRendering
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
@@ -236,7 +234,6 @@ PanelWindow {
                         font.pixelSize: Theme.fontSize
                         font.weight: Theme.fontWeight
                         font.hintingPreference: Font.PreferFullHinting
-                        renderType: Text.NativeRendering
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
@@ -272,7 +269,6 @@ PanelWindow {
                         font.pixelSize: Theme.fontSize
                         font.weight: Theme.fontWeight
                         font.hintingPreference: Font.PreferFullHinting
-                        renderType: Text.NativeRendering
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
@@ -334,7 +330,6 @@ PanelWindow {
                         font.pixelSize: Theme.fontSize
                         font.weight: Theme.fontWeight
                         font.hintingPreference: Font.PreferFullHinting
-                        renderType: Text.NativeRendering
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
@@ -412,7 +407,6 @@ PanelWindow {
                     font.pixelSize: Theme.fontSize
                     font.weight: Theme.fontWeight
                     font.hintingPreference: Font.PreferFullHinting
-                    renderType: Text.NativeRendering
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
@@ -430,7 +424,6 @@ PanelWindow {
                     font.pixelSize: Theme.fontSize + 2
                     font.weight: Theme.fontWeight
                     font.hintingPreference: Font.PreferFullHinting
-                    renderType: Text.NativeRendering
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
@@ -441,7 +434,6 @@ PanelWindow {
                     font.pixelSize: Theme.fontSize
                     font.weight: Theme.fontWeight
                     font.hintingPreference: Font.PreferFullHinting
-                    renderType: Text.NativeRendering
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }

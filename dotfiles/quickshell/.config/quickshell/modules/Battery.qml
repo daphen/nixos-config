@@ -48,7 +48,6 @@ Item {
             font.pixelSize: Theme.fontSize
             font.weight: Theme.fontWeight
             font.hintingPreference: Font.PreferFullHinting
-            renderType: Text.NativeRendering
             anchors.verticalCenter: parent.verticalCenter
         }
     }

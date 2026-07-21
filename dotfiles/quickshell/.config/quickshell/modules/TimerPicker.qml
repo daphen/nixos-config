@@ -185,7 +185,6 @@ PanelWindow {
                                     font.family: notch.sans
                                     font.pixelSize: 13
                                     font.weight: 500
-                                    renderType: Text.NativeRendering
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
                             }
@@ -233,7 +232,6 @@ PanelWindow {
                             font.family: notch.sans
                             font.pixelSize: 40
                             font.weight: 600
-                            renderType: Text.NativeRendering
                         }
                         HoverHandler { id: segHov }
                         TapHandler { onTapped: root.seg = segCol.idx }
@@ -253,7 +251,6 @@ PanelWindow {
                         font.weight: 600
                         font.capitalization: Font.AllUppercase
                         font.letterSpacing: 1.2
-                        renderType: Text.NativeRendering
                     }
                 }
                 component Colon: Text {
@@ -265,7 +262,6 @@ PanelWindow {
                     font.family: notch.sans
                     font.pixelSize: 30
                     font.weight: 600
-                    renderType: Text.NativeRendering
                 }
 
                 Row {
@@ -352,7 +348,6 @@ PanelWindow {
                     font.weight: 600
                     font.capitalization: Font.AllUppercase
                     font.letterSpacing: 1.2
-                    renderType: Text.NativeRendering
                 }
 
                 ListView {
@@ -392,7 +387,6 @@ PanelWindow {
                             font.family: notch.sans
                             font.pixelSize: 15
                             font.weight: 500
-                            renderType: Text.NativeRendering
                         }
                         Text {
                             anchors.right: parent.right
@@ -404,7 +398,6 @@ PanelWindow {
                             color: modelData && modelData.rang ? Theme.red : Theme.fg_muted
                             font.family: notch.sans
                             font.pixelSize: 13
-                            renderType: Text.NativeRendering
                         }
                     }
                 }
@@ -442,7 +435,6 @@ PanelWindow {
                         text: "field"
                         color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans; font.pixelSize: 12
-                        renderType: Text.NativeRendering
                     }
                     Item { width: 8; height: 1 }
                     KeyCap { text: "j" }
@@ -452,7 +444,6 @@ PanelWindow {
                         text: "adjust"
                         color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans; font.pixelSize: 12
-                        renderType: Text.NativeRendering
                     }
                 }
                 Row {
@@ -466,7 +457,6 @@ PanelWindow {
                         text: "start"
                         color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans; font.pixelSize: 12
-                        renderType: Text.NativeRendering
                     }
                     Item { visible: TimerState.items.length > 0; width: 8; height: 1 }
                     KeyCap { visible: TimerState.items.length > 0; text: "ctrl" }
@@ -478,7 +468,6 @@ PanelWindow {
                         text: "pick"
                         color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans; font.pixelSize: 12
-                        renderType: Text.NativeRendering
                     }
                     Item { visible: TimerState.items.length > 0; width: 8; height: 1 }
                     KeyCap { visible: TimerState.items.length > 0; text: "ctrl" }
@@ -489,7 +478,6 @@ PanelWindow {
                         text: "cancel"
                         color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans; font.pixelSize: 12
-                        renderType: Text.NativeRendering
                     }
                 }
             }

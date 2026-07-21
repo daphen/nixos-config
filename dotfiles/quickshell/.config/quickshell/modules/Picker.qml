@@ -368,7 +368,6 @@ PanelWindow {
                     opacity: 0.85
                     font.family: Theme.fontFamily
                     font.pixelSize: 15
-                    renderType: Text.NativeRendering
                 }
 
                 KeyCap {
@@ -508,7 +507,6 @@ PanelWindow {
                                 font.family: notch.sans
                                 font.pixelSize: 13
                                 font.weight: 500
-                                renderType: Text.NativeRendering
                             }
                             HoverHandler { id: tabHover }
                             TapHandler { onTapped: root.tab = parent.index }
@@ -595,7 +593,6 @@ PanelWindow {
                         font.weight: 600
                         font.capitalization: Font.AllUppercase
                         font.letterSpacing: 1.2
-                        renderType: Text.NativeRendering
                     }
                     Text {
                         visible: rowItem.isDivider
@@ -608,7 +605,6 @@ PanelWindow {
                         opacity: 0.7
                         font.family: notch.sans
                         font.pixelSize: 11
-                        renderType: Text.NativeRendering
                     }
 
                     Image {
@@ -653,7 +649,6 @@ PanelWindow {
                             ? rowItem.modelData[root.glyphColorField] : Theme.fg_muted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize
-                        renderType: Text.NativeRendering
                     }
 
                     // Highlighted row (e.g. the active worktree): a small accent
@@ -688,7 +683,6 @@ PanelWindow {
                             font.family: notch.sans
                             font.pixelSize: 15
                             font.weight: 500
-                            renderType: Text.NativeRendering
                             elide: Text.ElideRight
                         }
                         Row {
@@ -706,7 +700,6 @@ PanelWindow {
                                 color: Theme.fg_muted
                                 font.family: notch.sans
                                 font.pixelSize: 12
-                                renderType: Text.NativeRendering
                             }
                             Rectangle {
                                 id: subBadge
@@ -729,7 +722,6 @@ PanelWindow {
                                     font.family: notch.sans
                                     font.pixelSize: 10
                                     font.weight: 600
-                                    renderType: Text.NativeRendering
                                 }
                             }
                         }
@@ -755,7 +747,6 @@ PanelWindow {
             }
 
             Text {
-                renderType: Text.NativeRendering
                 anchors.centerIn: parent
                 visible: !root.loading && root.filtered.length === 0
                 text: root.emptyText
@@ -854,7 +845,6 @@ PanelWindow {
                             wrapMode: Text.Wrap
                             font.family: notch.sans
                             font.pixelSize: 13
-                            renderType: Text.NativeRendering
                         }
                     }
                 }
@@ -910,7 +900,6 @@ PanelWindow {
                                 color: parent.isActive ? Theme.fg : Theme.fg_muted
                                 font.family: notch.sans
                                 font.pixelSize: 12
-                                renderType: Text.NativeRendering
                             }
                             HoverHandler { id: catHov }
                             TapHandler { onTapped: root.category = parent.index }
@@ -933,7 +922,6 @@ PanelWindow {
                         color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans
                         font.pixelSize: 12
-                        renderType: Text.NativeRendering
                     }
                     Item { visible: root.navHint; width: 8; height: 1 }
                     KeyCap { text: "↵" }
@@ -943,7 +931,6 @@ PanelWindow {
                         color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans
                         font.pixelSize: 12
-                        renderType: Text.NativeRendering
                     }
                     Item { visible: root.tabs.length > 1; width: 8; height: 1 }
                     KeyCap { visible: root.tabs.length > 1; text: "⇥" }
@@ -954,7 +941,6 @@ PanelWindow {
                         color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                         font.family: notch.sans
                         font.pixelSize: 12
-                        renderType: Text.NativeRendering
                     }
                 }
                 Row {
@@ -983,7 +969,6 @@ PanelWindow {
                                         color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                                         font.family: notch.sans
                                         font.pixelSize: 11
-                                        renderType: Text.NativeRendering
                                     }
                                 }
                             }
@@ -993,7 +978,6 @@ PanelWindow {
                                 color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
                                 font.family: notch.sans
                                 font.pixelSize: 12
-                                renderType: Text.NativeRendering
                             }
                         }
                     }

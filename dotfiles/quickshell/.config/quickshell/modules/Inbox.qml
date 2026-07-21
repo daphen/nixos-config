@@ -89,7 +89,6 @@ Item {
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize - 2
                     font.weight: Theme.fontWeight
-                    renderType: Text.NativeRendering
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
