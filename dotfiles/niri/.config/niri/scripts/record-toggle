@@ -42,18 +42,23 @@ print(name, hz)
 ' 2>/dev/null)"
 fps="${fps:-60}"
 
+# Hardware-encode via VAAPI (AMD Radeon 890M). Software x264 can't keep up at
+# the panel's 120fps and drops frames — playback looks choppy. Offloading the
+# encode to the GPU records smoothly at full refresh.
+HW=(-c h264_vaapi -d /dev/dri/renderD128)
+
 case "$mode" in
     region)
         geom=$(slurp) || exit 1
         notify-send -a "screen-recorder" "Recording region (${fps}fps)" "Same shortcut to stop."
-        exec wf-recorder -g "$geom" -r "$fps" -f "$out"
+        exec wf-recorder "${HW[@]}" -g "$geom" -r "$fps" -f "$out"
         ;;
     screen)
         notify-send -a "screen-recorder" "Recording screen${out_name:+ ($out_name)} (${fps}fps)" "Same shortcut to stop."
         if [ -n "$out_name" ]; then
-            exec wf-recorder -o "$out_name" -r "$fps" -f "$out"
+            exec wf-recorder "${HW[@]}" -o "$out_name" -r "$fps" -f "$out"
         else
-            exec wf-recorder -r "$fps" -f "$out"
+            exec wf-recorder "${HW[@]}" -r "$fps" -f "$out"
         fi
         ;;
     *)
