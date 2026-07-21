@@ -8,6 +8,9 @@
 
 multiple="$1" directory="$2" save="$3" path="$4" out="$5"
 
+DBG=/tmp/yazi-chooser-debug.log
+echo "=== $(date '+%T') multiple=$multiple directory=$directory save=$save path=$path out=$out" >> "$DBG"
+
 cmd=(yazi --chooser-file="$out")
 chooser_cfg=""
 
@@ -30,16 +33,24 @@ else
 fi
 
 if [ "$save" = "1" ] && [ -n "$path" ]; then
-    # No explicit pick but yazi exited with q (cwd written): save under the
-    # suggested name wherever the user navigated. Q writes neither → cancel.
+    echo "post-yazi: out=[$(cat "$out" 2>/dev/null)] cwd=[$(cat "$out.cwd" 2>/dev/null)]" >> "$DBG"
+    # No explicit pick but yazi exited via Enter/plain quit (cwd written):
+    # save under the suggested name wherever the user navigated.
+    # q/Q (--no-cwd-file) writes neither → cancel.
     if [ ! -s "$out" ] && [ -s "$out.cwd" ]; then
         dir=$(head -n1 "$out.cwd")
-        [ -d "$dir" ] && printf '%s' "$dir/$(basename "$path")" > "$out"
+        if [ -d "$dir" ]; then
+            target="$dir/$(basename "$path")"
+            # backend rejects nonexistent picks — materialize the target
+            touch "$target"
+            printf '%s' "$target" > "$out"
+        fi
     fi
     rm -f "$out.cwd"
     # Placeholder is junk unless it's the chosen target
     chosen=$(head -n1 "$out" 2>/dev/null)
     [ "$chosen" = "$path" ] || rm -f -- "$path"
+    echo "final: out=[$(cat "$out" 2>/dev/null)]" >> "$DBG"
 fi
 
 # Directory mode: plain quit-in-dir writes nothing to $out — promote the cwd
