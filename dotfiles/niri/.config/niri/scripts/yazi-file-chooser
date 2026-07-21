@@ -1,32 +1,42 @@
 #!/usr/bin/env bash
 # xdg-desktop-portal-termfilechooser wrapper: yazi in a floating kitty.
 # Args: multiple directory save path out (per contrib/yazi-wrapper.sh)
+#
+# Save mode UX: Enter on a file = save as that path; q = save under the
+# suggested name in yazi's current dir; Q = cancel.
 
 multiple="$1" directory="$2" save="$3" path="$4" out="$5"
 
-# Save mode: materialize the app's suggested filename as a placeholder so
-# it's visible, hovered, and renamable (r) in yazi. Enter on it = save
-# under that name; rename first to change the name.
-created=""
-if [ "$save" = "1" ] && [ -n "$path" ] && [ ! -e "$path" ]; then
-    mkdir -p "$(dirname "$path")" && touch "$path" && created=1
-fi
-
 cmd=(yazi --chooser-file="$out")
-[ "$directory" = "1" ] && cmd+=(--cwd-file="$out.1")
+
+if [ "$save" = "1" ] && [ -n "$path" ]; then
+    # The backend pre-creates the placeholder filled with instruction text —
+    # truncate it so previews/saves never see that junk.
+    mkdir -p "$(dirname "$path")"
+    : > "$path"
+    cmd+=(--cwd-file="$out.cwd")
+elif [ "$directory" = "1" ]; then
+    cmd+=(--cwd-file="$out.1")
+fi
 [ -n "$path" ] && cmd+=("$path")
 
 kitty --class=file-chooser --title "Select file" -- "${cmd[@]}"
 
-# Directory mode: plain quit-in-dir writes nothing to $out — promote the cwd
-if [ "$directory" = "1" ] && [ ! -s "$out" ] && [ -s "$out.1" ]; then
-    mv "$out.1" "$out"
-fi
-rm -f "$out.1"
-
-# Drop the placeholder unless it was the actual pick (the app writes into
-# it after we return) — covers cancel and picked-something-else.
-if [ "$created" = "1" ] && [ ! -s "$path" ]; then
+if [ "$save" = "1" ] && [ -n "$path" ]; then
+    # No explicit pick but yazi exited with q (cwd written): save under the
+    # suggested name wherever the user navigated. Q writes neither → cancel.
+    if [ ! -s "$out" ] && [ -s "$out.cwd" ]; then
+        dir=$(head -n1 "$out.cwd")
+        [ -d "$dir" ] && printf '%s' "$dir/$(basename "$path")" > "$out"
+    fi
+    rm -f "$out.cwd"
+    # Placeholder is junk unless it's the chosen target
     chosen=$(head -n1 "$out" 2>/dev/null)
-    [ "$chosen" = "$path" ] || rm -f "$path"
+    [ "$chosen" = "$path" ] || rm -f -- "$path"
+fi
+
+# Directory mode: plain quit-in-dir writes nothing to $out — promote the cwd
+if [ "$directory" = "1" ]; then
+    [ ! -s "$out" ] && [ -s "$out.1" ] && mv "$out.1" "$out"
+    rm -f "$out.1"
 fi
