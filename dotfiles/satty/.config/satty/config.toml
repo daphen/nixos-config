@@ -1,0 +1,39 @@
+# Loaded explicitly via --config by niri/scripts/screenshot-to-clipboard —
+# not symlinked into ~/.config, so no home-manager wiring needed.
+
+[general]
+initial-tool = "crop"
+copy-command = "wl-copy"
+save-after-copy = true
+early-exit = ["copy"]
+actions-on-enter = ["save-to-clipboard"]
+actions-on-escape = ["exit"]
+# the screenshot script sends its own notification
+disable-notifications = true
+corner-roundness = 8
+
+# Vim-flavored tool keys: v=select like visual mode, l=line (default "i"
+# reads as insert), a=arrow (default "z"). Rest keep upstream mnemonics.
+[keybinds]
+pointer = "v"
+crop = "c"
+brush = "b"
+line = "l"
+arrow = "a"
+rectangle = "r"
+ellipse = "e"
+text = "t"
+marker = "m"
+blur = "u"
+highlight = "g"
+
+# House accents (themes/colors.json)
+[color-palette]
+palette = [
+    "#FF7B72FF", # red
+    "#FF570DFF", # orange
+    "#FF8A31FF", # yellow
+    "#97B5A6FF", # green
+    "#7DD3FCFF", # sky
+    "#EDEDEDFF", # fg primary
+]
