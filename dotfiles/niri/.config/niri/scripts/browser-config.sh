@@ -17,6 +17,11 @@
 # Path to the browser binary.
 BROWSER_BIN="/etc/profiles/per-user/daphen/bin/helium"
 
+# File dialogs via the portal (termfilechooser → yazi-in-kitty). Set here
+# because niri-spawned processes don't see home.sessionVariables until
+# re-login; every launcher sources this file.
+export GTK_USE_PORTAL=1
+
 # Wayland app-id assigned via --class. KEPT STABLE across browser
 # switches (it's just a label) so niri window-rules and ws-focus's
 # BROWSER_CLASSES never need to change.

@@ -1,0 +1,13 @@
+[opener]
+imv = [
+	{ run = 'imv "$@"', orphan = true, desc = "imv", for = "unix" },
+]
+mpv = [
+	{ run = 'mpv "$@"', orphan = true, desc = "mpv", for = "unix" },
+]
+
+[open]
+prepend_rules = [
+	{ mime = "image/*", use = "imv" },
+	{ mime = "video/*", use = "mpv" },
+]
