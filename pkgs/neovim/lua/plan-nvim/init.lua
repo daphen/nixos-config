@@ -32,6 +32,8 @@ local state = {
 	follow_win = nil,
 	follow_cur = nil,
 	follow_seen = {},
+	follow_user_off = false, -- explicit :PlanFollow off wins over auto-arm
+	last_phase = nil,
 }
 
 -- Assigned lower down; forward-declared so earlier closures capture the upvalue.
@@ -224,12 +226,24 @@ local function refresh_from_artifacts()
 		end
 	end
 	state.last_status = state.status
-	if state.progress and state.progress.phase == "implementing" then
+	local phase = state.progress and state.progress.phase
+	if phase == "implementing" then
+		if not state.following and not state.follow_user_off and state.last_phase ~= "implementing" then
+			-- --go can arrive outside :PlanGo (agent TUI, orchestrator relay);
+			-- arm follow on the observed transition so nvim tracks it anyway.
+			state.following = true
+			state.follow_win = nil -- follow_step re-acquires a window
+			state.follow_cur = nil
+			state.follow_seen = {}
+			for _, f in ipairs((state.progress or {}).planned or {}) do state.follow_seen[f.file] = f.status end
+			vim.notify("plan: --go detected — follow mode on")
+		end
 		arm_surface_watches(state.root) -- surface area can grow (unplanned files)
 		follow_step() -- open the file the agent is currently touching
-	elseif state.progress and state.progress.phase == "reconciled" then
+	elseif phase == "reconciled" then
 		state.following = false -- implementation done; stop following
 	end
+	state.last_phase = phase
 	if state.steps_buf and vim.api.nvim_buf_is_valid(state.steps_buf)
 		and state.steps_win and vim.api.nvim_win_is_valid(state.steps_win) then
 		render_steps(state.steps_buf)
@@ -599,10 +613,27 @@ end
 -- touching (or just finished) in the follow window — so nvim tracks the agent even for
 -- files you never opened (checktime only reloads already-open buffers; this opens them).
 -- Opened via win_call so it never steals focus from where you're working.
+local function pick_follow_win()
+	local cur = vim.api.nvim_get_current_win()
+	if cur ~= state.steps_win and vim.api.nvim_win_get_config(cur).relative == "" then return cur end
+	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		if w ~= state.steps_win and vim.api.nvim_win_get_config(w).relative == "" then return w end
+	end
+	return nil
+end
+
 follow_step = function()
 	if not state.following then return end
 	local win = state.follow_win
-	if not (win and vim.api.nvim_win_is_valid(win)) then state.following = false; return end
+	if not (win and vim.api.nvim_win_is_valid(win)) then
+		-- The bound window dies to ordinary navigation (pickers, layout churn);
+		-- re-acquire instead of silently disarming mid-implement.
+		win = pick_follow_win()
+		if not win then return end
+		state.follow_win = win
+		state.follow_cur = nil
+		vim.notify("plan: follow window re-acquired")
+	end
 	local p = state.progress
 	if not p then return end
 	local active, fallback
@@ -1479,6 +1510,7 @@ function M.setup()
 	vim.api.nvim_create_user_command("PlanReconcile", M.reconcile, {})
 	vim.api.nvim_create_user_command("PlanFollow", function()
 		state.following = not state.following
+		state.follow_user_off = not state.following
 		if state.following then
 			state.follow_win = vim.api.nvim_get_current_win()
 			state.follow_cur = nil
