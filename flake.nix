@@ -136,7 +136,16 @@
             inherit system;
             config.allowUnfree = true;
           };
+          # Only spotify-player is pulled from the fresher nixpkgs-latest: 0.23
+          # can't get a Web API refresh token (dies hourly), 0.24 can. Kept
+          # separate from `apps` so it doesn't drag chromium/etc onto a commit
+          # whose binaries aren't cached yet (that triggers a source build).
+          latest = import inputs.nixpkgs-latest {
+            inherit system;
+            config.allowUnfree = true;
+          };
         in {
+          inherit (latest) spotify-player;
           inherit (apps)
             # AI CLIs (ship daily)
             claude-code
