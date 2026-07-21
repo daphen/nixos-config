@@ -1,33 +1,41 @@
 #!/usr/bin/env bash
-# Screenshot selection to clipboard with timestamp
+# Freeze the focused output first, then crop in satty (Enter/Ctrl+C = copy + exit).
 
-# Create temporary directory for screenshots
 SCREENSHOT_DIR="/tmp"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 SCREENSHOT_FILE="$SCREENSHOT_DIR/screenshot-$TIMESTAMP.png"
 LATEST_LINK="$SCREENSHOT_DIR/latest-screenshot.png"
+FROZEN="$SCREENSHOT_DIR/.screenshot-frozen-$$.png"
 
-# Get selection area (exit if cancelled)
-SELECTION=$(slurp 2>/dev/null)
-if [ -z "$SELECTION" ]; then
-    exit 0  # User cancelled selection
+OUTPUT=$(niri msg --json focused-output | jq -r .name)
+if ! grim ${OUTPUT:+-o "$OUTPUT"} "$FROZEN"; then
+    notify-send -a "Screenshot" "Screenshot" "Failed to capture screen" --urgency=critical
+    exit 1
 fi
 
-# Take screenshot of selected area
-if grim -g "$SELECTION" "$SCREENSHOT_FILE"; then
-    # Copy to clipboard
-    wl-copy < "$SCREENSHOT_FILE"
+satty_cmd() {
+    if command -v satty >/dev/null; then
+        satty "$@"
+    else
+        # Until the rebuild that installs satty lands
+        nix shell nixpkgs#satty -c satty "$@"
+    fi
+}
 
-    # Create/update symlink to latest screenshot
+if satty_cmd --filename "$FROZEN" --fullscreen \
+        --initial-tool crop \
+        --output-filename "$SCREENSHOT_FILE" \
+        --copy-command wl-copy --save-after-copy --early-exit \
+   && [ -s "$SCREENSHOT_FILE" ]; then
     ln -sf "$SCREENSHOT_FILE" "$LATEST_LINK"
-
-    # Notify user — the app name maps to the camera glyph in the island
+    # The app name maps to the camera glyph in the island
     notify-send -a "Screenshot" "Screenshot" "Copied to clipboard"
-
-    # Clean up old screenshots (keep last 100 — the clipboard picker matches
-    # these files' timestamps to label entries "screenshot" vs "image")
-    ls -t "$SCREENSHOT_DIR"/screenshot-*.png 2>/dev/null | tail -n +101 | xargs -r rm
 else
-    # Screenshot failed
-    notify-send -a "Screenshot" "Screenshot" "Failed to capture screenshot" --urgency=critical
+    rm -f "$FROZEN"
+    exit 0  # cancelled in satty
 fi
+rm -f "$FROZEN"
+
+# Keep last 100 — the clipboard picker matches these files' timestamps
+# to label entries "screenshot" vs "image"
+ls -t "$SCREENSHOT_DIR"/screenshot-*.png 2>/dev/null | tail -n +101 | xargs -r rm

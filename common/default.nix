@@ -123,6 +123,7 @@
     # Wayland Tools
     grim
     slurp
+    satty
     wf-recorder
     wl-clipboard
     wl-clip-persist
