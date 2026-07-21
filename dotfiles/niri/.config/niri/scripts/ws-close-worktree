@@ -26,6 +26,7 @@ the caller can show an error.
 from __future__ import annotations
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -171,6 +172,21 @@ def main() -> int:
             active_file.unlink(missing_ok=True)
     except Exception:
         pass
+
+    # A teardown with no persisted claude transcript means the ticket's
+    # conversation happened outside this worktree (or nowhere) — say so
+    # instead of letting the context vanish silently.
+    if not is_main and wt_path.is_dir():
+        slug = re.sub(r"[/.]", "-", str(wt_path))
+        proj = HOME / ".claude" / "projects" / slug
+        if not any(proj.glob("*.jsonl")):
+            msg = (f"no claude session was ever saved in {wt_path.name}; "
+                   "its conversation lives in another session or nowhere")
+            print(f"WARNING: {msg}")
+            subprocess.run(
+                ["notify-send", "-u", "critical", "ws-close-worktree", msg],
+                check=False,
+            )
 
     print(f"closed lovable-{name} session (worktree dir kept on disk)")
     return 0
