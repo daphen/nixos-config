@@ -262,11 +262,11 @@ def main() -> int:
 
     # 4. Spawn the 4 stack windows. They land as columns on the focused
     #    workspace; in background mode each is relocated off it (--focus false).
-    print("==> spawning devenv wt --no-next")
+    print("==> spawning devenv wt")
     wid = spawn_and_wait([
         "kitty",
         "--working-directory", str(worktree_path),
-        "-e", "bash", "-c", "direnv exec . devenv wt --no-next; exec fish",
+        "-e", "bash", "-c", "direnv exec . devenv wt; exec fish",
     ])
     # Unconditional: spawns land on whatever workspace is focused at spawn
     # time, and user activity can steal focus mid-stack (windows then pile
