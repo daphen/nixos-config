@@ -10,9 +10,10 @@ SATTY=$(command -v satty || echo /nix/store/kklfm7l5kdr11b86zawy9f1lxg8fl6sp-sat
 OUTPUT=$(niri msg --json focused-output | jq -r .name)
 
 # -l 0 skips PNG compression (~4x faster encode) and the pipe lets satty's
-# GTK init run concurrently with the capture. GSK vulkan/ngl init stalls
-# seconds on NVIDIA — cairo renders instantly and 2D annotation needs no GPU.
-if grim -l 0 ${OUTPUT:+-o "$OUTPUT"} - | GSK_RENDERER=cairo "$SATTY" \
+# GTK init run concurrently with the capture. GSK's default vulkan backend
+# stalls seconds on NVIDIA init; ngl starts fast AND keeps GPU-quality
+# scaling of the 4K preview (cairo was fast but blurry).
+if grim -l 0 ${OUTPUT:+-o "$OUTPUT"} - | GSK_RENDERER=ngl "$SATTY" \
         --filename - \
         --initial-tool crop \
         --output-filename "$SCREENSHOT_FILE" \
