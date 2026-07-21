@@ -1,4 +1,4 @@
-# Yazi flavor matching your system colors
+# Yazi theme — generated from colors.json, do not hand-edit
 
 [mgr]
 cwd = { fg = "#FF570D" }
@@ -14,51 +14,45 @@ find_position = { fg = "#8A92A7", bg = "reset", italic = true }
 # Marker
 marker_copied   = { fg = "#97B5A6", bg = "#97B5A6" }
 marker_cut      = { fg = "#FF7B72", bg = "#FF7B72" }
-marker_marked   = { fg = "#5E7270", bg = "#5E7270" }
-marker_selected = { fg = "#5E7270", bg = "#5E7270" }
+marker_marked   = { fg = "#8A9AA6", bg = "#8A9AA6" }
+marker_selected = { fg = "#8A9AA6", bg = "#8A9AA6" }
 
 # Count
-count_copied   = { fg = "#EDEDED", bg = "#5E7270" }
-count_cut      = { fg = "#EDEDED", bg = "#FF7B72" }
-count_selected = { fg = "#EDEDED", bg = "#5E7270" }
+count_copied   = { fg = "#181818", bg = "#97B5A6" }
+count_cut      = { fg = "#181818", bg = "#FF7B72" }
+count_selected = { fg = "#181818", bg = "#8A9AA6" }
 
 # Border
 border_symbol = "│"
 border_style  = { fg = "#707B84" }
 
 [tabs]
-active   = { fg = "#EDEDED", bg = "#5E7270", bold = true }
-inactive = { fg = "#C3C8C6", bg = "#282F38" }
+active   = { fg = "#181818", bg = "#97B5A6", bold = true }
+inactive = { fg = "#C3C8C6", bg = "#2E2E2E" }
 
 [mode]
-# Normal mode - trying reset for background
 normal_main = { fg = "#97B5A6", bg = "reset", bold = true }
 normal_alt  = { fg = "#707B84", bg = "reset" }
 
-# Select mode
 select_main = { fg = "#FF570D", bg = "reset", bold = true }
 select_alt  = { fg = "#ff8a31", bg = "reset" }
 
-# Unset mode
 unset_main  = { fg = "#8A92A7", bg = "reset", bold = true }
 unset_alt   = { fg = "#707B84", bg = "reset" }
 
 [status]
-# Overall status bar style
 overall = {}
 sep_left  = { open = "", close = "" }
 sep_right = { open = "", close = "" }
 
-# Permissions
 perm_sep   = { fg = "#707B84" }
 perm_type  = { fg = "#97B5A6" }
 perm_read  = { fg = "#ff8a31" }
 perm_write = { fg = "#FF7B72" }
 perm_exec  = { fg = "#97B5A6" }
 
-# Progress
 progress_label  = { fg = "#EDEDED", bold = true }
-progress_normal = { fg = "#EDEDED", bg = "#5E7270" }
+progress_normal = { fg = "#181818", bg = "#97B5A6" }
 progress_error  = { fg = "#FF7B72", bg = "#1B1B1B" }
 
 [pick]
@@ -92,16 +86,16 @@ separator_style = { fg = "#707B84" }
 on      = { fg = "#8A92A7" }
 exec    = { fg = "#8A9AA6" }
 desc    = { fg = "#707B84" }
-hovered = { bg = "#282F38", bold = true }
-footer  = { fg = "#EDEDED", bg = "#5E7270" }
+hovered = { bg = "#2E2E2E", bold = true }
+footer  = { fg = "#181818", bg = "#97B5A6" }
 
 [spotter]
 border = { fg = "#97B5A6" }
 
 [notification]
-info  = { fg = "#EDEDED", bg = "#5E7270" }
+info  = { fg = "#181818", bg = "#97B5A6" }
 warn  = { fg = "#181818", bg = "#ff8a31" }
-error = { fg = "#EDEDED", bg = "#FF7B72" }
+error = { fg = "#181818", bg = "#FF7B72" }
 
 [filetype]
 rules = [

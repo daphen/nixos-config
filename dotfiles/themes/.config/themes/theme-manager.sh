@@ -316,6 +316,15 @@ PYEOF
                 log_success "Applied clipse theme ($label)"
             fi
             ;;
+        "yazi")
+            local target_dir is_managed
+            if get_tool_target "$tool"; then
+                mkdir -p "$target_dir"
+                cp "$generated_file" "$target_dir/theme.toml"
+                local label=$([[ "$is_managed" == true ]] && echo "managed" || echo "local")
+                log_success "Applied yazi theme ($label, new instances pick it up)"
+            fi
+            ;;
         "quickshell")
             # Dual-theme: the generated Theme.qml inlines both palettes and
             # picks at runtime via FileView on ~/.config/theme_mode. Written

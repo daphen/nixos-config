@@ -1,0 +1,129 @@
+# Yazi theme — generated from colors.json, do not hand-edit
+
+[mgr]
+cwd = { fg = "{{accent.orange}}" }
+
+# Hovered
+hovered         = { fg = "{{background.primary}}", bg = "{{accent.orange}}" }
+preview_hovered = { underline = true }
+
+# Find
+find_keyword  = { fg = "{{accent.yellow}}", italic = true }
+find_position = { fg = "{{accent.purple}}", bg = "reset", italic = true }
+
+# Marker
+marker_copied   = { fg = "{{accent.green}}", bg = "{{accent.green}}" }
+marker_cut      = { fg = "{{accent.red}}", bg = "{{accent.red}}" }
+marker_marked   = { fg = "{{accent.cyan}}", bg = "{{accent.cyan}}" }
+marker_selected = { fg = "{{accent.cyan}}", bg = "{{accent.cyan}}" }
+
+# Count
+count_copied   = { fg = "{{background.primary}}", bg = "{{accent.green}}" }
+count_cut      = { fg = "{{background.primary}}", bg = "{{accent.red}}" }
+count_selected = { fg = "{{background.primary}}", bg = "{{accent.cyan}}" }
+
+# Border
+border_symbol = "│"
+border_style  = { fg = "{{foreground.muted}}" }
+
+[tabs]
+active   = { fg = "{{background.primary}}", bg = "{{accent.green}}", bold = true }
+inactive = { fg = "{{foreground.secondary}}", bg = "{{background.selection}}" }
+
+[mode]
+normal_main = { fg = "{{accent.green}}", bg = "reset", bold = true }
+normal_alt  = { fg = "{{foreground.muted}}", bg = "reset" }
+
+select_main = { fg = "{{accent.orange}}", bg = "reset", bold = true }
+select_alt  = { fg = "{{accent.yellow}}", bg = "reset" }
+
+unset_main  = { fg = "{{accent.purple}}", bg = "reset", bold = true }
+unset_alt   = { fg = "{{foreground.muted}}", bg = "reset" }
+
+[status]
+overall = {}
+sep_left  = { open = "", close = "" }
+sep_right = { open = "", close = "" }
+
+perm_sep   = { fg = "{{foreground.muted}}" }
+perm_type  = { fg = "{{accent.green}}" }
+perm_read  = { fg = "{{accent.yellow}}" }
+perm_write = { fg = "{{accent.red}}" }
+perm_exec  = { fg = "{{accent.green}}" }
+
+progress_label  = { fg = "{{foreground.primary}}", bold = true }
+progress_normal = { fg = "{{background.primary}}", bg = "{{accent.green}}" }
+progress_error  = { fg = "{{accent.red}}", bg = "{{background.secondary}}" }
+
+[pick]
+border   = { fg = "{{accent.green}}" }
+active   = { fg = "{{accent.purple}}", bold = true }
+inactive = {}
+
+[input]
+border   = { fg = "{{accent.green}}" }
+title    = {}
+value    = {}
+selected = { reversed = true }
+
+[completion]
+border = { fg = "{{accent.green}}" }
+
+[tasks]
+border  = { fg = "{{accent.green}}" }
+title   = {}
+hovered = { underline = true }
+
+[which]
+mask            = { bg = "{{background.overlay}}" }
+cand            = { fg = "{{accent.cyan}}" }
+rest            = { fg = "{{foreground.muted}}" }
+desc            = { fg = "{{accent.purple}}" }
+separator       = "  "
+separator_style = { fg = "{{foreground.muted}}" }
+
+[help]
+on      = { fg = "{{accent.purple}}" }
+exec    = { fg = "{{accent.cyan}}" }
+desc    = { fg = "{{foreground.muted}}" }
+hovered = { bg = "{{background.selection}}", bold = true }
+footer  = { fg = "{{background.primary}}", bg = "{{accent.green}}" }
+
+[spotter]
+border = { fg = "{{accent.green}}" }
+
+[notification]
+info  = { fg = "{{background.primary}}", bg = "{{accent.green}}" }
+warn  = { fg = "{{background.primary}}", bg = "{{accent.yellow}}" }
+error = { fg = "{{background.primary}}", bg = "{{accent.red}}" }
+
+[filetype]
+rules = [
+	# Images
+	{ mime = "image/*", fg = "{{accent.cyan}}" },
+
+	# Videos
+	{ mime = "video/*", fg = "{{accent.yellow}}" },
+
+	# Audio
+	{ mime = "audio/*", fg = "{{accent.yellow}}" },
+
+	# Archives
+	{ mime = "application/zip",             fg = "{{accent.purple}}" },
+	{ mime = "application/gzip",            fg = "{{accent.purple}}" },
+	{ mime = "application/x-tar",           fg = "{{accent.purple}}" },
+	{ mime = "application/x-bzip",          fg = "{{accent.purple}}" },
+	{ mime = "application/x-bzip2",         fg = "{{accent.purple}}" },
+	{ mime = "application/x-7z-compressed", fg = "{{accent.purple}}" },
+	{ mime = "application/x-rar",           fg = "{{accent.purple}}" },
+
+	# Documents
+	{ mime = "application/doc",   fg = "{{accent.green}}" },
+	{ mime = "application/pdf",   fg = "{{accent.green}}" },
+	{ mime = "application/rtf",   fg = "{{accent.green}}" },
+	{ mime = "application/vnd.*", fg = "{{accent.green}}" },
+
+	# Fallback
+	{ name = "*", fg = "{{foreground.primary}}" },
+	{ name = "*/", fg = "{{accent.green}}" }
+]
