@@ -284,10 +284,13 @@
       # without this — and with the routing below sending ScreenCast to
       # gnome — full-screen/window sharing in browsers is impossible.
       xdg-desktop-portal-gnome
+      # Terminal file chooser: save/open dialogs become yazi in a
+      # floating kitty (config in dotfiles/xdg-desktop-portal-termfilechooser)
+      xdg-desktop-portal-termfilechooser
     ];
     config.niri = {
       default = [ "gnome" "gtk" ];
-      "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
+      "org.freedesktop.impl.portal.FileChooser" = [ "termfilechooser" ];
       "org.freedesktop.impl.portal.ScreenCast" = [ "gnome" ];
       "org.freedesktop.impl.portal.RemoteDesktop" = [ "gnome" ];
     };

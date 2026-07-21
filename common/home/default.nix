@@ -33,6 +33,9 @@ in
     FZF_DEFAULT_OPTS_FILE = "${config.home.homeDirectory}/.config/fzf/opts.conf";
     # QsLib shared QML module (dotfiles/qslib) for quickshell apps + bar.
     QML2_IMPORT_PATH = "${config.home.homeDirectory}/.local/share/qml";
+    # Route GTK/Chromium file dialogs through the portal, where
+    # termfilechooser serves them as yazi-in-kitty.
+    GTK_USE_PORTAL = "1";
   };
 
   systemd.user.sessionVariables = {

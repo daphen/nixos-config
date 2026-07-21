@@ -1,0 +1,3 @@
+[filechooser]
+cmd=/home/daphen/.config/niri/scripts/yazi-file-chooser
+default_dir=/home/daphen/Downloads

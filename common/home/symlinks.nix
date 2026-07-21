@@ -49,6 +49,7 @@ in {
     "imv".source = link "${dotfiles}/imv/.config/imv";
     "themes".source = link "${dotfiles}/themes/.config/themes";
     "clipse/custom_theme.json".source = link "${dotfiles}/clipse/.config/clipse/custom_theme.json";
+    "xdg-desktop-portal-termfilechooser".source = link "${dotfiles}/xdg-desktop-portal-termfilechooser/.config/xdg-desktop-portal-termfilechooser";
     "spotify-player/theme.toml".source = link "${dotfiles}/spotify-player/.config/spotify-player/theme.toml";
     "spotify-player/keymap.toml".source = link "${dotfiles}/spotify-player/.config/spotify-player/keymap.toml";
     "spotify-player/app.toml".source = link "${dotfiles}/spotify-player/.config/spotify-player/app.toml";

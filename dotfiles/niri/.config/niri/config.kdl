@@ -494,6 +494,13 @@ window-rule {
 }
 
 window-rule {
+    match app-id=r#"^file-chooser$"#
+    open-floating true
+    default-column-width { fixed 1100; }
+    default-window-height { fixed 700; }
+}
+
+window-rule {
     match app-id=r#"^imv$"#
     match app-id=r#"^mpv$"#
     open-floating true

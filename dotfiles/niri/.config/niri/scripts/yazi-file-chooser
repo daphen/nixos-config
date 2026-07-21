@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# xdg-desktop-portal-termfilechooser wrapper: yazi in a floating kitty.
+# Args: multiple directory save path out (per contrib/yazi-wrapper.sh)
+
+multiple="$1" directory="$2" save="$3" path="$4" out="$5"
+
+cmd=(yazi --chooser-file="$out")
+[ "$directory" = "1" ] && cmd+=(--cwd-file="$out.1")
+[ -n "$path" ] && cmd+=("$path")
+
+kitty --class=file-chooser --title "Select file" -- "${cmd[@]}"
+
+# Directory mode: plain quit-in-dir writes nothing to $out — promote the cwd
+if [ "$directory" = "1" ] && [ ! -s "$out" ] && [ -s "$out.1" ]; then
+    mv "$out.1" "$out"
+fi
+rm -f "$out.1"
