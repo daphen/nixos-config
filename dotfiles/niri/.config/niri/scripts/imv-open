@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Open image(s) in imv with the window sized to the first image so small
+# images don't swim in a huge black window and big ones don't overflow.
+# Window sizes are LOGICAL px, images PHYSICAL — divide by output scale.
+
+first="$1"
+read -r maxw maxh scale < <(niri msg --json focused-output | jq -r '
+    "\((.logical.width // 2560) * 90 / 100 | floor) \((.logical.height // 1440) * 85 / 100 | floor) \(.logical.scale // 1)"')
+
+W=$maxw H=$maxh
+dims=$(identify -format '%w %h' "$first[0]" 2>/dev/null)
+if [ -n "$dims" ]; then
+    read -r iw ih <<< "$dims"
+    read -r W H < <(awk -v iw="$iw" -v ih="$ih" -v s="$scale" -v mw="$maxw" -v mh="$maxh" '
+        BEGIN {
+            w = iw / s; h = ih / s
+            if (w > mw) { h = h * mw / w; w = mw }
+            if (h > mh) { w = w * mh / h; h = mh }
+            printf "%d %d\n", (w < 200 ? 200 : w), (h < 150 ? 150 : h)
+        }')
+fi
+
+exec imv -W "$W" -H "$H" "$@"

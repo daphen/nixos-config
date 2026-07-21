@@ -1,6 +1,6 @@
 [opener]
 imv = [
-	{ run = 'imv "$@"', orphan = true, desc = "imv", for = "unix" },
+	{ run = '~/.config/niri/scripts/imv-open "$@"', orphan = true, desc = "imv", for = "unix" },
 ]
 mpv = [
 	{ run = 'mpv "$@"', orphan = true, desc = "mpv", for = "unix" },
