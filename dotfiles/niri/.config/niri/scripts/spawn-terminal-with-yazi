@@ -54,5 +54,7 @@ fi
 CWD="${CWD:-$HOME}"
 echo "Final CWD: $CWD" >> "$DEBUG_LOG"
 
-# Spawn kitty at the determined directory and run yazi with that directory
-kitty --directory "$CWD" yazi "$CWD"
+# Spawn kitty at the determined directory and run yazi with that directory.
+# class file-chooser → the floating 1100x700 window rule (shared with the
+# portal file chooser — same "floating file UI" chrome).
+kitty --class=file-chooser --directory "$CWD" yazi "$CWD"
