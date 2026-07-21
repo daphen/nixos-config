@@ -4,6 +4,14 @@
 
 multiple="$1" directory="$2" save="$3" path="$4" out="$5"
 
+# Save mode: materialize the app's suggested filename as a placeholder so
+# it's visible, hovered, and renamable (r) in yazi. Enter on it = save
+# under that name; rename first to change the name.
+created=""
+if [ "$save" = "1" ] && [ -n "$path" ] && [ ! -e "$path" ]; then
+    mkdir -p "$(dirname "$path")" && touch "$path" && created=1
+fi
+
 cmd=(yazi --chooser-file="$out")
 [ "$directory" = "1" ] && cmd+=(--cwd-file="$out.1")
 [ -n "$path" ] && cmd+=("$path")
@@ -15,3 +23,10 @@ if [ "$directory" = "1" ] && [ ! -s "$out" ] && [ -s "$out.1" ]; then
     mv "$out.1" "$out"
 fi
 rm -f "$out.1"
+
+# Drop the placeholder unless it was the actual pick (the app writes into
+# it after we return) — covers cancel and picked-something-else.
+if [ "$created" = "1" ] && [ ! -s "$path" ]; then
+    chosen=$(head -n1 "$out" 2>/dev/null)
+    [ "$chosen" = "$path" ] || rm -f "$path"
+fi
