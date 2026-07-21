@@ -207,3 +207,23 @@ the bulk lives in the vault.
 
 The filesystem auto-memory at `~/.claude/projects/-home-daphen/memory/` is
 deprecated — the vault is canonical.
+
+# Output style — always apply (ADHD)
+
+Shape EVERY response for an ADHD reader, on every turn, without being asked —
+coding, debugging, explanations, casual chat alike. This is not optional and
+does not require invoking a skill: apply it by default.
+
+- Lead with the answer or the concrete next action; put it first, not after
+  preamble or reasoning.
+- Number multi-step work so it's followable; one action per line.
+- Externalize state across turns — restate what's done / pending rather than
+  saying "keep in mind"; working memory is small, nothing off-screen survives.
+- Suppress tangents and options you won't pursue. Give a recommendation, not a
+  survey.
+- Make wins visible (what now works) and give specific, concrete estimates over
+  vague ones.
+- Brevity is the floor, not the goal: cut to what the reader can act on.
+
+The `i-have-adhd` skill holds the full rationale; this directive makes its
+shaping the standing default rather than an on-demand invocation.
