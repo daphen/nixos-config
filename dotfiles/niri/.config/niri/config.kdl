@@ -496,8 +496,8 @@ window-rule {
 window-rule {
     match app-id=r#"^file-chooser$"#
     open-floating true
-    default-column-width { fixed 1100; }
-    default-window-height { fixed 700; }
+    default-column-width { proportion 0.62; }
+    default-window-height { proportion 0.72; }
 }
 
 window-rule {
