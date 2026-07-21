@@ -9,6 +9,19 @@ LATEST_LINK="$SCREENSHOT_DIR/latest-screenshot.png"
 SATTY=$(command -v satty || echo /nix/store/kklfm7l5kdr11b86zawy9f1lxg8fl6sp-satty-0.20.1/bin/satty)
 OUTPUT=$(niri msg --json focused-output | jq -r .name)
 
+# Log keypress→window latency of every run to /tmp/screenshot-timing.log
+T0=$(date +%s%3N)
+(
+  for _ in $(seq 1 200); do
+    if niri msg --json windows | jq -e 'any(.[]; .app_id=="com.gabm.satty")' >/dev/null 2>&1; then
+      echo "$(date '+%F %T') window_after=$(( $(date +%s%3N) - T0 ))ms" >> /tmp/screenshot-timing.log
+      exit
+    fi
+    sleep 0.05
+  done
+  echo "$(date '+%F %T') window_after=TIMEOUT(10s)" >> /tmp/screenshot-timing.log
+) &
+
 # -l 0 skips PNG compression (~4x faster encode) and the pipe lets satty's
 # GTK init run concurrently with the capture. GSK's default vulkan backend
 # stalls seconds on NVIDIA init; ngl starts fast AND keeps GPU-quality
