@@ -109,7 +109,10 @@ PanelWindow {
     }
 
     // Token-prefix 10000 > substring ~1000 (boundary/position bonus) >
-    // fuzzy subsequence 1 (last-resort tiebreak). Same tiers as App.tsx.
+    // fuzzy subsequence 1 (last-resort tiebreak). Tiers mirror App.tsx.
+    // The fuzzy tier only counts when the matched letters sit in a tight
+    // window (span ≤ 2× query) — "twtr" finds twitter, but a query
+    // scattered letter-by-letter across a long title is noise, not a match.
     function scoreMatch(qLower, matchText) {
         if (!qLower) return 1
         const v = matchText
@@ -121,10 +124,19 @@ PanelWindow {
             const atBoundary = idx === 0 || /[\s/\-_.]/.test(v[idx - 1])
             return 1000 - Math.min(idx, 500) + (atBoundary ? 200 : 0)
         }
-        let qi = 0
-        for (let vi = 0; vi < v.length && qi < qLower.length; vi++)
-            if (v[vi] === qLower[qi]) qi++
-        return qi === qLower.length ? 1 : 0
+        let best = -1
+        for (let start = 0; start < v.length; start++) {
+            if (v[start] !== qLower[0]) continue
+            let qi = 1, vi = start + 1
+            while (vi < v.length && qi < qLower.length) {
+                if (v[vi] === qLower[qi]) qi++
+                vi++
+            }
+            if (qi < qLower.length) break // can't complete from here → nor from any later start
+            const span = vi - start
+            if (best < 0 || span < best) best = span
+        }
+        return (best > 0 && best <= qLower.length * 2) ? 1 : 0
     }
 
     function looksLikeUrl(t) {
