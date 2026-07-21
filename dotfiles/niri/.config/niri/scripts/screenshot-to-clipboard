@@ -17,8 +17,9 @@ satty_cmd() {
     if command -v satty >/dev/null; then
         satty "$@"
     else
-        # Until the rebuild that installs satty lands
-        nix shell nixpkgs#satty -c satty "$@"
+        # Until the rebuild that installs satty lands (pinned path avoids
+        # a multi-second nix eval on every keypress)
+        /nix/store/kklfm7l5kdr11b86zawy9f1lxg8fl6sp-satty-0.20.1/bin/satty "$@"
     fi
 }
 
