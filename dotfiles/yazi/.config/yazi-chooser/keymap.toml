@@ -1,0 +1,14 @@
+# Keymap for SAVE dialogs only (yazi-file-chooser sets YAZI_CONFIG_HOME here).
+# Enter = save with suggested name in the dir I'm standing in.
+# Ctrl+Enter = save AS the hovered file (deliberate overwrite).
+# q / Q = cancel. Navigation stays h/l/j/k; z zoxide, Z fzf as usual.
+
+[mgr]
+prepend_keymap = [
+	{ on = "<Enter>", run = "quit", desc = "Save here (suggested name)" },
+	{ on = "<C-Enter>", run = "open", desc = "Save as hovered file (overwrite)" },
+	{ on = "q", run = "quit --no-cwd-file", desc = "Cancel save" },
+	{ on = "Q", run = "quit --no-cwd-file", desc = "Cancel save" },
+	{ on = "z", run = "plugin zoxide", desc = "Jump to a directory via zoxide" },
+	{ on = "Z", run = "plugin fzf", desc = "Jump via fzf" },
+]

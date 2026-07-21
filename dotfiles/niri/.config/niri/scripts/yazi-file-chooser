@@ -2,12 +2,14 @@
 # xdg-desktop-portal-termfilechooser wrapper: yazi in a floating kitty.
 # Args: multiple directory save path out (per contrib/yazi-wrapper.sh)
 #
-# Save mode UX: Enter on a file = save as that path; q = save under the
-# suggested name in yazi's current dir; Q = cancel.
+# Save mode UX (keymap in dotfiles/yazi/.config/yazi-chooser):
+# Enter = save under the suggested name in the current dir;
+# Ctrl+Enter = save AS the hovered file (overwrite); q/Q = cancel.
 
 multiple="$1" directory="$2" save="$3" path="$4" out="$5"
 
 cmd=(yazi --chooser-file="$out")
+chooser_cfg=""
 
 if [ "$save" = "1" ] && [ -n "$path" ]; then
     # The backend pre-creates the placeholder filled with instruction text —
@@ -15,12 +17,17 @@ if [ "$save" = "1" ] && [ -n "$path" ]; then
     mkdir -p "$(dirname "$path")"
     : > "$path"
     cmd+=(--cwd-file="$out.cwd")
+    chooser_cfg="$HOME/nixos/dotfiles/yazi/.config/yazi-chooser"
 elif [ "$directory" = "1" ]; then
     cmd+=(--cwd-file="$out.1")
 fi
 [ -n "$path" ] && cmd+=("$path")
 
-kitty --class=file-chooser --title "Select file" -- "${cmd[@]}"
+if [ -n "$chooser_cfg" ]; then
+    YAZI_CONFIG_HOME="$chooser_cfg" kitty --class=file-chooser --title "Select file" -- "${cmd[@]}"
+else
+    kitty --class=file-chooser --title "Select file" -- "${cmd[@]}"
+fi
 
 if [ "$save" = "1" ] && [ -n "$path" ]; then
     # No explicit pick but yazi exited with q (cwd written): save under the
