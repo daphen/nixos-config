@@ -41,7 +41,11 @@ Singleton {
     function activateWindow(profile, windowId) { send({ cmd: "activate-window", profile: profile, windowId: windowId }) }
     function quickmarkAdd(name, url)      { send({ cmd: "quickmark-add", name: name, url: url }) }
     function closeTab(tabId)              { send({ cmd: "close-tab", tabId: tabId }) }
+    function saveSynced()                 { send({ cmd: "save-synced" }) }
     function refresh()                    { send({ cmd: "refresh" }) }
+
+    // Result of a save-synced roundtrip: "ok" | "dupe" | "fail".
+    signal saveResult(string result)
     function searchHistory(query) {
         _histReq++
         send({ cmd: "history-search", reqId: _histReq, query: query || "" })
@@ -56,6 +60,10 @@ Singleton {
                 root.historyEntries = m.entries || []
                 root.historyGen++
             }
+            return
+        }
+        if (m.type === "saved") {
+            root.saveResult(m.result || "fail")
             return
         }
         if (m.type !== "state") return

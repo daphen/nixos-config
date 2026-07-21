@@ -313,16 +313,25 @@ PanelWindow {
         if (urlItems.length && hasHit) groups.push({ id: "url", heading: "Open URL", items: urlItems })
         groups.push({ id: "history", heading: "History", items: histItems })
         groups.push({ id: "websites", heading: "Web Search", items: webItems })
-        // Actions: quickmark the current tab. Rankable like everything else
-        // ("add", "quickmark", "mark" all hit it); hidden if already marked.
-        if (cur && !(PaletteState.quickmarks || []).some(m => m.url === cur.url)) {
-            const addItem = {
-                kind: "addqm", qmName: cur.title || cur.url, qmUrl: cur.url || "",
-                title: "Add current tab to quickmarks",
-                subtitle: niceUrl(cur.url || ""), faviconPath: cur.faviconPath || "",
+        // Actions on the current tab. Rankable like everything else
+        // ("add"/"quickmark"/"mark", "save"/"sync"/"synced"). Quickmark hides
+        // once the tab's already marked; save-to-Synced always offered.
+        if (cur) {
+            const actionItems = []
+            if (!(PaletteState.quickmarks || []).some(m => m.url === cur.url)) {
+                actionItems.push({
+                    kind: "addqm", qmName: cur.title || cur.url, qmUrl: cur.url || "",
+                    title: "Add current tab to quickmarks",
+                    subtitle: niceUrl(cur.url || ""), faviconPath: cur.faviconPath || "",
+                })
             }
-            const ra = rank([addItem])
-            groups.push({ id: "actions", heading: "Actions", items: q ? ra.items : [addItem] })
+            actionItems.push({
+                kind: "savesync",
+                title: "Save current tab to Synced",
+                subtitle: niceUrl(cur.url || ""), faviconPath: cur.faviconPath || "",
+            })
+            const ra = rank(actionItems)
+            groups.push({ id: "actions", heading: "Actions", items: q ? ra.items : actionItems })
         }
 
         // Cross-group URL dedupe in hierarchy order — a URL that's already
@@ -384,6 +393,10 @@ PanelWindow {
         if (!e || e.divider || e.kind === "help") return
         if (e.kind === "addqm") {
             if (e.qmUrl) PaletteState.quickmarkAdd(e.qmName, e.qmUrl)
+        } else if (e.kind === "savesync") {
+            PaletteState.saveSynced()
+            markToast.show("saving…")
+            return // keep the palette open so the result toast is visible
         } else if (e.kind === "tab" && !inNewTab) {
             if (!e.isCurrent) PaletteState.activateTab(e.tabId, e.windowId)
         } else if (e.url) {
@@ -401,6 +414,11 @@ PanelWindow {
             if (sid == null) return
             const focused = (PaletteState.chin || []).find(w => w.focused)
             if (focused && focused.id !== sid) root.scopedWindowId = null
+        }
+        function onSaveResult(result) {
+            markToast.show(result === "ok" ? "saved to Synced ✓"
+                : result === "dupe" ? "already in Synced"
+                : "save failed")
         }
     }
 
