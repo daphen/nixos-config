@@ -5,7 +5,7 @@
 initial-tool = "crop"
 copy-command = "wl-copy"
 save-after-copy = true
-early-exit = ["copy"]
+early-exit = true
 actions-on-enter = ["save-to-clipboard"]
 actions-on-escape = ["exit"]
 # the screenshot script sends its own notification
