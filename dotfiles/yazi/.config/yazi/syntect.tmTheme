@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Syntect theme for yazi previews — generated from colors.json semantic tokens -->
+<plist version="1.0">
+<dict>
+	<key>name</key><string>daphen</string>
+	<key>settings</key>
+	<array>
+		<dict>
+			<key>settings</key>
+			<dict>
+				<key>background</key><string>#181818</string>
+				<key>foreground</key><string>#EDEDED</string>
+				<key>caret</key><string>#FF570D</string>
+				<key>selection</key><string>#2E2E2E</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>comment, punctuation.definition.comment</string>
+			<key>settings</key><dict><key>foreground</key><string>#707B84</string><key>fontStyle</key><string>italic</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>string, punctuation.definition.string</string>
+			<key>settings</key><dict><key>foreground</key><string>#CCD5E4</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>constant.numeric</string>
+			<key>settings</key><dict><key>foreground</key><string>#FF7B72</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>constant.language, constant.character</string>
+			<key>settings</key><dict><key>foreground</key><string>#8A92A7</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>keyword, storage.type, storage.modifier</string>
+			<key>settings</key><dict><key>foreground</key><string>#97B5A6</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>keyword.operator, punctuation.separator, punctuation.terminator</string>
+			<key>settings</key><dict><key>foreground</key><string>#ff8a31</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>entity.name.function, support.function, meta.function-call</string>
+			<key>settings</key><dict><key>foreground</key><string>#CCD5E4</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>entity.name.type, entity.name.class, support.type, support.class</string>
+			<key>settings</key><dict><key>foreground</key><string>#8A9AA6</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>variable, variable.parameter</string>
+			<key>settings</key><dict><key>foreground</key><string>#EDEDED</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>variable.other.member, support.other.property, meta.property-name</string>
+			<key>settings</key><dict><key>foreground</key><string>#8A9AA6</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>entity.name.tag</string>
+			<key>settings</key><dict><key>foreground</key><string>#CCD5E4</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>entity.other.attribute-name</string>
+			<key>settings</key><dict><key>foreground</key><string>#8A9AA6</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>invalid, message.error</string>
+			<key>settings</key><dict><key>foreground</key><string>#FF7B72</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>markup.heading</string>
+			<key>settings</key><dict><key>foreground</key><string>#FF570D</string><key>fontStyle</key><string>bold</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>markup.bold</string>
+			<key>settings</key><dict><key>fontStyle</key><string>bold</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>markup.italic</string>
+			<key>settings</key><dict><key>fontStyle</key><string>italic</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>markup.underline.link, string.other.link</string>
+			<key>settings</key><dict><key>foreground</key><string>#7DD3FC</string></dict>
+		</dict>
+	</array>
+	<key>uuid</key><string>d8a9f3c1-0000-4000-8000-daphen000001</string>
+</dict>
+</plist>

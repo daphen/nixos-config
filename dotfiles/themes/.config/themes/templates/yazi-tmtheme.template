@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Syntect theme for yazi previews — generated from colors.json semantic tokens -->
+<plist version="1.0">
+<dict>
+	<key>name</key><string>daphen</string>
+	<key>settings</key>
+	<array>
+		<dict>
+			<key>settings</key>
+			<dict>
+				<key>background</key><string>{{background.primary}}</string>
+				<key>foreground</key><string>{{foreground.primary}}</string>
+				<key>caret</key><string>{{semantic.cursor}}</string>
+				<key>selection</key><string>{{background.selection}}</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>comment, punctuation.definition.comment</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.comment}}</string><key>fontStyle</key><string>italic</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>string, punctuation.definition.string</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.string}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>constant.numeric</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.number}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>constant.language, constant.character</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.boolean}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>keyword, storage.type, storage.modifier</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.keyword}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>keyword.operator, punctuation.separator, punctuation.terminator</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.operator}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>entity.name.function, support.function, meta.function-call</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.function}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>entity.name.type, entity.name.class, support.type, support.class</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.type}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>variable, variable.parameter</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.variable}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>variable.other.member, support.other.property, meta.property-name</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.property}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>entity.name.tag</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.tag}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>entity.other.attribute-name</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.attribute}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>invalid, message.error</string>
+			<key>settings</key><dict><key>foreground</key><string>{{semantic.error}}</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>markup.heading</string>
+			<key>settings</key><dict><key>foreground</key><string>{{accent.orange}}</string><key>fontStyle</key><string>bold</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>markup.bold</string>
+			<key>settings</key><dict><key>fontStyle</key><string>bold</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>markup.italic</string>
+			<key>settings</key><dict><key>fontStyle</key><string>italic</string></dict>
+		</dict>
+		<dict>
+			<key>scope</key><string>markup.underline.link, string.other.link</string>
+			<key>settings</key><dict><key>foreground</key><string>{{accent.sky}}</string></dict>
+		</dict>
+	</array>
+	<key>uuid</key><string>d8a9f3c1-0000-4000-8000-daphen000001</string>
+</dict>
+</plist>

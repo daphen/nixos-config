@@ -2,6 +2,8 @@
 
 [mgr]
 cwd = { fg = "{{accent.orange}}" }
+# generated tmTheme (yazi-tmtheme.template) — preview syntax highlighting
+syntect_theme = "~/.config/yazi/syntect.tmTheme"
 
 # Hovered
 hovered         = { fg = "{{background.primary}}", bg = "{{accent.orange}}" }

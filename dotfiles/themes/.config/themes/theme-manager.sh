@@ -325,6 +325,13 @@ PYEOF
                 log_success "Applied yazi theme ($label, new instances pick it up)"
             fi
             ;;
+        "yazi-tmtheme")
+            local target_dir is_managed
+            tool=yazi get_tool_target yazi && {
+                cp "$generated_file" "$target_dir/syntect.tmTheme"
+                log_success "Applied yazi syntect theme (preview highlighting)"
+            }
+            ;;
         "quickshell")
             # Dual-theme: the generated Theme.qml inlines both palettes and
             # picks at runtime via FileView on ~/.config/theme_mode. Written
