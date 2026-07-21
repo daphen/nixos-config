@@ -5,25 +5,15 @@ SCREENSHOT_DIR="/tmp"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 SCREENSHOT_FILE="$SCREENSHOT_DIR/screenshot-$TIMESTAMP.png"
 LATEST_LINK="$SCREENSHOT_DIR/latest-screenshot.png"
-FROZEN="$SCREENSHOT_DIR/.screenshot-frozen-$$.png"
 
+SATTY=$(command -v satty || echo /nix/store/kklfm7l5kdr11b86zawy9f1lxg8fl6sp-satty-0.20.1/bin/satty)
 OUTPUT=$(niri msg --json focused-output | jq -r .name)
-if ! grim ${OUTPUT:+-o "$OUTPUT"} "$FROZEN"; then
-    notify-send -a "Screenshot" "Screenshot" "Failed to capture screen" --urgency=critical
-    exit 1
-fi
 
-satty_cmd() {
-    if command -v satty >/dev/null; then
-        satty "$@"
-    else
-        # Until the rebuild that installs satty lands (pinned path avoids
-        # a multi-second nix eval on every keypress)
-        /nix/store/kklfm7l5kdr11b86zawy9f1lxg8fl6sp-satty-0.20.1/bin/satty "$@"
-    fi
-}
-
-if satty_cmd --filename "$FROZEN" --fullscreen \
+# -l 0 skips PNG compression (~4x faster encode) and the pipe lets satty's
+# GTK init run concurrently with the capture. GSK vulkan/ngl init stalls
+# seconds on NVIDIA — cairo renders instantly and 2D annotation needs no GPU.
+if grim -l 0 ${OUTPUT:+-o "$OUTPUT"} - | GSK_RENDERER=cairo "$SATTY" \
+        --filename - \
         --initial-tool crop \
         --output-filename "$SCREENSHOT_FILE" \
         --copy-command wl-copy --save-after-copy --early-exit \
@@ -32,10 +22,8 @@ if satty_cmd --filename "$FROZEN" --fullscreen \
     # The app name maps to the camera glyph in the island
     notify-send -a "Screenshot" "Screenshot" "Copied to clipboard"
 else
-    rm -f "$FROZEN"
-    exit 0  # cancelled in satty
+    exit 0  # cancelled in satty (or capture failed and satty already errored)
 fi
-rm -f "$FROZEN"
 
 # Keep last 100 — the clipboard picker matches these files' timestamps
 # to label entries "screenshot" vs "image"
