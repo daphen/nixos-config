@@ -1,5 +1,6 @@
 [mgr]
 prepend_keymap = [
+	{ on = "<Enter>", run = "plugin smart-enter", desc = "Enter dir / open file" },
 	{ on = "z", run = "plugin zoxide", desc = "Jump to a directory via zoxide" },
 	{ on = "Z", run = "plugin fzf", desc = "Jump via fzf" },
 	# Y (unyank) is pointless when you can just not paste — repurposed

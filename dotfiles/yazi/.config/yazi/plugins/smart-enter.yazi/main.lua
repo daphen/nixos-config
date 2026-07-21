@@ -1,0 +1,8 @@
+--- @sync entry
+-- Enter = enter directories, open files (yazi's default "opens" dirs in $EDITOR)
+return {
+	entry = function()
+		local h = cx.active.current.hovered
+		ya.emit(h and h.cha.is_dir and "enter" or "open", { hovered = true })
+	end,
+}
