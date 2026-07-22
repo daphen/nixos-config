@@ -51,9 +51,15 @@ def _oklch_to_hex(L, C, H):
 # surfaces drift more). surface == surface1. Defaults reproduce the previously
 # hand-authored ladder. OKLCH keeps equal dL steps perceptually even.
 _LADDER_FALLBACK = {
-    'dark':  {'dL': [0.0088, 0.0131, 0.0921, 0.1394], 'dC': 0.0, 'dH': 0.0},
-    'light': {'dL': [-0.0119, -0.0239, -0.0539, -0.0811], 'dC': 0.0, 'dH': 0.0},
+    'dark':  {'dL': [0.0088, 0.0131, 0.0921, 0.1394], 'dC': [0.0] * 4, 'dH': [0.0] * 4},
+    'light': {'dL': [-0.0119, -0.0239, -0.0539, -0.0811], 'dC': [0.0] * 4, 'dH': [0.0] * 4},
 }
+
+def _per_step(v, n):
+    """Accept either a per-step list or a scalar broadcast across n steps."""
+    if isinstance(v, (list, tuple)):
+        return [v[i] if i < len(v) else 0.0 for i in range(n)]
+    return [v] * n
 
 def _add_derived(themes, surfaces=None):
     surfaces = surfaces or {}
@@ -66,12 +72,13 @@ def _add_derived(themes, surfaces=None):
             continue
         cfg = surfaces.get(mode) or _LADDER_FALLBACK[mode]
         dLs = cfg.get('dL', _LADDER_FALLBACK[mode]['dL'])
-        dC = cfg.get('dC', 0.0)
-        dH = cfg.get('dH', 0.0)
+        n = len(dLs)
+        dCs = _per_step(cfg.get('dC', 0.0), n)
+        dHs = _per_step(cfg.get('dH', 0.0), n)
         L0, C0, H0 = _hex_to_oklch(primary)
         for i, dL in enumerate(dLs):
             bg[f'surface{i}'] = _oklch_to_hex(
-                L0 + dL, max(0.0, C0 + dC * i), H0 + dH * i)
+                L0 + dL, max(0.0, C0 + dCs[i]), H0 + dHs[i])
         # Canonical mid surface for consumers predating the numbered ladder.
         bg['surface'] = bg.get('surface1', primary)
     return themes
