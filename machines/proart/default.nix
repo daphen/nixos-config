@@ -50,6 +50,9 @@ in
     "amdgpu.abmlevel=0" # disable adaptive backlight modulation — caps OLED at ~76% with content-driven dimming
     "resume=/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0"
     "resume_offset=18552832"
+    # lz4 compresses the hibernate image ~3-4x faster than the default lzo —
+    # matters now that every lid close writes one (fans run for the write).
+    "hibernate.compressor=lz4"
     "nvidia.NVreg_DynamicPowerManagement=0x02"
     # Prevent ACPI EC from waking the system during s2idle.
     "acpi.ec_no_wakeup=1"
@@ -82,18 +85,21 @@ in
     nvidiaBusId = "PCI:100:0:0";
   };
 
-  # Swap file for hibernate (s2idle wake doesn't work — user always resumes from
-  # hibernate after the delay timer fires. Keep delay short for quick resume.)
-  # Sized > RAM (61G) + dGPU VRAM (16G): PreserveVideoMemoryAllocations copies
-  # VRAM into RAM before the image is written, so a 65G file couldn't hold a
-  # heavy session's image → NV_ERR_NO_MEMORY, corrupt image, failed resume.
+  # Swap file for hibernate. Sized > RAM (61G) + dGPU VRAM (16G):
+  # PreserveVideoMemoryAllocations copies VRAM into RAM before the image is
+  # written, so a 65G file couldn't hold a heavy session's image →
+  # NV_ERR_NO_MEMORY, corrupt image, failed resume.
   swapDevices = [{ device = "/swapfile"; size = 80 * 1024; }];
   boot.resumeDevice = "/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0";
-  systemd.sleep.settings.Sleep.HibernateDelaySec = "5min";
-  services.logind.settings.Login.HandleLidSwitch = "suspend-then-hibernate";
+  # Lid = hibernate IMMEDIATELY. s2idle wake has never worked on this machine
+  # (every logged suspend exit is the hibernate timer; lid-opens during the old
+  # suspend-then-hibernate window froze the system), so the suspend leg was
+  # pure hazard. Cost: image write on every close (~lz4-compressed, see
+  # kernelParams) and disk-resume on every open.
+  services.logind.settings.Login.HandleLidSwitch = "hibernate";
 
-  # nvidia-suspend.service only declares Before=systemd-suspend.service by default,
-  # but lid uses suspend-then-hibernate — pull it into all sleep paths explicitly.
+  # nvidia-suspend.service only declares Before=systemd-suspend.service by default —
+  # pull it into the hibernate path (lid) and suspend-then-hibernate (manual) too.
   systemd.services.nvidia-suspend.wantedBy = [
     "systemd-suspend-then-hibernate.service"
     "systemd-hibernate.service"
