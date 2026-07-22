@@ -239,14 +239,24 @@ def main() -> int:
     #    no longer re-derives session paths itself.
     mode, sid = args.mode, args.session_id
     if mode == "auto":
-        # `claude --continue` no longer falls back to a fresh session when
-        # the cwd has no conversation — it errors and exits, which killed
-        # the pane on brand-new worktrees. Check claude's project dir for
-        # the worktree (path munged with / and . -> -) and start fresh
-        # when it's empty.
+        # Resume the newest session that actually CONTAINS a conversation.
+        # `claude --continue` picks by recency alone, and claude creates the
+        # session file at launch — so an aborted/instantly-closed claude
+        # leaves an empty jsonl that steals "most recent", and reopening the
+        # stack landed in a blank session ("I lost my worktree session").
         proj = Path.home() / ".claude" / "projects" / re.sub(r"[/.]", "-", str(worktree_path))
-        has_session = proj.is_dir() and any(proj.glob("*.jsonl"))
-        claude_cmd = ["claude", "--continue"] if has_session else ["claude"]
+        resume_id = None
+        if proj.is_dir():
+            candidates = sorted(proj.glob("*.jsonl"),
+                                key=lambda f: f.stat().st_mtime, reverse=True)
+            for f in candidates:
+                try:
+                    if b'"type":"user"' in f.read_bytes()[:65536]:
+                        resume_id = f.stem
+                        break
+                except OSError:
+                    continue
+        claude_cmd = ["claude", "--resume", resume_id] if resume_id else ["claude"]
     elif mode == "new":
         claude_cmd = ["claude"]
     elif mode == "resume":
@@ -293,11 +303,14 @@ def main() -> int:
     seed_claude_trust(worktree_path)
     seed_env_local(worktree_path)
     print(f"==> spawning claude session ({mode})")
+    # When ws-createwt is itself run from inside a claude session, the child
+    # inherits CLAUDE_CODE_CHILD_SESSION and silently disables transcript
+    # saving — the session then can't be resumed after a crash. Force it on.
     wid = spawn_and_wait([
         "kitty",
         "--class", "claude",
         "--working-directory", str(worktree_path),
-        "-e", *claude_cmd,
+        "-e", "env", "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1", *claude_cmd,
     ])
     # Unconditional: spawns land on whatever workspace is focused at spawn
     # time, and user activity can steal focus mid-stack (windows then pile
