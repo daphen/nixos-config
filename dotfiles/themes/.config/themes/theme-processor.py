@@ -6,53 +6,87 @@ import re
 import os
 from pathlib import Path
 
-def _hex_to_rgb(h):
-    h = h.lstrip('#')
-    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+import math
 
-def _mix(base_hex, tint_hex, alpha):
-    b, t = _hex_to_rgb(base_hex), _hex_to_rgb(tint_hex)
-    return '#{:02X}{:02X}{:02X}'.format(
-        *(round(b[i] * (1 - alpha) + t[i] * alpha) for i in range(3)))
+def _round_half_even(x):
+    f = math.floor(x)
+    d = x - f
+    if d < 0.5: return f
+    if d > 0.5: return f + 1
+    return f if f % 2 == 0 else f + 1
 
-# Elevation ladder: two authored anchors (bg + surface) per mode, higher
-# steps derived by compositing fg over surface1 — over surface, never bg,
-# so the steps inherit the palette's warmth (a neutral-bg mix reads cold).
-# Dark mode needs roughly double the alpha for the same perceived step.
-_LADDER_STEPS = {
-    'light': {'surface2': 0.045, 'surface3': 0.08},
-    'dark':  {'surface2': 0.09,  'surface3': 0.15},
+def _hex_to_oklch(h):
+    def lin(c):
+        c /= 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (lin(int(h[i:i + 2], 16)) for i in (1, 3, 5))
+    l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
+    m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
+    s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
+    l_, m_, s_ = l ** (1 / 3), m ** (1 / 3), s ** (1 / 3)
+    L = 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_
+    a = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_
+    bb = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+    return L, math.hypot(a, bb), math.degrees(math.atan2(bb, a)) % 360
+
+def _oklch_to_hex(L, C, H):
+    a = C * math.cos(math.radians(H))
+    b = C * math.sin(math.radians(H))
+    l_ = L + 0.3963377774 * a + 0.2158037573 * b
+    m_ = L - 0.1055613458 * a - 0.0638541728 * b
+    s_ = L - 0.0894841775 * a - 1.2914855480 * b
+    l, m, s = l_ ** 3, m_ ** 3, s_ ** 3
+    r = +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s
+    g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s
+    bl = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+    def enc(x):
+        x = max(0.0, min(1.0, x))
+        x = 12.92 * x if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055
+        return max(0, min(255, _round_half_even(x * 255)))
+    return '#{:02X}{:02X}{:02X}'.format(enc(r), enc(g), enc(bl))
+
+# Elevation ladder: every surface is background.primary shifted in OKLCH.
+# Authored in colors.json ("surfaces".{mode}) as per-step lightness deltas
+# (dL) plus per-step chroma/hue drift (dC/dH, applied x step index, so higher
+# surfaces drift more). surface == surface1. Defaults reproduce the previously
+# hand-authored ladder. OKLCH keeps equal dL steps perceptually even.
+_LADDER_FALLBACK = {
+    'dark':  {'dL': [0.0088, 0.0131, 0.0921, 0.1394], 'dC': 0.0, 'dH': 0.0},
+    'light': {'dL': [-0.0119, -0.0239, -0.0539, -0.0811], 'dC': 0.0, 'dH': 0.0},
 }
 
-def _add_derived(themes):
-    for mode, steps in _LADDER_STEPS.items():
+def _add_derived(themes, surfaces=None):
+    surfaces = surfaces or {}
+    for mode in ('light', 'dark'):
         if mode not in themes:
             continue
         bg = themes[mode].get('background', {})
-        fg = themes[mode].get('foreground', {}).get('primary')
-        s1 = bg.get('surface')
-        if not (fg and s1):
+        primary = bg.get('primary')
+        if not primary:
             continue
-        bg['surface1'] = s1
-        # surface0: the whisper step between bg and surface1 (chin bands,
-        # barely-raised wells). Midpoint of the two anchors keeps the warmth —
-        # an fg tint over a neutral bg would read cold.
-        bg.setdefault('surface0', _mix(bg.get('primary', s1), s1, 0.5))
-        for name, alpha in steps.items():
-            bg.setdefault(name, _mix(s1, fg, alpha))
+        cfg = surfaces.get(mode) or _LADDER_FALLBACK[mode]
+        dLs = cfg.get('dL', _LADDER_FALLBACK[mode]['dL'])
+        dC = cfg.get('dC', 0.0)
+        dH = cfg.get('dH', 0.0)
+        L0, C0, H0 = _hex_to_oklch(primary)
+        for i, dL in enumerate(dLs):
+            bg[f'surface{i}'] = _oklch_to_hex(
+                L0 + dL, max(0.0, C0 + dC * i), H0 + dH * i)
+        # Canonical mid surface for consumers predating the numbered ladder.
+        bg['surface'] = bg.get('surface1', primary)
     return themes
 
 def load_colors(colors_file, theme_mode):
     """Load colors from JSON file for specified theme mode."""
     with open(colors_file, 'r') as f:
         data = json.load(f)
-    return _add_derived(data['themes'])[theme_mode]
+    return _add_derived(data['themes'], data.get('surfaces'))[theme_mode]
 
 def load_all_colors(colors_file):
     """Load all colors from JSON file."""
     with open(colors_file, 'r') as f:
         data = json.load(f)
-    return _add_derived(data['themes'])
+    return _add_derived(data['themes'], data.get('surfaces'))
 
 def get_nested_color(colors, path, max_depth=5, theme_context=None):
     """Get color value from nested path with recursive reference resolution."""
@@ -139,7 +173,7 @@ def emit_json(colors_file):
     source of truth (this file) rather than a reimplementation in TypeScript."""
     with open(colors_file, 'r') as f:
         data = json.load(f)
-    data['themes'] = _add_derived(data['themes'])
+    data['themes'] = _add_derived(data['themes'], data.get('surfaces'))
     json.dump(data, sys.stdout)
 
 def main():
