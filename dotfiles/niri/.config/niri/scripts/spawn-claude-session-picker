@@ -138,13 +138,25 @@ for _, path in jsonls:
         if not text:
             continue
         short_branch = branch.split('/', 1)[1] if '/' in branch else (branch or '-')
+        # Worktree sessions: label from the dir name so the ticket number
+        # leads ("lovable.daphen-1911-foo" → "1911-foo") — scannable list.
+        wt_label = None
+        base = os.path.basename(cwd)
+        if base.startswith('lovable.'):
+            wt_label = base[len('lovable.'):]
+            if wt_label.startswith('daphen-'):
+                wt_label = wt_label[len('daphen-'):]
+            # Drop the Linear team prefix ("every-2408-x" → "2408-x") so the
+            # ticket number leads; review worktrees keep their marker.
+            head, _, rest = wt_label.partition('-')
+            if rest[:1].isdigit() and head != 'review':
+                wt_label = rest
         # Display label preference:
-        #   1. user-set custom-title (claude -n <name>)
-        #   2. claude's auto-generated ai-title (conversation topic)
-        #   3. short branch name
-        # ai-title beats branch because it's far more informative ("HEAD"
-        # / "main" tells you nothing).
-        label = (custom_title or ai_title or short_branch or '').strip()
+        #   1. user-set custom-title (claude-rename)
+        #   2. worktree short name (ticket number first)
+        #   3. claude's auto-generated ai-title (conversation topic)
+        #   4. short branch name
+        label = (custom_title or wt_label or ai_title or short_branch or '').strip()
         if not label:
             label = '-'
         # Cap to the column width so the message column stays aligned.
