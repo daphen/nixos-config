@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { ThemeToggle } from "./theme-toggle";
 import { CodePreview } from "./theme/CodePreview";
+import { SurfacePreview } from "./theme/SurfacePreview";
+import { ComponentsPreview } from "./theme/ComponentsPreview";
 import { ColorPicker } from "./theme/ColorPicker";
 import { ColorGrid } from "./theme/ColorGrid";
 import { SaveChanges } from "./theme/SaveChanges";
@@ -24,6 +26,9 @@ export function ThemeColors() {
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedAccent, setSelectedAccent] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<
+    "code" | "surfaces" | "components"
+  >("code");
 
   const loadTheme = async () => {
     try {
@@ -272,18 +277,64 @@ export function ThemeColors() {
           }}
         >
           <div
-            className="py-8 px-6"
+            className="py-8 px-6 flex items-start justify-between gap-4"
             style={{
               backgroundColor: theme.background.secondary,
               borderBottom: `1px solid ${theme.background.overlay}`,
             }}
           >
-            <h2 className="text-2xl font-semibold mb-2">Code Preview</h2>
-            <p style={{ color: theme.foreground.secondary }}>
-              Click any color to edit it
-            </p>
+            <div>
+              <h2 className="text-2xl font-semibold mb-2">
+                {previewMode === "code"
+                  ? "Code Preview"
+                  : previewMode === "surfaces"
+                    ? "Surfaces"
+                    : "Components"}
+              </h2>
+              <p style={{ color: theme.foreground.secondary }}>
+                Click any color to edit it
+              </p>
+            </div>
+            <div
+              className="flex rounded-lg p-1 shrink-0"
+              style={{ backgroundColor: theme.background.primary }}
+            >
+              {(["code", "surfaces", "components"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setPreviewMode(mode)}
+                  className="px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors"
+                  style={{
+                    backgroundColor:
+                      previewMode === mode
+                        ? theme.background.tertiary
+                        : "transparent",
+                    color:
+                      previewMode === mode
+                        ? theme.foreground.primary
+                        : theme.foreground.muted,
+                  }}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
           </div>
-          <CodePreview theme={theme} onColorClick={handleColorClick} />
+          {previewMode === "code" ? (
+            <CodePreview theme={theme} onColorClick={handleColorClick} />
+          ) : previewMode === "surfaces" ? (
+            <SurfacePreview
+              theme={theme}
+              mode={currentMode}
+              onColorClick={handleColorClick}
+            />
+          ) : (
+            <ComponentsPreview
+              theme={theme}
+              mode={currentMode}
+              onColorClick={handleColorClick}
+            />
+          )}
         </div>
 
         <ColorGrid
