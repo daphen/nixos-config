@@ -254,8 +254,11 @@ export function ThemeColors() {
     <div
       className="min-h-screen transition-colors duration-500"
       style={{
-        backgroundColor:
-          currentMode === "dark" ? "#0F0F0F" : theme.background.secondary,
+        backgroundColor: theme.background.primary,
+        backgroundImage: `url(/api/wallpaper?mode=${currentMode})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundAttachment: "fixed",
         color: theme.foreground.primary,
       }}
     >
