@@ -59,6 +59,74 @@ export function hslToHex(h: number, s: number, l: number): string {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
+// Preview mirror of theme-processor.py's OKLCH surface derivation. The knobs
+// (colors.json "surfaces") are the single source; Python stays authoritative
+// for generated files. This recomputes the ladder live so sliders respond
+// instantly — parity with Python is byte-verified.
+export interface SurfaceDelta {
+  dL: number[];
+  dC: number;
+  dH: number;
+}
+
+export const SURFACE_DELTA_FALLBACK: Record<"dark" | "light", SurfaceDelta> = {
+  dark: { dL: [0.0088, 0.0131, 0.0921, 0.1394], dC: 0, dH: 0 },
+  light: { dL: [-0.0119, -0.0239, -0.0539, -0.0811], dC: 0, dH: 0 },
+};
+
+function roundHalfEven(n: number): number {
+  const f = Math.floor(n);
+  const diff = n - f;
+  if (diff < 0.5) return f;
+  if (diff > 0.5) return f + 1;
+  return f % 2 === 0 ? f : f + 1;
+}
+
+function hexToOklch(h: string): [number, number, number] {
+  const lin = (c: number) => {
+    c /= 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const [r, g, b] = [1, 3, 5].map((i) => lin(parseInt(h.slice(i, i + 2), 16)));
+  const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
+  const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
+  const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;
+  const l_ = Math.cbrt(l), m_ = Math.cbrt(m), s_ = Math.cbrt(s);
+  const L = 0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_;
+  const a = 1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_;
+  const bb = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_;
+  return [L, Math.hypot(a, bb), ((Math.atan2(bb, a) * 180) / Math.PI + 360) % 360];
+}
+
+function oklchToHex(L: number, C: number, H: number): string {
+  const a = C * Math.cos((H * Math.PI) / 180);
+  const b = C * Math.sin((H * Math.PI) / 180);
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b;
+  const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3;
+  const r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+  const g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+  const bl = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
+  const enc = (x: number) => {
+    x = Math.max(0, Math.min(1, x));
+    x = x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055;
+    return Math.max(0, Math.min(255, roundHalfEven(x * 255)));
+  };
+  return `#${[enc(r), enc(g), enc(bl)].map((v) => v.toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+}
+
+// Returns surface0..3 (and surface == surface1) derived from primary in OKLCH.
+export function deriveSurfaces(primary: string, delta: SurfaceDelta): Record<string, string> {
+  const [L0, C0, H0] = hexToOklch(primary);
+  const out: Record<string, string> = {};
+  delta.dL.forEach((dL, i) => {
+    out[`surface${i}`] = oklchToHex(L0 + dL, Math.max(0, C0 + delta.dC * i), H0 + delta.dH * i);
+  });
+  out.surface = out.surface1 ?? primary;
+  return out;
+}
+
 export function resolveColor(colorValue: string, theme: any): string {
   if (colorValue.startsWith("#")) {
     return colorValue;

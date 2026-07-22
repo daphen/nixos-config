@@ -1,8 +1,13 @@
 import { ColorTheme } from './types';
+import { deriveSurfaces, SurfaceDelta } from './color-utils';
 
 interface SurfacePreviewProps {
   theme: ColorTheme;
   mode: 'light' | 'dark';
+  delta: SurfaceDelta;
+  onDLChange: (index: number, value: number) => void;
+  onDCChange: (value: number) => void;
+  onDHChange: (value: number) => void;
   onColorClick: (category: string, name: string, color: string) => void;
 }
 
@@ -14,16 +19,27 @@ function rgba(hex: string, a: number): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
-export function SurfacePreview({ theme, mode, onColorClick }: SurfacePreviewProps) {
+export function SurfacePreview({
+  theme,
+  mode,
+  delta,
+  onDLChange,
+  onDCChange,
+  onDHChange,
+  onColorClick,
+}: SurfacePreviewProps) {
   const b = theme.background;
   const fg = theme.foreground;
+  // Live-derive the ladder from primary + the OKLCH knobs so sliders update
+  // instantly; primary is the sole editable anchor.
+  const surf = deriveSurfaces(b.primary, delta);
   // Theme.qml: hairline = fg @ semantic.hairpin_alpha. panelBorder is a
   // separate literal in Picker.qml (fg @ 0.10 dark / 0.15 light).
   const hairlineAlpha =
     parseFloat(String(theme.semantic.hairpin_alpha)) || (mode === 'dark' ? 0.15 : 0.12);
   const hairline = rgba(fg.primary, hairlineAlpha);
   const panelBorder = rgba(fg.primary, mode === 'dark' ? 0.1 : 0.15);
-  const capBg = mode === 'light' ? b.primary : b.surface2 || b.selection;
+  const capBg = mode === 'light' ? b.primary : surf.surface2;
 
   const click =
     (category: string, name: string) =>
@@ -55,13 +71,13 @@ export function SurfacePreview({ theme, mode, onColorClick }: SurfacePreviewProp
     </span>
   );
 
-  const ladder: { name: string; color?: string; derived: boolean; editKey?: string }[] = [
+  const ladder: { name: string; color: string; derived: boolean; editKey?: string }[] = [
     { name: 'primary', color: b.primary, derived: false, editKey: 'primary' },
-    { name: 'surface0', color: b.surface0, derived: true },
-    { name: 'surface1', color: b.surface1, derived: false, editKey: 'surface' },
-    { name: 'surface2', color: b.surface2, derived: true },
-    { name: 'surface3', color: b.surface3, derived: true },
-  ].filter((s) => Boolean(s.color));
+    { name: 'surface0', color: surf.surface0, derived: true },
+    { name: 'surface1', color: surf.surface1, derived: true },
+    { name: 'surface2', color: surf.surface2, derived: true },
+    { name: 'surface3', color: surf.surface3, derived: true },
+  ];
 
   const rows = [
     { label: 'colors.json', sub: 'edited 2m ago', badge: 'file', selected: true },
@@ -88,7 +104,7 @@ export function SurfacePreview({ theme, mode, onColorClick }: SurfacePreviewProp
               gap: 8,
               padding: '4px 10px 4px 4px',
               borderRadius: 8,
-              backgroundColor: b.surface0,
+              backgroundColor: surf.surface0,
               border: `1px solid ${hairline}`,
             }}
           >
@@ -105,6 +121,78 @@ export function SurfacePreview({ theme, mode, onColorClick }: SurfacePreviewProp
             <span style={{ color: fg.subtle, fontFamily: MONO, fontSize: 11 }}>{s.color}</span>
           </button>
         ))}
+      </div>
+
+      {/* Derivation controls (OKLCH deltas from primary) */}
+      <div
+        className="mb-5"
+        style={{
+          borderRadius: 14,
+          border: `1px solid ${hairline}`,
+          backgroundColor: surf.surface0,
+          padding: 16,
+        }}
+      >
+        <div className="flex items-baseline justify-between mb-3">
+          <span style={{ color: fg.muted, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+            Derivation · OKLCH · {mode}
+          </span>
+          <span style={{ color: fg.subtle, fontSize: 11 }}>surface = primary shifted</span>
+        </div>
+
+        {[0, 1, 2, 3].map((i) => (
+          <label key={i} className="flex items-center gap-3 mb-2">
+            <span style={{ width: 66, color: fg.secondary, fontSize: 12, fontFamily: MONO }}>surface{i}</span>
+            <input
+              type="range"
+              min={-0.35}
+              max={0.35}
+              step={0.001}
+              value={delta.dL[i]}
+              onChange={(e) => onDLChange(i, parseFloat(e.target.value))}
+              style={{ flex: 1, accentColor: theme.accent.blue }}
+            />
+            <span style={{ width: 56, textAlign: 'right', color: fg.muted, fontSize: 11, fontFamily: MONO }}>
+              ΔL {delta.dL[i] >= 0 ? '+' : ''}{delta.dL[i].toFixed(3)}
+            </span>
+            <span style={{ width: 62, textAlign: 'right', color: fg.subtle, fontSize: 11, fontFamily: MONO }}>
+              {surf[`surface${i}`]}
+            </span>
+          </label>
+        ))}
+
+        <div className="flex items-center gap-3 mt-3 pt-3" style={{ borderTop: `1px solid ${hairline}` }}>
+          <label className="flex items-center gap-2 flex-1">
+            <span style={{ width: 66, color: fg.secondary, fontSize: 12, fontFamily: MONO }}>chroma</span>
+            <input
+              type="range"
+              min={0}
+              max={0.06}
+              step={0.001}
+              value={delta.dC}
+              onChange={(e) => onDCChange(parseFloat(e.target.value))}
+              style={{ flex: 1, accentColor: theme.accent.blue }}
+            />
+            <span style={{ width: 48, textAlign: 'right', color: fg.muted, fontSize: 11, fontFamily: MONO }}>
+              {delta.dC.toFixed(3)}
+            </span>
+          </label>
+          <label className="flex items-center gap-2 flex-1">
+            <span style={{ width: 40, color: fg.secondary, fontSize: 12, fontFamily: MONO }}>hue</span>
+            <input
+              type="range"
+              min={-30}
+              max={30}
+              step={1}
+              value={delta.dH}
+              onChange={(e) => onDHChange(parseFloat(e.target.value))}
+              style={{ flex: 1, accentColor: theme.accent.blue }}
+            />
+            <span style={{ width: 48, textAlign: 'right', color: fg.muted, fontSize: 11, fontFamily: MONO }}>
+              {delta.dH >= 0 ? '+' : ''}{delta.dH.toFixed(0)}°
+            </span>
+          </label>
+        </div>
       </div>
 
       {/* Quickshell picker mock */}
@@ -125,16 +213,15 @@ export function SurfacePreview({ theme, mode, onColorClick }: SurfacePreviewProp
         {/* Search field */}
         <div className="px-3.5 pt-3.5 pb-1.5">
           <div
-            className="flex items-center gap-2.5 cursor-pointer"
+            className="flex items-center gap-2.5"
             style={{
               height: 44,
               padding: '0 12px',
               borderRadius: 15,
-              backgroundColor: b.surface,
+              backgroundColor: surf.surface1,
               border: `1px solid ${hairline}`,
             }}
-            onClick={click('background', 'surface')}
-            title="background.surface (field)"
+            title="surface1 (field, derived)"
           >
             <span style={{ color: fg.muted, fontFamily: MONO, fontSize: 15 }}>⌕</span>
             <span style={{ color: rgba(fg.primary, 0.5), fontSize: 16, flex: 1 }}>Search…</span>
@@ -209,7 +296,7 @@ export function SurfacePreview({ theme, mode, onColorClick }: SurfacePreviewProp
           className="flex items-center gap-1.5 px-3.5"
           style={{
             height: 52,
-            backgroundColor: b.surface0,
+            backgroundColor: surf.surface0,
             borderTop: `1px solid ${hairline}`,
           }}
         >

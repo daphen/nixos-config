@@ -4,8 +4,8 @@ import path from 'path';
 
 export async function POST(request: Request) {
   try {
-    const { themeData, mode } = await request.json();
-    
+    const { themeData, mode, surfaceDelta } = await request.json();
+
     if (!themeData || !mode) {
       return NextResponse.json(
         { error: 'Missing theme data or mode' },
@@ -19,18 +19,25 @@ export async function POST(request: Request) {
     const currentContent = await fs.readFile(colorsPath, 'utf-8');
     const currentData = JSON.parse(currentContent);
     
-    // surface0-3 are derived by theme-processor.py at read time; never persist
-    // them or they'd become authored anchors and stop tracking their inputs.
+    // surface + surface0-3 are derived by theme-processor.py at read time;
+    // never persist them or they'd become authored anchors and stop tracking
+    // background.primary / the alphas.
     const cleaned = { ...themeData };
     if (cleaned.background) {
       cleaned.background = { ...cleaned.background };
-      for (const k of ['surface0', 'surface1', 'surface2', 'surface3']) {
+      for (const k of ['surface', 'surface0', 'surface1', 'surface2', 'surface3']) {
         delete cleaned.background[k];
       }
     }
 
     // Update the specific mode's theme data
     currentData.themes[mode] = cleaned;
+
+    // Persist the surface-derivation knobs (the single source of the ladder).
+    if (surfaceDelta && Array.isArray(surfaceDelta.dL)) {
+      currentData.surfaces = currentData.surfaces ?? { model: 'oklch-delta' };
+      currentData.surfaces[mode] = surfaceDelta;
+    }
 
     // Write back to colors.json
     await fs.writeFile(colorsPath, JSON.stringify(currentData, null, 2), 'utf-8');

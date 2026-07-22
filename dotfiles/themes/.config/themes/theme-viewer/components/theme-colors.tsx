@@ -13,6 +13,8 @@ import {
   hexToHsl,
   resolveColor,
   createResolvedTheme,
+  SURFACE_DELTA_FALLBACK,
+  SurfaceDelta,
 } from "./theme/color-utils";
 
 export function ThemeColors() {
@@ -145,6 +147,28 @@ export function ThemeColors() {
     setHasChanges(true);
   };
 
+  const surfaceDelta: SurfaceDelta =
+    rawThemeData?.surfaces?.[currentMode] ?? SURFACE_DELTA_FALLBACK[currentMode];
+
+  const updateSurfaceDelta = (next: SurfaceDelta) => {
+    if (!rawThemeData) return;
+    const newRawData = JSON.parse(JSON.stringify(rawThemeData));
+    newRawData.surfaces = newRawData.surfaces ?? { model: "oklch-delta" };
+    newRawData.surfaces[currentMode] = next;
+    setRawThemeData(newRawData);
+    setHasChanges(true);
+  };
+
+  const handleDLChange = (index: number, value: number) => {
+    const dL = [...surfaceDelta.dL];
+    dL[index] = value;
+    updateSurfaceDelta({ ...surfaceDelta, dL });
+  };
+  const handleDCChange = (value: number) =>
+    updateSurfaceDelta({ ...surfaceDelta, dC: value });
+  const handleDHChange = (value: number) =>
+    updateSurfaceDelta({ ...surfaceDelta, dH: value });
+
   const handleSemanticMapping = (
     semanticCategory: string,
     semanticName: string,
@@ -176,7 +200,8 @@ export function ThemeColors() {
   };
 
   const saveChanges = async () => {
-    if (!hasChanges || !previewTheme || !rawThemeData) return;
+    // previewTheme is null when only alphas changed — still savable.
+    if (!hasChanges || !rawThemeData) return;
 
     setIsSaving(true);
     try {
@@ -191,6 +216,7 @@ export function ThemeColors() {
         body: JSON.stringify({
           themeData: themeToSave,
           mode: currentMode,
+          surfaceDelta,
         }),
       });
 
@@ -329,6 +355,10 @@ export function ThemeColors() {
             <SurfacePreview
               theme={theme}
               mode={currentMode}
+              delta={surfaceDelta}
+              onDLChange={handleDLChange}
+              onDCChange={handleDCChange}
+              onDHChange={handleDHChange}
               onColorClick={handleColorClick}
             />
           ) : (
