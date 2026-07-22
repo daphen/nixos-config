@@ -22,15 +22,15 @@ Item {
         for (let i = 0; i < tracked.length; i++) {
             if (Notifications.isSeen(tracked[i])) continue
             const app = (tracked[i].appName || "").toLowerCase()
-            if (app === "slack" || app === "slk") counts.slack++
-            else if (app === "discord" || app === "endcord") counts.discord++
+            if (app === "slack") counts.slack++
+            else if (app === "discord") counts.discord++
             else if (app === "mlqs") counts.mail++
         }
         // Don't badge the client you're focused on — you're already in it. The
         // toast still flashes and history is untouched; only the bar badge is hidden.
         const covers = Notifications.focusedAppCovers[Notifications.focusedApp] || []
-        if (covers.indexOf("slack") !== -1 || covers.indexOf("slk") !== -1) counts.slack = 0
-        if (covers.indexOf("discord") !== -1 || covers.indexOf("endcord") !== -1) counts.discord = 0
+        if (covers.indexOf("slack") !== -1) counts.slack = 0
+        if (covers.indexOf("discord") !== -1) counts.discord = 0
         if (covers.indexOf("mlqs") !== -1) counts.mail = 0
         return counts
     }

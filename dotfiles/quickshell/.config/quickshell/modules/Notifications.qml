@@ -104,22 +104,22 @@ Singleton {
         // wear the mail icon.
         if ((appIcon || "") === "x-office-calendar") return Qt.resolvedUrl("../assets/calendar.svg")
         const a = (appName || "").toLowerCase()
-        if (a === "slack" || a === "slk" || a === "slqs") return Qt.resolvedUrl("../assets/slack.svg")
-        if (a === "discord" || a === "endcord" || a === "dsqrd") return Qt.resolvedUrl("../assets/discord.svg")
+        if (a === "slack" || a === "slqs") return Qt.resolvedUrl("../assets/slack.svg")
+        if (a === "discord" || a === "dsqrd") return Qt.resolvedUrl("../assets/discord.svg")
         if (a === "mlqs") return Qt.resolvedUrl("../assets/mail.svg")
         if (a === "kitty") return Qt.resolvedUrl("../assets/claude.svg")
         if (a === "screenshot") return Qt.resolvedUrl("../assets/camera.svg")
         return ""
     }
 
-    readonly property var trayApps: ["slack", "slk", "discord", "endcord", "kitty", "mlqs"]
+    readonly property var trayApps: ["slack", "discord", "kitty", "mlqs"]
     function isTrayApp(n) {
         return !!(n && root.trayApps.indexOf((n.appName || "").toLowerCase()) !== -1)
     }
     // Slack/Discord messages are durable history: kept across "seen", never
     // cleared on focus, bounded only by messageMax. Claude (kitty) prompts are
     // transient — cleared the moment you act on the session that raised them.
-    readonly property var messageApps: ["slack", "slk", "discord", "endcord", "mlqs"]
+    readonly property var messageApps: ["slack", "discord", "mlqs"]
     function isMessageApp(n) {
         return !!(n && root.isMessageAppName(n.appName))
     }
@@ -151,14 +151,11 @@ Singleton {
     // Conversation key for a message notification: the channel/group/DM it came
     // from, not the sender. dsqrd/slqs summaries are "author in #channel",
     // "author in GroupName", or just "person" (1:1 DM) — so the part after the
-    // last " in " is the conversation, else the whole summary. App-name variants
-    // (slk↔slack, endcord↔discord) are normalised so one conversation is one key.
+    // last " in " is the conversation, else the whole summary.
     function _convKey(app, summary) {
         const m = (summary || "").match(/^.* in (.+)$/)
         const conv = m ? m[1] : (summary || "")
-        const a = (app || "").toLowerCase()
-        const na = (a === "slk") ? "slack" : (a === "endcord") ? "discord" : a
-        return na + "|" + conv
+        return (app || "").toLowerCase() + "|" + conv
     }
 
     // One entry per conversation: a new message supersedes earlier ones from the
@@ -196,18 +193,16 @@ Singleton {
         }
     }
 
-    // Focused app_id → the notification appNames it "covers". slk is the Slack
-    // client, so focusing it (or the desktop app) clears both the TUI's "slk"
-    // notifications and the desktop app's "Slack" ones.
+    // Focused app_id (or org.quickshell window title) → the notification
+    // appNames it "covers". Focusing the Slack client clears its "Slack"
+    // notifications; the native clients share app_id org.quickshell and are
+    // keyed by window title (slqs's window is titled "slqs"; it emits "Slack").
     readonly property var focusedAppCovers: ({
-        "endcord":        ["endcord"],
-        "Slack":          ["slack", "slk"],
-        "slk":            ["slack", "slk"],
+        "Slack":          ["slack"],
         "claude":         ["kitty"],
         "kitty":          ["kitty"],
-        // the native QML clients share app_id org.quickshell — keyed by title below
-        "discord-client": ["discord", "endcord"],
-        "slk-client":     ["slack", "slk"],
+        "discord-client": ["discord"],
+        "slqs":           ["slack"],
         "mail-client":    ["mlqs"]
     })
 
@@ -217,7 +212,7 @@ Singleton {
         // slqs/dsqrd are both org.quickshell; tell them apart by window title.
         if (app === "org.quickshell") {
             const t = NiriState.focusedTitle()
-            if (t === "discord-client" || t === "slk-client" || t === "mail-client") return t
+            if (t === "discord-client" || t === "slqs" || t === "mail-client") return t
         }
         return app
     }

@@ -264,13 +264,13 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#6F6F6E"
+        active-color "#EDEDED"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#E2E2E1"
+        inactive-color "#3A3A3A"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -294,13 +294,13 @@ layout {
         // If you enable the border, you probably want to disable the focus ring.
 
         width 4
-        active-color "#6F6F6E"
+        active-color "#EDEDED"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
-        active-gradient from="#6F6F6E" to="#6F6F6E" angle=180
+        active-gradient from="#EDEDED" to="#EDEDED" angle=180
         // Matches waybar-notch light theme hairline
         // (foreground.primary @ 50% alpha).
-        inactive-color "#E2E2E1"
+        inactive-color "#3A3A3A"
 
         // Color of the border around windows that request your attention.
         urgent-color "#9b0000"
@@ -628,7 +628,7 @@ window-rule {
 // columns. Title match is safe here (unlike browsers): the QML
 // FloatingWindow sets its title before the surface maps.
 window-rule {
-    match app-id=r#"^org\.quickshell$"# title=r#"^(slk|discord)-client$"#
+    match app-id=r#"^org\.quickshell$"# title=r#"^(slqs|discord-client)$"#
     default-column-width { fixed 1500; }
     default-window-height { proportion 1.0; }
 }
@@ -763,7 +763,7 @@ binds {
     Super+g { spawn-sh "$HOME/.config/niri/scripts/ws-focus claude"; }
     Super+d { spawn-sh "$HOME/.config/niri/scripts/ws-focus term"; }
     Super+Shift+d { spawn-sh "SHOW_FASTFETCH=1 kitty"; }
-    Super+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:slk-client $HOME/.config/niri/scripts/launch-slack-client"; }
+    Super+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:slqs $HOME/.config/niri/scripts/launch-slack-client"; }
     Super+Shift+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
     Super+a { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 'title:spotify_player' 'kitty --class spotify_player /home/daphen/.config/niri/scripts/spotify-player-launch'"; }
     // Browser keybinds. Browser binary lives in browser-config.sh —

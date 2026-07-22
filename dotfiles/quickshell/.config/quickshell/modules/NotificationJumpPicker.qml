@@ -7,7 +7,7 @@ import "."
 // Discord, Claude (Notifications.trayApps); screenshots and other system
 // notifs toast once and never land here. Entries split by whether you've
 // looked at the source: unseen under "current", seen under "earlier".
-// Selecting one fires its live default action (e.g. slk opens the
+// Selecting one fires its live default action (e.g. slqs opens the
 // channel/thread) and focuses the window. Slack/Discord messages stay as
 // history; Claude prompts clear when you act on them.
 Picker {
@@ -77,7 +77,7 @@ Picker {
             Notifications.retain(item.id, item.app, item.summary, item.windowId)
             Notifications.markSeenById(item.id)
         }
-        // Fire the live default action (slk/dsqrd opens the channel/thread).
+        // Fire the live default action (slqs/dsqrd opens the channel/thread).
         // Only present while the notification is still live.
         let fired = false
         if (n && n.actions) {
