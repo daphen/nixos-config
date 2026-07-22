@@ -60,7 +60,7 @@ in
     stylua
     eslint
     xclip
-    # mpv — used by the media-viewer.sh (in ~/.config/endcord/) that the native
+    # mpv — used by the media-viewer.sh (in ~/.config/qs-chat-clients/) that the native
     # QML chat clients (slqs/dsqrd) call to play gif-as-mp4 attachments.
     mpv
   ]) ++ [

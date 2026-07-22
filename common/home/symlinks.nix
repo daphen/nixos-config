@@ -21,6 +21,10 @@ in {
     "git/work".source = link "${dotfiles}/git/.config/git/work";
     "git/ignore".source = link "${dotfiles}/git/.config/git/ignore";
     "yazi".source = link "${dotfiles}/yazi/.config/yazi";
+    # media-viewer.sh: the script slqs/dsqrd exec to open images/gifs/audio
+    # (imv/mpv). Formerly squatted in ~/.config/endcord (the dead upstream
+    # dsqrd was vendored from); now a managed dotfile so it can't drift.
+    "qs-chat-clients/media-viewer.sh".source = link "${dotfiles}/qs-chat-clients/.config/qs-chat-clients/media-viewer.sh";
     "qutebrowser".source = link "${dotfiles}/qutebrowser/.config/qutebrowser";
     "quickshell".source = link "${dotfiles}/quickshell/.config/quickshell";
     # Quickmarks: shared file format consumed by Chrome Palette via the
