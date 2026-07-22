@@ -133,9 +133,23 @@ def process_template(template_file, colors_file, theme_mode, output_file, tool_n
     
     print(f"Generated: {output_file}")
 
+def emit_json(colors_file):
+    """Print colors.json with the derived surface ladder injected, references
+    left intact. The theme editor consumes this so the ladder has a single
+    source of truth (this file) rather than a reimplementation in TypeScript."""
+    with open(colors_file, 'r') as f:
+        data = json.load(f)
+    data['themes'] = _add_derived(data['themes'])
+    json.dump(data, sys.stdout)
+
 def main():
+    if len(sys.argv) >= 3 and sys.argv[1] == '--emit-json':
+        emit_json(sys.argv[2])
+        return
+
     if len(sys.argv) < 5:
         print("Usage: theme-processor.py <template_file> <colors_file> <theme_mode> <output_file> [tool_name]")
+        print("   or: theme-processor.py --emit-json <colors_file>")
         sys.exit(1)
     
     template_file, colors_file, theme_mode, output_file = sys.argv[1:5]

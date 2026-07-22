@@ -19,9 +19,19 @@ export async function POST(request: Request) {
     const currentContent = await fs.readFile(colorsPath, 'utf-8');
     const currentData = JSON.parse(currentContent);
     
+    // surface0-3 are derived by theme-processor.py at read time; never persist
+    // them or they'd become authored anchors and stop tracking their inputs.
+    const cleaned = { ...themeData };
+    if (cleaned.background) {
+      cleaned.background = { ...cleaned.background };
+      for (const k of ['surface0', 'surface1', 'surface2', 'surface3']) {
+        delete cleaned.background[k];
+      }
+    }
+
     // Update the specific mode's theme data
-    currentData.themes[mode] = themeData;
-    
+    currentData.themes[mode] = cleaned;
+
     // Write back to colors.json
     await fs.writeFile(colorsPath, JSON.stringify(currentData, null, 2), 'utf-8');
     
