@@ -201,9 +201,9 @@ Singleton {
         "Slack":          ["slack"],
         "claude":         ["kitty"],
         "kitty":          ["kitty"],
-        "discord-client": ["discord"],
+        "dsqrd":          ["discord"],
         "slqs":           ["slack"],
-        "mail-client":    ["mlqs"]
+        "mlqs":           ["mlqs"]
     })
 
     readonly property string focusedApp: {
@@ -212,7 +212,7 @@ Singleton {
         // slqs/dsqrd are both org.quickshell; tell them apart by window title.
         if (app === "org.quickshell") {
             const t = NiriState.focusedTitle()
-            if (t === "discord-client" || t === "slqs" || t === "mail-client") return t
+            if (t === "dsqrd" || t === "slqs" || t === "mlqs") return t
         }
         return app
     }

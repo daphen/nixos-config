@@ -522,7 +522,7 @@ window-rule {
 // whatever you're doing (Super+M summons, q dismisses) instead of
 // claiming a tile.
 window-rule {
-    match app-id=r#"^org.quickshell$"# title="^mail-client$"
+    match app-id=r#"^org.quickshell$"# title="^mlqs$"
     open-floating true
     default-column-width { fixed 1700; }
     default-window-height { fixed 1100; }
@@ -628,7 +628,7 @@ window-rule {
 // columns. Title match is safe here (unlike browsers): the QML
 // FloatingWindow sets its title before the surface maps.
 window-rule {
-    match app-id=r#"^org\.quickshell$"# title=r#"^(slqs|discord-client)$"#
+    match app-id=r#"^org\.quickshell$"# title=r#"^(slqs|dsqrd)$"#
     default-column-width { fixed 1500; }
     default-window-height { proportion 1.0; }
 }
@@ -749,7 +749,7 @@ binds {
     Super+Alt+S allow-when-locked=true hotkey-overlay-title=null { spawn-sh "pkill orca || exec orca"; }
 
     // Jump-or-exec keybinds for quick app access
-    Super+c { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:discord-client $HOME/.config/niri/scripts/launch-discord-client"; }
+    Super+c { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:dsqrd $HOME/.config/niri/scripts/launch-discord-client"; }
     Super+e { spawn-sh "$HOME/.config/niri/scripts/spawn-terminal-with-yazi"; }
     // Open the notification-center picker (active + recently-dismissed);
     // pick one to jump to its window/app.
@@ -780,7 +780,7 @@ binds {
 
     Super+f hotkey-overlay-title="Toggle Command Palette" { spawn-sh "$HOME/.config/niri/scripts/palette-toggle"; }
     Super+Shift+m hotkey-overlay-title="Add Quickmark" { spawn "palette-ipc" "add-quickmark"; }
-    Super+m hotkey-overlay-title="Mail" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:mail-client $HOME/.config/niri/scripts/launch-mail-client"; }
+    Super+m hotkey-overlay-title="Mail" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:mlqs $HOME/.config/niri/scripts/launch-mail-client"; }
     // Super+Ctrl+M: focus the lovable-main workspace (always-on
     // home for deps + main-context claude + main browser). On first
     // press of a session it'll spawn missing windows; subsequent
