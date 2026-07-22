@@ -1,5 +1,40 @@
 @import 'tailwindcss';
 
+/* shadcn Button tokens (same component as the portfolio). `inline` keeps the
+   var reference so overriding --primary etc. at runtime re-themes the button.
+   Actual values are set from the live theme on the app root (theme-colors). */
+@theme inline {
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-background: var(--background);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+:root {
+  --foreground: #ededed;
+  --muted-foreground: #707b84;
+  --primary: #ccd5e4;
+  --primary-foreground: #181818;
+  --secondary: #1b1b1b;
+  --secondary-foreground: #ededed;
+  --accent: #2e2e2e;
+  --accent-foreground: #ededed;
+  --destructive: #ff7b72;
+  --destructive-foreground: #181818;
+  --background: #181818;
+  --input: #292826;
+  --ring: #ccd5e4;
+}
+
 @keyframes pulse {
   0%, 100% {
     opacity: 1;

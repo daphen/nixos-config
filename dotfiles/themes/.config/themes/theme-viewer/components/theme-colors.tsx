@@ -5,6 +5,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { CodePreview } from "./theme/CodePreview";
 import { SurfacePreview } from "./theme/SurfacePreview";
 import { ComponentsPreview } from "./theme/ComponentsPreview";
+import { AnimatedTabs } from "./ui/animated-tabs";
 import { ColorPicker } from "./theme/ColorPicker";
 import { ColorGrid } from "./theme/ColorGrid";
 import { SaveChanges } from "./theme/SaveChanges";
@@ -30,7 +31,7 @@ export function ThemeColors() {
   const [selectedAccent, setSelectedAccent] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<
     "code" | "surfaces" | "components"
-  >("code");
+  >("surfaces");
 
   const loadTheme = async () => {
     try {
@@ -159,15 +160,25 @@ export function ThemeColors() {
     setHasChanges(true);
   };
 
-  const handleDLChange = (index: number, value: number) => {
-    const dL = [...surfaceDelta.dL];
-    dL[index] = value;
-    updateSurfaceDelta({ ...surfaceDelta, dL });
+  const setDeltaChannel = (
+    channel: "dL" | "dC" | "dH" | "dBorder",
+    index: number,
+    value: number,
+  ) => {
+    const arr = [...surfaceDelta[channel]];
+    arr[index] = value;
+    updateSurfaceDelta({ ...surfaceDelta, [channel]: arr });
   };
-  const handleDCChange = (value: number) =>
-    updateSurfaceDelta({ ...surfaceDelta, dC: value });
-  const handleDHChange = (value: number) =>
-    updateSurfaceDelta({ ...surfaceDelta, dH: value });
+
+  const resetSurface = (index: number) => {
+    const def = SURFACE_DELTA_FALLBACK[currentMode];
+    updateSurfaceDelta({
+      dL: surfaceDelta.dL.map((v, i) => (i === index ? def.dL[i] : v)),
+      dC: surfaceDelta.dC.map((v, i) => (i === index ? def.dC[i] : v)),
+      dH: surfaceDelta.dH.map((v, i) => (i === index ? def.dH[i] : v)),
+      dBorder: surfaceDelta.dBorder.map((v, i) => (i === index ? def.dBorder[i] : v)),
+    });
+  };
 
   const handleSemanticMapping = (
     semanticCategory: string,
@@ -279,14 +290,30 @@ export function ThemeColors() {
   return (
     <div
       className="min-h-screen transition-colors duration-500"
-      style={{
-        backgroundColor: theme.background.primary,
-        backgroundImage: `url(/api/wallpaper?mode=${currentMode})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundAttachment: "fixed",
-        color: theme.foreground.primary,
-      }}
+      style={
+        {
+          backgroundColor: theme.background.primary,
+          backgroundImage: `url(/api/wallpaper?mode=${currentMode})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundAttachment: "fixed",
+          color: theme.foreground.primary,
+          // Feed the live theme into the shadcn Button / tab tokens.
+          "--foreground": theme.foreground.primary,
+          "--muted-foreground": theme.foreground.muted,
+          "--primary": theme.accent.blue,
+          "--primary-foreground": theme.background.primary,
+          "--secondary": theme.background.surface,
+          "--secondary-foreground": theme.foreground.primary,
+          "--accent": theme.background.selection,
+          "--accent-foreground": theme.foreground.primary,
+          "--destructive": theme.accent.red,
+          "--destructive-foreground": theme.background.primary,
+          "--background": theme.background.primary,
+          "--input": theme.background.overlay,
+          "--ring": theme.accent.blue,
+        } as React.CSSProperties
+      }
     >
       <div className="fixed top-6 right-6 z-50">
         <ThemeToggle
@@ -324,29 +351,18 @@ export function ThemeColors() {
                 Click any color to edit it
               </p>
             </div>
-            <div
-              className="flex rounded-lg p-1 shrink-0"
-              style={{ backgroundColor: theme.background.primary }}
-            >
-              {(["code", "surfaces", "components"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setPreviewMode(mode)}
-                  className="px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors"
-                  style={{
-                    backgroundColor:
-                      previewMode === mode
-                        ? theme.background.tertiary
-                        : "transparent",
-                    color:
-                      previewMode === mode
-                        ? theme.foreground.primary
-                        : theme.foreground.muted,
-                  }}
-                >
-                  {mode}
-                </button>
-              ))}
+            <div className="shrink-0">
+              <AnimatedTabs
+                value={previewMode}
+                onValueChange={(v) =>
+                  setPreviewMode(v as "code" | "surfaces" | "components")
+                }
+                tabs={[
+                  { value: "surfaces", label: "Surfaces" },
+                  { value: "code", label: "Code" },
+                  { value: "components", label: "Components" },
+                ]}
+              />
             </div>
           </div>
           {previewMode === "code" ? (
@@ -356,9 +372,8 @@ export function ThemeColors() {
               theme={theme}
               mode={currentMode}
               delta={surfaceDelta}
-              onDLChange={handleDLChange}
-              onDCChange={handleDCChange}
-              onDHChange={handleDHChange}
+              onDeltaChange={setDeltaChannel}
+              onResetSurface={resetSurface}
               onColorClick={handleColorClick}
             />
           ) : (

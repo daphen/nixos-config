@@ -65,13 +65,24 @@ export function hslToHex(h: number, s: number, l: number): string {
 // instantly — parity with Python is byte-verified.
 export interface SurfaceDelta {
   dL: number[];
-  dC: number;
-  dH: number;
+  dC: number[];
+  dH: number[];
+  dBorder: number[]; // per-surface hairline alpha (fg @ a); webapp preview
 }
 
 export const SURFACE_DELTA_FALLBACK: Record<"dark" | "light", SurfaceDelta> = {
-  dark: { dL: [0.0088, 0.0131, 0.0921, 0.1394], dC: 0, dH: 0 },
-  light: { dL: [-0.0119, -0.0239, -0.0539, -0.0811], dC: 0, dH: 0 },
+  dark: {
+    dL: [0.0088, 0.0131, 0.0921, 0.1394],
+    dC: [0, 0, 0, 0],
+    dH: [0, 0, 0, 0],
+    dBorder: [0.15, 0.15, 0.15, 0.15],
+  },
+  light: {
+    dL: [-0.0119, -0.0239, -0.0539, -0.0811],
+    dC: [0, 0, 0, 0],
+    dH: [0, 0, 0, 0],
+    dBorder: [0.12, 0.12, 0.12, 0.12],
+  },
 };
 
 function roundHalfEven(n: number): number {
@@ -121,7 +132,11 @@ export function deriveSurfaces(primary: string, delta: SurfaceDelta): Record<str
   const [L0, C0, H0] = hexToOklch(primary);
   const out: Record<string, string> = {};
   delta.dL.forEach((dL, i) => {
-    out[`surface${i}`] = oklchToHex(L0 + dL, Math.max(0, C0 + delta.dC * i), H0 + delta.dH * i);
+    out[`surface${i}`] = oklchToHex(
+      L0 + dL,
+      Math.max(0, C0 + (delta.dC[i] ?? 0)),
+      H0 + (delta.dH[i] ?? 0),
+    );
   });
   out.surface = out.surface1 ?? primary;
   return out;

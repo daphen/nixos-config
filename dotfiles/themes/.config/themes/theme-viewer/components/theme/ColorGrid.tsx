@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { ColorTheme } from './types';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { AnimatedTabs } from '../ui/animated-tabs';
 
 interface ColorGridProps {
   theme: ColorTheme;
@@ -18,6 +19,7 @@ export function ColorGrid({
   selectedAccent,
   getSemanticColorsUsingAccent,
 }: ColorGridProps) {
+  const [category, setCategory] = useState<'base' | 'fgbg' | 'terminal'>('base');
   const renderColorSection = (category: string, colors: any) => {
     return (
       <div
@@ -143,41 +145,35 @@ export function ColorGrid({
         All Theme Colors
       </h2>
       
-      <Tabs defaultValue="base" className="w-full">
-        <div className="flex justify-center mb-8">
-          <TabsList theme={theme}>
-            <TabsTrigger value="base" theme={theme}>
-              Base
-            </TabsTrigger>
-            <TabsTrigger value="fgbg" theme={theme}>
-              Fg/Bg
-            </TabsTrigger>
-            <TabsTrigger value="terminal" theme={theme}>
-              Terminal
-            </TabsTrigger>
-          </TabsList>
+      <div className="flex justify-center mb-8">
+        <AnimatedTabs
+          value={category}
+          onValueChange={(v) => setCategory(v as 'base' | 'fgbg' | 'terminal')}
+          tabs={[
+            { value: 'base', label: 'Base' },
+            { value: 'fgbg', label: 'Fg/Bg' },
+            { value: 'terminal', label: 'Terminal' },
+          ]}
+        />
+      </div>
+
+      {category === 'base' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {theme.semantic && renderColorSection('semantic', theme.semantic)}
+          {theme.accent && renderColorSection('accent', theme.accent)}
         </div>
-
-        <TabsContent value="base">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {theme.semantic && renderColorSection('semantic', theme.semantic)}
-            {theme.accent && renderColorSection('accent', theme.accent)}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="fgbg">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {theme.foreground && renderColorSection('foreground', theme.foreground)}
-            {theme.background && renderColorSection('background', theme.background)}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="terminal">
-          <div className="grid grid-cols-1 gap-6">
-            {theme.terminal && renderColorSection('terminal', theme.terminal)}
-          </div>
-        </TabsContent>
-      </Tabs>
+      )}
+      {category === 'fgbg' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {theme.foreground && renderColorSection('foreground', theme.foreground)}
+          {theme.background && renderColorSection('background', theme.background)}
+        </div>
+      )}
+      {category === 'terminal' && (
+        <div className="grid grid-cols-1 gap-6">
+          {theme.terminal && renderColorSection('terminal', theme.terminal)}
+        </div>
+      )}
     </div>
   );
 }
