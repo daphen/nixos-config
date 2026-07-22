@@ -1,0 +1,28 @@
+/* AUTO-GENERATED from themes/colors.json (newtab.template) — do not edit here.
+ * Driver: themes/.config/themes/theme-processor.py
+ *
+ * The new-tab extension is sandboxed and can't read the theme files at
+ * runtime, so its palette is baked in at build time. Only the SOLID base
+ * tokens live here (both light + dark, selected via prefers-color-scheme).
+ * The frosted/border/overlay tokens are derived from these in index.css via
+ * color-mix, so they track automatically; fonts and the fixed-light floating
+ * chrome stay in index.css too. */
+:root {
+  --bg: {{light.background.secondary}};
+  --card-bg: {{light.background.primary}};
+  --muted: {{light.background.overlay}};
+  --fg: {{light.foreground.primary}};
+  --fg-muted: {{light.foreground.secondary}};
+  --accent: {{light.semantic.cursor}};
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: {{dark.background.secondary}};
+    --card-bg: {{dark.background.primary}};
+    --muted: {{dark.background.overlay}};
+    --fg: {{dark.foreground.primary}};
+    --fg-muted: {{dark.foreground.secondary}};
+    --accent: {{dark.semantic.cursor}};
+  }
+}

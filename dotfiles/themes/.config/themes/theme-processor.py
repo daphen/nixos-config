@@ -94,6 +94,7 @@ def process_template(template_file, colors_file, theme_mode, output_file, tool_n
         or base.startswith('chromium-palette')
         or base.startswith('quickshell')
         or base.startswith('review')
+        or base.startswith('newtab')
     )
 
     if is_dual_theme_template:

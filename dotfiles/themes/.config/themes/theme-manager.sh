@@ -287,6 +287,26 @@ PYEOF
                 log_info "chromium-palette: install deps then run vite build to pick up the theme"
             fi
             ;;
+        "newtab")
+            # New-tab extension source repo at ~/personal/newtab. The generated
+            # CSS inlines both palettes (dual-theme template), so either mode's
+            # file is identical — write it into src/ and rebuild so a tab reload
+            # picks up the new theme.
+            local nt_repo="$HOME/personal/newtab"
+            if [[ ! -d "$nt_repo" ]]; then
+                log_warning "newtab repo not found at $nt_repo"
+                return 1
+            fi
+            cp "$generated_file" "$nt_repo/src/newtab/theme.generated.css"
+            log_success "Wrote newtab theme.generated.css"
+            if [[ -x "$nt_repo/node_modules/.bin/vite" ]]; then
+                (cd "$nt_repo" && npm run build > /dev/null 2>&1) \
+                    && log_success "Rebuilt newtab (reload the tab)" \
+                    || log_warning "newtab rebuild failed; run npm run build manually"
+            else
+                log_info "newtab: install deps then npm run build to pick up the theme"
+            fi
+            ;;
         "starship")
             # Starship uses a single file at ~/.config/starship.toml — not a dir —
             # so get_tool_target's "symlinked directory" check doesn't apply.
