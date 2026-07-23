@@ -1,31 +1,6 @@
 #!/usr/bin/env bash
-# Super+A launcher for spotify_player with a token guard.
-#
-# spotify_player 0.24 rewrites its Web-API token cache on every start and, on
-# refresh, nulls the reusable (non-rotating) refresh_token doing so — an
-# upstream bug. Locking the file read-only used to dodge that, but this build
-# now treats a failed cache write as fatal (Permission denied → instant exit),
-# so the file must stay writable. Instead we keep a known-good copy of the
-# refresh_token and re-inject it before every launch: whatever the app writes
-# on exit, the next start gets the good token back.
-#
-# client_id note: the token is minted under spotify_player's bundled default
-# (d420a117…). The old "personal app" (e2b6523f…) is dead — accounts.spotify
-# returns invalid_client for it. Don't switch app.toml back to it.
-set -u
-cache="$HOME/.cache/spotify-player"
-tok="$cache/user_client_token.json"
-saved="$cache/refresh_token.saved"
-
-if [ -f "$tok" ] && [ -s "$saved" ]; then
-  chmod u+w "$tok" 2>/dev/null || true
-  rt=$(tr -d '[:space:]' <"$saved")
-  tmp=$(mktemp)
-  if jq --arg rt "$rt" '.refresh_token = $rt' "$tok" >"$tmp" 2>/dev/null; then
-    mv "$tmp" "$tok"
-  else
-    rm -f "$tmp"
-  fi
-fi
-
-exec spotify_player "$@"
+# Launch spotify_player. The 0.23/0.24.0-era token re-inject hack is gone:
+# Spotify's 2026-06 refresh-token rotation policy makes replaying a saved
+# token fatal (revokes the grant). 0.24.1 (overlay in flake.nix) handles
+# rotation itself; on 0.24.0 a corrupted cache just means re-auth on launch.
+exec spotify_player

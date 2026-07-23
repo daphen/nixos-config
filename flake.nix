@@ -145,7 +145,24 @@
             config.allowUnfree = true;
           };
         in {
-          inherit (latest) spotify-player;
+          # 0.24.1 pinned ahead of the channel: fixes the recurring
+          # "Token is not valid" breakage from Spotify's 2026-06-18 refresh
+          # token expiration policy change (upstream #1040). Hashes lifted
+          # from nixpkgs master. Drop the override once nixpkgs-latest ≥ 0.24.1.
+          spotify-player = latest.spotify-player.overrideAttrs (old: rec {
+            version = "0.24.1";
+            src = final.fetchFromGitHub {
+              owner = "aome510";
+              repo = "spotify-player";
+              rev = "v0.24.1";
+              hash = "sha256-+GADmRl4XMwV8TfYZjEeyKDDfda3bDPzeerhYryX6vA=";
+            };
+            cargoDeps = final.rustPlatform.fetchCargoVendor {
+              inherit src;
+              name = "spotify-player-${version}-vendor";
+              hash = "sha256-CSZ5sZ+d7Jhi43ipaWXKupYPFgWCbCx4RMTQN8emu9o=";
+            };
+          });
           inherit (apps)
             # AI CLIs (ship daily)
             claude-code
