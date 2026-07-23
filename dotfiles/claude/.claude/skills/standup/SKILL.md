@@ -40,6 +40,28 @@ Dedupe rule: a shipped item may be reported as shipped ONCE — if a bullet re-r
 
 Follow the async-standup format ([[feedback_async_standup_format]]): `y:` / `t:`, terse `•` bullets, NO title line, lowercase, outsider-legible (non-DS teammates — no ticket IDs, no jargon), no em dashes ([[feedback_no_em_dashes]]). `y:` = the window's work, both **shipped and in-progress**; `t:` = today's actual top work (not "planning", not teammates' tickets). Relabel `y:` to `f/weekend:` etc. when the window spans more than yesterday.
 
+**Terse means one line per bullet, hard cap.** After drafting, strip every
+clause that doesn't change what the reader knows about the WORK itself:
+process narration ("after a hardening pass from review", "after some back
+and forth"), effort adjectives ("big chunk of", "proper"), and mechanism
+detail nobody acts on (handshake/gating specifics — "frames render on cold
+sandboxes" is the outcome, keep only that). If a bullet wraps past one line,
+it's carrying one of these — cut it, don't rewrap it.
+
+David-approved calibration reference ("that's the perfect verbosity",
+2026-07-22) — match this density:
+
+```
+y:
+• landed preview serving from the built output, frames now render on cold sandboxes
+• built select-a-component-in-canvas-frames; testing blocked on local canvas rendering
+• small follow-up PR up for faster local preview iteration
+
+t:
+• fix the environment, verify the selection feature end to end
+• pick up the figma connector issue blocking uber
+```
+
 ## Step 6 — offer clipboard, then log what was sent
 
 Offer to copy via `wl-copy` as **asterisk-free plain text** (David's Slack composer renders pasted asterisks literally — see [[slack-format]] caveat).
