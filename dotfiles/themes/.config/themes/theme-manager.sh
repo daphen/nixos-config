@@ -664,7 +664,11 @@ apply_wallpaper() {
     fi
 
     if command -v waypaper &>/dev/null; then
-        waypaper --wallpaper "$target" &>/dev/null &
+        # --no-post-command: applying a mode's wallpaper is the mode->wallpaper
+        # direction; it must NOT fire the adopt-hook (link-mode-wallpaper.sh),
+        # whose async run could otherwise race a rapid mode switch and relink
+        # the wrong wallpaper-{mode}.
+        waypaper --wallpaper "$target" --no-post-command &>/dev/null &
     else
         log_warning "waypaper not on PATH; cannot apply wallpaper"
     fi
