@@ -192,6 +192,9 @@ def main() -> int:
                     help="plan mode: open the worktree's nvim ready to manage the "
                          "ticket's plan (auto-opens .plans/<ticket>.md when it "
                          "lands). Default is bare mode — an ordinary stack.")
+    ap.add_argument("--devenv-profile", default=None, metavar="PROFILE",
+                    help="devenv wt profile for the slice (e.g. e2e — required for "
+                         "canvas-track tickets: the auth-bridge needs the app on :3000)")
     ap.add_argument("--background", action="store_true",
                     help="build the stack on its workspace without switching focus "
                          "to it: the workspace is named but not focused, and each "
@@ -272,11 +275,14 @@ def main() -> int:
 
     # 4. Spawn the 4 stack windows. They land as columns on the focused
     #    workspace; in background mode each is relocated off it (--focus false).
-    print("==> spawning devenv wt")
+    devenv_cmd = "direnv exec . devenv wt"
+    if args.devenv_profile:
+        devenv_cmd += f" --profile {args.devenv_profile}"
+    print(f"==> spawning {devenv_cmd.removeprefix('direnv exec . ')}")
     wid = spawn_and_wait([
         "kitty",
         "--working-directory", str(worktree_path),
-        "-e", "bash", "-c", "direnv exec . devenv wt; exec fish",
+        "-e", "bash", "-c", f"{devenv_cmd}; exec fish",
     ])
     # Unconditional: spawns land on whatever workspace is focused at spawn
     # time, and user activity can steal focus mid-stack (windows then pile
