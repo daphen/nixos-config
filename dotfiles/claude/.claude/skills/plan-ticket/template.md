@@ -23,13 +23,19 @@ adding the minimum. New steps may land at different points in the flow; say so.
 5. <existing step> → done
 
 ## Decision points  ← your calls
-Real architectural forks only. If empty, the plan is hiding the architecture.
+Flow forks only — how it should BEHAVE, never how the code is arranged. Only
+questions the goal itself doesn't answer (derivability test). Empty is fine.
 
 ### D1. <the question>
 - **A** — <description>. Trade-off: …
 - **B** — <description>. Trade-off: …
 - **Recommendation:** A, because …
 - **Your call:** _(unresolved)_
+
+## Decided — derivable calls, locked
+One-liners: choice + the goal/pattern that implies it. Veto by editing the
+line before `--finalize`; these never block approval.
+- <choice>, because <what makes it the obvious answer>.
 
 ## Surface area — the containment boundary
 Where files land and why. This list IS the boundary: `--go` will not touch anything

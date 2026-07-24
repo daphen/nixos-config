@@ -27,12 +27,14 @@ ticket itself pushes against one, flag it rather than absorb it silently.
    like the code already around it — reuse the established helper, module shape,
    naming, and convention rather than introducing a parallel way to do the same
    thing. Before proposing a new mechanism, search for the existing one and
-   prefer extending it. A deviation from an established pattern is a decision
-   point, not a default.
+   prefer extending it. A deviation from an established pattern is never a
+   silent default: record it in **Decided** with its justification, and only
+   escalate to a decision point if following the pattern is genuinely
+   contestable for the goal.
 
-Surface these in the plan: the "surface area" section already proves #1; the
-decision points are where #2 and #3 get adjudicated (name the existing pattern
-being followed, or flag the inheritance/deviation being introduced).
+Surface these in the plan: the "surface area" section already proves #1; #2 and
+#3 land in **Decided** one-liners (name the pattern followed, or the deviation
+and why) — a D-block only where the goal truly doesn't imply the answer.
 
 Three artifacts, keyed to the plan, are the seam between this skill, the neovim
 plugin, and the live plan view (plan-view.py, opened as an app window on --go).
@@ -145,8 +147,15 @@ Quality bar:
 - **The shape**: dumb-simple, five-second read.
 - **The flow**: show existing steps for context and mark NEW work with ◆; this is
   how the user sees the work is minimal and where it slots in.
-- **Decision points**: real forks with options + recommendation. None = you're
-  hiding the architecture; find them.
+- **Decision points**: FLOW forks only — how the thing should behave for its
+  user, where the ticket + house rules genuinely underdetermine the answer.
+  Before writing a D-block, apply the **derivability test**: given what David
+  said he wants, is one option obviously it? If yes, decide it yourself and
+  record it under **Decided** (visible, vetoable, non-blocking). Code-level
+  choices — which helper, where code lives, naming, extend-vs-copy, error
+  handling shape — are always derivable: decide, never ask. Zero D-blocks in
+  a plan whose path is implied is correct, not lazy; a manufactured decision
+  is as much a defect as a hidden one.
 - **Surface area**: every file you intend to create/modify/touch, one-line why,
   listed in flow order (the order their step runs). This is the containment
   boundary — keep it tight.
@@ -162,7 +171,8 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
    one-line resolved instruction stating the chosen option (carry the rationale,
    trimmed). Drop the A/B options, the recommendation, and the `Your call:` line.
    Where cleaner, fold the directive into the flow step / surface-area item it
-   governs instead of leaving a standalone line.
+   governs instead of leaving a standalone line. **Decided** entries are already
+   directives — keep them as-is (any the user edited count as their call).
 3. **Strip the Q&A.** Delete every `> ❓` question and `> 💬` answer — they were
    review scaffolding; the conclusion the user acted on already lives in the
    decision / the directives they edited into the plan.
