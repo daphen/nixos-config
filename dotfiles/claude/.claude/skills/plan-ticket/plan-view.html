@@ -44,7 +44,7 @@
 
   <div class="foot mono">Read-only scan · drive planning in nvim · reopen: plan-view {{KEY}}</div>
 </div>
-<div class="navhint">j/k · h/l · u/d half-page · gg/G ends · ↵ expand · o open-in-nvim · Esc</div>
+<div class="navhint">j/k · h/l · u/d half-page · gg/G ends · ↵ expand · ⇧↵ all · o open-in-nvim · Esc</div>
 <script>
 (function(){
   var SEL = ".step, .dec, .frow, .vrow, .node";
@@ -105,6 +105,12 @@
     else if(e.key === "g"){ var t = Date.now(); if(t - lastG < 400) focus(0); lastG = t; }
     else if(e.key === "d"){ halfPage(1); e.preventDefault(); }
     else if(e.key === "u"){ halfPage(-1); e.preventDefault(); }
+    else if(e.key === "Enter" && e.shiftKey){
+      // Toggle-all: expand everything if anything is collapsed, else collapse all.
+      var anyCollapsed = items.some(function(el){ return !el.classList.contains("expanded"); });
+      items.forEach(function(el){ el.classList.toggle("expanded", anyCollapsed); });
+      e.preventDefault();
+    }
     else if(e.key === "Enter" && i >= 0){ items[i].classList.toggle("expanded"); e.preventDefault(); }
     else if(e.key === "o" && i >= 0){ openInNvim(items[i]); e.preventDefault(); }
     else if(e.key === "Escape" && i >= 0){ items[i].classList.remove("nav-focus"); i = -1; }
