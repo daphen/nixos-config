@@ -50,9 +50,9 @@ in
     "amdgpu.abmlevel=0" # disable adaptive backlight modulation — caps OLED at ~76% with content-driven dimming
     "resume=/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0"
     "resume_offset=18552832"
-    # lz4 compresses the hibernate image ~3-4x faster than the default lzo —
-    # matters now that every lid close writes one (fans run for the write).
-    "hibernate.compressor=lz4"
+    # NOTE: do NOT set hibernate.compressor=lz4 — the nixpkgs kernel is built
+    # without CONFIG_HIBERNATION_COMP_LZ4; with it set, every image write
+    # failed silently (resume: "Image not found", dirty fs, fsck at boot).
     "nvidia.NVreg_DynamicPowerManagement=0x02"
     # Prevent ACPI EC from waking the system during s2idle.
     "acpi.ec_no_wakeup=1"
