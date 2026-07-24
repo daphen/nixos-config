@@ -407,6 +407,10 @@ spawn-sh-at-startup "/home/daphen/.config/niri/scripts/niri-hotplug-handler >> /
 // they're moved.
 spawn-sh-at-startup "/home/daphen/.config/niri/scripts/ensure-chat-workspace"
 
+// A never-focused workspace where the dsqrd voice Helium is parked (hidden),
+// so its window stays mapped + audio alive but is never shown.
+workspace "voice"
+
 // Always-on main workspace: deps singleton + main-context claude +
 // work browser at lovable.dev, all running from ~/work/lovable.
 // Idempotent — only spawns missing window types.
@@ -526,6 +530,14 @@ window-rule {
     open-floating true
     default-column-width { fixed 1700; }
     default-window-height { fixed 1100; }
+}
+
+// dsqrd voice: the daemon spawns a hidden Helium (--class=dsqrd-voice) that
+// hosts the Discord voice call. Park it on the never-focused "voice" workspace
+// so it stays mapped + running (audio alive) but is never shown.
+window-rule {
+    match app-id=r#"^dsqrd-voice$"#
+    open-on-workspace "voice"
 }
 
 // Example: block out two password managers from screen capture.
