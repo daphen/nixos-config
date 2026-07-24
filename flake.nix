@@ -157,7 +157,12 @@
               rev = "v0.24.1";
               hash = "sha256-+GADmRl4XMwV8TfYZjEeyKDDfda3bDPzeerhYryX6vA=";
             };
-            cargoDeps = final.rustPlatform.fetchCargoVendor {
+            # Vendor via nixpkgs-latest's fetcher, NOT system nixpkgs (`final`):
+            # the old fetcher hits crates.io/api/v1 with a default python-requests
+            # UA, which crates.io now 403s; latest's fetcher uses static.crates.io
+            # + a descriptive UA. It also matches the vendor layout the master hash
+            # below was taken from.
+            cargoDeps = latest.rustPlatform.fetchCargoVendor {
               inherit src;
               name = "spotify-player-${version}-vendor";
               hash = "sha256-CSZ5sZ+d7Jhi43ipaWXKupYPFgWCbCx4RMTQN8emu9o=";
