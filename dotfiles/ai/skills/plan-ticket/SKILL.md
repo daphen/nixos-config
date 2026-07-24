@@ -1,6 +1,7 @@
 ---
 name: plan-ticket
-description: Turn a Linear ticket OR an ad-hoc task you describe in chat into a reviewable plain-English plan artifact BEFORE any code, then implement strictly within it and reconcile. Hard-gates on the user's sign-off so they stay the architect even in unfamiliar languages (e.g. Go). The north star is CONTAINMENT — the work produced stays as small and bounded as possible. Triggers on "/plan-ticket", "plan EVERY-####", "build a plan for <ticket>", "plan this: <task>", "implement the plan", "reconcile the plan".
+description: >-
+  Turn a Linear ticket OR an ad-hoc task you describe in chat into a reviewable plain-English plan artifact BEFORE any code, then implement strictly within it and reconcile. Hard-gates on the user's sign-off so they stay the architect even in unfamiliar languages (e.g. Go). The north star is CONTAINMENT — the work produced stays as small and bounded as possible. Triggers on "/plan-ticket", "plan EVERY-####", "build a plan for <ticket>", "plan this: <task>", "implement the plan", "reconcile the plan".
 ---
 
 # plan-ticket
