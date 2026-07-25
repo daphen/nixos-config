@@ -27,7 +27,12 @@ wait
 
 # Sole writer of `active`, via atomic rename — readers (bar, picker) never see
 # a torn file.
-mkdir -p "$COCKPIT_STATE_DIR"
+mkdir -p "$COCKPIT_STATE_DIR/seen"
+# Read-tracking: leaving a context means you saw everything it said up to
+# now; the seen-stamp mtime is what awaiting-you is measured against.
+prev=$(cat "$COCKPIT_STATE_DIR/active" 2>/dev/null || true)
+[ -n "$prev" ] && touch "$COCKPIT_STATE_DIR/seen/$prev"
+touch "$COCKPIT_STATE_DIR/seen/$name"
 printf '%s\n' "$name" > "$COCKPIT_STATE_DIR/.active.tmp"
 mv -f "$COCKPIT_STATE_DIR/.active.tmp" "$COCKPIT_STATE_DIR/active"
 

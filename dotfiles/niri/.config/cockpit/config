@@ -108,9 +108,12 @@ cockpit_context_states() {
             if [ "$age" -lt 20 ]; then
                 st=working
             elif [ "$last" = assistant ] && [ "$age" -lt 21600 ] \
-                && [ "$t" != "$active_now" ]; then
-                # awaiting-you = a reply you haven't seen. The ACTIVE context's
-                # reply is on screen — never nag about it.
+                && [ "$t" != "$active_now" ] \
+                && { [ ! -f "$COCKPIT_STATE_DIR/seen/$t" ] \
+                     || [ "$newest" -nt "$COCKPIT_STATE_DIR/seen/$t" ]; }; then
+                # awaiting-you = assistant output you haven't SEEN: newer than
+                # the seen-stamp cockpit-switch writes when you leave a context
+                # (and never the active one — its reply is on screen).
                 st=awaiting-you
             fi
         fi
