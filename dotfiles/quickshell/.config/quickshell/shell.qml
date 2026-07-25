@@ -36,4 +36,5 @@ ShellRoot {
     TodoListPicker {}
     NotificationJumpPicker {}
     CockpitPicker {}
+    CockpitNotch {}
 }

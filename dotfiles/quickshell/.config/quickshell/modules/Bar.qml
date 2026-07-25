@@ -365,12 +365,6 @@ PanelWindow {
                 }
             }
 
-            // Active cockpit context — only meaningful on the cockpit
-            // workspace itself.
-            CockpitChips {
-                visible: bar.worktreeStack === "lovable" && activeCtx !== null
-                anchors.verticalCenter: parent.verticalCenter
-            }
 
             // plan-ticket state for this worktree: phase icon + steps done
             Row {

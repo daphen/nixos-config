@@ -59,4 +59,4 @@ CmdPalette 1.0 CmdPalette.qml
 NotificationIsland 1.0 NotificationIsland.qml
 singleton CockpitState 1.0 CockpitState.qml
 CockpitPicker 1.0 CockpitPicker.qml
-CockpitChips 1.0 CockpitChips.qml
+CockpitNotch 1.0 CockpitNotch.qml

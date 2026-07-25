@@ -19,7 +19,15 @@ Singleton {
 
     property bool open: false
 
-    function toggle() { open = !open }
+    // Instance knowledge the chrome is allowed to have (see plan): the niri
+    // workspace the cockpit lives on.
+    readonly property string workspace: "lovable"
+
+    function toggle() {
+        open = !open
+        if (open)
+            Quickshell.execDetached(["niri", "msg", "action", "focus-workspace", workspace])
+    }
 
     IpcHandler {
         target: "cockpit"
