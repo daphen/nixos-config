@@ -31,6 +31,11 @@ mkdir -p "$COCKPIT_STATE_DIR"
 printf '%s\n' "$name" > "$COCKPIT_STATE_DIR/.active.tmp"
 mv -f "$COCKPIT_STATE_DIR/.active.tmp" "$COCKPIT_STATE_DIR/active"
 
+# MRU order for the picker: newest first, deduped.
+recent="$COCKPIT_STATE_DIR/recent"
+{ printf '%s\n' "$name"; grep -vxF "$name" "$recent" 2>/dev/null || true; } > "$recent.tmp"
+mv -f "$recent.tmp" "$recent"
+
 # Off the hot path: the tab fan-out above IS the switch, and a hook that talks
 # to another daemon must not push it past its latency budget.
 if declare -F cockpit_post_switch >/dev/null; then

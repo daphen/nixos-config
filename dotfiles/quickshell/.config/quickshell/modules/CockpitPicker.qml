@@ -15,17 +15,40 @@ Picker {
     altLabel: "Ctrl+W: close context"
     emptyText: "no contexts — type a name + enter to create one"
 
-    // The state glyph owns the row's left slot, so "active" reads as a badge —
-    // highlightField's dot would draw on top of the glyph.
-    items: CockpitState.contexts.map(c => ({
-        name: c.name,
-        label: c.name,
-        glyph: c.state === "working" ? "●" : c.state === "awaiting-you" ? "◔" : "○",
-        glyphColor: c.state === "working" ? Theme.green
-                  : c.state === "awaiting-you" ? Theme.cursor
-                  : Theme.fg_muted,
-        badge: c.name === CockpitState.active ? "active" : "",
-    }))
+    // The state glyph owns the row's left slot, so "current" reads as a badge —
+    // highlightField's dot would draw on top of the glyph. Current is pinned
+    // on top; the rest follow in MRU order so the last-used context sits
+    // directly beneath it (and holds the initial selection: Enter = bounce back).
+    items: {
+        const cur = [], rest = []
+        for (const c of CockpitState.contexts)
+            (c.name === CockpitState.active ? cur : rest).push(c)
+        const order = CockpitState.recent
+        rest.sort((a, b) => {
+            const ia = order.indexOf(a.name), ib = order.indexOf(b.name)
+            return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib)
+        })
+        return cur.concat(rest).map(c => ({
+            name: c.name,
+            label: c.name,
+            glyph: c.state === "working" ? "●" : c.state === "awaiting-you" ? "◔" : "○",
+            glyphColor: c.state === "working" ? Theme.green
+                      : c.state === "awaiting-you" ? Theme.cursor
+                      : Theme.fg_muted,
+            badge: c.name === CockpitState.active ? "current" : "",
+        }))
+    }
+
+    // Land the initial highlight on the last-used row (index 1), after the
+    // base's own open-reset has run.
+    onOpenChanged: {
+        if (!open) return
+        Qt.callLater(() => {
+            if (query.length === 0 && filtered.length > 1
+                && filtered[0].badge === "current")
+                selectedIndex = 1
+        })
+    }
     glyphField: "glyph"
     glyphColorField: "glyphColor"
     badgeField: "badge"

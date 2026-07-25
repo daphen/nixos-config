@@ -95,8 +95,7 @@ PanelWindow {
             }
             Text {
                 text: root.activeCtx ? root.activeCtx.name : ""
-                color: root.activeCtx && root.activeCtx.state === "awaiting-you"
-                     ? Theme.cursor : Theme.fg
+                color: Theme.fg
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
                 font.weight: Theme.fontWeight

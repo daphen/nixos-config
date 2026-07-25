@@ -16,6 +16,8 @@ Singleton {
     // [{name, state}] — state is "working" | "awaiting-you" | "idle".
     property var contexts: []
     property string active: ""
+    // MRU context names, newest first (cockpit-switch owns the file).
+    property var recent: []
 
     property bool open: false
 
@@ -44,6 +46,7 @@ Singleton {
         // Optimistic: the FileView watch confirms, but chips/picker must flip
         // with the tabs, not a disk round-trip later.
         active = name
+        recent = [name].concat(recent.filter(n => n !== name))
     }
 
     function add(name) {
@@ -109,5 +112,13 @@ Singleton {
         onFileChanged: reload()
         onLoaded: root.active = text().trim()
         onLoadFailed: root.active = ""
+    }
+
+    FileView {
+        path: Quickshell.env("HOME") + "/.local/state/cockpit/recent"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.recent = text().trim().split("\n").filter(n => n.length > 0)
+        onLoadFailed: root.recent = []
     }
 }

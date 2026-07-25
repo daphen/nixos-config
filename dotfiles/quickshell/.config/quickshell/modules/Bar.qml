@@ -106,7 +106,6 @@ PanelWindow {
         // per-output: THIS screen's visible workspace, not the global focus —
         // the badge must not mirror onto the other monitor's bar
         const name = NiriState.activeWorkspaceName(bar.screen ? bar.screen.name : "")
-        if (name === "lovable") return name
         if (!name.startsWith("lovable-")) return ""
         if (name === "lovable-deps") return ""
         return name.substring("lovable-".length)
