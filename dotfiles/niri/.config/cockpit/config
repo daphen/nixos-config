@@ -92,6 +92,12 @@ cockpit_context_states() {
         [ -d "$dir" ] || continue
         proj="$HOME/.claude/projects/${dir//[.\/]/-}"
         st=idle
+        # Agent-declared block (Notification hook): Claude said it needs input
+        # to continue; cleared the moment you respond. Beats every heuristic.
+        if [ -f "$COCKPIT_STATE_DIR/wants-input/$t" ] && [ "$t" != "$active_now" ]; then
+            printf '%s\t%s\n' "$t" "awaiting-you"
+            continue
+        fi
         newest=""
         for f in $(ls -t "$proj"/*.jsonl 2>/dev/null); do
             if head -c 65536 "$f" | grep -q '"type":"user"'; then newest=$f; break; fi
