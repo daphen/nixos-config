@@ -107,9 +107,8 @@ PanelWindow {
         // per-output: THIS screen's visible workspace, not the global focus —
         // the badge must not mirror onto the other monitor's bar
         const name = NiriState.activeWorkspaceName(bar.screen ? bar.screen.name : "")
-        if (!name.startsWith("lovable-")) return ""
-        if (name === "lovable" || name === "lovable-deps") return ""
-        return name.substring("lovable-".length)
+        if (name.startsWith("lovable-")) return name.substring("lovable-".length)
+        return name
     }
 
     // WPM pill — top-left corner, transparent, inverted (bg-colored) content.
