@@ -26,8 +26,23 @@ fi
 kitty_id=$(printf '%s' "$data" | jq -r '.id // empty')
 summary=$(printf '%s' "$data" | jq -r '.summary // empty')
 win=$(printf '%s' "$data" | jq -r '.hints["niri-window"] // empty')
+ctx=$(printf '%s' "$data" | jq -r '.hints["cockpit-context"] // empty')
+if [ -z "$ctx" ]; then
+    # "Claude · <label>" — the label is the context name (or the old
+    # lovable.daphen-<name> form; strip that prefix if present).
+    ctx=$(printf '%s' "$summary" | sed -n 's/^Claude · //p' | sed 's|^lovable\.daphen-||')
+fi
 
-if [ -n "$win" ] && [ "$win" != "null" ]; then
+# Cockpit context: the shared agent window shows one tab at a time, so a bare
+# window focus can land on the wrong session — switch the whole cockpit first.
+if [ -n "$ctx" ] && [ -S /tmp/kitty-cockpit-agent ] \
+    && kitty @ --to unix:/tmp/kitty-cockpit-agent ls 2>/dev/null \
+        | jq -e --arg t "$ctx" 'any(.[].tabs[]; .title == $t)' >/dev/null; then
+    "$(dirname "$0")/cockpit-switch" "$ctx" >/dev/null 2>&1 || true
+    awin=$(niri msg --json windows 2>/dev/null \
+        | jq -r '[.[]|select(.app_id=="cockpit-agent")][0].id // empty')
+    [ -n "$awin" ] && niri msg action focus-window --id "$awin" >/dev/null 2>&1 || true
+elif [ -n "$win" ] && [ "$win" != "null" ]; then
     niri msg action focus-window --id "$win" >/dev/null 2>&1 || true
 else
     # Summary form: "Claude · lovable.daphen-<short>" → workspace lovable-<short>.

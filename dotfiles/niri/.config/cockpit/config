@@ -81,9 +81,10 @@ cockpit_window_cmd() {
 # every fact it needs (context dirs, where the agent keeps transcripts) is
 # instance knowledge, and the newest-non-empty rule must match _resume_flag.
 cockpit_context_states() {
-    local sock t dir proj f newest st age last
+    local sock t dir proj f newest st age last active_now
     sock="/tmp/kitty-cockpit-${COCKPIT_WINDOWS[0]}"
     [ -S "$sock" ] || return 0
+    active_now=$(cat "$COCKPIT_STATE_DIR/active" 2>/dev/null || true)
     while IFS= read -r t; do
         [ -n "$t" ] || continue
         dir=$(cockpit_context_dir "$t")
@@ -105,7 +106,10 @@ cockpit_context_states() {
                 | tail -1)
             if [ "$age" -lt 20 ]; then
                 st=working
-            elif [ "$last" = assistant ] && [ "$age" -lt 21600 ]; then
+            elif [ "$last" = assistant ] && [ "$age" -lt 21600 ] \
+                && [ "$t" != "$active_now" ]; then
+                # awaiting-you = a reply you haven't seen. The ACTIVE context's
+                # reply is on screen — never nag about it.
                 st=awaiting-you
             fi
         fi

@@ -241,6 +241,10 @@ Singleton {
             const hints = notification.hints || ({})
             const hint = (hints["niri-window"] !== undefined) ? String(hints["niri-window"]) : ""
             if (!hint || hint !== String(NiriState.focusedWindowId())) return false
+            // Cockpit sessions share one agent window: only the ACTIVE tab's
+            // prompt is truly "in focus" — never clear a background context's.
+            const ctx = (hints["cockpit-context"] !== undefined) ? String(hints["cockpit-context"]) : ""
+            if (ctx && ctx !== CockpitState.active) return false
         }
         return true
     }
