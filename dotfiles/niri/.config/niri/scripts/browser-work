@@ -33,7 +33,7 @@ classes = (os.environ["PERSONAL"], os.environ["WORK"])
 windows = json.loads(subprocess.run(["niri", "msg", "--json", "windows"],
                     capture_output=True, text=True).stdout)
 w = next((x for x in windows
-          if x.get("id") == stored and x.get("app_id") in classes), None)
+          if x.get("id") == stored and x.get("app_id") == os.environ["WORK"]), None)
 if w is None:
     print("no"); sys.exit()
 workspaces = json.loads(subprocess.run(["niri", "msg", "--json", "workspaces"],
@@ -75,7 +75,7 @@ import json, sys
 windows = json.load(sys.stdin)
 before_ids = set('$before'.split())
 for w in windows:
-    if w.get('app_id') in ('$BROWSER_CLASS_PERSONAL', '$BROWSER_CLASS_WORK') and str(w['id']) not in before_ids:
+    if w.get('app_id') == '$BROWSER_CLASS_WORK' and str(w['id']) not in before_ids:
         print(w['id'])
         break
 " 2>/dev/null)

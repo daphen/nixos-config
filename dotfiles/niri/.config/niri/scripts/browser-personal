@@ -18,7 +18,7 @@ if [[ -f "$PERSONAL_ID_FILE" ]]; then
     exists=$(niri msg --json windows | python3 -c "
 import json, sys
 windows = json.load(sys.stdin)
-print('yes' if any(str(w['id']) == '$stored_id' and w.get('app_id') in ('$BROWSER_CLASS_PERSONAL', '$BROWSER_CLASS_WORK') for w in windows) else 'no')
+print('yes' if any(str(w['id']) == '$stored_id' and w.get('app_id') == '$BROWSER_CLASS_PERSONAL' for w in windows) else 'no')
 " 2>/dev/null)
     if [[ "$exists" == "yes" ]]; then
         niri msg action focus-window --id "$stored_id"
@@ -67,7 +67,7 @@ windows = json.load(sys.stdin)
 before_ids = set('$before'.split())
 work_id = '$work_id'
 for w in windows:
-    if w.get('app_id') in ('$BROWSER_CLASS_PERSONAL', '$BROWSER_CLASS_WORK') and str(w['id']) not in before_ids and str(w['id']) != work_id:
+    if w.get('app_id') == '$BROWSER_CLASS_PERSONAL' and str(w['id']) not in before_ids and str(w['id']) != work_id:
         print(w['id'])
         break
 " 2>/dev/null)
