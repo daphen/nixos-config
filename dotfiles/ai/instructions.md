@@ -28,7 +28,9 @@ but the cockpit windows must exist (`cockpit-open` is idempotent;
 `cockpit-restore` rebuilds everything after a crash).
 
 Naming: the context name IS the branch short-name and KEEPS the team
-prefix (Linear auto-link needs the full ticket id). For EVERY-1234 about
+prefix (Linear auto-link needs the full ticket id). Given only a ticket
+number ("add 2542 to the cockpit"), fetch the ticket via the Linear MCP
+and derive a short kebab slug from its title. For EVERY-1234 about
 "fix button overflow":
 - context name / worktree: `every-1234-fix-button-overflow`
 - git branch: `daphen/every-1234-fix-button-overflow`
