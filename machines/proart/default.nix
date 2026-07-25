@@ -94,9 +94,13 @@ in
   # Lid = hibernate IMMEDIATELY. s2idle wake has never worked on this machine
   # (every logged suspend exit is the hibernate timer; lid-opens during the old
   # suspend-then-hibernate window froze the system), so the suspend leg was
-  # pure hazard. Cost: image write on every close (~lz4-compressed, see
-  # kernelParams) and disk-resume on every open.
+  # pure hazard. Cost: image write on every close and disk-resume on every open.
   services.logind.settings.Login.HandleLidSwitch = "hibernate";
+  # Cap the hibernate image: kernel drops page cache instead of writing it.
+  # Full-RAM images (40G+ with dev stacks up) made writes multi-minute and one
+  # quick-turnaround restore hung at a black screen (2026-07-25). 8G images
+  # write and restore in well under a minute; cost is cold caches after resume.
+  systemd.tmpfiles.rules = [ "w /sys/power/image_size - - - - 8589934592" ];
 
   # nvidia-suspend.service only declares Before=systemd-suspend.service by default —
   # pull it into the hibernate path (lid) and suspend-then-hibernate (manual) too.
