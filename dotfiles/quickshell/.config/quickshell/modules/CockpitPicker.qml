@@ -31,9 +31,12 @@ Picker {
         return cur.concat(rest).map(c => ({
             name: c.name,
             label: c.name,
-            glyph: c.state === "working" ? "●" : c.state === "awaiting-you" ? "◔" : "○",
+            glyph: c.state === "working" ? "●"
+                 : c.state === "awaiting-you" ? "◔"
+                 : c.state === "pending" ? "◐" : "○",
             glyphColor: c.state === "working" ? Theme.green
                       : c.state === "awaiting-you" ? Theme.cursor
+                      : c.state === "pending" ? Theme.fg
                       : Theme.fg_muted,
             badge: c.name === CockpitState.active ? "current" : "",
         }))
