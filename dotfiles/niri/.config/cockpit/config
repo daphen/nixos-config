@@ -11,7 +11,12 @@ COCKPIT_STATE_DIR="$HOME/.local/state/cockpit"
 _repo="$HOME/work/lovable"
 
 cockpit_context_dir() {
-    printf '%s/work/lovable.daphen-%s' "$HOME" "$1"
+    # "main" is the primary checkout, not a worktree.
+    if [ "$1" = main ]; then
+        printf '%s/work/lovable' "$HOME"
+    else
+        printf '%s/work/lovable.daphen-%s' "$HOME" "$1"
+    fi
 }
 
 cockpit_context_create() {
@@ -50,8 +55,23 @@ cockpit_window_cmd() {
         agent)
             printf 'env CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude%s; exec fish' \
                 "$(_resume_flag "$dir")" ;;
-        nvim)   printf 'direnv exec . nvim; exec fish' ;;
-        devenv) printf 'direnv exec . devenv wt; exec fish' ;;
+        # Session file per context so a crash/reboot restores layout+files;
+        # plugin/cockpit-session.lua autosaves it while nvim runs.
+        nvim)
+            local sess="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}/nvim/${name}.vim"
+            if [ -f "$sess" ]; then
+                printf 'COCKPIT_NVIM_SESSION=%q direnv exec . nvim -S %q; exec fish' "$sess" "$sess"
+            else
+                printf 'COCKPIT_NVIM_SESSION=%q direnv exec . nvim; exec fish' "$sess"
+            fi ;;
+        # main runs the shared deps singleton (wt-proxy caddy, nats, …);
+        # worktrees run their own wt slice on top of it.
+        devenv)
+            if [ "$name" = main ]; then
+                printf 'direnv exec . devenv deps; exec fish'
+            else
+                printf 'direnv exec . devenv wt; exec fish'
+            fi ;;
         *)      printf 'exec fish' ;;
     esac
 }

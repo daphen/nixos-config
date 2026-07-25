@@ -9,6 +9,7 @@ CONFIG="${COCKPIT_CONFIG:-$HOME/.config/cockpit/config}"
 # shellcheck source=/dev/null
 source "$CONFIG"
 : "${COCKPIT_WINDOWS:?config must set COCKPIT_WINDOWS}"
+COCKPIT_STATE_DIR="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}"
 
 win_sock() { printf '/tmp/kitty-cockpit-%s' "$1"; }
 
@@ -35,5 +36,10 @@ for w in "${COCKPIT_WINDOWS[@]}"; do
         --type=tab --tab-title "$name" --cwd "$dir" --keep-focus \
         -- bash -c "$cmd" >/dev/null
 done
+
+# Registry of live contexts — what cockpit-restore rebuilds after a crash.
+mkdir -p "$COCKPIT_STATE_DIR"
+grep -qxF "$name" "$COCKPIT_STATE_DIR/contexts" 2>/dev/null \
+    || printf '%s\n' "$name" >> "$COCKPIT_STATE_DIR/contexts"
 
 exec "$(dirname "$(readlink -f "$0")")/cockpit-switch" "$name"
