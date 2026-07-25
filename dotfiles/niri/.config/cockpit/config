@@ -22,11 +22,12 @@ cockpit_context_dir() {
 cockpit_context_create() {
     local dir
     dir=$(cockpit_context_dir "$1")
-    [ -d "$dir" ] && return 0
-    # Off fresh origin/main, never the local ref — a stale main births worktrees
-    # missing generated files.
-    git -C "$_repo" fetch origin main
-    ( cd "$_repo" && wt switch --create --base origin/main "daphen/$1" )
+    if [ ! -d "$dir" ]; then
+        # Off fresh origin/main, never the local ref — a stale main births
+        # worktrees missing generated files.
+        git -C "$_repo" fetch origin main
+        ( cd "$_repo" && wt switch --create --base origin/main "daphen/$1" )
+    fi
     zoxide add "$dir" >/dev/null 2>&1 || true
 }
 
