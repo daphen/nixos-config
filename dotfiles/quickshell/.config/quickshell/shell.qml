@@ -35,4 +35,5 @@ ShellRoot {
     ClipboardPicker {}
     TodoListPicker {}
     NotificationJumpPicker {}
+    CockpitPicker {}
 }

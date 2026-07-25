@@ -1,0 +1,181 @@
+# shellcheck shell=bash
+# Instance config for the cockpit engine (cockpit-open / -add / -switch).
+#
+# The engine knows nothing below this line: swap this file and the same three
+# scripts drive a completely different setup.
+
+COCKPIT_WORKSPACE=lovable
+COCKPIT_WINDOWS=(agent nvim devenv)
+COCKPIT_STATE_DIR="$HOME/.local/state/cockpit"
+
+_repo="$HOME/work/lovable"
+
+cockpit_context_dir() {
+    printf '%s/work/lovable.daphen-%s' "$HOME" "$1"
+}
+
+cockpit_context_create() {
+    local dir
+    dir=$(cockpit_context_dir "$1")
+    [ -d "$dir" ] && return 0
+    # Off fresh origin/main, never the local ref — a stale main births worktrees
+    # missing generated files.
+    git -C "$_repo" fetch origin main
+    ( cd "$_repo" && wt switch --create --base origin/main "daphen/$1" )
+    zoxide add "$dir" >/dev/null 2>&1 || true
+}
+
+# Newest transcript that actually CONTAINS a conversation. Picking by recency
+# alone lands in the empty jsonl an aborted agent left behind.
+_resume_flag() {
+    local proj f id
+    proj="$HOME/.claude/projects/${1//[.\/]/-}"
+    [ -d "$proj" ] || return 0
+    while IFS= read -r f; do
+        if head -c 65536 "$f" | grep -q '"type":"user"'; then
+            id=$(basename "$f" .jsonl)
+            break
+        fi
+    done < <(ls -t "$proj"/*.jsonl 2>/dev/null)
+    [ -n "${id:-}" ] && printf ' --resume %s' "$id"
+    return 0
+}
+
+cockpit_window_cmd() {
+    local window=$1 name=$2 dir=$3
+    case "$window" in
+        # FORCE_SESSION_PERSISTENCE: launched from inside a claude session the
+        # child inherits CLAUDE_CODE_CHILD_SESSION and silently stops saving
+        # its transcript, so the session can't be resumed after a crash.
+        agent)
+            printf 'env CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude%s; exec fish' \
+                "$(_resume_flag "$dir")" ;;
+        nvim)   printf 'direnv exec . nvim; exec fish' ;;
+        devenv) printf 'direnv exec . devenv wt; exec fish' ;;
+        *)      printf 'exec fish' ;;
+    esac
+}
+
+# Agent activity per context, as `<name>\t<working|awaiting-you|idle>` lines.
+# Consumed by the quickshell chrome, never by the engine — it lives here because
+# every fact it needs (context dirs, where the agent keeps transcripts) is
+# instance knowledge, and the newest-non-empty rule must match _resume_flag.
+cockpit_context_states() {
+    local sock t dir proj f newest st age last
+    sock="/tmp/kitty-cockpit-${COCKPIT_WINDOWS[0]}"
+    [ -S "$sock" ] || return 0
+    while IFS= read -r t; do
+        [ -n "$t" ] || continue
+        dir=$(cockpit_context_dir "$t")
+        [ -d "$dir" ] || continue
+        proj="$HOME/.claude/projects/${dir//[.\/]/-}"
+        st=idle
+        newest=""
+        for f in $(ls -t "$proj"/*.jsonl 2>/dev/null); do
+            if head -c 65536 "$f" | grep -q '"type":"user"'; then newest=$f; break; fi
+        done
+        if [ -n "$newest" ]; then
+            age=$(( $(date +%s) - $(stat -c %Y "$newest") ))
+            # Last *conversational* turn. Transcripts also carry non-message
+            # records (pr-link, mode, summary) that would otherwise read as
+            # "the agent stopped mid-thought", and a bare grep for "type" would
+            # match the nested ones inside a record too.
+            last=$(tail -n 40 "$newest" \
+                | jq -r 'select(.type == "user" or .type == "assistant") | .type' 2>/dev/null \
+                | tail -1)
+            if [ "$age" -lt 20 ]; then
+                st=working
+            elif [ "$last" = assistant ] && [ "$age" -lt 21600 ]; then
+                st=awaiting-you
+            fi
+        fi
+        printf '%s\t%s\n' "$t" "$st"
+    done < <(kitty @ --to "unix:$sock" ls 2>/dev/null | jq -r '.[].tabs[].title')
+}
+
+# Mirrors devenv's sanitizeBranchForSubdomain: prefix + at most 3 segments.
+_preview_url() {
+    printf 'http://daphen-%s.localhost:2015' "$(cut -d- -f1-3 <<<"$1")"
+}
+
+cockpit_post_switch() {
+    local name=$1 dir=$2
+    # DISABLED until palette-daemon grows a raise-less, profile-pinned
+    # activate/goto: today's flows target the *focused profile* and raise
+    # windows on the old flow's active worktree — every switch yanks focus.
+    return 0
+    COCKPIT_URL=$(_preview_url "$name") \
+    COCKPIT_PORT=$(cat "$dir/.devenv/state/wt-base-port" 2>/dev/null || true) \
+    python3 - <<'PY'
+import json, os, re, socket, subprocess, sys, time
+
+url = os.environ["COCKPIT_URL"]
+port = os.environ.get("COCKPIT_PORT", "").strip()
+host = re.sub(r"^https?://", "", url).split("/")[0]
+runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+sock_path = os.path.join(runtime, "palette-ui.sock")
+
+
+def niri(*args):
+    return subprocess.run(["niri", "msg", *args], capture_output=True,
+                          text=True, timeout=3)
+
+
+focused = None
+try:
+    focused = json.loads(niri("--json", "focused-window").stdout).get("id")
+except Exception:
+    pass
+
+try:
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(2.0)
+    s.connect(sock_path)
+except OSError:
+    sys.exit(0)  # daemon down — the browser leg is best-effort
+
+f = s.makefile("rw")
+state = None
+for _ in range(5):
+    line = f.readline()
+    if not line:
+        break
+    try:
+        msg = json.loads(line)
+    except ValueError:
+        continue
+    if msg.get("type") == "state":
+        state = msg
+        break
+if state is None:
+    sys.exit(0)
+
+# The preview host is what the stack actually opens; the raw base port covers
+# contexts serving straight off a port instead of the reverse proxy.
+needles = [host] + ([f"localhost:{port}"] if port else [])
+hit = next((t for t in (state.get("tabs") or [])
+            if any(n in (t.get("url") or "") for n in needles)), None)
+
+if hit:
+    cmd = {"cmd": "activate-tab", "tabId": hit["id"], "windowId": hit["windowId"]}
+else:
+    cmd = {"cmd": "goto", "url": url, "newTab": True}
+f.write(json.dumps(cmd) + "\n")
+f.flush()
+
+# Both daemon flows raise the browser window in niri. A cockpit switch must
+# never move your focus, so put it back — that's what makes this a background
+# tab rather than a hijack. The raise lands whenever the browser round-trip
+# finishes, so poll for it rather than racing a fixed sleep.
+if focused is not None:
+    for _ in range(20):
+        time.sleep(0.1)
+        try:
+            now = json.loads(niri("--json", "focused-window").stdout).get("id")
+        except Exception:
+            break
+        if now != focused:
+            break
+    niri("action", "focus-window", "--id", str(focused))
+PY
+}

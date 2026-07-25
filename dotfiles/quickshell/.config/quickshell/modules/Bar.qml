@@ -92,6 +92,7 @@ PanelWindow {
             }
             spacing: 8
 
+            CockpitChips {}
             Inbox {}
             Dnd {}
             Network {}

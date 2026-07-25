@@ -810,6 +810,10 @@ binds {
     Super+Ctrl+t  { spawn-sh "$HOME/.config/niri/scripts/rofi-ws-startwt"; }
     Super+Ctrl+Shift+t { spawn "qs" "ipc" "call" "todos" "toggle"; }  // permanent quick-todo list
 
+    // Super+Shift+C — cockpit context switcher. Additive: the Super+T worktree
+    // binds above keep driving the workspace-per-stack flow untouched.
+    Super+Shift+c hotkey-overlay-title="Cockpit contexts" { spawn "qs" "ipc" "call" "cockpit" "toggle"; }
+
     // Super+O: toggle to the previously visited worktree (vim ctrl-o style).
     Super+o       { spawn-sh "$HOME/.config/niri/scripts/ws-toggle-worktree"; }
 

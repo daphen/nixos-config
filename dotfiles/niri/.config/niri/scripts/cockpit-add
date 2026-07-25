@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# cockpit-add <context> — create the context (config hook) and open one tab per
+# cockpit window running that window's configured command, then switch to it.
+# Idempotent: a window that already has a tab titled <context> is left alone.
+set -euo pipefail
+
+CONFIG="${COCKPIT_CONFIG:-$HOME/.config/cockpit/config}"
+[ -r "$CONFIG" ] || { echo "cockpit: no config at $CONFIG" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$CONFIG"
+: "${COCKPIT_WINDOWS:?config must set COCKPIT_WINDOWS}"
+
+win_sock() { printf '/tmp/kitty-cockpit-%s' "$1"; }
+
+name=${1:?usage: cockpit-add <context>}
+
+if declare -F cockpit_context_create >/dev/null; then
+    cockpit_context_create "$name"
+fi
+dir=$(cockpit_context_dir "$name")
+[ -d "$dir" ] || { echo "cockpit: context '$name' has no directory ($dir)" >&2; exit 1; }
+
+for w in "${COCKPIT_WINDOWS[@]}"; do
+    sock=$(win_sock "$w")
+    if [ ! -S "$sock" ]; then
+        echo "cockpit: window '$w' is not open — run cockpit-open first" >&2
+        exit 1
+    fi
+    if kitty @ --to "unix:$sock" ls \
+        | jq -e --arg t "$name" 'any(.[].tabs[]; .title == $t)' >/dev/null; then
+        continue
+    fi
+    cmd=$(cockpit_window_cmd "$w" "$name" "$dir")
+    kitty @ --to "unix:$sock" launch \
+        --type=tab --tab-title "$name" --cwd "$dir" --keep-focus \
+        -- bash -c "$cmd" >/dev/null
+done
+
+exec "$(dirname "$(readlink -f "$0")")/cockpit-switch" "$name"
