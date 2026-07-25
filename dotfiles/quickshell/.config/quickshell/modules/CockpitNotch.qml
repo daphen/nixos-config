@@ -21,7 +21,7 @@ PanelWindow {
     anchors.bottom: true
     margins.bottom: 0
     implicitWidth: 600
-    implicitHeight: Theme.barHeight + 8
+    implicitHeight: Theme.barHeight + 24
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -67,15 +67,18 @@ PanelWindow {
     Timer { id: holdTimer; interval: 1800; onTriggered: root.hide() }
     Timer { id: closeDelay; interval: 250; onTriggered: root.active = false }
 
+    // Floating capsule — the island's detached (fullscreen) look, from the
+    // bottom: fully rounded, hairline border, 8px off the edge.
     Rectangle {
         id: capsule
         anchors.horizontalCenter: parent.horizontalCenter
-        y: root.open ? parent.height - height : parent.height
+        y: root.open ? parent.height - height - 8 : parent.height
         width: row.implicitWidth + Theme.notchPadH * 2
-        height: Theme.barHeight
+        height: Theme.barHeight + 4
         color: Theme.notch
-        topLeftRadius: Theme.notchRadius
-        topRightRadius: Theme.notchRadius
+        radius: Math.min(height / 2, Theme.notchRadius + 6)
+        border.width: 1
+        border.color: Theme.hairline
 
         Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
