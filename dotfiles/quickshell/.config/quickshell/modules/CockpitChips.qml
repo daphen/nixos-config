@@ -1,53 +1,42 @@
 import QtQuick
 import "."
 
-// One compact chip per cockpit context: active is underlined, a context whose
-// agent wants you turns accent. Colour only — no pulse, no fade; the cockpit
-// surface never animates.
-Row {
+// The active cockpit context, as a single label for the bar pill. Accent when
+// its agent is waiting on you; click opens the picker (the overview of every
+// context lives there, not in the bar). Colour only — the cockpit surface
+// never animates.
+Item {
     id: root
 
-    spacing: 6
-    visible: CockpitState.contexts.length > 0
+    // The bar pills render bg-colored content on the light strip; set false
+    // for a dark (notch-style) mount.
+    property bool invert: true
+    readonly property color base: invert ? Theme.bg : Theme.fg
 
-    Repeater {
-        model: CockpitState.contexts
+    readonly property var activeCtx: {
+        for (const c of CockpitState.contexts)
+            if (c.name === CockpitState.active) return c
+        return null
+    }
 
-        Item {
-            required property var modelData
-            readonly property bool isActive: modelData.name === CockpitState.active
+    implicitWidth: label.implicitWidth
+    implicitHeight: label.implicitHeight
+    visible: activeCtx !== null
 
-            width: chipLabel.implicitWidth + Theme.modulePadH * 2
-            height: parent.height
+    Text {
+        id: label
+        text: root.activeCtx ? root.activeCtx.name : ""
+        color: root.activeCtx && root.activeCtx.state === "awaiting-you"
+             ? Theme.cursor : root.base
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.fontSize
+        font.weight: Theme.fontWeight
+        font.hintingPreference: Font.PreferFullHinting
+    }
 
-            Text {
-                id: chipLabel
-                anchors.centerIn: parent
-                text: modelData.name
-                color: modelData.state === "awaiting-you" ? Theme.cursor
-                     : parent.isActive ? Theme.fg
-                     : Theme.fg_muted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
-                font.weight: Theme.fontWeight
-                font.hintingPreference: Font.PreferFullHinting
-            }
-
-            Rectangle {
-                anchors.horizontalCenter: chipLabel.horizontalCenter
-                anchors.top: chipLabel.bottom
-                anchors.topMargin: 2
-                width: chipLabel.implicitWidth
-                height: 1
-                visible: parent.isActive
-                color: chipLabel.color
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: CockpitState.switchTo(modelData.name)
-            }
-        }
+    MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: CockpitState.toggle()
     }
 }

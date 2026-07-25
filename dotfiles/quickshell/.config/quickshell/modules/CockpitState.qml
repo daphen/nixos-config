@@ -26,6 +26,9 @@ Singleton {
         function toggle() { root.toggle() }
         function show()   { root.open = true }
         function hide()   { root.open = false }
+        function dump(): string {
+            return JSON.stringify(root.contexts) + " active=" + root.active
+        }
     }
 
     function switchTo(name) {
@@ -47,7 +50,10 @@ Singleton {
             'for w in "${COCKPIT_WINDOWS[@]}"; do ' +
             '  s="/tmp/kitty-cockpit-$w"; [ -S "$s" ] || continue; ' +
             '  kitty @ --to "unix:$s" close-tab --match "title:^$1\\$" 2>/dev/null; ' +
-            'done', "_", name])
+            'done; ' +
+            'f="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}/contexts"; ' +
+            '[ -f "$f" ] && { grep -vxF "$1" "$f" > "$f.tmp"; mv "$f.tmp" "$f"; }',
+            "_", name])
         refresh()
     }
 

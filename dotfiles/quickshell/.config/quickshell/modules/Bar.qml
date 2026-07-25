@@ -92,7 +92,6 @@ PanelWindow {
             }
             spacing: 8
 
-            CockpitChips {}
             Inbox {}
             Dnd {}
             Network {}
@@ -107,8 +106,10 @@ PanelWindow {
         // per-output: THIS screen's visible workspace, not the global focus —
         // the badge must not mirror onto the other monitor's bar
         const name = NiriState.activeWorkspaceName(bar.screen ? bar.screen.name : "")
-        if (name.startsWith("lovable-")) return name.substring("lovable-".length)
-        return name
+        if (name === "lovable") return name
+        if (!name.startsWith("lovable-")) return ""
+        if (name === "lovable-deps") return ""
+        return name.substring("lovable-".length)
     }
 
     // WPM pill — top-left corner, transparent, inverted (bg-colored) content.
@@ -362,6 +363,13 @@ PanelWindow {
                     font.hintingPreference: Font.PreferFullHinting
                     anchors.verticalCenter: parent.verticalCenter
                 }
+            }
+
+            // Active cockpit context — only meaningful on the cockpit
+            // workspace itself.
+            CockpitChips {
+                visible: bar.worktreeStack === "lovable" && activeCtx !== null
+                anchors.verticalCenter: parent.verticalCenter
             }
 
             // plan-ticket state for this worktree: phase icon + steps done
