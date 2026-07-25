@@ -10,40 +10,34 @@ Use `wt` (worktrunk) for all worktree operations instead of raw `git worktree` c
 - `wt step commit` to commit with LLM-generated message
 - `wt step copy-ignored` to copy gitignored files between worktrees
 
-## Niri workspace stacks (proart-only)
+## Cockpit contexts (proart-only)
 
-When the user asks for a new worktree on a niri-using machine, prefer
-`~/.config/niri/scripts/ws-createwt <name>` over raw `wt switch --create`.
-ws-createwt:
+The workspace-per-stack flow (ws-createwt, per-ticket niri workspaces) is
+RETIRED on proart. Everything lives on one `lovable` workspace — the
+cockpit: three fixed kitty windows (agent, nvim, devenv) plus the work
+browser, where each worktree is a *context* = one tab in each window.
 
-1. Creates the branch + worktree (`daphen/<name>` at
-   `~/work/lovable.daphen-<name>`).
-2. Spawns the standard 4-window stack on a `lovable-<name>` workspace:
-   devenv-wt terminal, work-profile browser at the preview URL, claude
-   session in the worktree, and an nvim/kitty.
+When the user asks for a new worktree on proart, use
+`~/.config/niri/scripts/cockpit-add <name>`. It creates the branch +
+worktree via wt (`daphen/<name>` off fresh origin/main, at
+`~/work/lovable.daphen-<name>`), opens one tab per cockpit window (claude
+resumes the newest non-empty session for that worktree, devenv boots the
+wt slice), registers the context for crash-restore, and switches to it.
+No workspace is claimed and no windows spawn, so no confirmation needed —
+but the cockpit windows must exist (`cockpit-open` is idempotent;
+`cockpit-restore` rebuilds everything after a crash).
 
-Naming has two distinct shapes — don't conflate them:
-
-- **Local short-name** (niri workspace, ws-* script arg, fish history,
-  QS pickers) drops the team prefix: `1234-fix-button-overflow`. The
-  prefix adds noise in pickers and we already know it's a Lovable
-  ticket. ws-createwt creates a niri workspace `lovable-1234-fix-button-overflow`.
-- **Git branch name** (committed, pushed, referenced in PRs) KEEPS the
-  team prefix because Linear's auto-link requires the full ticket ID
-  (e.g. `every-1234`, not just `1234`) somewhere in the branch name.
-  The branch becomes `daphen/every-1234-fix-button-overflow`.
-
-So for EVERY-1234 about "fix button overflow":
-- niri workspace / script name: `1234-fix-button-overflow`
+Naming: the context name IS the branch short-name and KEEPS the team
+prefix (Linear auto-link needs the full ticket id). For EVERY-1234 about
+"fix button overflow":
+- context name / worktree: `every-1234-fix-button-overflow`
 - git branch: `daphen/every-1234-fix-button-overflow`
+- `main` is a special context: the primary checkout, runs `devenv deps`.
 
-For closing: `~/.config/niri/scripts/ws-close-worktree <name>` tears
-down the session (closes windows, devenv kill, unnames the workspace)
-but KEEPS the on-disk worktree dir. To fully remove: `wt remove
-daphen/<name>`.
-
-Confirm with the user before invoking ws-createwt — it spawns 4 windows
-and claims a niri workspace.
+Switching: `cockpit-switch <name>` (users press Super+T). Closing: Ctrl+W
+in the picker closes the tabs and keeps the dir; `wt remove daphen/<name>`
+deletes it. The old ws-* scripts remain on disk but are unbound — don't
+reach for them unless the user explicitly asks.
 
 ## Lovable-on-Lovable sandboxes (proart-only)
 
