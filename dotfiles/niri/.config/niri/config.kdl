@@ -411,10 +411,10 @@ spawn-sh-at-startup "/home/daphen/.config/niri/scripts/ensure-chat-workspace"
 // so its window stays mapped + audio alive but is never shown.
 workspace "voice"
 
-// Always-on main workspace: deps singleton + main-context claude +
-// work browser at lovable.dev, all running from ~/work/lovable.
-// Idempotent — only spawns missing window types.
-spawn-sh-at-startup "/home/daphen/.config/niri/scripts/ws-startmain"
+// Rebuild the cockpit on login: windows + every registered context (agents
+// resume transcripts, devenv stacks reboot, nvim restores sessions).
+// Idempotent — replaces the old always-on lovable-main stack (ws-startmain).
+spawn-sh-at-startup "/home/daphen/.config/niri/scripts/cockpit-restore"
 
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
@@ -795,11 +795,9 @@ binds {
     Super+f hotkey-overlay-title="Toggle Command Palette" { spawn-sh "$HOME/.config/niri/scripts/palette-toggle"; }
     Super+Shift+m hotkey-overlay-title="Add Quickmark" { spawn "palette-ipc" "add-quickmark"; }
     Super+m hotkey-overlay-title="Mail" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:mlqs $HOME/.config/niri/scripts/launch-mail-client"; }
-    // Super+Ctrl+M: focus the lovable-main workspace (always-on
-    // home for deps + main-context claude + main browser). On first
-    // press of a session it'll spawn missing windows; subsequent
-    // presses just focus the workspace.
-    Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/ws-startmain"; }
+    // Super+Ctrl+M: rebuild/repair the cockpit (windows + registered
+    // contexts). Idempotent — replaces the old ws-startmain bind.
+    Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/cockpit-restore"; }
 
     // Lovable worktree shortcuts (T for tree):
     //   Super+T        — pick an OPEN worktree and focus it
