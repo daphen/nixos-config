@@ -24,10 +24,6 @@ local state = {
 	poller = nil,
 	poll_stamp = "",
 	file_watchers = {},
-	steps_buf = nil,
-	steps_win = nil,
-	steps_prev_win = nil,
-	steps_paths = {},
 	following = false, -- --go follow mode: open files as the agent touches them
 	follow_win = nil,
 	follow_cur = nil,
@@ -37,7 +33,7 @@ local state = {
 }
 
 -- Assigned lower down; forward-declared so earlier closures capture the upvalue.
-local arm_surface_watches, render_steps, follow_step, resolve_next_decision
+local arm_surface_watches, follow_step, resolve_next_decision
 
 local function git_root()
 	local out = vim.fn.systemlist({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })
@@ -91,7 +87,7 @@ end
 
 -- progress.json is the agent's live feed during --go/--reconcile: per-file status
 -- (pending|touched|done), an optional `note` (what it actually did / why skipped),
--- and the phase. Read alongside the plan; drives the statusline and the panel.
+-- and the phase. Read alongside the plan; drives the statusline and the menu.
 local function read_progress()
 	state.progress = nil
 	if not state.plan_path then return end
@@ -141,8 +137,8 @@ local function step_progress()
 end
 
 -- The single next action to take given the plan's state, as (label, keybind). Shown
--- in both the panel header and the lualine statusline so it's glanceable without
--- opening the panel. key is nil when there's nothing to press (mid-implement / done).
+-- in the lualine statusline so it is glanceable without
+-- opening the plan. key is nil when there is nothing to press (mid-implement / done).
 -- Reads cached state (state.dunres from read_status) — cheap enough for the statusline.
 local function next_step()
 	local p = state.progress or {}
@@ -167,22 +163,6 @@ local function next_step()
 	return nil, nil
 end
 
--- The keys worth showing right now — only the actions that do something in the current
--- phase, primary first, rather than the full 7-key list at all times. One short line.
-local function legend()
-	local p = state.progress or {}
-	if p.phase == "reconciled" then return "m amend" end
-	if p.phase == "implementing" then
-		local done, total = step_progress()
-		if total > 0 and done == total then return "r reconcile · m amend" end
-		return "m amend · r reconcile"
-	end
-	if (state.dunres or 0) > 0 then return "d resolve · a ask" end
-	local st = state.status
-	if st == "finalized" then return "g go · m amend · a ask" end
-	if st == "planned" or st == "amended" then return "f finalize · m amend · a ask" end
-	return "v approve · d resolve · a ask" -- draft, decisions resolved
-end
 
 -- lualine component: require("plan-nvim").statusline()
 function M.statusline()
@@ -244,10 +224,6 @@ local function refresh_from_artifacts()
 		state.following = false -- implementation done; stop following
 	end
 	state.last_phase = phase
-	if state.steps_buf and vim.api.nvim_buf_is_valid(state.steps_buf)
-		and state.steps_win and vim.api.nvim_win_is_valid(state.steps_win) then
-		render_steps(state.steps_buf)
-	end
 	pcall(function() require("plan-nvim.review").refresh() end)
 end
 
@@ -615,9 +591,9 @@ end
 -- Opened via win_call so it never steals focus from where you're working.
 local function pick_follow_win()
 	local cur = vim.api.nvim_get_current_win()
-	if cur ~= state.steps_win and vim.api.nvim_win_get_config(cur).relative == "" then return cur end
+	if vim.api.nvim_win_get_config(cur).relative == "" then return cur end
 	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-		if w ~= state.steps_win and vim.api.nvim_win_get_config(w).relative == "" then return w end
+		if vim.api.nvim_win_get_config(w).relative == "" then return w end
 	end
 	return nil
 end
@@ -657,104 +633,6 @@ follow_step = function()
 	end
 end
 
--- Pull the human-language scaffolding from the plan markdown: the ◆ flow steps (the
--- narrative of the work) and the surface-area "why" per file. Read from the file, not
--- the buffer — the panel can be opened from a code buffer, not just the plan.
-local function parse_plan()
-	local res = { flow = {}, flow_full = {}, why = {}, order = {}, flow_files = {}, flow_line = {},
-		verify = {}, dtotal = 0, dunres = 0, qtotal = 0, qans = 0 }
-	if not state.plan_path then return res end
-	local ok, lines = pcall(vim.fn.readfile, state.plan_path)
-	if not ok then return res end
-	local in_flow, in_sa, in_verify, cur, cur_file, step, cur_line = false, false, false, nil, nil, 0, 0
-	local function flush()
-		if not cur then return end
-		step = step + 1
-		-- the files a step names via its _(files: `x`)_ tag, by basename — drives both
-		-- flow-order sorting and the per-step status glyph in the panel
-		local files = cur:match("_%(files:([^)]*)%)")
-		local bases = {}
-		if files then
-			for fn in files:gmatch("`([^`]+)`") do
-				local base = fn:match("([^/]+%.%w+)$")
-				if base then
-					bases[#bases + 1] = base
-					if not res.order[base] then res.order[base] = step end
-				end
-			end
-		end
-		if cur:find("◆") then
-			local s = cur:gsub("%*%*", ""):gsub("^%s*%d+%.%s*", "")
-			-- full step text (everything after ◆, minus the trailing _(files: …)_ tag)
-			local full = (s:match("◆%s*(.+)") or ""):gsub("%s*_%(files:.*$", ""):gsub("%s+$", "")
-			local title = s:match("◆%s*(.-)%s*—") or s:match("◆%s*(.-)%s*_%(files") or s:match("◆%s*(.+)")
-			if title then
-				title = title:gsub("%s+$", "")
-				if #title > 100 then -- break on a space so we never split a word or multibyte glyph
-					title = (title:sub(1, 100):match("^(.*)%s%S*$") or title:sub(1, 99)) .. "…"
-				end
-				table.insert(res.flow, title)
-				res.flow_full[#res.flow] = full
-				res.flow_files[#res.flow] = bases
-				res.flow_line[#res.flow] = cur_line
-			end
-		end
-		cur = nil
-	end
-	for ln, l in ipairs(lines) do
-		if l:match("^## ") then
-			if in_flow then flush() end
-			in_flow = l:match("^##%s+The flow") ~= nil
-			in_sa = l:match("^##%s+Surface area") ~= nil
-			in_verify = l:match("^##%s+Verification") ~= nil
-			cur_file = nil
-		elseif in_verify then
-			-- collect Verification bullets (fallback list before --reconcile writes results)
-			if l:match("^%s*%-") then
-				res.verify[#res.verify + 1] = vim.trim((l:gsub("^%s*%-%s*", ""):gsub("%*%*", "")))
-			elseif l:match("%S") and #res.verify > 0 then
-				res.verify[#res.verify] = res.verify[#res.verify] .. " " .. vim.trim((l:gsub("%*%*", "")))
-			end
-		elseif in_flow then
-			if l:match("^%s*%d+%.") then
-				flush()
-				cur = l
-				cur_line = ln
-			elseif cur and l:match("%S") then
-				cur = cur .. " " .. l:gsub("^%s+", "")
-			end
-		elseif in_sa then
-			-- "- **action** `path`" starts an item; the indented lines under it are its why
-			local path = l:match("^%s*%-%s*%*%*%w+%*%*%s*`([^`]+)`")
-			if path then
-				cur_file = path
-				res.why[path] = ""
-			elseif cur_file and l:match("^%s+%S") then
-				local t = vim.trim(l)
-				res.why[cur_file] = (res.why[cur_file] == "") and t or (res.why[cur_file] .. " " .. t)
-			elseif not l:match("%S") then
-				cur_file = nil -- blank line ends the current item's why
-			end
-		end
-		-- legacy table format ("| file | action | why |"), so older plans still parse
-		if l:match("^%s*|") then
-			local cells = vim.split(l, "|")
-			if #cells >= 4 then
-				local file = (vim.trim(cells[2]):gsub("`", ""))
-				if (file:match("/") or file:match("%.%w+$")) and file ~= "File" then
-					res.why[file] = vim.trim(cells[4])
-				end
-			end
-		end
-		-- decision + question tallies for the panel header
-		if l:match("^### D") then res.dtotal = res.dtotal + 1 end
-		if l:match("%*%*Your call:%*%*") and l:match("_%(unresolved%)_") then res.dunres = res.dunres + 1 end
-		if l:match("^>%s*❓") then res.qtotal = res.qtotal + 1 end
-		if l:match("^>%s*💬") then res.qans = res.qans + 1 end
-	end
-	if in_flow then flush() end
-	return res
-end
 
 -- Hard-wrap to `width` columns on word boundaries (never mid-word): the first line
 -- gets `lead`, continuation lines `indent`, so wrapped text hangs under lead's text.
@@ -839,196 +717,6 @@ local function set_action_hl()
 	vim.api.nvim_set_hl(0, "PlanActionDrift", { fg = pal.red or "#FF7B72" })
 end
 
--- ○ pending · ◐ touched · ● done · – deliberately skipped (pending but with a note
--- explaining no change was needed) · ⚠ unplanned. Full text per item, hard-wrapped
--- with a hanging indent. Extmarks carry the hierarchy — bold headers, dim details,
--- status-colored glyphs — instead of markdown syntax highlighting.
-render_steps = function(buf)
-	local p = state.progress or {}
-	local plan = parse_plan()
-	local width = state.steps_width or 88
-	state.steps_paths, state.steps_flow, state.steps_stepidx, state.steps_firstline = {}, {}, {}, {}
-
-	local sdone, stotal, _, saxis = step_progress()
-	local skipped = 0
-	if saxis == "files" then
-		for _, f in ipairs(p.planned or {}) do
-			if f.status ~= "done" and f.status ~= "touched" and f.note and f.note ~= "" then
-				skipped = skipped + 1
-			end
-		end
-	end
-
-	local lines, hls = {}, {}
-	local function add(text)
-		table.insert(lines, text)
-		return #lines - 1 -- 0-based line index for extmarks
-	end
-	local function hl(line0, c0, c1, group) table.insert(hls, { line0, c0, c1, group }) end
-	local function detail_lines(text)
-		for _, dl in ipairs(wrap(text, "            ", "            ", width)) do
-			hl(add(dl), 0, -1, "Comment")
-		end
-	end
-
-	add("") -- top padding
-	hl(add(string.format("  %s · %s · %d/%d %s%s", p.ticket or "plan", p.phase or "?", sdone, stotal,
-		saxis == "steps" and "steps" or "files",
-		skipped > 0 and string.format(" · %d skipped", skipped) or "")), 0, -1, "Title")
-	-- what's-left + decision/question tallies, then the action-key legend — so the
-	-- one panel both shows where the plan stands and drives every step.
-	-- next-action hint shares next_step() with the statusline; sync the freshly-parsed
-	-- decision count so both agree (parse_plan is authoritative here).
-	state.dunres = plan.dunres
-	local hint, key = next_step()
-	local hinttxt = hint and ("  ·  → " .. (key and (key .. " ") or "") .. hint) or ""
-	hl(add(string.format("  %d/%d decisions · %d/%d questions%s",
-		plan.dtotal - plan.dunres, plan.dtotal, plan.qans, plan.qtotal, hinttxt)), 0, -1, "Comment")
-	-- only the keys relevant to the current phase (primary first), one line — not the
-	-- full 7-key list, most of which does nothing in any given phase
-	hl(add("  " .. legend()), 0, -1, "Comment")
-	add("")
-	if #plan.flow > 0 then
-		-- Per-step status. First-class when progress.flow[] tracks it: ● done · ◐ active
-		-- · ○ pending, indexed to the ◆ steps. Else fall back to rolling up the files
-		-- each step names (● all done · ◐ partial · ○ none · ◆ no tracked files) for
-		-- plans written before step tracking.
-		local pflow = type(p.flow) == "table" and #p.flow > 0 and p.flow or nil
-		local sb = {}
-		if not pflow then
-			for _, f in ipairs(p.planned or {}) do
-				local base = f.file:match("([^/]+)$")
-				if base then
-					sb[base] = {
-						done = f.status == "done" or (f.status ~= "touched" and f.note and f.note ~= ""),
-						active = f.status == "touched",
-					}
-				end
-			end
-		end
-		local function step_mark(i, files)
-			if pflow then
-				local st_ = pflow[i] and pflow[i].status
-				if st_ == "done" then return "●", "PlanActionCreate" end
-				if st_ == "active" then return "◐", "PlanActionTouch" end
-				return "○", "Comment"
-			end
-			local tot, dn, act = 0, 0, false
-			for _, base in ipairs(files or {}) do
-				local s = sb[base]
-				if s then
-					tot = tot + 1
-					if s.done then dn = dn + 1 elseif s.active then act = true end
-				end
-			end
-			if tot == 0 then return "◆", "Special" end
-			if dn == tot then return "●", "PlanActionCreate" end
-			if act or dn > 0 then return "◐", "PlanActionTouch" end
-			return "○", "Comment"
-		end
-		hl(add("  THE WORK"), 0, -1, "Title")
-		for i, s in ipairs(plan.flow) do
-			local g, grp = step_mark(i, plan.flow_files[i])
-			-- the step under the cursor grows to its full text; the rest stay truncated
-			local text = (state.steps_expand == i and plan.flow_full[i]) or s
-			for j, dl in ipairs(wrap(text, "   " .. g .. " ", "     ", width)) do
-				local li = add(dl)
-				if j == 1 then hl(li, 3, 3 + #g, grp); state.steps_firstline[i] = li + 1 end
-				state.steps_flow[li + 1] = plan.flow_line[i] -- panel line → plan line (jump on <CR>)
-				state.steps_stepidx[li + 1] = i -- panel line → step index (cursor expand)
-			end
-		end
-		add("")
-	end
-
-	hl(add("  FILES"), 0, -1, "Title")
-	-- One colored action icon per file (no status bullet — the icon is enough);
-	-- create/modify/touch carry their theme color, files shown in plan order.
-	local first = true
-	local function emit(icon, igroup, file, detail)
-		if not first then add("") end -- blank line between items
-		first = false
-		local li = add("   " .. icon .. " " .. file)
-		hl(li, 3, 3 + #icon, igroup)
-		state.steps_paths[li + 1] = file -- cursor line is 1-based
-		if detail and detail ~= "" then detail_lines(detail) end
-	end
-	-- Order files by where their step appears in the flow, so the panel reads top-to-
-	-- bottom in execution order; files no step names fall to the end in plan order.
-	local ordered = {}
-	for i, f in ipairs(p.planned or {}) do
-		local base = f.file:match("([^/]+)$")
-		ordered[i] = { f = f, i = i, pos = (base and plan.order[base]) or math.huge }
-	end
-	table.sort(ordered, function(a, b)
-		if a.pos ~= b.pos then return a.pos < b.pos end
-		return a.i < b.i
-	end)
-	for _, o in ipairs(ordered) do
-		local f = o.f
-		local detail = (f.note and f.note ~= "") and f.note or plan.why[f.file]
-		emit(action_icon(f.action), action_hl(f.action), f.file, detail)
-	end
-	for _, f in ipairs(p.unplanned or {}) do
-		emit(vim.fn.nr2char(0xf071), "PlanActionDrift", f.file, f.why) -- ⚠ outside the plan
-	end
-	add("")
-	hl(add(string.format("  %s new · %s modify · %s touch",
-		action_icon("create"), action_icon("modify"), action_icon("touch"))), 0, -1, "Comment")
-
-	-- VERIFY: the test checklist (T1…Tx). From review.json (pass/fail/pending) after
-	-- --reconcile, else the plan's Verification bullets (all pending). ○ items are the
-	-- steps still to run; the agent flips them to ✓/✗ as they're checked.
-	-- AT# = automated (has a runnable command, agent checks it) · MT# = manual (a
-	-- behavior you verify by hand). The command field decides which.
-	local review = read_review()
-	local vitems = {}
-	if review and type(review.verification) == "table" then
-		for _, v in ipairs(review.verification) do
-			vitems[#vitems + 1] = { text = v.check or "", result = v.result,
-				auto = v.command ~= nil and v.command ~= false and v.command ~= "" }
-		end
-	else
-		for _, t in ipairs(plan.verify) do
-			vitems[#vitems + 1] = { text = t, result = "pending", auto = not t:lower():find("manual") }
-		end
-	end
-	if #vitems > 0 then
-		add("")
-		local mtot, mdone = 0, 0
-		for _, v in ipairs(vitems) do
-			if not v.auto then mtot = mtot + 1; if v.result == "pass" then mdone = mdone + 1 end end
-		end
-		hl(add(string.format("  VERIFY  ·  %d/%d manual checked", mdone, mtot)), 0, -1, "Title")
-		local firstv, atn, mtn = true, 0, 0
-		for _, v in ipairs(vitems) do
-			if not firstv then add("") end
-			firstv = false
-			local g, grp
-			if v.result == "pass" then g, grp = "✓", "PlanActionCreate"
-			elseif v.result == "fail" then g, grp = "✗", "PlanActionDrift"
-			else g, grp = "○", "Comment" end
-			local label
-			if v.auto then atn = atn + 1; label = "AT" .. atn else mtn = mtn + 1; label = "MT" .. mtn end
-			for j, dl in ipairs(wrap(v.text, string.format("   %s %s ", g, label), "         ", width)) do
-				local li = add(dl)
-				if j == 1 then hl(li, 3, 3 + #g, grp) end
-			end
-		end
-	end
-
-	add("")
-	hl(add("  ⏎ open · p plan · q close"), 0, -1, "Comment")
-	add("") -- bottom padding
-
-	vim.bo[buf].modifiable = true
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-	vim.bo[buf].modifiable = false
-	vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-	for _, m in ipairs(hls) do
-		pcall(vim.api.nvim_buf_add_highlight, buf, ns, m[4], m[1], m[2], m[3])
-	end
-end
 
 -- The artifact key for a worktree's plan, from its branch: a Linear branch (carries a
 -- ticket number) keys as `EVERY-<num>`; an ad-hoc branch (`daphen/refactor-foo`) keys
@@ -1064,139 +752,6 @@ local function resolve_plan_path()
 	return nil
 end
 
--- Read panel for implementation progress: the ◆ work, then every surface-area file
--- with its live status + the agent's note (or the plan's why). <CR> opens the file
--- under the cursor in the window the panel was opened from (panel keeps focus, so you
--- can keep jumping). Refreshes live while open as the agent ticks progress.json.
--- The command center is a right-side split (live sidebar). `focus` grabs it so you
--- can press the action keys immediately; without it the split opens beside your work
--- without stealing focus (used by --go, which follows the code in the main window).
--- A second call toggles it closed.
-function M.steps(focus)
-	if state.steps_win and vim.api.nvim_win_is_valid(state.steps_win) then
-		vim.api.nvim_win_close(state.steps_win, true)
-		state.steps_buf, state.steps_win = nil, nil
-		return
-	end
-	if not resolve_plan_path() then
-		vim.notify("plan: no plan found for this repo", vim.log.levels.INFO)
-		return
-	end
-	read_progress()
-	if not state.progress then
-		vim.notify("plan: plan found but no progress.json yet", vim.log.levels.INFO)
-		return
-	end
-	state.steps_prev_win = vim.api.nvim_get_current_win()
-	state.steps_expand = nil -- start collapsed; the cursor expands a step
-	local buf = vim.api.nvim_create_buf(false, true)
-	vim.bo[buf].bufhidden = "wipe"
-	local width = math.max(48, math.min(72, math.floor(vim.o.columns * 0.42)))
-	state.steps_width = width - 3
-	render_steps(buf)
-	vim.cmd("botright vsplit")
-	local win = vim.api.nvim_get_current_win()
-	vim.api.nvim_win_set_buf(win, buf)
-	vim.api.nvim_win_set_width(win, width)
-	vim.wo[win].number = false
-	vim.wo[win].relativenumber = false
-	vim.wo[win].signcolumn = "no"
-	vim.wo[win].winfixwidth = true
-	vim.wo[win].wrap = false
-	vim.wo[win].cursorline = true
-	state.steps_buf, state.steps_win = buf, win
-	if not focus then vim.api.nvim_set_current_win(state.steps_prev_win) end
-	local function close()
-		if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
-		state.steps_buf, state.steps_win = nil, nil
-	end
-	-- run an action. By default: close the panel and drop back to a normal window (so
-	-- composes/edits and --go's follow window land somewhere sane), open the plan first
-	-- if the action needs it, then run. keep=true leaves the panel open — for pure
-	-- dispatches (finalize/reconcile) that just wt-send to the claude TUI in another
-	-- window, so you keep watching the plan update live.
-	local function act(fn, open_plan, keep)
-		if not keep then
-			close()
-			local w = state.steps_prev_win
-			if w and vim.api.nvim_win_is_valid(w) then vim.api.nvim_set_current_win(w) end
-		end
-		if open_plan and state.plan_path and vim.api.nvim_buf_get_name(0) ~= state.plan_path then
-			pcall(vim.cmd, "edit " .. vim.fn.fnameescape(state.plan_path))
-		end
-		fn()
-	end
-	local o = { buffer = buf, nowait = true, silent = true }
-	vim.keymap.set("n", "q", close, o)
-	vim.keymap.set("n", "<Esc>", close, o)
-	vim.keymap.set("n", "a", function() act(M.ask, true) end, o)
-	-- resolve decisions WITHOUT tearing down the panel: focus the plan in the left
-	-- window (panel stays on the right), then chain through every unresolved decision.
-	-- The panel re-renders live as each is written.
-	vim.keymap.set("n", "d", function()
-		if not state.plan_path then return end
-		local w = state.steps_prev_win
-		if w and vim.api.nvim_win_is_valid(w) then
-			vim.api.nvim_set_current_win(w)
-			if vim.api.nvim_buf_get_name(0) ~= state.plan_path then
-				pcall(vim.cmd, "edit " .. vim.fn.fnameescape(state.plan_path))
-			end
-		else
-			pcall(vim.cmd, "aboveleft vsplit " .. vim.fn.fnameescape(state.plan_path))
-		end
-		resolve_next_decision()
-	end, o)
-	vim.keymap.set("n", "v", function() act(M.approve, true) end, o)
-	vim.keymap.set("n", "f", function() act(M.finalize, false, true) end, o)
-	vim.keymap.set("n", "g", function() act(M.go, false) end, o)
-	vim.keymap.set("n", "m", function() act(M.amend, true) end, o)
-	vim.keymap.set("n", "r", function() act(M.reconcile, false, true) end, o)
-	vim.keymap.set("n", "p", function() act(function() end, true) end, o)
-	vim.keymap.set("n", "<CR>", function()
-		local ln = vim.api.nvim_win_get_cursor(win)[1]
-		local rel = state.steps_paths[ln]
-		if not rel then
-			-- not a file row → open the plan; on a work step, jump to it (full text there)
-			local jump = state.steps_flow and state.steps_flow[ln]
-			close()
-			if state.plan_path then
-				vim.cmd("edit " .. vim.fn.fnameescape(state.plan_path))
-				if jump then
-					pcall(vim.api.nvim_win_set_cursor, 0, { jump, 0 })
-					vim.cmd("normal! zz")
-				end
-			end
-			return
-		end
-		local root = state.root or git_root() or vim.fn.getcwd()
-		local abs = rel:match("^/") and rel or (root .. "/" .. rel)
-		if state.steps_prev_win and vim.api.nvim_win_is_valid(state.steps_prev_win) then
-			vim.api.nvim_win_call(state.steps_prev_win, function()
-				vim.cmd("edit " .. vim.fn.fnameescape(abs))
-			end)
-		else
-			close()
-			vim.cmd("edit " .. vim.fn.fnameescape(abs))
-		end
-	end, o)
-	-- accordion: expand the work step under the cursor to its full text, collapse the
-	-- rest. Re-renders on move; the cursor is pinned to the expanded step's first line
-	-- (which maps back to the same step, so the re-render doesn't loop).
-	vim.api.nvim_create_autocmd("CursorMoved", {
-		buffer = buf,
-		callback = function()
-			if not (state.steps_win and vim.api.nvim_win_is_valid(state.steps_win)) then return end
-			local idx = state.steps_stepidx[vim.api.nvim_win_get_cursor(state.steps_win)[1]]
-			if idx ~= state.steps_expand then
-				state.steps_expand = idx
-				render_steps(buf)
-				if idx and state.steps_firstline[idx] then
-					pcall(vim.api.nvim_win_set_cursor, state.steps_win, { state.steps_firstline[idx], 0 })
-				end
-			end
-		end,
-	})
-end
 
 -- Dispatch /plan-ticket --go to the repo's claude. Confirms first — this one writes
 -- code. cwd is moved to the repo root so progress paths resolve and the surface-area
@@ -1221,8 +776,6 @@ function M.go()
 	state.follow_cur = nil
 	state.follow_seen = {}
 	for _, f in ipairs((state.progress or {}).planned or {}) do state.follow_seen[f.file] = f.status end
-	-- open the live progress sidebar alongside (follow shows code, sidebar shows the list)
-	if not (state.steps_win and vim.api.nvim_win_is_valid(state.steps_win)) then M.steps(false) end
 	if dispatch("/plan-ticket --go " .. ticket) then
 		vim.notify("plan: dispatched --go — implementing (this window follows the agent)", vim.log.levels.WARN)
 	end
@@ -1261,7 +814,7 @@ end
 
 -- <C-p>: the plan menu — ordered lifecycle picker. Each step shows its state
 -- (✓ done · → next · locked with the reason), so --go can't be run before
--- --finalize by accident. The old board/panel stays reachable as an entry.
+-- --finalize by accident. This picker is the plugin's ONE interface.
 function M.menu()
 	if not resolve_plan_path() then
 		vim.notify("plan: no plan found for this repo", vim.log.levels.INFO)
@@ -1334,7 +887,6 @@ function M.menu()
 				vim.fn.jobstart({ "python3", vim.fn.expand("~/.claude/skills/plan-ticket/plan-view.py"), key, "--open" }, { detach = true })
 			end,
 		},
-		{ label = "Progress board (panel)", run = function() M.steps(true) end },
 	}
 
 	local labels = {}
@@ -1517,12 +1069,9 @@ function M.setup()
 		end
 		vim.notify("plan: follow mode " .. (state.following and "on (this window)" or "off"))
 	end, {})
-	vim.api.nvim_create_user_command("PlanSteps", function() M.steps(true) end, {})
-	vim.api.nvim_create_user_command("PlanPanel", function() M.steps(true) end, {})
 
-	-- Bare <C-p> opens the progress panel from any ordinary buffer (e.g. while
-	-- reading the code the agent is touching). Plan buffers shadow this with their
-	-- own <C-p> prefix, so the panel there is <C-p>s.
+	-- Bare <C-p> opens the plan menu from any ordinary buffer (e.g. while
+	-- reading the code the agent is touching).
 	vim.keymap.set("n", "<C-p>", function() M.menu() end, { desc = "plan: menu" })
 
 	-- Buffer-local maps only inside a plan file, so they never clobber normal
