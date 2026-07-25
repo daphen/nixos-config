@@ -799,21 +799,15 @@ binds {
     // contexts). Idempotent — replaces the old ws-startmain bind.
     Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/cockpit-restore"; }
 
-    // Lovable worktree shortcuts (T for tree):
-    //   Super+T        — pick an OPEN worktree and focus it
-    //   Super+Shift+T  — create a NEW worktree (rofi name prompt)
-    //   Super+Ctrl+T   — start an EXISTING worktree from disk (fzf picker)
-    Super+t       { spawn "qs" "ipc" "call" "worktrees" "toggle"; }
-    Super+Shift+t { spawn "qs" "ipc" "call" "worktree-create" "toggle"; }
-    Super+Ctrl+t  { spawn-sh "$HOME/.config/niri/scripts/rofi-ws-startwt"; }
+    // Super+T — cockpit context picker (Enter switch, Ctrl+N new, Ctrl+W close).
+    // The workspace-per-stack flow is disconnected (scripts kept on disk);
+    // its old binds are below, commented, if it ever needs reviving:
+    //   Super+t       { spawn "qs" "ipc" "call" "worktrees" "toggle"; }
+    //   Super+Shift+t { spawn "qs" "ipc" "call" "worktree-create" "toggle"; }
+    //   Super+Ctrl+t  { spawn-sh "$HOME/.config/niri/scripts/rofi-ws-startwt"; }
+    //   Super+o       { spawn-sh "$HOME/.config/niri/scripts/ws-toggle-worktree"; }
+    Super+t hotkey-overlay-title="Cockpit contexts" { spawn "qs" "ipc" "call" "cockpit" "toggle"; }
     Super+Ctrl+Shift+t { spawn "qs" "ipc" "call" "todos" "toggle"; }  // permanent quick-todo list
-
-    // Super+Shift+C — cockpit context switcher. Additive: the Super+T worktree
-    // binds above keep driving the workspace-per-stack flow untouched.
-    Super+Shift+c hotkey-overlay-title="Cockpit contexts" { spawn "qs" "ipc" "call" "cockpit" "toggle"; }
-
-    // Super+O: toggle to the previously visited worktree (vim ctrl-o style).
-    Super+o       { spawn-sh "$HOME/.config/niri/scripts/ws-toggle-worktree"; }
 
     // Super+B: jump to an already-running lovbox workspace.
     // Sandbox-from-history picking lives in the unified Super+Ctrl+T picker
