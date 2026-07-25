@@ -34,3 +34,6 @@ Thumbs.db
 # Local testing
 test-vm/
 secrets.nix
+
+# codex-managed system skills, dropped into the symlinked skills dir
+dotfiles/ai/skills/.system/
