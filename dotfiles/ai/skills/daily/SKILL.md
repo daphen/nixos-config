@@ -59,10 +59,23 @@ admin lock), or connect the Superhuman MCP. If a Gmail read path is working,
 query `in:inbox is:unread newer_than:1d`, filter to genuinely important
 overnight threads, and add them to `missed` with `source: "Gmail · <inbox>"`.
 
+## Step 4.5 — Claude spend (yesterday + month-to-date)
+
+The new-tab card can't read local transcripts, so bake the spend in here.
+Run the bar's cost estimator (prints a float, USD):
+
+```bash
+y=$(~/.config/quickshell/scripts/claude-spend yesterday)
+m=$(~/.config/quickshell/scripts/claude-spend month)
+```
+
+Include as `spend: { yesterday: <y>, month: <m> }` in the payload (numbers,
+not strings). Omit the field entirely if the script isn't present / errors.
+
 ## Step 5 — assemble + push
 
 Build the `DailyPayload` (shape in `synced/src/app/api/daily/route.ts`):
-`{ date: "YYYY-MM-DD", generatedAt: ISO, meetings[], standup{y,t}, missed[], notes? }`.
+`{ date, generatedAt, meetings[], standup{y,t}, missed[], spend?{yesterday,month}, notes? }`.
 POST to `https://synced-wine.vercel.app/api/daily`. Auth is a bearer token =
 `AUTH_PASSWORD` from `~/personal/synced/.env` (quote-wrapped — strip the
 quotes; NEVER echo the value):
