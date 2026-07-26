@@ -77,16 +77,19 @@ _resume_flag() {
 
 cockpit_window_cmd() {
     local window=$1 name=$2 dir=$3 claim
-    # LoL context: agent tab drives the production Lovable agent via lovc
-    # (ship-tickets-via-agent), nvim/devenv lovssh into the SAME sandbox for
-    # hands-on monorepo editing. Both point at one project/one sandbox.
+    # LoL context: windows keep their local meaning. Agent window = a coding
+    # agent (here: SSH into the sandbox, run claude), nvim window = editor
+    # (SSH, run nvim) — both lovssh into the SAME sandbox for hands-on
+    # monorepo work. Devenv window = the build driver, which for LoL is the
+    # production Lovable agent via lovc. One project, one sandbox.
     local pid
     if pid=$(_lol_project "$name"); then
         claim=$(_lovbox_claim "$name")
         case "$window" in
-            agent)  printf 'fish -c "lovc chat %s"; exec fish' "$pid" ;;
-            nvim)   printf 'fish -c "echo \\"[cockpit] after landing: nvim ~/lovable\\"; lovssh %s"; exec fish' "$claim" ;;
-            *)      printf 'fish -c "echo \\"[cockpit] remote shell (~/lovable)\\"; lovssh %s"; exec fish' "$claim" ;;
+            agent)  printf 'fish -c "echo \\"[cockpit] after landing: claude (~/lovable)\\"; lovssh %s"; exec fish' "$claim" ;;
+            nvim)   printf 'fish -c "echo \\"[cockpit] after landing: nvim (~/lovable)\\"; lovssh %s"; exec fish' "$claim" ;;
+            devenv) printf 'fish -c "lovc chat %s"; exec fish' "$pid" ;;
+            *)      printf 'fish -c "lovssh %s"; exec fish' "$claim" ;;
         esac
         return 0
     fi
