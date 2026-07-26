@@ -14,8 +14,8 @@ Picker {
     enterLabel: "switch"
     altLabel: "Ctrl+Enter: open plan · Ctrl+W: close context"
     emptyText: "no contexts — type a name + enter to create one"
-    subtitleField: "subtitle"
-    subtitleColorField: "subtitleColor"
+    trailingField: "trailing"
+    trailingColorField: "trailingColor"
     ctrlEnterAlt: true
 
     // The state glyph owns the row's left slot, so "current" reads as a badge —
@@ -34,12 +34,12 @@ Picker {
         return cur.concat(rest).map(c => ({
             name: c.name,
             label: c.name,
-            subtitle: c.plan
-                ? "plan: " + c.plan + (c.steps ? "  ·  " + c.steps + " steps" : "")
+            trailing: c.plan
+                ? c.plan + (c.steps ? "  ·  " + c.steps : "")
                 : "",
-            // Lifecycle at a glance: authoring = blue-ish, running = green,
-            // done = muted.
-            subtitleColor: c.plan === "implementing" ? Theme.green
+            // Lifecycle at a glance: authoring = yellow, ready = sky,
+            // running = green, done = muted.
+            trailingColor: c.plan === "implementing" ? Theme.green
                          : c.plan === "draft" ? Theme.yellow
                          : c.plan === "planned" ? Theme.sky
                          : Theme.fg_muted,

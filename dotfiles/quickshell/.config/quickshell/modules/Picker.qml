@@ -20,6 +20,11 @@ PanelWindow {
     // Opt-in per-item subtitle color (item[subtitleColorField] = a color);
     // rows without it keep fg_muted.
     property string subtitleColorField: ""
+    // Opt-in right-aligned trailing text on the row (keeps rows flat, unlike
+    // subtitle which adds a second line). trailingColorField mirrors
+    // subtitleColorField.
+    property string trailingField: ""
+    property string trailingColorField: ""
     // Opt-in computed subtitle: a function of the item, re-evaluated whenever
     // anything it reads changes (QML tracks reads through calls) — so live
     // text like a ticking countdown never has to churn the items array.
@@ -608,6 +613,22 @@ PanelWindow {
                         opacity: 0.7
                         font.family: notch.sans
                         font.pixelSize: 11
+                    }
+
+                    Text {
+                        visible: !rowItem.isDivider && root.trailingField.length > 0
+                            && rowItem.modelData
+                            && String(rowItem.modelData[root.trailingField] || "").length > 0
+                        anchors.right: parent.right
+                        anchors.rightMargin: 28
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: rowItem.modelData ? String(rowItem.modelData[root.trailingField] || "") : ""
+                        color: (root.trailingColorField && rowItem.modelData
+                                && rowItem.modelData[root.trailingColorField])
+                             ? rowItem.modelData[root.trailingColorField]
+                             : Theme.fg_muted
+                        font.family: notch.sans
+                        font.pixelSize: 12
                     }
 
                     Image {
