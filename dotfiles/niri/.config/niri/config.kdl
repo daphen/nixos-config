@@ -774,11 +774,11 @@ binds {
     Super+Shift+g { spawn-sh "$HOME/.config/niri/scripts/spawn-new-claude-session"; }
     Super+Shift+f { spawn-sh "$HOME/.config/niri/scripts/fork-claude-session"; }
     Super+r hotkey-overlay-title="Create PR review" { spawn "qs" "ipc" "call" "review-create" "toggle"; }
-    // Super+G / Super+D — focus the cockpit's agent (claude) / devenv window.
-    // (Old ws-focus flow retired; these drive the cockpit now. nvim is a
-    // plain tiled window — reach it with Super+H/L.)
+    // Super+G — jump to the cockpit's agent (claude) window.
+    // Super+D — cycle through every kitty window (plain + cockpit agent/nvim/
+    // devenv), the general terminal-cycle role.
     Super+g { spawn-sh "$HOME/.config/niri/scripts/cockpit-focus agent"; }
-    Super+d { spawn-sh "$HOME/.config/niri/scripts/cockpit-focus devenv"; }
+    Super+d { spawn-sh "$HOME/.config/niri/scripts/focus-kitty-cycle"; }
     Super+Shift+d { spawn-sh "SHOW_FASTFETCH=1 kitty"; }
     Super+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:slqs $HOME/.config/niri/scripts/launch-slack-client"; }
     Super+Shift+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }

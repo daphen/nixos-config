@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# focus-kitty-cycle — cycle focus through every kitty window (plain kitty +
+# the cockpit's cockpit-agent/-nvim/-devenv). If a kitty is already focused,
+# advance to the next in stable id order (wrap); else jump to the lowest-id
+# one. Deterministic walk, not most-recent bounce.
+set -euo pipefail
+
+niri msg --json windows | python3 -c '
+import json, subprocess, sys
+ws = json.load(sys.stdin)
+def is_kitty(w):
+    a = w.get("app_id") or ""
+    return a == "kitty" or a.startswith("cockpit-")
+kitties = sorted((w for w in ws if is_kitty(w)), key=lambda w: w["id"])
+if not kitties:
+    sys.exit(0)
+focused = next((w["id"] for w in ws if w.get("is_focused")), None)
+ids = [w["id"] for w in kitties]
+if focused in ids:
+    nxt = ids[(ids.index(focused) + 1) % len(ids)]
+else:
+    nxt = ids[0]
+subprocess.run(["niri", "msg", "action", "focus-window", "--id", str(nxt)])
+'
