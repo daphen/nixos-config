@@ -12,10 +12,23 @@ COCKPIT_STATE_DIR="$HOME/.local/state/cockpit"
 
 _repo="$HOME/work/lovable"
 
+# Lovbox contexts: a context whose tabs live in a REMOTE sandbox (via
+# lovssh) instead of a local worktree. names.json (ws-createlovbox /
+# lov-name) maps claim → human label; label == context name marks it.
+# A local worktree of the same name wins — remote is the fallback shape.
+_lovbox_claim() {
+    [ -d "$HOME/work/lovable.daphen-$1" ] && return 0
+    jq -r --arg n "$1" 'to_entries[] | select(.value == $n) | .key' \
+        "$HOME/.local/state/lovssh/names.json" 2>/dev/null | tail -1
+}
+
 cockpit_context_dir() {
+    local claim
     # "main" is the primary checkout, not a worktree.
     if [ "$1" = main ]; then
         printf '%s/work/lovable' "$HOME"
+    elif claim=$(_lovbox_claim "$1") && [ -n "$claim" ]; then
+        printf '%s' "$HOME"   # tabs are remote; cwd is irrelevant
     else
         printf '%s/work/lovable.daphen-%s' "$HOME" "$1"
     fi
@@ -23,6 +36,8 @@ cockpit_context_dir() {
 
 cockpit_context_create() {
     local dir
+    # Lovbox contexts are provisioned by cockpit-add-lovbox, never wt.
+    [ -n "$(_lovbox_claim "$1")" ] && return 0
     dir=$(cockpit_context_dir "$1")
     if [ ! -d "$dir" ]; then
         # Off fresh origin/main, never the local ref — a stale main births
@@ -50,7 +65,19 @@ _resume_flag() {
 }
 
 cockpit_window_cmd() {
-    local window=$1 name=$2 dir=$3
+    local window=$1 name=$2 dir=$3 claim
+    # Lovbox context: every tab lands in the sandbox via lovssh (a fish
+    # function; it execs the remote dev-env, so claude/nvim are typed after
+    # landing — lovssh can't chain a remote command). Drop to local fish on
+    # disconnect so the tab survives for a reconnect.
+    if claim=$(_lovbox_claim "$name") && [ -n "$claim" ]; then
+        case "$window" in
+            agent)  printf 'fish -c "echo \\"[cockpit] after landing: claude\\"; lovssh %s"; exec fish' "$claim" ;;
+            nvim)   printf 'fish -c "echo \\"[cockpit] after landing: nvim\\"; lovssh %s"; exec fish' "$claim" ;;
+            *)      printf 'fish -c "echo \\"[cockpit] remote shell\\"; lovssh %s"; exec fish' "$claim" ;;
+        esac
+        return 0
+    fi
     case "$window" in
         # FORCE_SESSION_PERSISTENCE: launched from inside a claude session the
         # child inherits CLAUDE_CODE_CHILD_SESSION and silently stops saving
@@ -120,6 +147,12 @@ cockpit_context_states() {
         [ -n "$t" ] || continue
         dir=$(cockpit_context_dir "$t")
         [ -d "$dir" ] || continue
+        # Remote (lovbox) context: transcripts + plans live in the sandbox —
+        # no local signal to read. Honest idle beats a wrong glyph.
+        if [ "$dir" = "$HOME" ]; then
+            printf '%s\tidle\t-\t-\n' "$t"
+            continue
+        fi
         proj="$HOME/.claude/projects/${dir//[.\/]/-}"
         st=idle
         phase=""

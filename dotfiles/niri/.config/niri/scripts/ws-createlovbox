@@ -222,6 +222,12 @@ def main() -> int:
         help="Spawn the stack on the currently-focused niri workspace "
              "instead of creating/focusing a new lovable-<name> workspace.",
     )
+    ap.add_argument(
+        "--provision-only",
+        action="store_true",
+        help="Ensure the sandbox + write the names.json label, then stop — "
+             "no workspace, no windows. Used by cockpit-add-lovbox.",
+    )
     args = ap.parse_args()
 
     name = args.name
@@ -334,6 +340,10 @@ def main() -> int:
         with open(names_path, "w") as fh:
             json.dump(names, fh, indent=2)
         print(f"==> labeled {claim} → {name}")
+
+    if args.provision_only:
+        print(f"==> provision-only: sandbox ready, labeled {claim} → {name}")
+        return 0
 
     # 3. Focus / create the workspace, OR rename the current one with --here
     if args.here:

@@ -1,27 +1,21 @@
 function lovssh --description "SSH into the existing lovbox for a Lovable project URL or claim, with portable dev env"
     set -l input $argv[1]
 
-    # No-arg mode: infer the claim from the current niri workspace name.
-    # ws-createlovbox writes claim → short-name to names.json when it
-    # provisions; if the focused workspace is `lovable-<short>` and we
-    # find a matching entry, use that claim. Skips silently if niri or
-    # the mapping aren't available — falls through to the usage error.
+    # No-arg mode: infer the claim from the ACTIVE COCKPIT CONTEXT (the
+    # per-ticket workspaces this used to key off are retired). cockpit-switch
+    # owns the active file; cockpit-add-lovbox labels claims in names.json.
+    # Skips silently if either is absent — falls through to the usage error.
     if test -z "$input"
-        set -l fw_id (niri msg --json focused-window 2>/dev/null | jq -r '.workspace_id // empty')
-        set -l ws_name ""
-        if test -n "$fw_id"
-            set ws_name (niri msg --json workspaces 2>/dev/null | jq -r --argjson id "$fw_id" '.[] | select(.id == $id) | .name // empty')
-        end
+        set -l active (cat "$HOME/.local/state/cockpit/active" 2>/dev/null)
         set -l names_file "$HOME/.local/state/lovssh/names.json"
-        if string match -q 'lovable-*' -- "$ws_name"; and test -f "$names_file"
-            set -l short_name (string sub --start 9 -- "$ws_name")
-            # tail -1: when a short-name maps to multiple claims (old sandbox
+        if test -n "$active"; and test -f "$names_file"
+            # tail -1: when a label maps to multiple claims (old sandbox
             # still labeled, new sandbox replacing it), pick the most-recently-
             # added entry. The old one is still resolvable via explicit claim.
-            set -l inferred (jq -r --arg n "$short_name" 'to_entries[] | select(.value == $n) | .key' "$names_file" 2>/dev/null | tail -1)
+            set -l inferred (jq -r --arg n "$active" 'to_entries[] | select(.value == $n) | .key' "$names_file" 2>/dev/null | tail -1)
             if test -n "$inferred"
                 set input "$inferred"
-                echo "→ inferred from workspace $ws_name: claim $inferred"
+                echo "→ inferred from cockpit context $active: claim $inferred"
             end
         end
     end
