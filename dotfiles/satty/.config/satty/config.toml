@@ -3,8 +3,10 @@
 
 [general]
 initial-tool = "crop"
-copy-command = "wl-copy"
-save-after-copy = true
+# One encode: the wrapper tees the PNG to $SCREENSHOT_FILE + wl-copy, so we
+# skip save-after-copy's second full encode of the 4K crop.
+copy-command = "/home/daphen/.config/niri/scripts/satty-copy"
+save-after-copy = false
 early-exit = true
 actions-on-enter = ["save-to-clipboard"]
 actions-on-escape = ["exit"]

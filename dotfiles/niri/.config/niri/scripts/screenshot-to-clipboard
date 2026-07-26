@@ -29,6 +29,7 @@ T0=$(date +%s%3N)
 # Behavior + vim keybinds + palette live in the satty config (dotfiles/satty).
 # GDK_DISABLE=dmabuf: GTK's dmabuf probe opens every DRM device, waking the
 # suspended NVIDIA dGPU (~2.5s stall after idle). Satty needs no dmabuf.
+export SCREENSHOT_FILE  # satty-copy tees the crop here on Enter/Ctrl+C
 if grim -l 0 ${OUTPUT:+-o "$OUTPUT"} - | GSK_RENDERER=gl GDK_DISABLE=dmabuf "$SATTY" \
         --config "$HOME/nixos/dotfiles/satty/.config/satty/config.toml" \
         --filename - \

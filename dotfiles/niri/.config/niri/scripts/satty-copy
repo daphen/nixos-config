@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# satty's copy-command: stdin is the cropped PNG, already encoded. Fan it out
+# to the screenshot file AND the clipboard in one pass so satty never encodes
+# twice (save-after-copy did) — Enter closes as soon as the bytes are through.
+f="${SCREENSHOT_FILE:-/tmp/screenshot-fallback.png}"
+tee "$f" | wl-copy
