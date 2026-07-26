@@ -26,6 +26,7 @@ next open — no rebuild, no extension reload.
 from __future__ import annotations
 
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -112,6 +113,32 @@ def main() -> int:
             "yesterday": claude_spend("yesterday"),
             "month": claude_spend("month"),
         })
+        return 0
+
+    # Type a prompt into the active cockpit context's Claude (agent) tab and
+    # submit it — the bridge for asking clarifying questions from the new-tab.
+    if action_early == "ask-cockpit":
+        text = (msg.get("text") or "").strip()
+        if not text:
+            send_message({"error": "empty text"})
+            return 0
+        rt = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+        sock = f"{rt}/kitty-cockpit-agent"
+        active_file = Path.home() / ".local/state/cockpit/active"
+        active = active_file.read_text().strip() if active_file.exists() else ""
+        if not active:
+            send_message({"error": "no active cockpit context"})
+            return 0
+        try:
+            base = ["kitty", "@", "--to", f"unix:{sock}"]
+            match = ["--match-tab", f"title:^{active}$"]
+            subprocess.run(base + ["send-text"] + match + ["--", text],
+                           check=True, timeout=6)
+            subprocess.run(base + ["send-text"] + match + ["--", "\r"],
+                           check=True, timeout=6)
+            send_message({"sent": True, "context": active})
+        except (OSError, subprocess.SubprocessError) as e:
+            send_message({"error": f"send failed: {e}"})
         return 0
 
     profile = (msg.get("profile") or "").strip()
