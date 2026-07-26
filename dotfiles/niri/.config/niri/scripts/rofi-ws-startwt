@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# Open a kitty floating-picker (lovable_picker window-rule in niri config)
-# and run ws-startwt (fzf picker over existing worktrees + claude mode
-# picker). fzf reads colors from FZF_DEFAULT_OPTS_FILE on each invocation,
-# so the theme tracks the toggle live — no shell-side loader needed.
-set -euo pipefail
-exec kitty --class lovable_picker "$HOME/.config/niri/scripts/ws-startwt"

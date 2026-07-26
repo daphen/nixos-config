@@ -803,28 +803,21 @@ binds {
     Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/cockpit-restore"; }
 
     // Super+T — cockpit context picker (Enter switch, Ctrl+N new, Ctrl+W close).
-    // The workspace-per-stack flow is disconnected (scripts kept on disk);
-    // its old binds are below, commented, if it ever needs reviving:
-    //   Super+t       { spawn "qs" "ipc" "call" "worktrees" "toggle"; }
-    //   Super+Shift+t { spawn "qs" "ipc" "call" "worktree-create" "toggle"; }
-    //   Super+Ctrl+t  { spawn-sh "$HOME/.config/niri/scripts/rofi-ws-startwt"; }
-    //   Super+o       { spawn-sh "$HOME/.config/niri/scripts/ws-toggle-worktree"; }
+    // Super+T / Super+O drive the cockpit (the workspace-per-stack flow they
+    // used to trigger is retired; remaining ws-* teardown tracked separately).
     Super+t hotkey-overlay-title="Cockpit contexts" { spawn "qs" "ipc" "call" "cockpit" "toggle"; }
     // Super+O: flip to the previously used cockpit context (vim ctrl-o style).
     Super+o hotkey-overlay-title="Previous context" { spawn-sh "$HOME/.config/niri/scripts/cockpit-toggle"; }
     Super+Ctrl+Shift+t { spawn "qs" "ipc" "call" "todos" "toggle"; }  // permanent quick-todo list
 
     // Super+B: jump to an already-running lovbox workspace.
-    // Sandbox-from-history picking lives in the unified Super+Ctrl+T picker
-    // (ws-startwt — both worktrees and sandboxes shown together).
     Super+b       { spawn "qs" "ipc" "call" "lovbox" "toggle"; }
 
     // Notes capture picker — type chooses routing into the vault
     Super+n       hotkey-overlay-title="Capture note" { spawn "qs" "ipc" "call" "notes" "toggle"; }
     Super+Shift+n hotkey-overlay-title="Quick inbox note" { spawn "/home/daphen/.config/quickshell/scripts/notes-capture" "note"; }
 
-    // Theme toggle is now reachable from the app launcher
-    // ("Toggle Theme") — Super+Ctrl+T was repurposed for ws-startwt.
+    // Theme toggle is now reachable from the app launcher ("Toggle Theme").
 
     // Media and function keys for Asus ProArt P16
     // XF86 keycodes (for external keyboards / future use)
