@@ -113,12 +113,6 @@ in
   # write and restore in well under a minute; cost is cold caches after resume.
   systemd.tmpfiles.rules = [ "w /sys/power/image_size - - - - 8589934592" ];
 
-  # nvidia-suspend.service only declares Before=systemd-suspend.service by default —
-  # pull it into the hibernate path (lid) and suspend-then-hibernate (manual) too.
-  systemd.services.nvidia-suspend.wantedBy = [
-    "systemd-suspend-then-hibernate.service"
-    "systemd-hibernate.service"
-  ];
   systemd.services.nvidia-resume.wantedBy = [
     "systemd-suspend-then-hibernate.service"
     "systemd-hibernate.service"
