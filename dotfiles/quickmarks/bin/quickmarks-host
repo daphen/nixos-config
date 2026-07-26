@@ -27,11 +27,25 @@ from __future__ import annotations
 
 import json
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
 ALLOWED_PROFILES = {"personal", "work"}
 QUICKMARKS_DIR = Path.home() / ".config/quickmarks"
+SPEND_SCRIPT = Path.home() / ".config/quickshell/scripts/claude-spend"
+
+
+def claude_spend(window: str) -> float | None:
+    """Hypothetical Claude Code API cost (USD) for a window, or None."""
+    try:
+        out = subprocess.run(
+            [str(SPEND_SCRIPT), window],
+            capture_output=True, text=True, timeout=8,
+        )
+        return float(out.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
 
 
 def read_message() -> dict | None:
@@ -88,6 +102,16 @@ def main() -> int:
     msg = read_message()
     if msg is None:
         send_message({"entries": [], "error": "empty request"})
+        return 0
+
+    action_early = (msg.get("action") or "").strip()
+    # Spend is profile-agnostic (reads ~/.claude transcripts, not quickmarks).
+    if action_early == "spend":
+        send_message({
+            "today": claude_spend("day"),
+            "yesterday": claude_spend("yesterday"),
+            "month": claude_spend("month"),
+        })
         return 0
 
     profile = (msg.get("profile") or "").strip()
