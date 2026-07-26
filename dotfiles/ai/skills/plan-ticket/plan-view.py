@@ -162,10 +162,11 @@ def main() -> int:
     url = f"http://127.0.0.1:{PORT}/plan/{args.key}"
     print(url)
     if args.open:
-        # chromeless app-mode window in the WORK profile — that's where the
-        # vimium localhost exclusions (and work session state) live.
+        # A TAB in the work-profile browser (the cockpit's column-2 window),
+        # not an --app window: plan views follow the cockpit workspace instead
+        # of spawning chromeless strays.
         dispatch = HOME / ".config" / "niri" / "scripts" / "browser-dispatch"
-        opener = [str(dispatch), "--profile=work", "--app"] if dispatch.is_file() else ["xdg-open"]
+        opener = [str(dispatch), "--profile=work"] if dispatch.is_file() else ["xdg-open"]
         subprocess.Popen(opener + [url], stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
     return 0
