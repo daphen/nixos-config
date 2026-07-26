@@ -6,7 +6,7 @@ import json
 import glob
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 PRICES = {
     "fable":       (10.0, 50.0),
@@ -33,9 +33,14 @@ if mode == "day":
     cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0)
 elif mode == "month":
     cutoff = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+elif mode == "yesterday":
+    cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
 else:
     cutoff = None
+# Upper bound: yesterday is a closed [yesterday 00:00, today 00:00) window.
+upper = now.replace(hour=0, minute=0, second=0, microsecond=0) if mode == "yesterday" else None
 cutoff_utc = cutoff.astimezone(timezone.utc) if cutoff else None
+upper_utc = upper.astimezone(timezone.utc) if upper else None
 cutoff_ts = cutoff.timestamp() if cutoff else 0
 
 seen = set()
@@ -61,6 +66,8 @@ for f in glob.glob(os.path.expanduser("~/.claude/projects/**/*.jsonl"), recursiv
                 except ValueError:
                     continue
                 if cutoff_utc and when < cutoff_utc:
+                    continue
+                if upper_utc and when >= upper_utc:
                     continue
                 m = d.get("message") or {}
                 u = m.get("usage")
