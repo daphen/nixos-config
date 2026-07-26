@@ -21,7 +21,7 @@ PanelWindow {
     anchors.bottom: true
     margins.bottom: 0
     implicitWidth: 600
-    implicitHeight: Theme.barHeight + 24
+    implicitHeight: Theme.barHeight + 34
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -85,8 +85,8 @@ PanelWindow {
         id: capsule
         anchors.horizontalCenter: parent.horizontalCenter
         y: root.open ? parent.height - height - 8 : parent.height
-        width: row.implicitWidth + Theme.notchPadH * 2
-        height: Theme.barHeight + 4
+        width: row.implicitWidth + Theme.notchPadH * 3
+        height: Theme.barHeight + 14
         color: Theme.notch
         radius: Math.min(height / 2, Theme.notchRadius + 6)
         border.width: 1
@@ -101,10 +101,10 @@ PanelWindow {
 
             Image {
                 source: "file://" + Quickshell.env("HOME") + "/.local/share/icons/hicolor/512x512/apps/lovable.png"
-                sourceSize.width: 16
-                sourceSize.height: 16
-                width: 16
-                height: 16
+                sourceSize.width: 20
+                sourceSize.height: 20
+                width: 20
+                height: 20
                 smooth: true
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -112,7 +112,7 @@ PanelWindow {
                 text: root.activeCtx ? root.activeCtx.name : ""
                 color: Theme.fg
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.fontSize + 4
                 font.weight: Theme.fontWeight
                 font.hintingPreference: Font.PreferFullHinting
                 anchors.verticalCenter: parent.verticalCenter
