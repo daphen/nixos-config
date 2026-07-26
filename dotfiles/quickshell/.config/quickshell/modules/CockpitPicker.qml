@@ -16,6 +16,7 @@ Picker {
     emptyText: "no contexts — type a name + enter to create one"
     subtitleField: "subtitle"
     subtitleColorField: "subtitleColor"
+    ctrlEnterAlt: true
 
     // The state glyph owns the row's left slot, so "current" reads as a badge —
     // highlightField's dot would draw on top of the glyph. Current is pinned
