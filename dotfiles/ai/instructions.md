@@ -92,7 +92,11 @@ checks out on a `review/pr-<num>` branch, spawns the standard
 Pick which script based on cues:
 
 - Want a NEW LoL project, no URL yet → ws-newlol (browser only)
-- LoL / "lovbox" / sandbox / project URL or claim given → ws-createlovbox
+- LoL / "lovbox" / sandbox / project URL or claim given →
+  `cockpit-add-lovbox <name> [url-or-claim]` — the sandbox becomes a
+  REMOTE cockpit context (tabs land in it via lovssh; type claude/nvim
+  after landing). ws-createlovbox's workspace-spawning half is retired;
+  its provisioning survives via --provision-only underneath.
 - New worktree / Linear ticket / local feature work → cockpit-add
 - Reviewing someone else's PR → ws-createreview
 - Fire-and-forget spec→PR against the monorepo, no local setup →
