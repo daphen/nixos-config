@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# cockpit-add-lol <name> — a Lovable-on-Lovable cockpit context: create a LoL
+# project (production agent on a monorepo-clone sandbox), then add the context.
+# The agent tab drives the cloud agent via lovc; nvim/devenv lovssh into the
+# SAME sandbox for hands-on monorepo editing. One project, one sandbox, both
+# modes.
+#
+# Pass an existing project id as $2 to attach to it instead of creating one.
+set -euo pipefail
+
+name=${1:?usage: cockpit-add-lol <name> [existing-project-id]}
+existing=${2:-}
+
+here=$(dirname "$(readlink -f "$0")")
+STATE="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}"
+LOVC_DIR="$HOME/personal/lovc"
+NAMES="$HOME/.local/state/lovssh/names.json"
+
+key=$(op read 'op://Private/lovc/text' 2>/dev/null || true)
+[ -n "$key" ] || { echo "cockpit: no LOVABLE_API_KEY (op://Private/lovc/text)" >&2; exit 1; }
+
+# 1. Project: reuse if given, else create a fresh LoL project via the SDK.
+if [ -n "$existing" ]; then
+    pid=$existing
+else
+    echo "cockpit: creating LoL project…" >&2
+    pid=$(cd "$LOVC_DIR" && env LOVABLE_API_KEY="$key" node -e '
+        import("@lovable.dev/sdk").then(async ({LovableClient}) => {
+            const c = new LovableClient({ apiKey: process.env.LOVABLE_API_KEY });
+            const s = new Date().toISOString().slice(0,16).replace("T"," ").replace(":",".");
+            const r = await c.createProject("workspace_01jsya3zjre8c97tqsmq2xvkdt", {
+                description: "cockpit LoL context",
+                projectName: process.argv[1] + " " + s,
+                sandboxTemplate: "lovable-on-lovable",
+            });
+            console.log(r.id);
+        }).catch(e => { console.error(e.message || e); process.exit(1); });
+    ' "$name")
+fi
+[ -n "$pid" ] || { echo "cockpit: project create failed" >&2; exit 1; }
+echo "cockpit: LoL project $pid" >&2
+
+# 2. Deterministic sandbox claim (matches lovssh / ws-createlovbox) + label.
+claim=$(env PID="$pid" python3 -c 'import hashlib,os; p=os.environ["PID"]; print("lovable-"+hashlib.sha256(f"{p}\x00main\x00lovable-on-lovable".encode()).hexdigest()[:16])')
+mkdir -p "$(dirname "$NAMES")"
+[ -f "$NAMES" ] || echo '{}' > "$NAMES"
+tmp=$(mktemp); jq --arg c "$claim" --arg n "$name" '.[$c] = $n' "$NAMES" > "$tmp" && mv "$tmp" "$NAMES"
+
+# 3. LoL registry entry — what marks this context as LoL for the config.
+mkdir -p "$STATE/lol"
+printf '%s\t%s\n' "$pid" "$claim" > "$STATE/lol/$name"
+
+# 4. Ensure the sandbox is Ready + SSH key injected (lovbox does both).
+echo "cockpit: ensuring sandbox $claim…" >&2
+"$HOME/work/lovable/bin/lovbox" ssh --name "$claim" --no-ssh >/dev/null 2>&1 || true
+
+exec "$here/cockpit-add" "$name"
