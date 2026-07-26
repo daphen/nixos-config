@@ -113,7 +113,10 @@ in
     };
     Service = {
       Type = "simple";
-      ExecCondition = "/bin/sh -c '[ -n \"$WAYLAND_DISPLAY\" ]'";
+      # A failed pre-check RETRIES via Restart (re-reading the manager env
+      # each attempt); ExecCondition would skip permanently — which is how
+      # a boot where WAYLAND_DISPLAY landed late left the palette dead.
+      ExecStartPre = "/bin/sh -c '[ -n \"$WAYLAND_DISPLAY\" ]'";
       ExecStart = "${palette-daemon}/bin/palette-daemon";
       Environment = [
         # Headless: no GTK/WebKit window — quickshell's CmdPalette renders
