@@ -543,8 +543,9 @@ function M.ask_visual()
 	local root = state.root or git_root()
 	if root and file:sub(1, #root) == root then file = file:sub(#root + 2) end
 	compose("❓ ask about selection — answer arrives in the agent chat", function(text)
-		local prompt = ("Question about %s:%d-%d:\n\n```\n%s\n```\n\n%s\n\n"
-			.. "Answer in chat only — do not edit any files or the plan for this.")
+		-- The trailing guard matters: plan-ticket sessions habitually answer
+		-- questions by writing 💬 blocks into the plan — pin them to chat.
+		local prompt = ("%s:%d-%d\n```\n%s\n```\n%s\n(answer in chat, no edits)")
 			:format(file, l1, l2, sel, text)
 		if dispatch(prompt) then
 			vim.notify("plan: question sent — answer arrives in the agent chat")
