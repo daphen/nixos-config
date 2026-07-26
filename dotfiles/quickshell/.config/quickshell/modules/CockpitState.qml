@@ -69,8 +69,12 @@ Singleton {
             '  s="${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-$w"; [ -S "$s" ] || continue; ' +
             '  kitty @ --to "unix:$s" close-tab --match "title:^$1\\$" 2>/dev/null; ' +
             'done; ' +
-            'f="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}/contexts"; ' +
-            '[ -f "$f" ] && { grep -vxF "$1" "$f" > "$f.tmp"; mv "$f.tmp" "$f"; }',
+            'd="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}"; ' +
+            // Drop from the restore registry and every per-context state file,
+            // plus the LoL registry — a closed context leaves nothing behind.
+            'f="$d/contexts"; [ -f "$f" ] && { grep -vxF "$1" "$f" > "$f.tmp"; mv "$f.tmp" "$f"; }; ' +
+            'g="$d/recent";   [ -f "$g" ] && { grep -vxF "$1" "$g" > "$g.tmp"; mv "$g.tmp" "$g"; }; ' +
+            'rm -f "$d/seen/$1" "$d/wants-input/$1" "$d/lol/$1"',
             "_", name])
         refresh()
     }
