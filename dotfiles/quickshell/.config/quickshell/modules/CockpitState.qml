@@ -101,6 +101,7 @@ Singleton {
                         name: parts[0],
                         state: parts[1] || "idle",
                         plan: (parts[2] && parts[2] !== "-") ? parts[2] : "",
+                        steps: (parts[3] && parts[3] !== "-") ? parts[3] : "",
                     })
                 }
                 root.contexts = out

@@ -112,7 +112,7 @@ cockpit_post_open() {
 # every fact it needs (context dirs, where the agent keeps transcripts) is
 # instance knowledge, and the newest-non-empty rule must match _resume_flag.
 cockpit_context_states() {
-    local sock t dir proj f newest st age last active_now tick phase
+    local sock t dir proj f newest st age last active_now tick phase steps
     sock="${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-${COCKPIT_WINDOWS[0]}"
     [ -S "$sock" ] || return 0
     active_now=$(cat "$COCKPIT_STATE_DIR/active" 2>/dev/null || true)
@@ -123,16 +123,23 @@ cockpit_context_states() {
         proj="$HOME/.claude/projects/${dir//[.\/]/-}"
         st=idle
         phase=""
+        steps=""
         tick=$(printf '%s' "$t" | grep -oE '^[A-Za-z]+-[0-9]+' | tr '[:lower:]' '[:upper:]')
         if [ -n "$tick" ] \
             && [ -f "$HOME/personal/notes/storage/plans/$tick.progress.json" ]; then
             phase=$(jq -r '.phase // empty' \
                 "$HOME/personal/notes/storage/plans/$tick.progress.json" 2>/dev/null)
+            # done/total ◆ steps — what the old bar pill's PlanState row showed.
+            steps=$(jq -r '(.flow // []) as $f
+                | if ($f | length) == 0 then ""
+                  else ([$f[] | select(.status == "done")] | length | tostring)
+                       + "/" + ($f | length | tostring) end' \
+                "$HOME/personal/notes/storage/plans/$tick.progress.json" 2>/dev/null)
         fi
         # Agent-declared block (Notification hook): Claude said it needs input
         # to continue; cleared the moment you respond. Beats every heuristic.
         if [ -f "$COCKPIT_STATE_DIR/wants-input/$t" ] && [ "$t" != "$active_now" ]; then
-            printf '%s\t%s\t%s\n' "$t" "awaiting-you" "${phase:--}"
+            printf '%s\t%s\t%s\t%s\n' "$t" "awaiting-you" "${phase:--}" "${steps:--}"
             continue
         fi
         newest=""
@@ -166,7 +173,7 @@ cockpit_context_states() {
         if [ "$st" = idle ]; then
             case "$phase" in draft|planned|implementing) st=pending ;; esac
         fi
-        printf '%s\t%s\t%s\n' "$t" "$st" "${phase:--}"
+        printf '%s\t%s\t%s\t%s\n' "$t" "$st" "${phase:--}" "${steps:--}"
     done < <(kitty @ --to "unix:$sock" ls 2>/dev/null | jq -r '.[].tabs[].title')
 }
 

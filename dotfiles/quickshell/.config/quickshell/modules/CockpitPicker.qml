@@ -34,7 +34,9 @@ Picker {
         return cur.concat(rest).map(c => ({
             name: c.name,
             label: c.name,
-            subtitle: c.plan ? "plan: " + c.plan : "",
+            subtitle: c.plan
+                ? "plan: " + c.plan + (c.steps ? "  ·  " + c.steps + " steps" : "")
+                : "",
             // Lifecycle at a glance: authoring = blue-ish, running = green,
             // done = muted.
             subtitleColor: c.plan === "implementing" ? Theme.green
