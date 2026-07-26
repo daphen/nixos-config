@@ -42,7 +42,11 @@ WORKTREE_ROOT = HOME / "work"
 
 
 def list_kitty_sockets() -> list[str]:
-    return sorted(glob.glob("/tmp/kitty-*"))
+    rt = os.environ.get("XDG_RUNTIME_DIR", "")
+    socks = glob.glob("/tmp/kitty-*")
+    if rt:
+        socks += glob.glob(rt + "/kitty-*")
+    return sorted(socks)
 
 
 def kitten_ls(sock: str) -> list | None:

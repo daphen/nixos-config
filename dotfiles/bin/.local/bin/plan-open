@@ -17,6 +17,7 @@ GUI editor to open there.
 from __future__ import annotations
 import glob
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -24,7 +25,7 @@ from pathlib import Path
 
 
 def nvim_running_in(repo: str) -> bool:
-    for sock in glob.glob("/tmp/kitty-*"):
+    for sock in glob.glob("/tmp/kitty-*") + glob.glob(os.environ.get("XDG_RUNTIME_DIR", "/nonexistent") + "/kitty-*"):
         try:
             out = subprocess.run(
                 ["kitten", "@", "--to", f"unix:{sock}", "ls"],

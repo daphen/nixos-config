@@ -533,8 +533,23 @@ function M.ask()
 end
 
 -- Visual variant: the x-mode map presses <Esc> first, so '> holds the selection end.
+-- Visual Ctrl+P from ANY buffer: ask the repo's agent about the highlighted
+-- text. Chat-only — the selection travels as context in the prompt, nothing
+-- is inserted inline and the agent is told not to write anywhere.
 function M.ask_visual()
-	ask_at(vim.fn.line("'>"), "❓ ask about selection")
+	local l1, l2 = vim.fn.line("'<"), vim.fn.line("'>")
+	local sel = table.concat(vim.api.nvim_buf_get_lines(0, l1 - 1, l2, false), "\n")
+	local file = vim.api.nvim_buf_get_name(0)
+	local root = state.root or git_root()
+	if root and file:sub(1, #root) == root then file = file:sub(#root + 2) end
+	compose("❓ ask about selection — answer arrives in the agent chat", function(text)
+		local prompt = ("Question about %s:%d-%d:\n\n```\n%s\n```\n\n%s\n\n"
+			.. "Answer in chat only — do not edit any files or the plan for this.")
+			:format(file, l1, l2, sel, text)
+		if dispatch(prompt) then
+			vim.notify("plan: question sent — answer arrives in the agent chat")
+		end
+	end)
 end
 
 -- Dispatch /plan-ticket --finalize to the repo's claude: bake resolved decisions into
@@ -1073,6 +1088,9 @@ function M.setup()
 	-- Bare <C-p> opens the plan menu from any ordinary buffer (e.g. while
 	-- reading the code the agent is touching).
 	vim.keymap.set("n", "<C-p>", function() M.menu() end, { desc = "plan: menu" })
+	-- Visual Ctrl+P anywhere: chat-only question about the selection.
+	vim.keymap.set("x", "<C-p>", "<Esc><cmd>lua require('plan-nvim').ask_visual()<CR>",
+		{ desc = "plan: ask about selection" })
 
 	-- Buffer-local maps only inside a plan file, so they never clobber normal
 	-- markdown editing elsewhere. Set on open AND re-assert on every BufEnter,
