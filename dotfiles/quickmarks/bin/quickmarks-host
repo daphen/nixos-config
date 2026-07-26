@@ -132,12 +132,13 @@ def main() -> int:
                            check=True, timeout=6)
             subprocess.run(base + ["send-text"] + match + ["--", "\r"],
                            check=True, timeout=6)
-            # Bring the main tab to front and focus the agent window in niri
-            # so the answer is on screen — best-effort, never fails the send.
-            # focus-tab takes --match (not --match-tab like send-text/launch).
-            subprocess.run(base + ["focus-tab", "--match", "title:^main$"],
-                           timeout=6)
+            # Coherently switch the WHOLE cockpit to main (all windows +
+            # active-state + MRU) rather than just flipping the agent tab —
+            # a partial focus left a split-brain that confused Super+O.
+            # Best-effort; the send already succeeded.
+            switch = os.path.expanduser("~/.config/niri/scripts/cockpit-switch")
             try:
+                subprocess.run([switch, "main"], timeout=8)
                 wins = json.loads(subprocess.run(
                     ["niri", "msg", "--json", "windows"],
                     capture_output=True, text=True, timeout=4).stdout)
