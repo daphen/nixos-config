@@ -99,9 +99,12 @@ Pick which script based on cues:
   its provisioning survives via --provision-only underneath.
 - New worktree / Linear ticket / local feature work → cockpit-add
 - Reviewing someone else's PR → ws-createreview
-- Fire-and-forget spec→PR against the monorepo, no local setup →
-  `lovc exec --lol` (production-agent CLI; see the vault reference
-  `references/lovc-cli.md` — not yet installed locally as of 2026-07-26)
+- Lovable-on-Lovable work (LoL week: ship monorepo tickets via the agent) →
+  `cockpit-add-lol <name>` — one LoL project + monorepo-clone sandbox as a
+  cockpit context: agent tab drives the production agent (`lovc chat`),
+  nvim/devenv SSH into the SAME sandbox for hands-on editing. Both modes,
+  one sandbox. Headless spec→PR without a context: `lovc exec --lol`
+  (see vault `references/lovc-cli.md`).
 
 Confirm before invoking either: ws-createlovbox claims a paid sandbox,
 ws-createreview fetches+branches off main. ws-newlol just opens a
