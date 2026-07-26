@@ -66,13 +66,14 @@ cockpit_window_cmd() {
                 printf 'COCKPIT_NVIM_SESSION=%q direnv exec . nvim; exec fish' "$sess"
             fi ;;
         # main runs the shared deps singleton (wt-proxy caddy, nats, …);
-        # worktrees run their own wt slice on top of it.
+        # worktrees run their own wt slice on top of it. The retry loop keeps
+        # a cold-boot failure VISIBLE in the tab instead of silently dropping
+        # to a shell (bit us on the first cockpit-restore after a reboot).
         devenv)
-            if [ "$name" = main ]; then
-                printf 'direnv exec . devenv deps; exec fish'
-            else
-                printf 'direnv exec . devenv wt; exec fish'
-            fi ;;
+            local sub="wt"
+            [ "$name" = main ] && sub="deps"
+            printf 'while true; do direnv exec . devenv %s; echo; echo "[cockpit] devenv %s exited ($?) — enter to restart, ctrl-c for a shell"; read -r || break; done; exec fish' \
+                "$sub" "$sub" ;;
         *)      printf 'exec fish' ;;
     esac
 }

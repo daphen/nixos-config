@@ -35,6 +35,9 @@ for w in "${COCKPIT_WINDOWS[@]}"; do
     kitty @ --to "unix:$sock" launch \
         --type=tab --tab-title "$name" --cwd "$dir" --keep-focus \
         -- bash -c "$cmd" >/dev/null
+    # cockpit-open's initial shell tab is scaffolding; drop it once a real
+    # context tab exists.
+    kitty @ --to "unix:$sock" close-tab --match 'title:^~$' 2>/dev/null || true
 done
 
 # Registry of live contexts — what cockpit-restore rebuilds after a crash.

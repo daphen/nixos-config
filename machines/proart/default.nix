@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 let
   # Finds the U2725QE's DP connector by EDID and forces amdgpu's DSC policy
@@ -78,6 +78,17 @@ in
   # Management attempted without driver procfs suspend interface". Fall back to
   # the userspace nvidia-sleep.sh path until a driver release fixes it.
   hardware.nvidia.powerManagement.kernelSuspendNotifier = false;
+  # The module wires nvidia-suspend into systemd-hibernate too, so BOTH
+  # nvidia-suspend and nvidia-hibernate race the single writer at
+  # /proc/driver/nvidia/suspend on every hibernate — one hook gets EIO and
+  # GSP state ends up half-saved, which is exactly the dead-heartbeat /
+  # never-reactivated-session black screen on resume (journal 2026-07-25
+  # 23:56:24 → 2026-07-26 12:42:30). Hibernate is nvidia-hibernate's alone;
+  # suspend-then-hibernate runs the suspend hook at its suspend phase.
+  systemd.services.nvidia-suspend.wantedBy = lib.mkForce [
+    "systemd-suspend.service"
+    "systemd-suspend-then-hibernate.service"
+  ];
   hardware.nvidia.prime = {
     offload.enable = true;
     offload.enableOffloadCmd = true;
