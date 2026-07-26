@@ -32,6 +32,10 @@ have_window() {
 
 ensure_workspace
 
+# Sequential with a map-wait per window: concurrent spawns race their niri
+# mapping, so the column order would be random. COCKPIT_WINDOWS order IS the
+# left-to-right layout. The socket check doubles as the callers' guarantee
+# (cockpit-open && cockpit-add needs live sockets).
 opened=()
 for w in "${COCKPIT_WINDOWS[@]}"; do
     if have_window "$(win_class "$w")"; then
@@ -41,16 +45,11 @@ for w in "${COCKPIT_WINDOWS[@]}"; do
         --class "$(win_class "$w")" \
         --listen-on "unix:$(win_sock "$w")" \
         >/dev/null 2>&1
-    opened+=("$w")
-done
-
-# Wait for the control sockets to accept before returning: callers chain
-# cockpit-open && cockpit-add, and add fails without a live socket.
-for w in "${opened[@]+"${opened[@]}"}"; do
     for _ in $(seq 50); do
-        [ -S "$(win_sock "$w")" ] && break
+        have_window "$(win_class "$w")" && [ -S "$(win_sock "$w")" ] && break
         sleep 0.1
     done
+    opened+=("$w")
 done
 
 # niri drops names from empty workspaces, so the adopt-rename in
