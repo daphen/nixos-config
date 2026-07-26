@@ -37,7 +37,7 @@ What `lovssh` does internally:
 3. Look up the sandbox via `GET https://sandcastle.lovable.net/api/v1/sandboxes` and `?access=shared` to get `sandbox_name` + `namespace` (lovable-on-lovable sandboxes are in the shared list).
 4. POST `~/.ssh/id_ed25519.pub` to `/api/v1/sandboxes/<claim>/ssh-keys` (idempotent re-add).
 5. Build the direct service hostname: `<sandbox_name>.<namespace>.svc.devex-eun2-toad.cluster.d.l5e.io` (the sandcastle gateway on `:2222` isn't publicly reachable; the direct hostname is, via tailnet subnet routes).
-6. `ssh -A -p 2222 -t lovable@<direct-host> 'exec nix run --refresh github:daphen/nixos-portable-config#daphen-env'`.
+6. `ssh -A -p 2222 -t lovable@<direct-host> 'exec nix run --refresh github:daphen/nixos-config#dev-env'`.
 
 Note the SSH user is **`lovable`** (the in-pod user), not the claim name. That's a quirk of the direct-host path vs the gateway path.
 
@@ -45,7 +45,7 @@ If `lovssh` isn't available on the current machine, the manual equivalent is the
 
 ## 3. What the dev env contains
 
-`github:daphen/nixos-portable-config#daphen-env` is a `writeShellApplication` that bundles all tools into one closure and execs fish with the right env vars:
+`github:daphen/nixos-config#dev-env` is a `writeShellApplication` that bundles all tools into one closure and execs fish with the right env vars:
 
 - **Editor / shell**: bundled nvim (lz.n loader, plugins + LSPs baked into the store), fish, starship.
 - **CLI toolkit**: ripgrep, fd, bat, jq, gh, delta, fastfetch, openssh, fzf, zoxide, git.
@@ -55,7 +55,7 @@ If `lovssh` isn't available on the current machine, the manual equivalent is the
 **Deliberately omitted**:
 - `claude-code` / `codex` / `opencode` — lovbox image ships these.
 - `_1password-cli` — daphen doesn't read secrets on remotes.
-- Anything else not in `packages/daphen-env/default.nix`. Add there + push to extend.
+- Anything else not in `pkgs/daphen-env/default.nix` (in nixos-config). Add there + push to extend.
 
 ## 4. Verify you're in the right place
 
@@ -67,7 +67,7 @@ which nvim                   # /nix/store/...-daphen-env-*/bin/nvim
 
 ## 5. Iterating on the env
 
-Source of truth: `github:daphen/nixos-portable-config`. Push changes there, then re-run `lovssh` — the `--refresh` flag bypasses the 1h flake cache so changes land within seconds.
+Source of truth: `github:daphen/nixos-config` (`pkgs/daphen-env`, exposed as `#dev-env`). Push changes there, then re-run `lovssh` — the `--refresh` flag bypasses the 1h flake cache so changes land within seconds.
 
 The fish function `lovssh` lives at `~/dotfiles/fish/.config/fish/functions/lovssh.fish`. After editing, `source ~/.config/fish/functions/lovssh.fish` (or `exec fish`) to reload.
 

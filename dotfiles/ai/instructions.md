@@ -93,8 +93,11 @@ Pick which script based on cues:
 
 - Want a NEW LoL project, no URL yet → ws-newlol (browser only)
 - LoL / "lovbox" / sandbox / project URL or claim given → ws-createlovbox
-- New worktree / Linear ticket / local feature work → ws-createwt
+- New worktree / Linear ticket / local feature work → cockpit-add
 - Reviewing someone else's PR → ws-createreview
+- Fire-and-forget spec→PR against the monorepo, no local setup →
+  `lovc exec --lol` (production-agent CLI; see the vault reference
+  `references/lovc-cli.md` — not yet installed locally as of 2026-07-26)
 
 Confirm before invoking either: ws-createlovbox claims a paid sandbox,
 ws-createreview fetches+branches off main. ws-newlol just opens a
