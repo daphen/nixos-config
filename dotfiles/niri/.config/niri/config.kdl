@@ -791,7 +791,9 @@ binds {
     //   no candidate window matches. browser-work in INACTIVE worktrees is
     //   excluded automatically via ws-tracker's excluded-id list.
     Super+q { spawn-sh "/home/daphen/.config/niri/scripts/browser-personal"; }
-    Super+w { spawn-sh "$HOME/.config/niri/scripts/ws-focus browser"; }
+    // browser-work targets the work-CLASS window only (stateless); the old
+    // ws-focus cycled both profiles once its personal-id tracker went stale.
+    Super+w { spawn-sh "$HOME/.config/niri/scripts/browser-work"; }
     Super+Shift+q { spawn-sh "/home/daphen/.config/niri/scripts/chromium-launch"; }
     Super+Shift+w { spawn-sh "$HOME/.config/niri/scripts/browser-work-new"; }
 
