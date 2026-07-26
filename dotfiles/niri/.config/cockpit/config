@@ -78,6 +78,21 @@ cockpit_window_cmd() {
     esac
 }
 
+# The cockpit's fourth window: a work-profile browser on the workspace.
+# Nothing else respawns it after a reboot (browser-work only focuses), so
+# cockpit-open's hook owns it. Spawns land on the focused workspace, which
+# cockpit-open has already ensured is ours.
+cockpit_post_open() {
+    niri msg --json windows | jq -e \
+        --argjson ws "$(niri msg --json workspaces | jq '[.[] | select(.name=="'"$COCKPIT_WORKSPACE"'")][0].id')" \
+        'any(.[]; .app_id == "browser-work" and .workspace_id == $ws)' >/dev/null 2>&1 && return 0
+    source "$HOME/.config/niri/scripts/browser-config.sh"
+    setsid -f "$BROWSER_BIN" "${BROWSER_FLAGS[@]}" \
+        --user-data-dir="$BROWSER_USER_DATA_WORK" \
+        --profile-directory="$BROWSER_PROFILE" \
+        --class="$BROWSER_CLASS_WORK" >/dev/null 2>&1
+}
+
 # Agent activity per context, as `<name>\t<working|awaiting-you|idle>` lines.
 # Consumed by the quickshell chrome, never by the engine — it lives here because
 # every fact it needs (context dirs, where the agent keeps transcripts) is
