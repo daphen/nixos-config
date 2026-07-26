@@ -132,6 +132,20 @@ def main() -> int:
                            check=True, timeout=6)
             subprocess.run(base + ["send-text"] + match + ["--", "\r"],
                            check=True, timeout=6)
+            # Bring the main tab to front and focus the agent window in niri
+            # so the answer is on screen — best-effort, never fails the send.
+            subprocess.run(base + ["focus-tab"] + match, timeout=6)
+            try:
+                wins = json.loads(subprocess.run(
+                    ["niri", "msg", "--json", "windows"],
+                    capture_output=True, text=True, timeout=4).stdout)
+                aid = next((w["id"] for w in wins
+                            if w.get("app_id") == "cockpit-agent"), None)
+                if aid:
+                    subprocess.run(["niri", "msg", "action", "focus-window",
+                                    "--id", str(aid)], timeout=4)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass
             send_message({"sent": True, "context": "main"})
         except (OSError, subprocess.SubprocessError) as e:
             send_message({"error": f"send failed: {e}"})
