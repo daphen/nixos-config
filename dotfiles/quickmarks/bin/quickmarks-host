@@ -134,7 +134,9 @@ def main() -> int:
                            check=True, timeout=6)
             # Bring the main tab to front and focus the agent window in niri
             # so the answer is on screen — best-effort, never fails the send.
-            subprocess.run(base + ["focus-tab"] + match, timeout=6)
+            # focus-tab takes --match (not --match-tab like send-text/launch).
+            subprocess.run(base + ["focus-tab", "--match", "title:^main$"],
+                           timeout=6)
             try:
                 wins = json.loads(subprocess.run(
                     ["niri", "msg", "--json", "windows"],
