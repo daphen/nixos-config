@@ -807,6 +807,8 @@ binds {
     //   Super+Ctrl+t  { spawn-sh "$HOME/.config/niri/scripts/rofi-ws-startwt"; }
     //   Super+o       { spawn-sh "$HOME/.config/niri/scripts/ws-toggle-worktree"; }
     Super+t hotkey-overlay-title="Cockpit contexts" { spawn "qs" "ipc" "call" "cockpit" "toggle"; }
+    // Super+O: flip to the previously used cockpit context (vim ctrl-o style).
+    Super+o hotkey-overlay-title="Previous context" { spawn-sh "$HOME/.config/niri/scripts/cockpit-toggle"; }
     Super+Ctrl+Shift+t { spawn "qs" "ipc" "call" "todos" "toggle"; }  // permanent quick-todo list
 
     // Super+B: jump to an already-running lovbox workspace.

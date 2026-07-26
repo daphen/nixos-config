@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# cockpit-toggle — flip to the previously used context (vim ctrl-o style):
+# line 2 of the MRU file cockpit-switch maintains. Focuses the cockpit
+# workspace first so the flip is visible from anywhere.
+set -euo pipefail
+
+CONFIG="${COCKPIT_CONFIG:-$HOME/.config/cockpit/config}"
+[ -r "$CONFIG" ] || { echo "cockpit: no config at $CONFIG" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$CONFIG"
+COCKPIT_STATE_DIR="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}"
+
+prev=$(sed -n 2p "$COCKPIT_STATE_DIR/recent" 2>/dev/null || true)
+[ -n "$prev" ] || exit 0
+[ -n "${COCKPIT_WORKSPACE:-}" ] \
+    && niri msg action focus-workspace "$COCKPIT_WORKSPACE" >/dev/null 2>&1 || true
+exec "$(dirname "$(readlink -f "$0")")/cockpit-switch" "$prev"
