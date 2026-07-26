@@ -122,10 +122,17 @@ cockpit_context_states() {
         [ -d "$dir" ] || continue
         proj="$HOME/.claude/projects/${dir//[.\/]/-}"
         st=idle
+        phase=""
+        tick=$(printf '%s' "$t" | grep -oE '^[A-Za-z]+-[0-9]+' | tr '[:lower:]' '[:upper:]')
+        if [ -n "$tick" ] \
+            && [ -f "$HOME/personal/notes/storage/plans/$tick.progress.json" ]; then
+            phase=$(jq -r '.phase // empty' \
+                "$HOME/personal/notes/storage/plans/$tick.progress.json" 2>/dev/null)
+        fi
         # Agent-declared block (Notification hook): Claude said it needs input
         # to continue; cleared the moment you respond. Beats every heuristic.
         if [ -f "$COCKPIT_STATE_DIR/wants-input/$t" ] && [ "$t" != "$active_now" ]; then
-            printf '%s\t%s\n' "$t" "awaiting-you"
+            printf '%s\t%s\t%s\n' "$t" "awaiting-you" "${phase:--}"
             continue
         fi
         newest=""
@@ -153,20 +160,30 @@ cockpit_context_states() {
                 st=awaiting-you
             fi
         fi
-        # idle vs pending: a context whose plan artifact is mid-lifecycle is
-        # blocked on YOU (review/--go), not done — even after you read the
-        # last reply. Truly idle = no unfinished plan.
+        # A mid-lifecycle plan means the context is blocked on YOU
+        # (review/--go), not done — even after you read the last reply.
+        # Truly idle = no unfinished plan.
         if [ "$st" = idle ]; then
-            tick=$(printf '%s' "$t" | grep -oE '^[A-Za-z]+-[0-9]+' | tr '[:lower:]' '[:upper:]')
-            if [ -n "$tick" ] \
-                && [ -f "$HOME/personal/notes/storage/plans/$tick.progress.json" ]; then
-                phase=$(jq -r '.phase // empty' \
-                    "$HOME/personal/notes/storage/plans/$tick.progress.json" 2>/dev/null)
-                case "$phase" in draft|planned|implementing) st=pending ;; esac
-            fi
+            case "$phase" in draft|planned|implementing) st=pending ;; esac
         fi
-        printf '%s\t%s\n' "$t" "$st"
+        printf '%s\t%s\t%s\n' "$t" "$st" "${phase:--}"
     done < <(kitty @ --to "unix:$sock" ls 2>/dev/null | jq -r '.[].tabs[].title')
+}
+
+# Open <name>'s plan artifact in its nvim tab (ticket key first, ad-hoc slug
+# as fallback). ESC first so the :e lands in normal mode.
+cockpit_open_plan() {
+    local name=$1 tick path="" sock
+    tick=$(printf '%s' "$name" | grep -oE '^[A-Za-z]+-[0-9]+' | tr '[:lower:]' '[:upper:]')
+    [ -n "$tick" ] && [ -f "$HOME/personal/notes/storage/plans/$tick.md" ] \
+        && path="$HOME/personal/notes/storage/plans/$tick.md"
+    [ -z "$path" ] && [ -f "$HOME/personal/notes/storage/plans/$name.md" ] \
+        && path="$HOME/personal/notes/storage/plans/$name.md"
+    [ -n "$path" ] || return 0
+    sock="${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-nvim"
+    [ -S "$sock" ] || return 0
+    kitty @ --to "unix:$sock" send-text --match-tab "title:^${name}\$" \
+        $'\x1b'":e ${path}"$'\r'
 }
 
 # Mirrors devenv's sanitizeBranchForSubdomain: prefix + at most 3 segments.

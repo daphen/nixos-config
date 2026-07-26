@@ -53,6 +53,13 @@ Singleton {
         Quickshell.execDetached([scripts + "cockpit-add", name])
     }
 
+    // Switch to the context and pull its plan artifact up in the nvim tab.
+    function openPlan(name) {
+        switchTo(name)
+        Quickshell.execDetached(["bash", "-c",
+            'source "$HOME/.config/cockpit/config"; cockpit_open_plan "$1"', "_", name])
+    }
+
     // Closes the context's tabs in every cockpit window; the directory on disk
     // is deliberately kept (removing a worktree is `wt remove`, not a UI gesture).
     function close(name) {
@@ -90,7 +97,11 @@ Singleton {
                 for (const line of text.trim().split("\n")) {
                     if (!line) continue
                     const parts = line.split("\t")
-                    out.push({ name: parts[0], state: parts[1] || "idle" })
+                    out.push({
+                        name: parts[0],
+                        state: parts[1] || "idle",
+                        plan: (parts[2] && parts[2] !== "-") ? parts[2] : "",
+                    })
                 }
                 root.contexts = out
             }

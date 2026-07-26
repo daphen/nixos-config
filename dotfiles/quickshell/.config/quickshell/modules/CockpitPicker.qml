@@ -12,8 +12,10 @@ Picker {
 
     placeholder: "contexts…  ·  type a new name + enter to create"
     enterLabel: "switch"
-    altLabel: "Ctrl+W: close context"
+    altLabel: "Ctrl+Enter: open plan · Ctrl+W: close context"
     emptyText: "no contexts — type a name + enter to create one"
+    subtitleField: "subtitle"
+    subtitleColorField: "subtitleColor"
 
     // The state glyph owns the row's left slot, so "current" reads as a badge —
     // highlightField's dot would draw on top of the glyph. Current is pinned
@@ -31,6 +33,13 @@ Picker {
         return cur.concat(rest).map(c => ({
             name: c.name,
             label: c.name,
+            subtitle: c.plan ? "plan: " + c.plan : "",
+            // Lifecycle at a glance: authoring = blue-ish, running = green,
+            // done = muted.
+            subtitleColor: c.plan === "implementing" ? Theme.green
+                         : c.plan === "draft" ? Theme.yellow
+                         : c.plan === "planned" ? Theme.sky
+                         : Theme.fg_muted,
             glyph: c.state === "working" ? "●"
                  : c.state === "awaiting-you" ? "◔"
                  : c.state === "pending" ? "◐" : "○",
@@ -57,6 +66,7 @@ Picker {
     badgeField: "badge"
 
     onEnter: item => CockpitState.switchTo(item.name)
+    onAltAction: item => CockpitState.openPlan(item.name)
     onEmptyEnter: text => {
         const name = text.replace(/[^a-zA-Z0-9-]/g, "")
         if (name.length === 0) return

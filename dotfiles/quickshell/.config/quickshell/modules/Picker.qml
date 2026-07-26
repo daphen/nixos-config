@@ -17,6 +17,9 @@ PanelWindow {
     property bool refreshing: false
     property var items: []
     property string subtitleField: ""
+    // Opt-in per-item subtitle color (item[subtitleColorField] = a color);
+    // rows without it keep fg_muted.
+    property string subtitleColorField: ""
     // Opt-in computed subtitle: a function of the item, re-evaluated whenever
     // anything it reads changes (QML tracks reads through calls) — so live
     // text like a ticking countdown never has to churn the items array.
@@ -697,7 +700,10 @@ PanelWindow {
                                 text: !rowItem.modelData ? ""
                                     : root.subtitleFn ? String(root.subtitleFn(rowItem.modelData) || "")
                                     : root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
-                                color: Theme.fg_muted
+                                color: (root.subtitleColorField && rowItem.modelData
+                                        && rowItem.modelData[root.subtitleColorField])
+                                     ? rowItem.modelData[root.subtitleColorField]
+                                     : Theme.fg_muted
                                 font.family: notch.sans
                                 font.pixelSize: 12
                             }
