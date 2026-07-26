@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# cockpit-focus <window> — focus a cockpit window by its short name (agent /
+# nvim / devenv), i.e. the window whose app_id is cockpit-<window>. Focuses
+# the cockpit workspace first so it works from anywhere.
+set -euo pipefail
+
+w=${1:?usage: cockpit-focus <agent|nvim|devenv>}
+
+CONFIG="${COCKPIT_CONFIG:-$HOME/.config/cockpit/config}"
+# shellcheck source=/dev/null
+[ -r "$CONFIG" ] && source "$CONFIG"
+[ -n "${COCKPIT_WORKSPACE:-}" ] \
+    && niri msg action focus-workspace "$COCKPIT_WORKSPACE" >/dev/null 2>&1 || true
+
+id=$(niri msg --json windows | jq -r --arg c "cockpit-$w" \
+    '[.[] | select(.app_id == $c)][0].id // empty')
+[ -n "$id" ] && niri msg action focus-window --id "$id" >/dev/null 2>&1 || true
