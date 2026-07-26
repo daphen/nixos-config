@@ -938,6 +938,8 @@ binds {
     // Screenshot keybinds
     Print { screenshot; }                    // Interactive screenshot UI (select area)
     Super+Print { screenshot-screen; }       // Screenshot entire screen
+    // Focused window straight to clipboard + Screenshots dir, no UI.
+    Super+Shift+e hotkey-overlay-title="Screenshot window" { screenshot-window; }
     Super+Ctrl+e { screenshot-screen; }      // Screenshot active monitor
     Super+Ctrl+Shift+e { spawn "/home/daphen/.config/niri/scripts/screenshot-to-clipboard"; }  // Screenshot selection to clipboard
 
