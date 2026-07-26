@@ -74,7 +74,9 @@ Singleton {
             // plus the LoL registry — a closed context leaves nothing behind.
             'f="$d/contexts"; [ -f "$f" ] && { grep -vxF "$1" "$f" > "$f.tmp"; mv "$f.tmp" "$f"; }; ' +
             'g="$d/recent";   [ -f "$g" ] && { grep -vxF "$1" "$g" > "$g.tmp"; mv "$g.tmp" "$g"; }; ' +
-            'rm -f "$d/seen/$1" "$d/wants-input/$1" "$d/lol/$1"',
+            'rm -f "$d/seen/$1" "$d/wants-input/$1" "$d/lol/$1"; ' +
+            // Close the plan-view browser tab too (no-op if none / daemon down).
+            'declare -F cockpit_close_plan_tab >/dev/null && cockpit_close_plan_tab "$1"',
             "_", name])
         refresh()
     }

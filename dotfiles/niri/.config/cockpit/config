@@ -270,6 +270,36 @@ f.flush()
 PY
 }
 
+# Close <name>'s plan-view browser tab (if open) via the palette daemon —
+# called on context close so a finalized plan's tab doesn't outlive it.
+cockpit_close_plan_tab() {
+    local name=$1 tick key=""
+    tick=$(printf '%s' "$name" | grep -oE '^[A-Za-z]+-[0-9]+' | tr '[:lower:]' '[:upper:]')
+    [ -n "$tick" ] && key=$tick || key=$name
+    COCKPIT_PLAN_KEY=$key python3 - <<'PY'
+import json, os, socket, sys
+key = os.environ["COCKPIT_PLAN_KEY"]
+needle = f"127.0.0.1:8746/plan/{key}"
+rt = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+try:
+    s = socket.socket(socket.AF_UNIX); s.settimeout(1.5)
+    s.connect(os.path.join(rt, "palette-ui.sock"))
+except OSError:
+    sys.exit(0)
+f = s.makefile("rw")
+state = None
+for _ in range(5):
+    line = f.readline()
+    if not line: break
+    try: m = json.loads(line)
+    except ValueError: continue
+    if m.get("type") == "state": state = m; break
+for t in (state or {}).get("tabs") or []:
+    if needle in (t.get("url") or ""):
+        f.write(json.dumps({"cmd": "close-tab", "tabId": t["id"]}) + "\n"); f.flush()
+PY
+}
+
 # Open <name>'s plan: a FINALIZED plan (diagram artifact exists) opens the
 # live view in the browser and focuses it — existing tab reused, else a new
 # one. Anything earlier opens the markdown in the context's nvim tab for
