@@ -68,6 +68,7 @@ PanelWindow {
             Weather {}
             Cpu {}
             Memory {}
+            Todos {}
         }
 
         Row {
@@ -111,7 +112,7 @@ PanelWindow {
         return name.substring("lovable-".length)
     }
 
-    // WPM pill — top-left corner, transparent, inverted (bg-colored) content.
+    // Timer pill — top-left corner, transparent, inverted (bg-colored) content.
     Rectangle {
         id: wpmPill
         anchors {
@@ -129,134 +130,6 @@ PanelWindow {
             // modulePadH + group spacing + modulePadH.
             spacing: Theme.modulePadH * 2 + 8
 
-            Row {
-                spacing: 8
-                anchors.verticalCenter: parent.verticalCenter
-
-                Lib.Icon {
-                    name: "keyboard"
-                    color: Theme.bg
-                    width: 15; height: 15
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Text {
-                    visible: WpmState.value === 0
-                    text: "∞"
-                    color: Theme.bg
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize + 7
-                    font.weight: Theme.fontWeight
-                    font.hintingPreference: Font.PreferFullHinting
-                    anchors.verticalCenter: parent.verticalCenter
-                    // The glyph sits in the x-height band; its box's empty
-                    // descender space makes true-center look high.
-                    anchors.verticalCenterOffset: 1
-                }
-
-                Text {
-                    text: (WpmState.value > 0 ? WpmState.value + " " : "") + "wpm"
-                    color: Theme.bg
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
-                    font.weight: Theme.fontWeight
-                    font.hintingPreference: Font.PreferFullHinting
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-            }
-
-            Item {
-                visible: SpendState.current >= 0
-                width: spendRow.implicitWidth
-                height: spendRow.implicitHeight
-                anchors.verticalCenter: parent.verticalCenter
-
-                Row {
-                    id: spendRow
-                    spacing: 8
-
-                    // the Claude spark — same brand asset as its notifications
-                    Item {
-                        width: 15; height: 15
-                        anchors.verticalCenter: parent.verticalCenter
-                        Image {
-                            id: claudeGlyph
-                            anchors.fill: parent
-                            source: Qt.resolvedUrl("../assets/claude.svg")
-                            sourceSize.width: 15; sourceSize.height: 15
-                            visible: false
-                            asynchronous: true
-                        }
-                        MultiEffect {
-                            anchors.fill: claudeGlyph
-                            source: claudeGlyph
-                            colorization: 1
-                            colorizationColor: Theme.bg
-                        }
-                    }
-
-                    Text {
-                        text: {
-                            const v = SpendState.current
-                            const amount = v >= 1000
-                                ? (v / 1000).toFixed(1) + "k"
-                                : v >= 100 ? Math.round(v)
-                                : v >= 10 ? v.toFixed(1)
-                                : v.toFixed(2)
-                            const tag = SpendState.mode === "day" ? "d"
-                                : SpendState.mode === "month" ? "m" : "∀"
-                            return "$" + amount + " " + tag
-                        }
-                        color: Theme.bg
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
-                        font.weight: Theme.fontWeight
-                        font.hintingPreference: Font.PreferFullHinting
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: SpendState.cycle()
-                }
-            }
-
-            Item {
-                visible: TodoListPickerState.openCount > 0
-                width: todoRow.implicitWidth
-                height: todoRow.implicitHeight
-                anchors.verticalCenter: parent.verticalCenter
-
-                Row {
-                    id: todoRow
-                    spacing: 8
-
-                    Lib.Icon {
-                        name: "clipboard-check"
-                        color: Theme.bg
-                        width: 15; height: 15
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Text {
-                        text: TodoListPickerState.openCount
-                        color: Theme.bg
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
-                        font.weight: Theme.fontWeight
-                        font.hintingPreference: Font.PreferFullHinting
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: TodoListPickerState.toggle()
-                }
-            }
 
             Item {
                 visible: TimerState.items.length > 0
