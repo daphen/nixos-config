@@ -11,7 +11,7 @@ source "$CONFIG"
 : "${COCKPIT_WINDOWS:?config must set COCKPIT_WINDOWS}"
 COCKPIT_STATE_DIR="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}"
 
-win_sock() { printf '/tmp/kitty-cockpit-%s' "$1"; }
+win_sock() { printf '%s/kitty-cockpit-%s' "${XDG_RUNTIME_DIR:-/tmp}" "$1"; }
 
 name=${1:?usage: cockpit-switch <context>}
 dir=$(cockpit_context_dir "$name")

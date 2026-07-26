@@ -59,7 +59,7 @@ Singleton {
         Quickshell.execDetached(["bash", "-c",
             'source "$HOME/.config/cockpit/config"; ' +
             'for w in "${COCKPIT_WINDOWS[@]}"; do ' +
-            '  s="/tmp/kitty-cockpit-$w"; [ -S "$s" ] || continue; ' +
+            '  s="${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-$w"; [ -S "$s" ] || continue; ' +
             '  kitty @ --to "unix:$s" close-tab --match "title:^$1\\$" 2>/dev/null; ' +
             'done; ' +
             'f="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}/contexts"; ' +

@@ -99,7 +99,7 @@ cockpit_post_open() {
 # instance knowledge, and the newest-non-empty rule must match _resume_flag.
 cockpit_context_states() {
     local sock t dir proj f newest st age last active_now tick phase
-    sock="/tmp/kitty-cockpit-${COCKPIT_WINDOWS[0]}"
+    sock="${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-${COCKPIT_WINDOWS[0]}"
     [ -S "$sock" ] || return 0
     active_now=$(cat "$COCKPIT_STATE_DIR/active" 2>/dev/null || true)
     while IFS= read -r t; do

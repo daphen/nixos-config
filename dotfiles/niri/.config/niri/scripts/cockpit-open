@@ -14,7 +14,7 @@ source "$CONFIG"
 : "${COCKPIT_WINDOWS:?config must set COCKPIT_WINDOWS}"
 
 win_class() { printf 'cockpit-%s' "$1"; }
-win_sock()  { printf '/tmp/kitty-cockpit-%s' "$1"; }
+win_sock()  { printf '%s/kitty-cockpit-%s' "${XDG_RUNTIME_DIR:-/tmp}" "$1"; }
 
 # Focus the configured workspace so spawns land on it (niri only ever spawns
 # onto the focused workspace). First run has no such workspace yet — adopt the

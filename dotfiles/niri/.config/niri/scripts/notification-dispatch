@@ -26,8 +26,8 @@ focus_cockpit_context() {
     # "Claude · <label>" — label is the context name (strip the old
     # lovable.daphen- prefix if present). The tab check validates the guess.
     ctx=$(printf '%s' "$1" | sed -n 's/^Claude · //p' | sed 's|^lovable\.daphen-||')
-    [ -n "$ctx" ] && [ -S /tmp/kitty-cockpit-agent ] || return 1
-    kitty @ --to unix:/tmp/kitty-cockpit-agent ls 2>/dev/null \
+    [ -n "$ctx" ] && [ -S ${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-agent ] || return 1
+    kitty @ --to unix:${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-agent ls 2>/dev/null \
         | jq -e --arg t "$ctx" 'any(.[].tabs[]; .title == $t)' >/dev/null || return 1
     "$DIR/cockpit-switch" "$ctx" >/dev/null 2>&1 || true
     awin=$(niri msg --json windows 2>/dev/null \
