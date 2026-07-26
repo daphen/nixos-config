@@ -39,6 +39,18 @@ PanelWindow {
         return null
     }
 
+    // A context switch while already ON the cockpit workspace deserves the
+    // badge too — active changes optimistically (picker/chips) and via the
+    // state-file watch (scripts, Super+O, orchestrator), so both paths land here.
+    Connections {
+        target: CockpitState
+        function onActiveChanged() {
+            if (NiriState.focusedWorkspaceName() === CockpitState.workspace
+                && root.activeCtx !== null)
+                root.show()
+        }
+    }
+
     Connections {
         target: NiriState
         function onVersionChanged() {
