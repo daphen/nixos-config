@@ -5,7 +5,9 @@
 # scripts drive a completely different setup.
 
 COCKPIT_WORKSPACE=lovable
-COCKPIT_WINDOWS=(agent nvim devenv)
+# Spawn order = column order: devenv | (browser, slotted in by post_open) |
+# agent | nvim.
+COCKPIT_WINDOWS=(devenv agent nvim)
 COCKPIT_STATE_DIR="$HOME/.local/state/cockpit"
 
 _repo="$HOME/work/lovable"
@@ -91,6 +93,18 @@ cockpit_post_open() {
         --user-data-dir="$BROWSER_USER_DATA_WORK" \
         --profile-directory="$BROWSER_PROFILE" \
         --class="$BROWSER_CLASS_WORK" >/dev/null 2>&1
+    # Slot the browser into column 2: devenv | browser | agent | nvim.
+    local bid
+    for _ in $(seq 50); do
+        bid=$(niri msg --json windows 2>/dev/null \
+            | jq -r '[.[] | select(.app_id == "browser-work")][0].id // empty')
+        [ -n "$bid" ] && break
+        sleep 0.2
+    done
+    if [ -n "$bid" ]; then
+        niri msg action focus-window --id "$bid" >/dev/null 2>&1
+        niri msg action move-column-to-index 2 >/dev/null 2>&1
+    fi
 }
 
 # Agent activity per context, as `<name>\t<working|awaiting-you|idle>` lines.
