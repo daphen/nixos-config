@@ -730,7 +730,7 @@ window-rule {
 window-rule {
     match is-active=false
     exclude app-id=r#"^(browser-personal|browser-work)$"#
-    opacity 0.85
+    opacity 1.0
 }
 
 binds {
