@@ -12,7 +12,7 @@ Picker {
 
     placeholder: "contexts…  ·  type a new name + enter to create"
     enterLabel: "switch"
-    altLabel: "Ctrl+Enter: open plan · Ctrl+W: close context"
+    altLabel: "Ctrl+Enter: open app · Ctrl+P: open plan · Ctrl+W: close context"
     emptyText: "no contexts — type a name + enter to create one"
     trailingField: "trailing"
     trailingColorField: "trailingColor"
@@ -69,7 +69,8 @@ Picker {
     badgeField: "badge"
 
     onEnter: item => CockpitState.switchTo(item.name)
-    onAltAction: item => CockpitState.openPlan(item.name)
+    onAltAction: item => CockpitState.openApp(item.name)
+    onCtrlP: item => CockpitState.openPlan(item.name)
     onEmptyEnter: text => {
         const name = text.replace(/[^a-zA-Z0-9-]/g, "")
         if (name.length === 0) return

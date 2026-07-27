@@ -339,13 +339,43 @@ cockpit_open_plan() {
         $'\x1b'":e ${path}"$'\r'
 }
 
-# Mirrors devenv's sanitizeBranchForSubdomain: prefix + at most 3 segments.
+# Faithful port of devenv's sanitizeBranchForSubdomain
+# (go/cli/cmd/devenv/main.go): lowercase, non-alnum -> '-', trim dashes, then
+# keep the username prefix + AT MOST 3 description segments (fewer if shorter),
+# capped at 63 chars. Branch is always daphen/<name>; wt-proxy port is the
+# fixed constant 2015.
 _preview_url() {
-    printf 'http://daphen-%s.localhost:2015' "$(cut -d- -f1-3 <<<"$1")"
+    local s prefix rest
+    s=$(printf 'daphen/%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/^-*//; s/-*$//')
+    prefix=${s%%-*}
+    rest=${s#*-}
+    if [ "$rest" != "$s" ]; then
+        rest=$(cut -d- -f1-3 <<<"$rest")
+        s="$prefix-$rest"
+    fi
+    s=${s:0:63}; s=${s%-}
+    [ -n "$s" ] || s=dev
+    printf 'http://%s.localhost:2015' "$s"
+}
+
+# Open <name>'s dev preview (the running app) in the work browser and focus it.
+# Deliberate raise: unlike the auto-switch leg above, this is an explicit
+# "open app" gesture, so yanking focus to the browser is what we want.
+cockpit_open_app() {
+    local name=$1 url bid
+    url=$(_preview_url "$name")
+    "$HOME/.config/niri/scripts/browser-dispatch" --profile=work "$url" >/dev/null 2>&1 || true
+    bid=$(niri msg --json windows 2>/dev/null \
+        | jq -r '[.[]|select(.app_id=="browser-work")][0].id // empty')
+    [ -n "$bid" ] && niri msg action focus-window --id "$bid" >/dev/null 2>&1
 }
 
 cockpit_post_switch() {
     local name=$1 dir=$2
+    # :3000 and :8020 are fixed ports a wt slice cannot offset (dev-edge
+    # auth-bridge redirect, `lov` default), so one context owns them at a time.
+    # Hand them to the one just switched to.
+    "$HOME/.config/niri/scripts/wt-portmap" "$dir" >/dev/null 2>&1 || true
     # DISABLED until palette-daemon grows a raise-less, profile-pinned
     # activate/goto: today's flows target the *focused profile* and raise
     # windows on the old flow's active worktree — every switch yanks focus.

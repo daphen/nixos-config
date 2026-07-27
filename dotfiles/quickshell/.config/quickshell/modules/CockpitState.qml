@@ -60,6 +60,14 @@ Singleton {
             'source "$HOME/.config/cockpit/config"; cockpit_open_plan "$1"', "_", name])
     }
 
+    // Switch to the context and open its dev preview (the running app) in the
+    // work browser.
+    function openApp(name) {
+        switchTo(name)
+        Quickshell.execDetached(["bash", "-c",
+            'source "$HOME/.config/cockpit/config"; cockpit_open_app "$1"', "_", name])
+    }
+
     // Closes the context's tabs in every cockpit window; the directory on disk
     // is deliberately kept (removing a worktree is `wt remove`, not a UI gesture).
     function close(name) {
