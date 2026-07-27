@@ -95,12 +95,6 @@ checked against it), not the progress metric. Keep `flow[]` entries aligned 1:1 
 - `--go` → **IMPLEMENT**
 - `--reconcile` → **RECONCILE**
 
-## Model contract
-Every phase — plan, finalize, amend, `--go`, reconcile — runs on **Opus**
-(Opus 5 is capable enough that the old Fable-plan / Opus-implement split buys
-nothing but coordination overhead). No model check, no `/model` switch, no
-STOP-and-resend gate: whatever Opus session receives the command just runs it.
-
 ---
 
 ## PHASE 1 — PLAN (spit out the full plan, then hand off to neovim)
