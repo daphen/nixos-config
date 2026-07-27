@@ -74,7 +74,7 @@ Picker {
         // A message's open-channel action deletes the live notification, so
         // retain its data first (and mark it read) — it stays in the center.
         if (isMsg) {
-            Notifications.retain(item.id, item.app, item.summary, item.windowId)
+            Notifications.retain(item.id, item.app, item.summary, item.windowId, item.cal)
             Notifications.markSeenById(item.id)
         }
         // Fire the live default action (slqs/dsqrd opens the channel/thread).
@@ -100,16 +100,19 @@ Picker {
 
     function mkItemLive(n) {
         const wid = (n.hints && n.hints["niri-window"] !== undefined) ? String(n.hints["niri-window"]) : ""
+        const cal = Notifications.isCalNotif(n)
         return {
-            id: n.id, notif: n, app: n.appName || "", summary: n.summary || "", windowId: wid,
-            body: n.body || "", label: n.summary || n.appName || "notification", icon: _icon(n.appName, n.appIcon),
+            id: n.id, notif: n, app: n.appName || "", summary: n.summary || "", windowId: wid, cal: cal,
+            body: n.body || "", label: n.summary || n.appName || "notification",
+            icon: cal ? Notifications.calendarIcon : _icon(n.appName, n.appIcon),
         }
     }
 
     function mkItemRetained(e) {
         return {
-            id: e.id, notif: null, app: e.app, summary: e.summary, windowId: e.windowId,
-            body: e.summary || "", label: e.summary || e.app || "notification", icon: _icon(e.app),
+            id: e.id, notif: null, app: e.app, summary: e.summary, windowId: e.windowId, cal: !!e.cal,
+            body: e.summary || "", label: e.summary || e.app || "notification",
+            icon: e.cal ? Notifications.calendarIcon : _icon(e.app),
         }
     }
 

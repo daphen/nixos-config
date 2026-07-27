@@ -75,8 +75,8 @@ PanelWindow {
         const img = n.image || ""
         const realImg = img.startsWith("/") || img.startsWith("file://") || img.startsWith("http")
         nImage = realImg ? (img.startsWith("/") ? "file://" + img : img) : ""
-        nAppIcon = Notifications.appIconFor(n.appName, n.appIcon)
-        nIsCalendar = ((n.appIcon || "") === "x-office-calendar")
+        nIsCalendar = Notifications.isCalNotif(n)
+        nAppIcon = nIsCalendar ? Notifications.calendarIcon : Notifications.appIconFor(n.appName, n.appIcon)
         nWindowId = (n.hints && n.hints["niri-window"] !== undefined)
             ? String(n.hints["niri-window"]) : ""
         extraCount = wasOpen ? extraCount + 1 : 0

@@ -18,23 +18,23 @@ Item {
         const ___ = Notifications.focusedApp   // re-evaluate when window focus changes
         const model = Notifications.server ? Notifications.server.trackedNotifications : null
         const tracked = model ? model.values : []
-        const counts = { slack: 0, discord: 0, mail: 0 }
+        const counts = { slack: 0, discord: 0, mail: 0, cal: 0 }
         for (let i = 0; i < tracked.length; i++) {
             if (Notifications.isSeen(tracked[i])) continue
             const app = (tracked[i].appName || "").toLowerCase()
             if (app === "slack") counts.slack++
             else if (app === "discord") counts.discord++
-            else if (app === "mlqs") counts.mail++
+            else if (app === "mlqs") { if (Notifications.isCalNotif(tracked[i])) counts.cal++; else counts.mail++ }
         }
         // Don't badge the client you're focused on — you're already in it. The
         // toast still flashes and history is untouched; only the bar badge is hidden.
         const covers = Notifications.focusedAppCovers[Notifications.focusedApp] || []
         if (covers.indexOf("slack") !== -1) counts.slack = 0
         if (covers.indexOf("discord") !== -1) counts.discord = 0
-        if (covers.indexOf("mlqs") !== -1) counts.mail = 0
+        if (covers.indexOf("mlqs") !== -1) { counts.mail = 0; counts.cal = 0 }
         return counts
     }
-    readonly property int total: inboxCounts.slack + inboxCounts.discord + inboxCounts.mail
+    readonly property int total: inboxCounts.slack + inboxCounts.discord + inboxCounts.mail + inboxCounts.cal
 
     implicitWidth: visible ? row.implicitWidth + Theme.modulePadH * 2 : 0
     implicitHeight: parent ? parent.height : Theme.barHeight
@@ -53,9 +53,10 @@ Item {
 
         Repeater {
             model: [
-                { app: "slack",   count: root.inboxCounts.slack },
-                { app: "discord", count: root.inboxCounts.discord },
-                { app: "mlqs",    count: root.inboxCounts.mail }
+                { app: "slack",   count: root.inboxCounts.slack,   icon: Notifications.appIconFor("slack"),   color: Theme.cursor },
+                { app: "discord", count: root.inboxCounts.discord, icon: Notifications.appIconFor("discord"), color: Theme.cursor },
+                { app: "mlqs",    count: root.inboxCounts.mail,    icon: Notifications.appIconFor("mlqs"),    color: Theme.cursor },
+                { app: "mlqs-cal", count: root.inboxCounts.cal,    icon: Notifications.calendarIcon,          color: Theme.sky }
             ]
             delegate: Row {
                 required property var modelData
@@ -70,7 +71,7 @@ Item {
                     Image {
                         id: brand
                         anchors.fill: parent
-                        source: Notifications.appIconFor(modelData.app)
+                        source: modelData.icon
                         sourceSize.width: 15; sourceSize.height: 15
                         visible: false
                         asynchronous: true
@@ -79,7 +80,7 @@ Item {
                         anchors.fill: brand
                         source: brand
                         colorization: 1
-                        colorizationColor: Theme.cursor
+                        colorizationColor: modelData.color
                     }
                 }
                 Text {

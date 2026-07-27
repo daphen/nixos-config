@@ -65,10 +65,10 @@ Singleton {
     // retained — it's meant to clear on interact.
     property var retained: []      // newest-first: {id, app, summary, windowId}
     property int retainedGen: 0
-    function retain(id, app, summary, windowId) {
+    function retain(id, app, summary, windowId, cal) {
         if (id === undefined) return
         root.retained = root.retained.filter(e => e.id !== id)
-        root.retained.unshift({ id: id, app: app || "", summary: summary || "", windowId: windowId || "" })
+        root.retained.unshift({ id: id, app: app || "", summary: summary || "", windowId: windowId || "", cal: !!cal })
         if (root.retained.length > root.messageMax)
             root.retained = root.retained.slice(0, root.messageMax)
         root.retainedGen++
@@ -110,6 +110,18 @@ Singleton {
         if (a === "kitty") return Qt.resolvedUrl("../assets/claude.svg")
         if (a === "screenshot") return Qt.resolvedUrl("../assets/camera.svg")
         return ""
+    }
+    // A calendar reminder carries a "join" action (mlqs NotifyEvent); mail
+    // carries "read". appIcon (x-office-calendar) is unreliable — dropped on
+    // retained entries and reset after the failed icon-load — so key the
+    // calendar distinction off the stable action set.
+    readonly property url calendarIcon: Qt.resolvedUrl("../assets/calendar.svg")
+    function isCalNotif(n) {
+        if (!n) return false
+        if ((n.appIcon || "") === "x-office-calendar") return true
+        const a = n.actions || []
+        for (let i = 0; i < a.length; i++) if ((a[i].identifier || "") === "join") return true
+        return false
     }
 
     readonly property var trayApps: ["slack", "discord", "kitty", "mlqs"]
