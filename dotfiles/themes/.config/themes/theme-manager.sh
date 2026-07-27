@@ -383,29 +383,19 @@ PYEOF
             local target_dir is_managed
             if get_tool_target "$tool"; then
                 mkdir -p "$target_dir"
-                cp "$generated_file" "$target_dir/theme.conf"
-                # Retheme live kitty instances in parallel; skip + clean up stale
-                # sockets (closed instances leave /tmp/kitty-<pid> behind, and firing
-                # kitty @ at each dead one is what made theme toggles slow).
-                for socket in /tmp/kitty-*; do
-                    [ -S "$socket" ] || continue
-                    if [ -d "/proc/${socket##*/kitty-}" ]; then
-                        kitty @ --to "unix:$socket" set-colors -a -c "$generated_file" 2>/dev/null &
-                    else
-                        rm -f "$socket"
-                    fi
-                done
-                # Cockpit kitties listen on named sockets (kitty-cockpit-<w>,
-                # not kitty-<pid>) in XDG_RUNTIME_DIR, so the /tmp + PID-liveness
-                # loop above misses them. Fire directly; a dead socket just
-                # errors out harmlessly (no PID to derive for cleanup).
-                for socket in "${XDG_RUNTIME_DIR:-/tmp}"/kitty-cockpit-*; do
-                    [ -S "$socket" ] || continue
-                    kitty @ --to "unix:$socket" set-colors -a -c "$generated_file" 2>/dev/null &
-                done
-                wait
+                # Native OS light/dark following: kitty auto-selects among these
+                # three files by the OS color scheme (which our toggle sets via
+                # gsettings → xdg portal) and reloads instantly, per instance —
+                # no `kitty @ set-colors` broadcast, no socket enumeration, and
+                # it can't miss a window however it launched (this is what fixed
+                # the cockpit kitties, which listen on named sockets).
+                local gk="$GENERATED_DIR/kitty"
+                [ -f "$gk/dark.theme" ]  && cp "$gk/dark.theme"  "$target_dir/dark-theme.auto.conf"
+                [ -f "$gk/light.theme" ] && cp "$gk/light.theme" "$target_dir/light-theme.auto.conf"
+                # No explicit OS preference → follow light (matches the default).
+                [ -f "$gk/light.theme" ] && cp "$gk/light.theme" "$target_dir/no-preference-theme.auto.conf"
                 local label=$([[ "$is_managed" == true ]] && echo "managed" || echo "local")
-                log_success "Applied kitty theme ($label)"
+                log_success "Applied kitty theme ($label, OS-following)"
             fi
             ;;
         "eww")
