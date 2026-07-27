@@ -45,7 +45,17 @@ fps="${fps:-60}"
 # Hardware-encode via VAAPI (AMD Radeon 890M). Software x264 can't keep up at
 # the panel's 120fps and drops frames — playback looks choppy. Offloading the
 # encode to the GPU records smoothly at full refresh.
-HW=(-c h264_vaapi -d /dev/dri/renderD128)
+# Resolve the amdgpu render node at runtime — the renderD12* ordering isn't
+# stable across boots/rebuilds (the nvidia dGPU can grab renderD128), and
+# VAAPI h264 dies instantly on the nvidia node.
+vaapi_dev=""
+for n in /dev/dri/renderD*; do
+    if grep -qx 'DRIVER=amdgpu' "/sys/class/drm/$(basename "$n")/device/uevent" 2>/dev/null; then
+        vaapi_dev="$n"
+        break
+    fi
+done
+HW=(-c h264_vaapi -d "${vaapi_dev:-/dev/dri/renderD128}")
 
 case "$mode" in
     region)
