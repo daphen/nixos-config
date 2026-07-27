@@ -51,6 +51,7 @@ PanelWindow {
     property string nBody: ""
     property string nImage: ""
     property string nAppIcon: ""
+    property bool nIsCalendar: false   // mlqs meeting reminder → accent glyph, not grey
     property string nWindowId: ""
     property int extraCount: 0         // arrivals that replaced content this show
 
@@ -67,9 +68,15 @@ PanelWindow {
         nApp = n.appName || ""
         nSummary = n.summary || ""
         nBody = (n.body || "").replace(/<[^>]+>/g, "").replace(/\n/g, "  ")
+        // Only a real avatar path/URL is an avatar. A bare freedesktop icon
+        // NAME (mlqs sends mail-unread / x-office-calendar) can't be loaded and
+        // would just fail-blank the same way for every mlqs notif — drop it so
+        // the mapped brand/calendar glyph (appIconFor) always shows instead.
         const img = n.image || ""
-        nImage = img ? (img.startsWith("/") ? "file://" + img : img) : ""
+        const realImg = img.startsWith("/") || img.startsWith("file://") || img.startsWith("http")
+        nImage = realImg ? (img.startsWith("/") ? "file://" + img : img) : ""
         nAppIcon = Notifications.appIconFor(n.appName, n.appIcon)
+        nIsCalendar = ((n.appIcon || "") === "x-office-calendar")
         nWindowId = (n.hints && n.hints["niri-window"] !== undefined)
             ? String(n.hints["niri-window"]) : ""
         extraCount = wasOpen ? extraCount + 1 : 0
@@ -251,7 +258,7 @@ PanelWindow {
                         source: appGlyph
                         visible: avatar.status !== Image.Ready && appGlyph.status === Image.Ready
                         colorization: 1
-                        colorizationColor: Theme.fg_secondary
+                        colorizationColor: root.nIsCalendar ? Theme.sky : Theme.fg_secondary
                     }
                     Text {
                         anchors.centerIn: parent
