@@ -37,4 +37,5 @@ ShellRoot {
     NotificationJumpPicker {}
     CockpitPicker {}
     CockpitNotch {}
+    WpmBadge {}
 }
