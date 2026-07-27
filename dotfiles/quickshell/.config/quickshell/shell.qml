@@ -38,4 +38,5 @@ ShellRoot {
     CockpitPicker {}
     CockpitNotch {}
     WpmBadge {}
+    WindowFocusDot {}
 }
