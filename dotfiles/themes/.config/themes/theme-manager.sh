@@ -395,6 +395,14 @@ PYEOF
                         rm -f "$socket"
                     fi
                 done
+                # Cockpit kitties listen on named sockets (kitty-cockpit-<w>,
+                # not kitty-<pid>) in XDG_RUNTIME_DIR, so the /tmp + PID-liveness
+                # loop above misses them. Fire directly; a dead socket just
+                # errors out harmlessly (no PID to derive for cleanup).
+                for socket in "${XDG_RUNTIME_DIR:-/tmp}"/kitty-cockpit-*; do
+                    [ -S "$socket" ] || continue
+                    kitty @ --to "unix:$socket" set-colors -a -c "$generated_file" 2>/dev/null &
+                done
                 wait
                 local label=$([[ "$is_managed" == true ]] && echo "managed" || echo "local")
                 log_success "Applied kitty theme ($label)"
