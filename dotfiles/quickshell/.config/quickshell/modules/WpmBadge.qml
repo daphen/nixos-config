@@ -84,7 +84,7 @@ PanelWindow {
 
             Text {
                 text: root.shown
-                color: Theme.sky
+                color: Theme.fg
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize + 6
                 font.weight: 700
