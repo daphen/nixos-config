@@ -95,17 +95,11 @@ checked against it), not the progress metric. Keep `flow[]` entries aligned 1:1 
 - `--go` → **IMPLEMENT**
 - `--reconcile` → **RECONCILE**
 
-## Model contract (phase-dependent)
-Planning/finalize/amend/reconcile run on **Fable** (David's session default);
-implementation runs on **default Opus**. You cannot switch models yourself —
-`/model` is a user command. So at the START of `--go`: check which model you are
-(your system prompt names it). If you are NOT an Opus model, STOP before touching
-any file and reply exactly: "Model check: I'm on <model>. Run `/model opus` and
-resend --go so implementation runs on Opus per the model contract." Conversely, if
-`--reconcile` arrives while you're on Opus, proceed (don't block) but note the
-model in the reconciliation. The orchestrator session normally sends `/model`
-switches via wt-send before relaying `--go`; this check is the backstop for when
-David drives the session directly.
+## Model contract
+Every phase — plan, finalize, amend, `--go`, reconcile — runs on **Opus**
+(Opus 5 is capable enough that the old Fable-plan / Opus-implement split buys
+nothing but coordination overhead). No model check, no `/model` switch, no
+STOP-and-resend gate: whatever Opus session receives the command just runs it.
 
 ---
 
