@@ -102,11 +102,14 @@ in
   # NV_ERR_NO_MEMORY, corrupt image, failed resume.
   swapDevices = [{ device = "/swapfile"; size = 80 * 1024; }];
   boot.resumeDevice = "/dev/disk/by-uuid/3c2ae244-45a5-4711-a8d2-aae76a3314f0";
-  # Lid = hibernate IMMEDIATELY. s2idle wake has never worked on this machine
-  # (every logged suspend exit is the hibernate timer; lid-opens during the old
-  # suspend-then-hibernate window froze the system), so the suspend leg was
-  # pure hazard. Cost: image write on every close and disk-resume on every open.
-  services.logind.settings.Login.HandleLidSwitch = "hibernate";
+  # Lid = suspend-then-hibernate: s2idle first (fast, VRAM stays in RAM, no disk
+  # write — safe under any load), then hibernate after the delay once idle/cool.
+  # Immediate-hibernate (was here Jul 22–Aug) removed that buffer, so a lid-close
+  # under GPU load stalled the nvidia VRAM-save and cooked the laptop in a bag.
+  # This is the months-stable config; its one wart is that an early lid-open
+  # during the s2idle window can freeze (s2idle wake is flaky on this machine).
+  services.logind.settings.Login.HandleLidSwitch = "suspend-then-hibernate";
+  systemd.sleep.settings.Sleep.HibernateDelaySec = "5min";
   # Cap the hibernate image: kernel drops page cache instead of writing it.
   # Full-RAM images (40G+ with dev stacks up) made writes multi-minute and one
   # quick-turnaround restore hung at a black screen (2026-07-25). 8G images
