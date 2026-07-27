@@ -66,6 +66,10 @@ get_current_theme() {
 set_theme_mode() {
     local mode=$1
     echo "$mode" > "$THEME_MODE_FILE"
+    # Flip the XDG appearance portal so OS-following apps switch instantly:
+    # kitty reloads the matching {dark,light}-theme.auto.conf off this signal
+    # (no set-colors broadcast), and GTK apps follow too.
+    gsettings set org.gnome.desktop.interface color-scheme "prefer-$mode" 2>/dev/null || true
 }
 
 # Extract color from JSON
