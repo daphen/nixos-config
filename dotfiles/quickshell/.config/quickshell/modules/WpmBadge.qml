@@ -23,9 +23,9 @@ PanelWindow {
     property bool open: false
 
     anchors.bottom: true
-    margins.bottom: 110
-    implicitWidth: 400
-    implicitHeight: Theme.barHeight + 20
+    margins.bottom: 160
+    implicitWidth: 460
+    implicitHeight: 120
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -63,27 +63,29 @@ PanelWindow {
         id: capsule
         anchors.horizontalCenter: parent.horizontalCenter
         y: root.open ? (parent.height - height) / 2 : parent.height
-        width: row.implicitWidth + Theme.notchPadH * 3
-        height: Theme.barHeight + 8
+        width: row.implicitWidth + Theme.notchPadH * 4
+        height: 84
         color: Theme.notch
         radius: height / 2
         border.width: 1
         border.color: Theme.hairline
         opacity: root.open ? 1 : 0
+        scale: root.open ? 1 : 0.9
 
-        Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+        Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutBack } }
         Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack } }
 
         Row {
             id: row
             anchors.centerIn: parent
-            spacing: 6
+            spacing: 8
 
             Text {
                 text: root.peak
                 color: Theme.sky
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 6
+                font.pixelSize: 52
                 font.weight: Font.Bold
                 font.hintingPreference: Font.PreferFullHinting
                 anchors.verticalCenter: parent.verticalCenter
@@ -92,7 +94,7 @@ PanelWindow {
                 text: "wpm"
                 color: Theme.fg_muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: 22
                 font.weight: Theme.fontWeight
                 font.hintingPreference: Font.PreferFullHinting
                 anchors.verticalCenter: parent.verticalCenter
