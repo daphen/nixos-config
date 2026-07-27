@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# wt-portmap <worktree-dir> — point the fixed ports :3000 and :8020 at that
+# worktree's devenv wt slice.
+#
+# Why this exists: `devenv wt` gives each worktree its own random ports, but two
+# things want fixed ones. The dev edge (proxy-worker2's dev APP_URL) redirects
+# auth-bridge to localhost:3000, so cross-origin preview auth — every DS canvas
+# tile — fails unless :3000 reaches the slice's web server. And `lov` plus the
+# bin/ helpers default to :8020 for the API. Neither can be offset per worktree,
+# so one worktree at a time owns the fixed ports; this moves ownership.
+#
+# Safe to call on every context switch: no slice, or the same slice already
+# mapped, means it does nothing.
+set -uo pipefail
+
+FWD="$HOME/.config/niri/scripts/wt-portforward.py"
+STATE="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}/portmap"
+
+dir=${1:?usage: wt-portmap <worktree-dir>}
+base=$(cat "$dir/.devenv/state/wt-base-port" 2>/dev/null || true)
+# No slice running (or `main`, which runs deps, not wt) — leave the current
+# mapping alone rather than tearing down a working one.
+[[ "$base" =~ ^[0-9]+$ ]] || exit 0
+
+web=$base
+api=$((base + 2))
+
+[ "$(cat "$STATE" 2>/dev/null || true)" = "$web" ] && exit 0
+
+# Also matches the pre-dotfiles /tmp/pf8020.py forwarders: leaving one alive
+# makes the new bind fail with EADDRINUSE while the port still answers, so the
+# map looks applied and points at the wrong slice.
+pkill -f "wt-portforward\.py (3000|8020) " 2>/dev/null
+pkill -f "pf8020\.py (3000|8020) " 2>/dev/null
+
+for pair in "3000 $web" "8020 $api"; do
+    port=${pair%% *}
+    # Wait for the old listener to actually release the port before binding.
+    for _ in $(seq 20); do
+        ss -ltn "sport = :$port" 2>/dev/null | grep -q LISTEN || break
+        sleep 0.1
+    done
+    # shellcheck disable=SC2086
+    nohup setsid python3 "$FWD" $pair >/dev/null 2>&1 </dev/null &
+done
+
+# Verify the binds took; a silent failure here is worse than none, because the
+# stale mapping keeps answering and the wrong worktree serves your canvas.
+ok=1
+for _ in $(seq 20); do
+    ok=1
+    for port in 3000 8020; do
+        ss -ltn "sport = :$port" 2>/dev/null | grep -q LISTEN || ok=0
+    done
+    [ "$ok" = 1 ] && break
+    sleep 0.1
+done
+if [ "$ok" != 1 ]; then
+    echo "wt-portmap: failed to bind :3000/:8020 for $dir" >&2
+    exit 1
+fi
+
+mkdir -p "$(dirname "$STATE")"
+printf '%s\n' "$web" > "$STATE"
