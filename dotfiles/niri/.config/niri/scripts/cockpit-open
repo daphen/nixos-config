@@ -41,6 +41,11 @@ for w in "${COCKPIT_WINDOWS[@]}"; do
     if have_window "$(win_class "$w")"; then
         continue
     fi
+    # No live window for this class, so any leftover socket is stale: the old
+    # session's kitty died on compositor restart but left the file behind, which
+    # blocks the new kitty from binding --listen-on → remote control wedged and
+    # every cockpit-add/-restore fails with "connection refused". Clear it first.
+    rm -f "$(win_sock "$w")"
     setsid -f kitty \
         --class "$(win_class "$w")" \
         --listen-on "unix:$(win_sock "$w")" \
