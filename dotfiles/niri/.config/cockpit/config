@@ -59,19 +59,26 @@ cockpit_context_create() {
     zoxide add "$dir" >/dev/null 2>&1 || true
 }
 
-# Newest transcript that actually CONTAINS a conversation. Picking by recency
-# alone lands in the empty jsonl an aborted agent left behind.
+# The transcript with the most recent CONVERSATION, not the most recently
+# touched file. mtime lies: resuming a session bumps its mtime without adding
+# any content, so after a crash/restore cycle `ls -t` can rank a stale session
+# above the one holding your latest turn. Rank by each transcript's last record
+# timestamp instead. Still skip aborted/empty sessions (no user message).
 _resume_flag() {
-    local proj f id
+    local proj f id ts best_id best_ts=""
     proj="$HOME/.claude/projects/${1//[.\/]/-}"
     [ -d "$proj" ] || return 0
-    while IFS= read -r f; do
-        if head -c 65536 "$f" | grep -q '"type":"user"'; then
-            id=$(basename "$f" .jsonl)
-            break
+    for f in "$proj"/*.jsonl; do
+        [ -f "$f" ] || continue
+        head -c 65536 "$f" | grep -q '"type":"user"' || continue
+        ts=$(grep -oE '"timestamp":"[^"]+"' "$f" 2>/dev/null | tail -1 | cut -d'"' -f4)
+        [ -n "$ts" ] || continue
+        if [ -z "$best_ts" ] || [[ "$ts" > "$best_ts" ]]; then
+            best_ts=$ts
+            best_id=$(basename "$f" .jsonl)
         fi
-    done < <(ls -t "$proj"/*.jsonl 2>/dev/null)
-    [ -n "${id:-}" ] && printf ' --resume %s' "$id"
+    done
+    [ -n "${best_id:-}" ] && printf ' --resume %s' "$best_id"
     return 0
 }
 
