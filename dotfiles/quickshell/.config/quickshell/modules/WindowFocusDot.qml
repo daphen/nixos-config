@@ -22,11 +22,13 @@ PanelWindow {
         return scrs.length ? scrs[0] : null
     }
 
-    // Workspace-view origin within the output. niri's view sits below the top
-    // bar; x is flush left. TUNE against live niri.
+    // tile_pos_in_workspace_view is already output-relative (it includes the
+    // bar's exclusive-zone offset — verified: y=60 with the bar vs 16 bar-less),
+    // so the dot maps straight into the output-filling panel with no extra offset.
     property real viewOriginX: 0
-    property real viewOriginY: Theme.barHeight
-    property int dotSize: 8
+    property real viewOriginY: 0
+    property int pillW: 28
+    property int pillH: 5
 
     readonly property var geom: NiriState.focusedWindowGeom()
 
@@ -40,13 +42,15 @@ PanelWindow {
 
     Rectangle {
         id: dot
-        width: root.dotSize
-        height: root.dotSize
-        radius: width / 2
-        color: "#ff8800"
+        width: root.pillW
+        height: root.pillH
+        radius: height / 2
+        color: Theme.cursor
         visible: root.geom !== null
-        x: root.geom ? root.viewOriginX + root.geom.x + root.geom.w / 2 - width / 2 : 0
-        y: root.geom ? root.viewOriginY + root.geom.y + root.geom.h - height / 2 : 0
+        // Horizontally centered under the focused window; vertically centered in
+        // the gap between the window's bottom edge and the output's bottom edge.
+        x: root.geom ? root.viewOriginX + root.geom.x + root.geom.w / 2 - root.pillW / 2 : 0
+        y: root.geom ? (root.viewOriginY + root.geom.y + root.geom.h + parent.height) / 2 - root.pillH / 2 : 0
 
         Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         Behavior on y { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }

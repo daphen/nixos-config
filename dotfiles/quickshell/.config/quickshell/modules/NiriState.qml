@@ -211,10 +211,11 @@ Singleton {
     }
 
     // Focused window's rectangle within its output's workspace view, from
-    // niri's IPC (tile_pos_in_workspace_view + window_size). Null when the
-    // running niri doesn't report a position — tiled windows need the patched
-    // niri; floating windows report it on any version. The focus dot stays
-    // hidden until this is non-null.
+    // niri's IPC. Uses tile_pos + tile_size (the VISIBLE window box incl.
+    // niri's border), not window_size (content only) — so the focus dot
+    // centers under the window's real edges. Null when the running niri
+    // doesn't report a position (tiled windows need the patched niri;
+    // floating report it on any version); the dot stays hidden until non-null.
     function focusedWindowGeom() {
         const _ = version
         for (const id in windows) {
@@ -222,7 +223,7 @@ Singleton {
             if (!w.is_focused) continue
             const L = w.layout || {}
             const p = L.tile_pos_in_workspace_view
-            const s = L.window_size
+            const s = L.tile_size
             if (!p || !s) return null
             return { x: p[0], y: p[1], w: s[0], h: s[1] }
         }
