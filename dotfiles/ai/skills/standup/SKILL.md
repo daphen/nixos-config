@@ -34,11 +34,25 @@ Two sources, Slack is authoritative:
 1. **Slack (primary).** Use the Slack MCP on `#team-everywhere` — channel id **`C099112QXR7`** (NOT `#team-everywhere-alerts` C0AGBV9P94P, which is incident noise, and NOT the `-internal`/`-vents` channels). Standups are posted as **thread replies under a daily "Standup Bot" async-standup prompt**, not as top-level messages. So: `slack_read_channel` to find the previous working day's Standup Bot prompt, then `slack_read_thread` on it to read David's actual reply. That reply is what was *sent* — the local log only captures what got logged. (`slack_search_public_and_private` for David's `y:`/`t:` text is a faster shortcut when it hits, but it misses thread replies sometimes; fall back to reading the thread.)
 2. **Local log (fallback / cross-check):** `~/personal/notes/storage/references/standups-sent.md`, last 3 entries. Use it if Slack is unreachable or the channel read comes up empty.
 
+**Reconcile the log against Slack on every run.** David edits the standup in
+the composer before sending and does not always mention it, so the previous
+day's Slack reply is often NOT what `standups-sent.md` recorded. After reading
+the thread in 4.1, diff it against that day's entry in the local log; when they
+differ, **overwrite the log entry with the Slack text** — Slack is what
+teammates actually read, so it's the truth the dedupe must run against. Tell
+David in one line that the log drifted; don't narrate the diff.
+
 Dedupe rule: a shipped item may be reported as shipped ONCE — if a bullet re-reports something already posted as done, drop it. Multi-day work must read as progression, not repetition: "started X" → "shipped X" is fine; two days of "continued working on X" verbatim is not (vary by what actually moved). If both sources are unavailable, note that to David rather than silently skipping.
 
 ## Step 5 — curate into the standup
 
 Follow the async-standup format ([[feedback_async_standup_format]]): `y:` / `t:`, terse `•` bullets, NO title line, lowercase, outsider-legible (non-DS teammates — no ticket IDs, no jargon), no em dashes ([[feedback_no_em_dashes]]). `y:` = the window's work, both **shipped and in-progress**; `t:` = today's actual top work (not "planning", not teammates' tickets). Relabel `y:` to `f/weekend:` etc. when the window spans more than yesterday.
+
+**Never in the standup** (2026-07-29):
+
+- **Review status or the act of reviewing.** No "pr is up", "in review", "get X through review", "reviewed Y". Report the WORK, and report it again only when it ships. Reviewing teammates' PRs is not standup content at all.
+- **Meetings, unless the attendee is a customer.** Internal syncs, progress reviews, planning sessions: out. A customer call is worth a line.
+- **On-call and goalie duty**, including pages handled, unless a page turned into real work worth reporting on its own.
 
 **Terse means one line per bullet, hard cap.** After drafting, strip every
 clause that doesn't change what the reader knows about the WORK itself:
