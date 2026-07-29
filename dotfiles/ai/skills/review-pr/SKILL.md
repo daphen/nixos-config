@@ -17,17 +17,6 @@ an nvim buffer). The visual render in step 6 is a self-contained local HTML file
 opened in your browser — no network, no cloud — and it's produced **by default** at
 the end of the review. Never post either form to the PR.
 
-## Model contract — reviews run on Fable
-Review judgment (finding, refuting, verdicts) runs on **Fable**, same tier as
-planning ([[feedback_plan_fable_implement_opus]]). You cannot switch models
-yourself, so at skill start check which model you are (your system prompt names
-it). If you are NOT a Fable model, STOP before reading the diff and reply exactly:
-"Model check: I'm on <model>. Run `/model claude-fable-5` and re-invoke the review
-so it runs on Fable per the model contract." (Typical case: a worktree session
-switched to Opus for implementation gets asked to review something.) Subagents
-spawned for finder/verifier fan-out inherit the session model — do not pass a
-lower-tier `model:` override.
-
 ## 1 — Resolve the PR
 
 In priority order:
