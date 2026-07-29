@@ -125,9 +125,9 @@ cockpit_window_cmd() {
         nvim)
             local sess="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}/nvim/${name}.vim"
             if [ -f "$sess" ]; then
-                printf 'COCKPIT_NVIM_SESSION=%q direnv exec . nvim -S %q; exec fish' "$sess" "$sess"
+                printf 'AGENT_SCOPE=lovable COCKPIT_NVIM_SESSION=%q direnv exec . nvim -S %q; exec fish' "$sess" "$sess"
             else
-                printf 'COCKPIT_NVIM_SESSION=%q direnv exec . nvim; exec fish' "$sess"
+                printf 'AGENT_SCOPE=lovable COCKPIT_NVIM_SESSION=%q direnv exec . nvim; exec fish' "$sess"
             fi ;;
         # main runs the shared deps singleton (wt-proxy caddy, nats, …);
         # worktrees run their own wt slice on top of it. The retry loop keeps

@@ -137,6 +137,10 @@ return {
 						color = { fg = "#121214", bg = "#ED333B", gui = "bold" },
 						padding = { left = 2, right = 2 },
 					},
+					{
+						function() return require("agent-nvim").statusline() end,
+						padding = { left = 1, right = 1 },
+					},
 				},
 				lualine_x = {
 					"filetype",
