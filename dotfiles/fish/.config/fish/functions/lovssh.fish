@@ -156,7 +156,13 @@ function lovssh --description "SSH into the existing lovbox for a Lovable projec
     # sandbox filesystem). Each SSH session gets its own bearer; coworkers
     # SSHing in see no token. If 1Password isn't reachable or the item is
     # missing, the sandbox shell just won't have MCP — non-fatal.
-    set -l notes_token (op read 'op://Private/notes-memory-mcp/password' 2>/dev/null)
+    # Reuse an inherited token when the parent already fetched it (cockpit-add-lol
+    # exports it into LoL tabs): 1Password re-authorizes per calling process, so
+    # re-reading here costs one approval prompt per tab.
+    set -l notes_token $NOTES_MEMORY_TOKEN
+    if test -z "$notes_token"
+        set notes_token (op read 'op://Private/notes-memory-mcp/password' 2>/dev/null)
+    end
     set -l token_export ""
     if test -n "$notes_token"
         set token_export "export NOTES_MEMORY_TOKEN='$notes_token'; "
