@@ -42,9 +42,25 @@ local OPEN = "▾"
 local LCAP = ""      -- rounded pill left cap
 local RCAP = ""      -- rounded pill right cap
 
--- Default scope is `personal`: a bare nvim is a private-repo rail. Only the
--- cockpit exports AGENT_SCOPE=lovable to get the EVERY-ticket-worktree rail.
-local scope = vim.env.AGENT_SCOPE or "personal"
+-- Scope resolution: an explicit AGENT_SCOPE wins (the cockpit sets it); otherwise
+-- derive from the focused niri workspace — the `lovable` workspace hosts lovable
+-- work, everything else (and off-niri) is personal. So an nvim started anywhere on
+-- the lovable workspace is a lovable rail, not just the cockpit's launch command.
+local function detect_scope()
+  local env = vim.env.AGENT_SCOPE
+  if env and env ~= "" then return env end
+  local ok, out = pcall(vim.fn.system, { "niri", "msg", "--json", "workspaces" })
+  if ok and type(out) == "string" and out ~= "" then
+    local dok, wss = pcall(vim.json.decode, out)
+    if dok and type(wss) == "table" then
+      for _, w in ipairs(wss) do
+        if w.is_focused and w.name == "lovable" then return "lovable" end
+      end
+    end
+  end
+  return "personal"
+end
+local scope = detect_scope()
 -- Scopes are isolated agent worlds: one agentd daemon + socket + session set each.
 -- The rail only ever sees its own scope's sessions (it dials that scope's socket),
 -- so a lovable nvim and a personal nvim show disjoint rosters.
@@ -1610,8 +1626,11 @@ function M.setup(opts)
   -- AGENT_SCOPE per workspace (lovable / personal), so the rail becomes that scope's
   -- mission control on launch. A bare personal-machine nvim with no AGENT_SCOPE stays
   -- dormant (open on demand with <leader>a). Pass opts.autostart to force either way.
+  -- Autostart when the scope resolved to a "work" world: an explicit AGENT_SCOPE
+  -- (cockpit / opt-in personal) or the lovable workspace. A bare personal nvim
+  -- elsewhere stays dormant (open on demand with <leader>a).
   local autostart = opts.autostart
-  if autostart == nil then autostart = vim.env.AGENT_SCOPE ~= nil end
+  if autostart == nil then autostart = (vim.env.AGENT_SCOPE ~= nil) or (scope == "lovable") end
   if autostart then
     if vim.v.vim_did_enter == 1 then
       vim.schedule(function() M.open() end)
