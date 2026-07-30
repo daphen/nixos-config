@@ -822,7 +822,9 @@ local function run_slash(text)
   elseif cmd == "help" then
     M.help()
   else
-    vim.notify("agent-nvim: unknown /" .. cmd, vim.log.levels.WARN)
+    -- Not a rail command → let it through to pi as a prompt. pi owns its own
+    -- slash commands / skills (e.g. /plan-ticket), so the rail must not swallow them.
+    return false
   end
   return true
 end
