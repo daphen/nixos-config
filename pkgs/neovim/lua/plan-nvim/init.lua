@@ -269,9 +269,31 @@ local function watch()
 	start_poll()
 end
 
+-- An nvim that should auto-open plans: the old worktree stack set PLAN_NVIM_OPEN;
+-- the agent cockpit's nvim exports AGENT_SCOPE, so treat that as the same intent.
+local function want_auto_open()
+	return vim.env.PLAN_NVIM_OPEN == "1" or (vim.env.AGENT_SCOPE ~= nil and vim.env.AGENT_SCOPE ~= "")
+end
+
 local function open_path(path)
 	state.root = git_root()
 	state.plan_path = path
+	-- Open in a real editor window — never the agent rail, a float, or a special
+	-- buffer. In the cockpit the rail is often focused when a plan opens, and a bare
+	-- :edit there would clobber the rail's buffer.
+	local target
+	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		local b = vim.api.nvim_win_get_buf(w)
+		if vim.api.nvim_win_get_config(w).relative == ""
+			and vim.bo[b].buftype == ""
+			and not vim.api.nvim_buf_get_name(b):match("agent%-") then
+			target = w
+			break
+		end
+	end
+	if target and target ~= vim.api.nvim_get_current_win() then
+		pcall(vim.api.nvim_set_current_win, target)
+	end
 	vim.cmd("edit " .. vim.fn.fnameescape(path))
 end
 
@@ -1016,8 +1038,8 @@ local function watch_for_plan(key)
 			local cur = vim.api.nvim_get_current_buf()
 			local scratch = (vim.api.nvim_buf_get_name(cur) == "" and not vim.bo[cur].modified)
 				or vim.bo[cur].filetype == "snacks_dashboard"
-			if scratch then
-				open_path(target)
+			if scratch or want_auto_open() then
+				open_path(target) -- cockpit / plan pane: surface it in the editor window
 			else
 				vim.notify("plan: " .. key .. " ready — :PlanOpen to review")
 			end
@@ -1134,7 +1156,7 @@ function M.setup()
 		callback = function()
 			vim.defer_fn(function()
 				M.bind() -- silently bind so the statusline + <C-p> work in any worktree nvim
-				if vim.env.PLAN_NVIM_OPEN == "1" then M.autostart() end
+				if want_auto_open() then M.autostart() end
 			end, 150)
 		end,
 	})
