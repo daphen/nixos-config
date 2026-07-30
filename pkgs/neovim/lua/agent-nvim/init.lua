@@ -241,22 +241,25 @@ session_state = function(a)
     pill = "AgentIdle", cap = "AgentIdle", label = d and ("idle " .. d) or "idle" }
 end
 
+-- Session display name: prefer the ticket id (every-1234) embedded in the
+-- cwd-derived session name, else the raw name — keeps header/roster readable.
+local function short_name(n)
+  return (n and n:match("%a+%-%d+")) or n or "?"
+end
+
 -- The active session isn't a roster row — it's the header of its own chat. Build
--- a rich winbar for it: name + live state (spinner when working) + plan + cost.
+-- a rich winbar for it: name + live state (spinner when working) + plan.
 local function active_winbar()
   if not S.selected then return "%#AgentMuted#  no session" end
   local a
   for _, x in ipairs(S.roster) do if x.id == S.selected then a = x break end end
   if not a then return "%#AgentAccent#  ◆ " .. S.selected end
   local ss = session_state(a)
-  local parts = { "%#AgentAccent#  ◆ " .. a.name,
+  local parts = { "%#AgentAccent#  ◆ " .. short_name(a.name),
     "%#AgentMuted# · %#" .. ss.name .. "#" .. ss.glyph .. " " .. ss.label }
   local pl = S.plan[a.id]
   if pl and pl.total and pl.total > 0 then
     parts[#parts + 1] = "%#AgentMuted#   ◆ " .. pl.done .. "/" .. pl.total
-  end
-  if a.costUsd and a.costUsd > 0 then
-    parts[#parts + 1] = string.format("%%#AgentMuted#   $%.2f", a.costUsd)
   end
   return table.concat(parts)
 end
@@ -324,7 +327,7 @@ render_roster = function()
       local isSel = (a.id == S.selected)
 
       -- name line: [bar] glyph name [✎ if draft]
-      local nm = a.name
+      local nm = short_name(a.name)
       local dr = S.drafts[a.id]
       if dr and dr:gsub("%s", "") ~= "" then nm = nm .. "  ✎" end
       -- col 0 is reserved for the focus edge (bg cell when focused); glyph at col 2
