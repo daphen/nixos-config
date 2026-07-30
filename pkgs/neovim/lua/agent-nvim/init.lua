@@ -572,6 +572,30 @@ handle = function(obj)
     end
     S.chat[obj.session] = { msgs = msgs }
     if obj.session == S.selected then render_chat(true) end
+  elseif t == "message_start" and obj.session and obj.message and obj.message.role == "user" then
+    -- echo the user prompt — covers prompts injected via wt-send / plan dispatch
+    -- that the composer never optimistically echoed. Dedup vs a just-echoed one.
+    local text = msg_text(obj.message)
+    if text:gsub("%s", "") ~= "" then
+      local c = S.chat[obj.session] or { msgs = {} }
+      local last = c.msgs[#c.msgs]
+      if not (last and last.role == "user" and last.text == text) then
+        c.msgs[#c.msgs + 1] = { role = "user", text = text }
+        S.chat[obj.session] = c
+        if obj.session == S.selected then render_chat(true) end
+      end
+    end
+  elseif t == "message_update" and obj.session then
+    -- pi streams the growing assistant message here (NOT text_delta): partial.content
+    -- is the full content-so-far — text + thinking + tool calls — so rendering it live
+    -- via msg_text is how the chat shows the agent working in real time.
+    local ev = obj.assistantMessageEvent
+    local partial = ev and ev.partial
+    if partial and type(partial.content) == "table" then
+      if S.errors then S.errors[obj.session] = nil end
+      S.stream[obj.session] = msg_text({ content = partial.content })
+      if obj.session == S.selected then render_chat(true) end
+    end
   elseif t == "message_end" and obj.session then
     local m = obj.message or {}
     local text = msg_text(m)
