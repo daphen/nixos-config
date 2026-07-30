@@ -468,6 +468,18 @@ render_chat = function(scroll)
     end
   end
 
+  -- error block: a pi/daemon failure (e.g. model quota/auth) that would otherwise
+  -- leave the turn silently empty. Cleared on the next send / successful stream.
+  local errmsg = S.selected and S.errors and S.errors[S.selected]
+  if errmsg then
+    push(""); push("")
+    decor[#decor + 1] = { line = push("╭─ ✗ error"), fg = "AgentErr" }
+    for _, l in ipairs(vim.split(errmsg, "\n", { plain = true })) do
+      decor[#decor + 1] = { line = push("│ " .. l), fg = "AgentErr" }
+    end
+    decor[#decor + 1] = { line = push("╰ send again to retry"), fg = "AgentMuted" }
+  end
+
   vim.bo[S.chatbuf].modifiable = true
   api.nvim_buf_set_lines(S.chatbuf, 0, -1, false, lines)
   vim.bo[S.chatbuf].modifiable = false
@@ -535,6 +547,7 @@ handle = function(obj)
   elseif (t == "text_delta" or t == "content_block_delta" or t == "message_delta" or t == "text") and obj.session then
     local chunk = delta_text(obj)
     if chunk and chunk ~= "" then
+      if S.errors then S.errors[obj.session] = nil end -- new output → clear stale error
       S.stream[obj.session] = (S.stream[obj.session] or "") .. chunk
       if obj.session == S.selected then render_chat(true) end
     end
@@ -553,6 +566,20 @@ handle = function(obj)
     end
     -- setStatus/setWidget/setTitle/set_editor_text: UI directives, not questions —
     -- ignored (surfacing them as approvals was the spurious "setStatus" card)
+  elseif t == "error" then
+    -- surface pi/daemon failures that would otherwise vanish as an empty turn
+    -- (e.g. a quota/auth error on the model call)
+    local msg = obj.error or obj.message
+    if type(msg) == "table" then msg = msg.message or msg.text end
+    local sid = obj.session or S.selected
+    if sid then
+      S.errors = S.errors or {}
+      S.errors[sid] = tostring(msg or "unknown error")
+      S.stream[sid] = nil
+      if sid == S.selected then render_chat(true) end
+    else
+      vim.notify("agent error: " .. tostring(msg or "unknown"), vim.log.levels.ERROR)
+    end
   end
 end
 
@@ -841,6 +868,7 @@ composer_send = function()
     return
   end
 
+  if S.errors then S.errors[S.selected] = nil end -- clear last error on retry
   local prompt = build_prompt(text)
   local c = S.chat[S.selected] or { msgs = {} }
   c.msgs[#c.msgs + 1] = { role = "user", text = prompt } -- optimistic echo

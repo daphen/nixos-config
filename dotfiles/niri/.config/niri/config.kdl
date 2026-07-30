@@ -390,7 +390,7 @@ spawn-sh-at-startup "slqs >/tmp/slqs.log 2>&1"
 // sets restore at login (before the cockpit's nvim rail connects). --repo is
 // the source root list_sources offers; personal must be set or it defaults to
 // the lovable worktree root.
-spawn-sh-at-startup "agentd --scope lovable --repo $HOME/work/lovable >/tmp/agentd-lovable.log 2>&1"
+spawn-sh-at-startup "OPENAI_LOVABLE_KEY=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_LOVABLE_KEY') agentd --scope lovable --repo $HOME/work/lovable >/tmp/agentd-lovable.log 2>&1"
 spawn-sh-at-startup "agentd --scope personal --repo $HOME/personal >/tmp/agentd-personal.log 2>&1"
 
 // Auto-restore wallpaper on startup with waypaper
