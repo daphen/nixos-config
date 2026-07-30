@@ -42,11 +42,12 @@ local OPEN = "▾"
 local LCAP = ""      -- rounded pill left cap
 local RCAP = ""      -- rounded pill right cap
 
-local scope = vim.env.AGENT_SCOPE or "default"
+-- Default scope is `personal`: a bare nvim is a private-repo rail. Only the
+-- cockpit exports AGENT_SCOPE=lovable to get the EVERY-ticket-worktree rail.
+local scope = vim.env.AGENT_SCOPE or "personal"
 -- Scopes are isolated agent worlds: one agentd daemon + socket + session set each.
--- `lovable` = EVERY-ticket worktrees; `personal` = private projects. The rail only
--- ever sees its own scope's sessions (it dials that scope's socket), so a lovable
--- nvim and a personal nvim show disjoint rosters.
+-- The rail only ever sees its own scope's sessions (it dials that scope's socket),
+-- so a lovable nvim and a personal nvim show disjoint rosters.
 local ROOTS = { lovable = "~/work/lovable", personal = "~/personal" }
 
 local S = {
