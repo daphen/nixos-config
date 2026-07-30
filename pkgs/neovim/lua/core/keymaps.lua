@@ -21,10 +21,11 @@ keymap.set("n", "<leader>sh", "<C-w>s") -- split horizontally
 keymap.set("n", "<leader>se", "<C-w>=") -- make split windows equal width
 keymap.set("n", "<C-x>", ":close<CR>") -- close current split window
 
--- resize splits — Ctrl+Shift+hjkl (no Alt on the Charybdis). kitty's
--- keyboard protocol keeps these distinct from the <C-hjkl> window nav.
-keymap.set("n", "<C-S-h>", "<cmd>vertical resize -3<CR>", { desc = "Shrink width" })
-keymap.set("n", "<C-S-l>", "<cmd>vertical resize +3<CR>", { desc = "Grow width" })
+-- resize splits — leader+h/l for width. Ctrl+Shift+hjkl misfires on the
+-- Charybdis (home-row-mods drops the modifiers, nvim only sees bare hjkl), so
+-- width lives on the leader; height stays on C-S-j/k where it still works.
+keymap.set("n", "<leader>h", "<cmd>vertical resize -3<CR>", { desc = "Shrink width" })
+keymap.set("n", "<leader>l", "<cmd>vertical resize +3<CR>", { desc = "Grow width" })
 keymap.set("n", "<C-S-j>", "<cmd>resize -2<CR>", { desc = "Shrink height" })
 keymap.set("n", "<C-S-k>", "<cmd>resize +2<CR>", { desc = "Grow height" })
 

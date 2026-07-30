@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "agentd": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785419176,
+        "narHash": "sha256-df27vUFmZgZ35Up5UzBy6mVZM4PaOwnt1oAf2WkHntA=",
+        "ref": "refs/heads/main",
+        "rev": "effa359f3b4c89e8efef00ae0112b4d2fe71b8db",
+        "revCount": 4,
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/agentd"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/agentd"
+      }
+    },
     "crane": {
       "locked": {
         "lastModified": 1767744144,
@@ -396,6 +412,7 @@
     },
     "root": {
       "inputs": {
+        "agentd": "agentd",
         "dsqrd": "dsqrd",
         "helium-nix": "helium-nix",
         "home-manager": "home-manager",

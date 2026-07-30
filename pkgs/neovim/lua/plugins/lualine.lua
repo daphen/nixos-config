@@ -58,39 +58,34 @@ return {
 			end
 		end
 
-		-- Define a custom theme that removes background colors from sections
-		-- Define dark and light themes
-		local dark_theme = {
-			normal = {
-				a = { fg = "#EDEDED", bg = "NONE" },
-				b = { fg = "#EDEDED", bg = "NONE" },
-				c = { fg = "#EDEDED", bg = "NONE" },
-				x = { fg = "#EDEDED", bg = "NONE" },
-				y = { fg = "#EDEDED", bg = "NONE" },
-				z = { fg = "#ED333B", bg = "#1B1B1B" },
-			},
-		}
-
-		local light_theme = {
-			normal = {
-				a = { fg = "#2D4A3D", bg = "NONE" },
-				b = { fg = "#2D4A3D", bg = "NONE" },
-				c = { fg = "#2D4A3D", bg = "NONE" },
-				x = { fg = "#2D4A3D", bg = "NONE" },
-				y = { fg = "#2D4A3D", bg = "NONE" },
-				z = { fg = "#ED333B", bg = "#E8EAED" },
-			},
-		}
-
-		-- Function to determine current theme based on background
-		local function get_theme()
-			-- Force a refresh of background detection
-			local bg = vim.fn.eval("&background")
-			if bg == "dark" then
-				return dark_theme
-			else
-				return light_theme
+		-- Statusline shows the file being edited in the MAIN editor window, even
+		-- when focus is in a rail pane (agent-*) — so it never reads "agent-chat".
+		local function editor_filename()
+			local cur = vim.api.nvim_get_current_buf()
+			local ebuf, name = cur, vim.api.nvim_buf_get_name(cur)
+			if name == "" or name:match("agent%-") then
+				for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+					local b = vim.api.nvim_win_get_buf(w)
+					local n = vim.api.nvim_buf_get_name(b)
+					if vim.bo[b].buftype == "" and n ~= "" and not n:match("agent%-") then
+						ebuf, name = b, n
+						break
+					end
+				end
 			end
+			if name == "" then return "" end
+			return vim.fn.fnamemodify(name, ":.") .. (vim.bo[ebuf].modified and " ●" or "")
+		end
+
+		-- Sections sit on a subtle surface bg (a lighter bar), read fresh from the
+		-- theme palette so it tracks light/dark.
+		local function get_theme()
+			local pal = vim.g.theme_palette or {}
+			local dark = vim.o.background == "dark"
+			local surface = pal.bg_surface or (dark and "#24242b" or "#E8EAED")
+			local fg = dark and "#EDEDED" or "#2D4A3D"
+			local s = { fg = fg, bg = surface }
+			return { normal = { a = s, b = s, c = s, x = s, y = s, z = { fg = "#ED333B", bg = surface } } }
 		end
 
 		require("lualine").setup({
@@ -98,16 +93,14 @@ return {
 				theme = get_theme(),
 				globalstatus = true,
 				icons_enabled = true,
-				component_separators = { left = "│", right = "│" },
+				component_separators = { left = "", right = "" },
 				section_separators = { left = "", right = "" },
 			},
 			sections = {
 				lualine_a = {},
 				lualine_b = {
 					{ "fancy_branch", padding = { left = 0, right = 2 } },
-					{
-						"filename",
-					},
+					{ editor_filename },
 					{
 						"fancy_diagnostics",
 						sources = { "nvim_lsp" },
@@ -143,7 +136,7 @@ return {
 					},
 				},
 				lualine_x = {
-					"filetype",
+					{ "filetype", padding = { left = 1, right = 2 } },
 					"fancy_diff",
 					{
 						function() return get_project_root() end,
@@ -153,13 +146,8 @@ return {
 				lualine_y = {},
 				lualine_z = {
 					{
-						function() return " " end, -- Return a single space
-						padding = { left = 0, right = 0 },
-						color = { bg = "NONE" }, -- Transparent background
-					},
-					{
 						get_scrollbar,
-						padding = { left = 0, right = 0 },
+						padding = { left = 1, right = 0 },
 						separator = "",
 					},
 				},
@@ -176,7 +164,7 @@ return {
 							theme = get_theme(),
 							globalstatus = true,
 							icons_enabled = true,
-							component_separators = { left = "│", right = "│" },
+							component_separators = { left = "", right = "" },
 							section_separators = { left = "", right = "" },
 							disabled_filetypes = {
 								statusline = {},
@@ -187,7 +175,7 @@ return {
 							lualine_a = {},
 							lualine_b = {
 								{ "fancy_branch", padding = { left = 0, right = 2 } },
-								{ "filename" },
+								{ editor_filename },
 								{
 									"fancy_diagnostics",
 									sources = { "nvim_lsp" },
@@ -209,7 +197,7 @@ return {
 								},
 							},
 							lualine_x = {
-								"filetype",
+								{ "filetype", padding = { left = 1, right = 2 } },
 								"fancy_diff",
 								{
 									function() return get_project_root() end,
@@ -219,13 +207,8 @@ return {
 							lualine_y = {},
 							lualine_z = {
 								{
-									function() return " " end,
-									padding = { left = 0, right = 0 },
-									color = { bg = "NONE" },
-								},
-								{
 									get_scrollbar,
-									padding = { left = 0, right = 0 },
+									padding = { left = 1, right = 0 },
 									separator = "",
 								},
 							},

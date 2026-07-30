@@ -264,13 +264,13 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#EDEDED"
+        active-color "#6F6F6E"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#3A3A3A"
+        inactive-color "#E2E2E1"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -294,13 +294,13 @@ layout {
         // If you enable the border, you probably want to disable the focus ring.
 
         width 4
-        active-color "#EDEDED"
+        active-color "#6F6F6E"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
-        active-gradient from="#EDEDED" to="#EDEDED" angle=180
+        active-gradient from="#6F6F6E" to="#6F6F6E" angle=180
         // Matches waybar-notch light theme hairline
         // (foreground.primary @ 50% alpha).
-        inactive-color "#3A3A3A"
+        inactive-color "#E2E2E1"
 
         // Color of the border around windows that request your attention.
         urgent-color "#9b0000"
@@ -385,6 +385,13 @@ spawn-at-startup "qs"
 // Native Slack client daemon — serves data and fires desktop notifications
 // even when the window is closed.
 spawn-sh-at-startup "slqs >/tmp/slqs.log 2>&1"
+
+// Agent-rail daemons, one per scope. Started here so their persisted session
+// sets restore at login (before the cockpit's nvim rail connects). --repo is
+// the source root list_sources offers; personal must be set or it defaults to
+// the lovable worktree root.
+spawn-sh-at-startup "agentd --scope lovable --repo $HOME/work/lovable >/tmp/agentd-lovable.log 2>&1"
+spawn-sh-at-startup "agentd --scope personal --repo $HOME/personal >/tmp/agentd-personal.log 2>&1"
 
 // Auto-restore wallpaper on startup with waypaper
 spawn-at-startup "waypaper" "--restore"
@@ -774,10 +781,10 @@ binds {
     Super+Shift+g { spawn-sh "$HOME/.config/niri/scripts/spawn-new-claude-session"; }
     Super+Shift+f { spawn-sh "$HOME/.config/niri/scripts/fork-claude-session"; }
     Super+r hotkey-overlay-title="Create PR review" { spawn "qs" "ipc" "call" "review-create" "toggle"; }
-    // Super+G — jump to the cockpit's agent (claude) window.
+    // Super+G — jump to the cockpit's nvim window (hosts the agent rail).
     // Super+D — cycle through every kitty window (plain + cockpit agent/nvim/
     // devenv), the general terminal-cycle role.
-    Super+g { spawn-sh "$HOME/.config/niri/scripts/cockpit-focus agent"; }
+    Super+g { spawn-sh "$HOME/.config/niri/scripts/cockpit-focus nvim"; }
     Super+d { spawn-sh "$HOME/.config/niri/scripts/focus-kitty-cycle"; }
     Super+Shift+d { spawn-sh "SHOW_FASTFETCH=1 kitty"; }
     Super+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:slqs $HOME/.config/niri/scripts/launch-slack-client"; }

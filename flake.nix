@@ -50,6 +50,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # agentd — Go daemon supervising pi --mode rpc children for the nvim agent
+    # rail. flake=false: the repo has no flake.nix (pure-stdlib Go), so it's
+    # consumed as a raw source tree and built in-repo via pkgs/agentd.
+    agentd = {
+      url = "git+ssh://git@github.com/daphen/agentd";
+      flake = false;
+    };
+
     # Niri flake - provides proper niri build with all dependencies.
     # We use niri-unstable from this flake (tracks master, includes v26.04+).
     niri-flake.url = "github:sodiboo/niri-flake";

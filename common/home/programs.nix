@@ -13,6 +13,9 @@ let
   dsqrdClient = inputs.dsqrd.packages.${pkgs.system}.dsqrd-client;
   mlqsDaemon = inputs.mlqs.packages.${pkgs.system}.mlqs;
   mlqsClient = inputs.mlqs.packages.${pkgs.system}.mlqs-client;
+  # agentd — built in-repo from the flake=false source input (no flake.nix in
+  # the repo). Lands `agentd` on PATH; the nvim rail + niri startup use it.
+  agentd = import ../../pkgs/agentd { inherit pkgs; src = inputs.agentd; };
   # nvim — the converged config (0.12, lz.n, native LSP), with the desktop
   # "full" profile (extras like pyright gated behind NVIM_PROFILE=full and
   # layered onto PATH). Lua lives in ~/nixos/pkgs/neovim and is read live from
@@ -77,6 +80,8 @@ in
     dsqrdClient
     mlqsDaemon
     mlqsClient
+    # agentd — nvim agent-rail daemon (one instance per scope, started at login).
+    agentd
   ];
 
   # wpm-daemon — burst-based WPM counter. Reads /dev/input/event* (needs

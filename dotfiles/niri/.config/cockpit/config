@@ -114,12 +114,12 @@ cockpit_window_cmd() {
         return 0
     fi
     case "$window" in
-        # FORCE_SESSION_PERSISTENCE: launched from inside a claude session the
-        # child inherits CLAUDE_CODE_CHILD_SESSION and silently stops saving
-        # its transcript, so the session can't be resumed after a crash.
+        # Local worktree: the agent leg is the in-nvim rail (AGENT_SCOPE-scoped
+        # agentd), so this window opts out (prints nothing → cockpit-add skips its
+        # tab). Remote lovbox/LoL contexts keep their claude/lovc agent tab via the
+        # early-return branches above. Super+G focuses the nvim rail (config.kdl).
         agent)
-            printf 'env CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude%s; exec fish' \
-                "$(_resume_flag "$dir")" ;;
+            : ;;
         # Session file per context so a crash/reboot restores layout+files;
         # plugin/cockpit-session.lua autosaves it while nvim runs.
         nvim)
@@ -134,10 +134,15 @@ cockpit_window_cmd() {
         # a cold-boot failure VISIBLE in the tab instead of silently dropping
         # to a shell (bit us on the first cockpit-restore after a reboot).
         devenv)
-            local sub="wt"
+            local sub="wt" seed=""
             [ "$name" = main ] && sub="deps"
-            printf 'while true; do direnv exec . devenv %s; echo; echo "[cockpit] devenv %s exited ($?) — enter to restart, ctrl-c for a shell"; read -r || break; done; exec fish' \
-                "$sub" "$sub" ;;
+            # Fresh worktree: install + seed the watcher's lock hash BEFORE the
+            # first `devenv wt`, else devenv's in-process install rewrites
+            # pnpm-lock.yaml, the app filewatcher restarts, and it loops (AGENTS.md).
+            # The [ -f ] guard makes it a no-op on an already-seeded worktree.
+            [ "$sub" = wt ] && seed='[ -f .devenv/state/pnpm-lock.sha ] || { echo "[cockpit] seeding pnpm for fresh worktree…"; direnv exec . pnpm install && mkdir -p .devenv/state && sha256sum pnpm-lock.yaml | cut -d" " -f1 > .devenv/state/pnpm-lock.sha; }; '
+            printf '%swhile true; do direnv exec . devenv %s; echo; echo "[cockpit] devenv %s exited ($?) — enter to restart, ctrl-c for a shell"; read -r || break; done; exec fish' \
+                "$seed" "$sub" "$sub" ;;
         *)      printf 'exec fish' ;;
     esac
 }

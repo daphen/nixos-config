@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""agent-reroot <dir> — tell the workspace's nvim to :AgentReroot <dir>.
+
+Reverse channel from the quickshell rail to the editor. Finds the target nvim the
+nvim-open way (nvim auto-listens on $XDG_RUNTIME_DIR/nvim.<pid>.0): prefer the nvim
+in the focused niri window (the editor you're looking at), else one whose cwd shares
+the worktree's parent, else the first. Then drives it via --server --remote-send.
+"""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+
+
+def niri_json(*args):
+    try:
+        out = subprocess.run(["niri", "msg", "--json", *args],
+                             capture_output=True, text=True, timeout=3)
+        return json.loads(out.stdout) if out.stdout.strip() else None
+    except Exception:
+        return None
+
+
+def nvims():
+    """[(socket, pid, cwd)] for every running nvim server."""
+    out = []
+    for sock in Path(RUNTIME).glob("nvim.*.0"):
+        pid = sock.name.split(".")[1]
+        try:
+            cwd = os.readlink(f"/proc/{pid}/cwd")
+        except OSError:
+            continue
+        out.append((str(sock), int(pid), cwd))
+    return out
+
+
+def ancestors(pid: int):
+    p = pid
+    while p > 1:
+        yield p
+        try:
+            with open(f"/proc/{p}/stat") as f:
+                p = int(f.read().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            return
+
+
+def focused_nvim(cands):
+    """The nvim whose window is focused — nvim lives inside kitty, so match the
+    focused window pid anywhere up an nvim's ancestor chain."""
+    fw = niri_json("focused-window") or {}
+    fpid = fw.get("pid")
+    if not fpid:
+        return None
+    for sock, pid, _cwd in cands:
+        if fpid in ancestors(pid):
+            return sock
+    return None
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("usage: agent-reroot <dir>", file=sys.stderr)
+        return 2
+    d = sys.argv[1].rstrip("/")
+    cands = nvims()
+    if not cands:
+        return 0
+
+    sock = focused_nvim(cands)
+    if not sock:
+        parent = os.path.dirname(d)
+        for s, _pid, cwd in cands:
+            if cwd == d or cwd.startswith(d + "/") or os.path.dirname(cwd) == parent:
+                sock = s
+                break
+        if not sock:
+            sock = cands[0][0]
+
+    # <C-\><C-N> forces normal mode first (nvim-open idiom), then run the command.
+    subprocess.run(["nvim", "--server", sock, "--remote-send",
+                    f"<C-\\><C-N>:AgentReroot {d}<CR>"])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

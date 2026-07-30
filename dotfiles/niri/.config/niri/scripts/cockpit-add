@@ -32,6 +32,9 @@ for w in "${COCKPIT_WINDOWS[@]}"; do
         continue
     fi
     cmd=$(cockpit_window_cmd "$w" "$name" "$dir")
+    # A window may opt out for a given context by printing nothing (e.g. the agent
+    # leg for a local worktree, where the in-nvim rail is the agent) — skip its tab.
+    [ -z "$cmd" ] && continue
     kitty @ --to "unix:$sock" launch \
         --type=tab --tab-title "$name" --cwd "$dir" --keep-focus \
         -- bash -c "$cmd" >/dev/null
