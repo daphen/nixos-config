@@ -1666,8 +1666,20 @@ function M.close()
   end
   S.editorwin = nil
   if S.saved_gcr then vim.o.guicursor = S.saved_gcr end
+  -- Guarantee a non-rail window survives the close: if the rail is the only split
+  -- (e.g. the editor was closed / the plan took the whole layout), closing the last
+  -- rail window throws E444. Open a scratch window first so there's something left.
+  local rail = {}
+  for _, k in ipairs({ "win", "chatwin", "composerwin" }) do
+    if S[k] and api.nvim_win_is_valid(S[k]) then rail[S[k]] = true end
+  end
+  local survivor = false
+  for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
+    if not rail[w] then survivor = true; break end
+  end
+  if not survivor then pcall(vim.cmd, "topleft new") end
   for _, w in ipairs({ "composerwin", "chatwin", "win" }) do
-    if S[w] and api.nvim_win_is_valid(S[w]) then api.nvim_win_close(S[w], true) end
+    if S[w] and api.nvim_win_is_valid(S[w]) then pcall(api.nvim_win_close, S[w], true) end
     S[w] = nil
   end
 end
