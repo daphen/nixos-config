@@ -270,9 +270,29 @@ local function watch()
 end
 
 -- An nvim that should auto-open plans: the old worktree stack set PLAN_NVIM_OPEN;
--- the agent cockpit's nvim exports AGENT_SCOPE, so treat that as the same intent.
+-- the agent cockpit's nvim exports AGENT_SCOPE; and, as a fallback for an nvim
+-- relaunched in the cockpit tab without those, being on the `lovable` niri
+-- workspace (same signal the rail uses). Cached — computed once per session.
+local _auto_open = nil
 local function want_auto_open()
-	return vim.env.PLAN_NVIM_OPEN == "1" or (vim.env.AGENT_SCOPE ~= nil and vim.env.AGENT_SCOPE ~= "")
+	if _auto_open ~= nil then return _auto_open end
+	_auto_open = vim.env.PLAN_NVIM_OPEN == "1"
+		or (vim.env.AGENT_SCOPE ~= nil and vim.env.AGENT_SCOPE ~= "")
+	if not _auto_open then
+		local ok, out = pcall(vim.fn.system, { "niri", "msg", "--json", "workspaces" })
+		if ok and type(out) == "string" and out ~= "" then
+			local dok, wss = pcall(vim.json.decode, out)
+			if dok and type(wss) == "table" then
+				for _, w in ipairs(wss) do
+					if w.is_focused and w.name == "lovable" then
+						_auto_open = true
+						break
+					end
+				end
+			end
+		end
+	end
+	return _auto_open
 end
 
 local function open_path(path)
