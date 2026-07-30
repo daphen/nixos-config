@@ -784,7 +784,7 @@ end
 composer_placeholder = function()
   api.nvim_buf_clear_namespace(S.composerbuf, S.composer_ns, 0, -1)
   if composer_empty() then
-    local hint = S.selected and ("message " .. S.selected .. "…  (/ for commands)") or "open a session first"
+    local hint = S.selected and ("message " .. short_name(S.selected) .. "…  (/ for commands)") or "open a session first"
     pcall(api.nvim_buf_set_extmark, S.composerbuf, S.composer_ns, 0, 0, {
       virt_text = { { hint, "AgentMuted" } }, virt_text_pos = "overlay",
     })
@@ -1619,8 +1619,8 @@ function M.statusline()
   if not S.selected then return "" end
   local a
   for _, x in ipairs(S.roster) do if x.id == S.selected then a = x break end end
-  if not a then return "▸ " .. S.selected end
-  local s = "▸ " .. a.name .. " · " .. ((a.model and a.model ~= "") and a.model or "?")
+  if not a then return "▸ " .. short_name(S.selected) end
+  local s = "▸ " .. short_name(a.name) .. " · " .. ((a.model and a.model ~= "") and a.model or "?")
   if a.status == "streaming" then s = s .. " " .. GLYPH.streaming end
   if S.pending[a.id] then s = s .. " " .. GLYPH.needs_input end
   if a.costUsd and a.costUsd > 0 then s = s .. string.format(" · $%.2f", a.costUsd) end
