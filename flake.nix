@@ -172,12 +172,15 @@
               hash = "sha256-CSZ5sZ+d7Jhi43ipaWXKupYPFgWCbCx4RMTQN8emu9o=";
             };
           });
+          # From nixpkgs-latest, not `apps`: pi <0.79 predates the
+          # earendil-works rename, and pi-mcp-adapter peer-depends on the
+          # post-rename @earendil-works/pi-ai + typebox that only 0.79+ ships.
+          inherit (latest) pi-coding-agent;
           inherit (apps)
             # AI CLIs (ship daily)
             claude-code
             codex
             opencode
-            pi-coding-agent
             # Compositor-adjacent
             # Browsers (security updates matter)
             chromium
