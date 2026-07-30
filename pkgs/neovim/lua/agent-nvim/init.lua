@@ -200,12 +200,43 @@ end
 --------------------------------------------------------------------------------
 -- message helpers
 --------------------------------------------------------------------------------
+-- One-line summary of a tool call: name + the bit that matters (path / command /
+-- mcp target), so the chat shows WHAT the agent is doing, not just final prose.
+local function tool_hint(c)
+  local a = c.arguments or c.input or c.args or {}
+  local name = c.name or c.tool or "tool"
+  if name == "read" or name == "write" or name == "edit" or name == "apply_patch" then
+    local p = a.path or a.file_path or a.filePath or ""
+    return "⚙ " .. name .. (p ~= "" and (" " .. vim.fn.fnamemodify(p, ":.")) or "")
+  elseif name == "bash" or name == "shell" then
+    local cmd = (a.command or a.cmd or ""):gsub("%s+", " ")
+    if #cmd > 64 then cmd = cmd:sub(1, 61) .. "…" end
+    return "⚙ bash " .. cmd
+  elseif name == "mcp" then
+    local bits = {}
+    if a.server then bits[#bits + 1] = a.server end
+    if a.tool then bits[#bits + 1] = a.tool elseif a.search then bits[#bits + 1] = "search:" .. a.search end
+    return "⚙ mcp " .. table.concat(bits, " ")
+  end
+  return "⚙ " .. name
+end
+
+-- Flatten a message's content blocks into displayable text. Beyond the final
+-- prose (text blocks), surface the agent's WORK: thinking (💭) and tool calls
+-- (⚙ read/edit/bash/…) — otherwise a turn that's all tool calls looks empty.
 local function msg_text(msg)
   local t = {}
   for _, c in ipairs((msg and msg.content) or {}) do
-    if c.type == "text" and c.text then t[#t + 1] = c.text end
+    if c.type == "text" and c.text then
+      t[#t + 1] = c.text
+    elseif c.type == "thinking" then
+      local th = c.thinking or c.text or ""
+      if type(th) == "string" and th:gsub("%s", "") ~= "" then t[#t + 1] = "💭 " .. th end
+    elseif c.type == "toolCall" or c.type == "tool_use" then
+      t[#t + 1] = tool_hint(c)
+    end
   end
-  return table.concat(t, "")
+  return table.concat(t, "\n\n")
 end
 
 -- compact elapsed: 12s · 5m · 3h
@@ -265,8 +296,14 @@ local function active_winbar()
 end
 
 local function refresh_active_header()
-  if S.chatwin and api.nvim_win_is_valid(S.chatwin) then
-    vim.wo[S.chatwin].winbar = active_winbar()
+  -- The active-session status sits right above the input (composer winbar),
+  -- Claude-Code style — not at the top. The chat winbar stays clear in chat view
+  -- (the changes view sets its own "changes ·" label).
+  if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
+    vim.wo[S.composerwin].winbar = active_winbar()
+  end
+  if S.view == "chat" and S.chatwin and api.nvim_win_is_valid(S.chatwin) then
+    vim.wo[S.chatwin].winbar = ""
   end
 end
 
