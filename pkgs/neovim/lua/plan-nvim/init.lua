@@ -530,8 +530,8 @@ end
 
 -- The worktree bound to this plan, read from its `worktree: <branch>` header — NOT
 -- the nvim cwd (plans live in the vault, so cwd is usually not a worktree). Strips
--- Send a /plan-ticket prompt to the claude session running in the plan's repo
--- (state.root) — repo-targeted via `wt-send --cwd`, so it drives whatever session you
+-- Send a /plan-ticket prompt to the agent driving the plan's repo
+-- (state.root) — repo-targeted via `wt-send --cwd`, which routes to the pi rail session
 -- kicked the plan off in, worktree or not. Prompt goes on stdin to avoid arg-quoting.
 local function dispatch(prompt, wait)
 	local root = state.root or git_root()
@@ -542,7 +542,7 @@ local function dispatch(prompt, wait)
 	vim.system({ "wt-send", "--cwd", root, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
 		if res.code ~= 0 then
 			vim.schedule(function()
-				vim.notify("plan: no claude session in " .. root .. " to drive — start one there",
+				vim.notify("plan: no agent driving " .. root .. " — open the rail / start a session there",
 					vim.log.levels.WARN)
 			end)
 		end
@@ -550,7 +550,7 @@ local function dispatch(prompt, wait)
 	return true
 end
 
--- Ask the repo's claude to answer the open questions inline; answers land in the file
+-- Ask the repo's agent to answer the open questions inline; answers land in the file
 -- and the watcher reloads it.
 local function dispatch_questions()
 	local msg = ("Answer the open `> ❓` questions in %s — write each answer inline "
@@ -595,7 +595,7 @@ function M.ask_visual()
 	end)
 end
 
--- Dispatch /plan-ticket --finalize to the repo's claude: bake resolved decisions into
+-- Dispatch /plan-ticket --finalize to the repo's agent: bake resolved decisions into
 -- directives, strip the Q&A. The cleaned plan reloads via the watcher (checktime).
 function M.finalize()
 	if not state.plan_path then
@@ -811,7 +811,7 @@ local function resolve_plan_path()
 end
 
 
--- Dispatch /plan-ticket --go to the repo's claude. Confirms first — this one writes
+-- Dispatch /plan-ticket --go to the repo's agent. Confirms first — this one writes
 -- code. cwd is moved to the repo root so progress paths resolve and the surface-area
 -- watcher catches the agent's edits.
 function M.go()
@@ -840,7 +840,7 @@ function M.go()
 end
 
 -- Fold new scope into the plan mid-ticket. Works from any buffer: composes what to add,
--- dispatches --amend to the repo's claude, and re-opens the plan (absolute vault path,
+-- dispatches --amend to the repo's agent, and re-opens the plan (absolute vault path,
 -- cwd left on the repo) for you to review and re-approve.
 function M.amend()
 	if not resolve_plan_path() then
@@ -942,7 +942,7 @@ function M.menu()
 		{
 			label = "Open live view (browser)",
 			run = function()
-				vim.fn.jobstart({ "python3", vim.fn.expand("~/.claude/skills/plan-ticket/plan-view.py"), key, "--open" }, { detach = true })
+				vim.fn.jobstart({ "python3", vim.fn.expand("~/nixos/dotfiles/ai/skills/plan-ticket/plan-view.py"), key, "--open" }, { detach = true })
 			end,
 		},
 	}
@@ -1036,7 +1036,7 @@ function M.autostart()
 end
 
 -- Watch the plans dir for THIS worktree's plan to appear, then bind + surface it —
--- covers an nvim already open on a worktree when a claude session runs /plan-ticket
+-- covers an nvim already open on a worktree when an agent session runs /plan-ticket
 -- there (plan-open sees this pane and defers to it, so nothing else would open it).
 -- Opens the plan only from a scratch/dashboard buffer; otherwise just notifies, so it
 -- never yanks you out of active editing. No PLAN_NVIM_OPEN needed, unlike autostart.

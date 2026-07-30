@@ -51,7 +51,7 @@ Never duplicate their state elsewhere.
 
 `<key>` is the plan's identity: a Linear ticket id (`EVERY-1234`) — the default — or,
 for your own work, a short kebab-case slug of the task (`refactor-color-utils`). The
-whole flow runs from any claude session in any repo; no worktree or Linear required.
+whole flow runs from any agent session (claude, or pi in the nvim rail) in any repo; no worktree or Linear required.
 (In a lovable worktree the neovim plugin derives the key from the branch to auto-open
 the plan; elsewhere, pass the key to `--finalize`/`--go`/`--reconcile` or open the
 `.md` directly.)
@@ -113,7 +113,7 @@ conversing with the agent. Your job here is the best full draft you can produce.
      branch, use that short name so the neovim plugin auto-opens it.)
 2. Spawn **read-only** Explore agents to map where this lands and what exists
    nearby. NO code is written in this or any planning step.
-3. Fill `~/.claude/skills/plan-ticket/template.md` COMPLETELY → `<plandir>/<key>.md`
+3. Fill `~/nixos/dotfiles/ai/skills/plan-ticket/template.md` COMPLETELY → `<plandir>/<key>.md`
    (substitute `{{TICKET}}` = the key — ticket id or ad-hoc slug; `{{TITLE}}`;
    `{{DATE}}` = `date -u +%Y-%m-%dT%H:%MZ`; `{{BRANCH}}` = `git branch --show-current`).
    Every section filled: the shape, the
@@ -126,7 +126,7 @@ conversing with the agent. Your job here is the best full draft you can produce.
    `plan-open "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" <plandir>/<key>.md`
    (best-effort — pops the plan up in an nvim window, no-ops if one's already in the
    repo or there's no GUI). The lifecycle keybinds in that nvim dispatch `--finalize`/
-   `--go`/`--reconcile` back to THIS claude session, so keep it open.
+   `--go`/`--reconcile` back to THIS agent session (via wt-send, which routes to the pi rail session or a claude TUI), so keep it open.
 6. **STOP.** Print only a one-line pointer to the artifact path. The user manages it
    from there in neovim — editing steps, resolving decisions, approving. Do not
    iterate on the plan in chat. `--go` runs only after the plan is approved
@@ -238,7 +238,7 @@ new scope to add; also honor any manual edits the user already made to the artif
 ## PHASE 2 — IMPLEMENT (`--go`)
 
 0. FIRST, open the live plan view so the user watches the flow tick:
-   `python3 ~/.claude/skills/plan-ticket/plan-view.py <key> --plandir <plandir> --open`
+   `python3 ~/nixos/dotfiles/ai/skills/plan-ticket/plan-view.py <key> --plandir <plandir> --open`
    Idempotent — reuses the running server (port 8746); the page hot-reloads
    whenever `progress.json`/`review.json` change.
 1. Read `<plandir>/<key>.md` (normally already `--finalize`d into clean

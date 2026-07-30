@@ -2,15 +2,16 @@
 """
 wt-send <name> <message...>
 
-Inject a prompt into a worktree's running Claude TUI as if the user
-typed it. The receiving Claude has no way to tell the prompt didn't
-come from the keyboard.
+Inject a prompt into whatever agent is driving a worktree — agent-agnostic.
 
-Mechanism: each kitty process listens on /tmp/kitty-<pid>. We iterate
-every socket, `kitten @ ls` each one, and pick the window whose
-foreground process is `claude` with cwd inside
-`~/work/lovable.daphen-<name>`. Then we `send-text` to that window's id
-followed by a carriage return to submit.
+First hop (preferred): if an agentd daemon supervises a pi session whose cwd
+matches the worktree (the nvim agent rail's backend), send the prompt straight
+to it over the daemon socket.
+
+Fallback: inject into a worktree's running Claude TUI as if the user typed it.
+Each kitty process listens on /tmp/kitty-<pid>; we iterate every socket,
+`kitten @ ls` each one, pick the window whose foreground process is `claude`
+with cwd inside `~/work/lovable.daphen-<name>`, and `send-text` + Enter.
 
 No daemon, no per-session state, no special kitty config beyond
 `allow_remote_control yes` (already set).
@@ -32,6 +33,7 @@ import glob
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -39,6 +41,61 @@ from pathlib import Path
 
 HOME = Path(os.environ["HOME"])
 WORKTREE_ROOT = HOME / "work"
+
+
+def try_agentd(cwd_target: str, text: str) -> bool:
+    """Agent-agnostic first hop: if an agentd daemon supervises a pi session whose
+    cwd matches cwd_target, send the prompt straight to it (the nvim agent rail's
+    backend) and return True. Falls through to the claude-in-kitty path otherwise.
+
+    agentd greets each new connection with its roster, so we connect to every
+    agentd-<scope>.sock, read the roster, and match a session by cwd."""
+    rt = os.environ.get("XDG_RUNTIME_DIR", "")
+    if not rt:
+        return False
+    target = str(Path(cwd_target).expanduser().resolve())
+    for sock_path in sorted(glob.glob(rt + "/agentd-*.sock")):
+        try:
+            c = socket.socket(socket.AF_UNIX)
+            c.settimeout(2.0)
+            c.connect(sock_path)
+        except OSError:
+            continue
+        try:
+            buf = b""
+            sid = None
+            deadline = time.time() + 2.0
+            while sid is None and time.time() < deadline:
+                try:
+                    chunk = c.recv(65536)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    try:
+                        obj = json.loads(line)
+                    except ValueError:
+                        continue
+                    if obj.get("type") != "roster":
+                        continue
+                    for s in obj.get("sessions", []):
+                        scwd = str(s.get("cwd", "") or "")
+                        if scwd and (scwd == target
+                                     or target.startswith(scwd)
+                                     or scwd.startswith(target)):
+                            sid = s.get("id") or s.get("name")
+                            break
+            if sid:
+                c.sendall((json.dumps(
+                    {"type": "prompt", "session": sid, "message": text}) + "\n").encode())
+                time.sleep(0.3)  # let the daemon flush to pi's stdin before we close
+                return True
+        finally:
+            c.close()
+    return False
 
 
 def list_kitty_sockets() -> list[str]:
@@ -180,6 +237,12 @@ def main() -> int:
     if not text:
         print("wt-send: empty message; nothing to send", file=sys.stderr)
         return 2
+
+    # Agent-agnostic: prefer a pi session (agent rail) driving this cwd; the
+    # claude-in-kitty path below is the fallback for worktrees without one.
+    if try_agentd(worktree_prefix, text):
+        print(f"wt-send: delivered to the agent session for {worktree_prefix}")
+        return 0
 
     match = find_claude_window(worktree_prefix)
     if match is None and args.wait > 0:
