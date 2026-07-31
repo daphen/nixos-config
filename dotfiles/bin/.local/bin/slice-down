@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# slice-down <dir> — stop a worktree's devenv slice cleanly.
+#
+# Kills, with TERM then KILL, every process that belongs to the slice:
+#   - anything whose executable lives under <dir>/.devenv/   (the api, dev
+#     servers, watchers — including ones orphaned when their process-compose
+#     died, which is the leak that left an `api` running for days), and
+#   - the `process-compose` managing that worktree.
+#
+# Targeted by executable path, NOT by cwd — so it never touches the editor,
+# the agent (pi/claude), LSPs, or shells, which all run from the nix store and
+# merely share the worktree cwd. main's shared deps live under ~/work/lovable
+# and are left alone unless you point slice-down at that dir explicitly.
+set -u
+
+dir=$(readlink -f "${1:?usage: slice-down <dir>}")
+self=$$
+parent=${PPID:-0}
+
+belongs() {
+  local pid=$1 exe comm cwd
+  exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || exe=""
+  case "$exe" in "$dir"/.devenv/*) return 0 ;; esac
+  comm=$(cat "/proc/$pid/comm" 2>/dev/null) || comm=""
+  if [ "$comm" = "process-compose" ]; then
+    cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || cwd=""
+    case "$cwd" in "$dir" | "$dir"/*) return 0 ;; esac
+  fi
+  return 1
+}
+
+zap() {
+  local sig=$1 pid e
+  for e in /proc/[0-9]*; do
+    pid=${e#/proc/}
+    { [ "$pid" = "$self" ] || [ "$pid" = "$parent" ]; } && continue
+    belongs "$pid" && kill -"$sig" "$pid" 2>/dev/null
+  done
+}
+
+zap TERM
+sleep 1
+zap KILL

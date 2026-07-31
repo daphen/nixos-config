@@ -136,15 +136,23 @@ cockpit_window_cmd() {
         # a cold-boot failure VISIBLE in the tab instead of silently dropping
         # to a shell (bit us on the first cockpit-restore after a reboot).
         devenv)
-            local sub="wt" seed=""
+            local sub="wt" seed="" cmd
             [ "$name" = main ] && sub="deps"
             # Fresh worktree: install + seed the watcher's lock hash BEFORE the
             # first `devenv wt`, else devenv's in-process install rewrites
             # pnpm-lock.yaml, the app filewatcher restarts, and it loops (AGENTS.md).
             # The [ -f ] guard makes it a no-op on an already-seeded worktree.
             [ "$sub" = wt ] && seed='[ -f .devenv/state/pnpm-lock.sha ] || { echo "[cockpit] seeding pnpm for fresh worktree…"; direnv exec . pnpm install && mkdir -p .devenv/state && sha256sum pnpm-lock.yaml | cut -d" " -f1 > .devenv/state/pnpm-lock.sha; }; '
-            printf '%swhile true; do direnv exec . devenv %s; echo; echo "[cockpit] devenv %s exited ($?) — enter to restart, ctrl-c for a shell"; read -r || break; done; exec fish' \
-                "$seed" "$sub" "$sub" ;;
+            if [ "$sub" = wt ]; then
+                # Tear the slice down when this tab closes (trap) AND after each exit,
+                # so no api/watcher outlives it (the orphan-api leak). `fish` (not exec)
+                # keeps this bash alive to run the trap. $dir is baked in so slice-down
+                # targets THIS worktree only. main's shared deps skip all this.
+                cmd="trap 'slice-down \"$dir\"' EXIT HUP TERM; ${seed}while true; do direnv exec . devenv wt; rc=\$?; slice-down \"$dir\"; echo; echo \"[cockpit] devenv wt exited (\$rc) — enter to restart, ctrl-c for a shell\"; read -r || break; done; fish"
+            else
+                cmd="while true; do direnv exec . devenv deps; echo; echo \"[cockpit] devenv deps exited (\$?) — enter to restart, ctrl-c for a shell\"; read -r || break; done; exec fish"
+            fi
+            printf '%s' "$cmd" ;;
         *)      printf 'exec fish' ;;
     esac
 }
