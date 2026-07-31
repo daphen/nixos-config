@@ -859,19 +859,17 @@ end
 render_chips = function()
   if not (S.composerbuf and api.nvim_buf_is_valid(S.composerbuf)) then return end
   api.nvim_buf_clear_namespace(S.composerbuf, S.chip_ns, 0, -1)
-  -- No top pad: the status winbar already tops the composer. Attachment chips
-  -- (when present) still float above the input.
-  local vls = {}
+  -- A blank line between the status winbar and the input so the status reads as
+  -- its own thing, not part of the input box. Attachment chips float above the input.
+  local vls = { { { "", "Normal" } } }
   for _, at in ipairs(S.attach) do
     local loc = at.path
     if at.l1 then loc = loc .. ":" .. at.l1 .. (at.l2 and at.l2 ~= at.l1 and ("-" .. at.l2) or "") end
     local tag = (at.lang and at.lang ~= "") and ("  " .. at.lang) or ""
     vls[#vls + 1] = { { CHIP_BAR .. " ", "AgentChipBar" }, { " " .. loc .. tag .. " ", "AgentChip" } }
   end
-  if #vls > 0 then
-    pcall(api.nvim_buf_set_extmark, S.composerbuf, S.chip_ns, 0, 0, { virt_lines = vls, virt_lines_above = true })
-  end
-  -- One blank line below the input so it doesn't butt against the lualine bar.
+  pcall(api.nvim_buf_set_extmark, S.composerbuf, S.chip_ns, 0, 0, { virt_lines = vls, virt_lines_above = true })
+  -- And a blank below the input so it doesn't butt the lualine bar.
   local last = math.max(0, api.nvim_buf_line_count(S.composerbuf) - 1)
   pcall(api.nvim_buf_set_extmark, S.composerbuf, S.chip_ns, last, 0,
     { virt_lines = { { { "", "Normal" } } }, virt_lines_above = false })
