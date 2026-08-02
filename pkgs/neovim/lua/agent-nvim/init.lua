@@ -1858,8 +1858,12 @@ function M.setup(opts)
   -- Autostart when the scope resolved to a "work" world: an explicit AGENT_SCOPE
   -- (cockpit / opt-in personal) or the lovable workspace. A bare personal nvim
   -- elsewhere stays dormant (open on demand with <leader>a).
+  -- Open by default. Scope (which daemon) is still auto-detected — AGENT_SCOPE or
+  -- the lovable niri workspace → lovable, else personal — but the rail always opens,
+  -- rather than depending on that (fragile) detection to even show up. Opt out with
+  -- AGENT_RAIL_NOAUTOSTART=1 or setup({ autostart = false }).
   local autostart = opts.autostart
-  if autostart == nil then autostart = (vim.env.AGENT_SCOPE ~= nil) or (scope == "lovable") end
+  if autostart == nil then autostart = vim.env.AGENT_RAIL_NOAUTOSTART == nil end
   if autostart then
     -- open the rail, then (once the plan autostart / session restore settle) put
     -- focus in the composer so the rail is ACTIVE and ready to type by default.
