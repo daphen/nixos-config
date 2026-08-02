@@ -225,9 +225,27 @@ Singleton {
             const p = L.tile_pos_in_workspace_view
             const s = L.tile_size
             if (!p || !s) return null
-            return { x: p[0], y: p[1], w: s[0], h: s[1] }
+            return { x: p[0], y: p[1], w: s[0], h: s[1], floating: w.is_floating === true }
         }
         return null
+    }
+
+    // niri's IPC carries no fullscreen state — only fullscreen *actions* — so
+    // infer it: a fullscreen tile spans the whole output, while tiled windows
+    // start below the bar's exclusive zone (y=60 with the bar, 16 without).
+    // Deliberately tile_* and not window_size: a fixed-size fullscreen window
+    // is centered on a black backdrop, so its surface stays smaller than the
+    // output while its tile still covers it.
+    function focusedIsFullscreen(outputHeight) {
+        if (!outputHeight) return false
+        const g = focusedWindowGeom()
+        if (g) return g.y <= 1 && g.h >= outputHeight - 1
+        // Unpatched niri reports no tile position for tiled windows. Fall back
+        // to the surface size — misses the letterboxed case, but it is what the
+        // island relied on before, so behaviour never regresses on old niri.
+        const w = windows[focusedWindowId()]
+        const s = w && w.layout && w.layout.window_size
+        return s ? s[1] >= outputHeight : false
     }
 
     function focusedOutput() {

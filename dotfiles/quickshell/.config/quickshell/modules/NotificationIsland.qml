@@ -150,9 +150,9 @@ PanelWindow {
     // else reaches past the bar's exclusive zone).
     readonly property bool detached: {
         const _ = NiriState.version
-        const w = NiriState.windows[NiriState.focusedWindowId()]
-        if (!w || !w.layout || !w.layout.window_size || w.is_floating) return false
-        return root.screen && w.layout.window_size[1] >= root.screen.height
+        const g = NiriState.focusedWindowGeom()
+        if (!g || g.floating || !root.screen) return false
+        return NiriState.focusedIsFullscreen(root.screen.height)
     }
 
     // pixel at 1.75 scale — a fractional edge leaves an antialiased row
