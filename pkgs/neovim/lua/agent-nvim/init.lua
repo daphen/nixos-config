@@ -10,7 +10,7 @@
 -- Rail keys — roster:  j/k move · <CR> open · n new · . cwd · x stop · a abort
 --                      z collapse · r refresh · ? help · q close
 --          — chat:     ]m/[m next/prev message · <Tab> changes view · Y yank code
---                      za fold msg · zM/zR fold/unfold all · yr yank reply
+--                      za fold msg · zM/zR fold/unfold all · yr reply · yc convo
 --                      i compose · <Esc> back to roster · (y/n answer approvals)
 --          — composer: <CR> send · <C-s> send-from-insert · <C-x> drop attachments
 --                      q back to roster · /slash commands · @ path hints
@@ -1872,6 +1872,26 @@ local function chat_yank_reply()
   vim.notify("agent-nvim: no agent reply to copy")
 end
 
+-- Copy the WHOLE conversation as role-labelled markdown — for handing the
+-- transcript to another agent or pasting into the vault. Thinking is skipped
+-- (it's dimmed noise in the chat; not useful downstream).
+local function chat_yank_convo()
+  local c = S.selected and S.chat[S.selected]
+  if not (c and c.msgs and #c.msgs > 0) then vim.notify("agent-nvim: no conversation to copy"); return end
+  local out = {}
+  for _, m in ipairs(c.msgs) do
+    local text = m.text or ""
+    if text ~= "" then
+      out[#out + 1] = (m.role == "user" and "## you" or "## agent")
+      out[#out + 1] = text
+      out[#out + 1] = ""
+    end
+  end
+  local md = table.concat(out, "\n")
+  fn.setreg("+", md); fn.setreg('"', md)
+  vim.notify("agent-nvim: copied conversation (" .. #c.msgs .. " messages, " .. #md .. " chars)")
+end
+
 --------------------------------------------------------------------------------
 -- changes view: plan (progress.json) first, git diff as fallback/overlay
 --------------------------------------------------------------------------------
@@ -2314,7 +2334,7 @@ function M.help()
   float({
     " roster   attention queue only · z show all (incl idle)",
     "          j/k move · <CR> open · n new · . cwd · x stop · a abort · p peek",
-    " chat     <Tab> changes view · ]m/[m message · za fold · zM/zR fold all · yr copy reply",
+    " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
     "          gf open ref · i compose · <Esc> roster · y/n approve",
     " changes  <CR> open file · <Tab> back to chat · r refresh (plan · git · mcp)",
     " composer <CR> send · <C-s> send(insert) · <C-f> attach file",
@@ -2389,6 +2409,7 @@ ensure_buf = function()
   cmap("zR", function() chat_fold_all(false) end) -- expand every message
   cmap("Y", function() chat_yank_code() end)
   cmap("yr", function() chat_yank_reply() end) -- yank (copy) the last agent reply
+  cmap("yc", function() chat_yank_convo() end) -- yank the whole conversation as md
   cmap("gf", function() chat_open() end)
   cmap("<CR>", function() chat_open() end)
   cmap("<Esc>", function()
