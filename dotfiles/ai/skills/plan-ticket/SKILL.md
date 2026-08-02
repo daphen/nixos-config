@@ -37,17 +37,35 @@ Surface these in the plan: the "surface area" section already proves #1; #2 and
 #3 land in **Decided** one-liners (name the pattern followed, or the deviation
 and why) — a D-block only where the goal truly doesn't imply the answer.
 
-Three artifacts, keyed to the plan, are the seam between this skill, the neovim
-plugin, and the live plan view (plan-view.py, opened as an app window on --go).
-Never duplicate their state elsewhere.
+## Asking the user (blocking input)
 
-- `<plandir>/<key>.md` — the human artifact (source of truth).
-- `<plandir>/<key>.progress.json` — machine state, read by the plugin (live-watch)
-  and the plan view. Always exists from PLAN onward.
+When you need the user's blocking input mid-flow — an unresolved decision you
+can't derive, a surface-area boundary you want to cross, approval to proceed —
+**raise it with the `ask_user` tool, never in prose.** In the agent rail this
+renders as an approval card with a "needs input" flag on the roster and scrolls
+the plan buffer to the decision; a prose question surfaces nothing and the user
+never sees it. Set `title` to the decision's heading **exactly as written in the
+plan** (e.g. `D2: cursor start position`) so the plan scrolls to that line.
+
+- Yes/no → `ask_user(kind="confirm", title, message)` → `approved`/`declined`.
+- Pick one → `ask_user(kind="choice", title, message, options=[…])` → the choice.
+- Free text → `ask_user(kind="input", title, message)` → the entry.
+
+This does **not** change PLAN: decisions are still batch-presented in the
+artifact for the user to resolve in neovim (do not `ask_user` per D-block during
+PLAN). `ask_user` is for the interactive blocking points during `--go`/`--amend`.
+
+Three artifacts, keyed to the plan, are the seam between this skill and the neovim
+plugin (which renders the `.md` live and overlays step/file status). Everything is
+markdown/JSON read in neovim — no HTML view, no browser. Never duplicate their
+state elsewhere.
+
+- `<plandir>/<key>.md` — the human artifact (source of truth). Includes the
+  `## How it works` ASCII-tree section authored at FINALIZE.
+- `<plandir>/<key>.progress.json` — machine state, read by the plugin (live-watch).
+  Always exists from PLAN onward.
 - `<plandir>/<key>.review.json` — produced by RECONCILE: hunk↔step correspondence,
   drift flags, verification results.
-- `<plandir>/<key>.diagram.html` — "How it works" fragment for the plan view,
-  written at FINALIZE (see there). Optional; the view shows a placeholder without it.
 
 `<key>` is the plan's identity: a Linear ticket id (`EVERY-1234`) — the default — or,
 for your own work, a short kebab-case slug of the task (`refactor-color-utils`). The
@@ -168,35 +186,38 @@ resolved, before `--go`. Read-only on code; rewrites the plan artifact in place.
 4. Result: a directive plan — shape, flow (decisions baked in), final surface area,
    verification, out of scope — no menus, questions, or markers. This is what
    `--go` implements literally.
-5. **Author the diagram** → `<plandir>/<key>.diagram.html`: a raw HTML fragment
-   showing *how the planned change works*, in the shape that fits it — data-flow
-   pipeline, before/after, state machine, sequence. Same component vocabulary as
-   review-pr's centrepiece (classes live in the shared ui.css): `.lane` (neutral
-   surface; `.be`/`.tr`/`.fe` are semantic-only markers) with a `.lane-tag`,
-   `.node`, `.arrow` (`.big` between lanes; always give arrows glyph text like
-   `↓ what flows here`), `.split` for parallel nodes. A node's exact shape:
+5. **Author the "How it works" section** — append a `## How it works` section to
+   the plan `.md` (before `## Amendments`/`## Reconciliation`) showing *how the
+   planned change works*, as a **plain-text ASCII tree inside a fenced ` ```text `
+   block** (monospace, so the tree aligns; no HTML, no separate file). Shape it to
+   the change — data-flow pipeline, before/after, state machine, sequence. Format:
+   - **Lanes** = plain-text group headers at column 0 (e.g. `resolve`, `route`,
+     `render`, or `backend`/`transport`/`frontend`).
+   - **Nodes** = indented `◆N  <plain-english title>  ·  <repo-relative-path>`,
+     where `◆N` ties the node to the `◆` flow step it realizes (1-based, md order;
+     several nodes may share a step). Under each node, an indented full sentence in
+     **plain English for someone who hasn't read the plan** — what happens here and
+     why it matters, never a compressed jargon chain.
+   - **Arrows** = an indented `↓ <what flows here>` line between nodes.
 
-   ```html
-   <div class="node" data-file="path/to/file.go" data-step="2">plain-english title
-     <span class="file">path/to/file.go</span>
-     <span class="sub">One full sentence of what happens here.</span>
-   </div>
+   ```text
+   resolve
+     ◆1  editor picks which view opens  ·  web/shared/lib/views/providers/ViewProvider.tsx
+           the project's type decides whether the DS canvas or the general canvas loads
+         ↓ project_type = "library"
+   route
+     ◆2  library → its own Canvas home  ·  web/modules/editor/DesktopContent.tsx
+           library projects mount the authoring canvas + components rail as their home view
+         ↓ mounts authoring canvas + rail
+   render
+     ◆3  authoring canvas + rail        ·  web/modules/design-system/home/DesignSystemCanvasView.tsx
+           the new view wrapper composes the existing center + rail and unmounts on view switch
    ```
 
-   The bare text BEFORE the spans is the title and is mandatory — never lead
-   with the file path (a title-less node renders the mono path as its heading,
-   which reads broken). Label real files/symbols from the surface area; colours
-   only via `--rv-*` vars, never hex. Where a node maps to one surface file,
-   add `data-file="<repo-relative>"` so `o` opens it.
-   Node `.sub` text is **plain English for someone who hasn't read the plan** —
-   a full sentence saying what happens at this node and why it matters, never a
-   compressed jargon chain ("D1 probe: passthrough verified"). Together the
-   nodes must tell the change's whole story end to end. Tag every node that
-   realizes a `◆` step with `data-step="N"` (1-based, md order; several nodes
-   may share a step) — **the diagram IS the flow view**: tagged nodes carry the
-   step's live status dot and its full plan text as Enter-expandable detail,
-   and the separate flow list only renders for steps the diagram doesn't tag
-   (or before the diagram exists). Tag every step or its progress hides.
+   Label real files/symbols from the surface area. Together the nodes must tell the
+   change's whole story end to end. Live step status is NOT baked in here — it lives
+   in the flow list + the neovim plan panel/changes-view; the `◆N` tags let the
+   reader cross-reference. Tag every `◆` step with a node so the story is complete.
 6. Set the plan's `> Status:` line to `finalized` (so the editor knows it's ready
    for `--go`). Leave `progress.json` otherwise unchanged.
 
@@ -226,8 +247,8 @@ new scope to add; also honor any manual edits the user already made to the artif
    append a `flow[]` entry (`status: pending`) for each new `◆` step, KEEPING the
    existing entries and their statuses (finished steps stay `done`); set `amended_at`;
    leave `phase` as is (work already done stays done).
-5. If the added scope changes how the change works, refresh
-   `<plandir>/<key>.diagram.html` to match (same component rules as FINALIZE).
+5. If the added scope changes how the change works, refresh the plan's
+   `## How it works` ASCII-tree section to match (same rules as FINALIZE).
 6. Reset the review gate so the user re-approves the expanded plan before `--go`
    continues: set `> Status:` to `draft` if you added a decision (the editor routes
    that to resolve → approve), else `amended` (routes to re-finalize). STOP — print
@@ -237,20 +258,20 @@ new scope to add; also honor any manual edits the user already made to the artif
 
 ## PHASE 2 — IMPLEMENT (`--go`)
 
-0. FIRST, open the live plan view so the user watches the flow tick:
-   `python3 ~/nixos/dotfiles/ai/skills/plan-ticket/plan-view.py <key> --plandir <plandir> --open`
-   Idempotent — reuses the running server (port 8746); the page hot-reloads
-   whenever `progress.json`/`review.json` change.
+0. The plan renders live in neovim (the plan-nvim plugin watches the `.md` +
+   `progress.json` and overlays step/file status as you work) — nothing to open.
+   Best-effort ensure it's up: `plan-open "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" <plandir>/<key>.md`.
 1. Read `<plandir>/<key>.md` (normally already `--finalize`d into clean
    directives); honor the user's edits — their text wins.
 2. Refuse to start if any **Your call:** is `(unresolved)`; list them and stop.
 2b. **If the plan's `> Status:` is not `finalized`** (draft/amended with all
-   decisions resolved), run the FINALIZE phase first — bake directives, author
-   the diagram, set the status — then continue into implementation. The steps
-   are ordered; skipping finalize silently loses the diagram and leaves A/B
-   menus in the spec.
+   decisions resolved), run the FINALIZE phase first — bake directives, author the
+   `## How it works` section, set the status — then continue into implementation.
+   The steps are ordered; skipping finalize silently loses the section and leaves
+   A/B menus in the spec.
 3. Implement strictly within the surface area. Before touching any file NOT in the
-   surface-area list, STOP and ask — record approved additions under `unplanned[]` with a why.
+   surface-area list, STOP and ask via `ask_user` (`kind="confirm"`, `title` = the
+   file/decision) — record approved additions under `unplanned[]` with a why.
 4. Keep `<plandir>/<key>.progress.json` current as you work: `phase: "implementing"`,
    and drive BOTH axes:
    - **`flow[]` (the headline)** — flip each step `pending → active → done` as you start
