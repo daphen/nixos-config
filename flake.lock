@@ -458,11 +458,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1785672516,
-        "narHash": "sha256-Uv4nGrW0g0X5kUTTh0YpzYjQ5VWpXWQt4hLD/8nyYuQ=",
+        "lastModified": 1785673380,
+        "narHash": "sha256-ZlDeoNyu6UWk/+HeYZQmEfPpRfWkqpZtFtbJrU7Lcr0=",
         "ref": "refs/heads/main",
-        "rev": "82d62500b4fd430413aa6d21d26fb7a70e9d221a",
-        "revCount": 256,
+        "rev": "553ae50ef6dc3755f3316f8e93c50232627240f4",
+        "revCount": 257,
         "type": "git",
         "url": "ssh://git@github.com/daphen/slqs"
       },
