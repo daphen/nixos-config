@@ -104,6 +104,7 @@ Singleton {
         // wear the mail icon.
         if ((appIcon || "") === "x-office-calendar") return Qt.resolvedUrl("../assets/calendar.svg")
         const a = (appName || "").toLowerCase()
+        if (root.isPhoneNotif(appName)) return Qt.resolvedUrl("../assets/phone.svg")
         if (a === "slack" || a === "slqs") return Qt.resolvedUrl("../assets/slack.svg")
         if (a === "discord" || a === "dsqrd") return Qt.resolvedUrl("../assets/discord.svg")
         if (a === "mlqs") return Qt.resolvedUrl("../assets/mail.svg")
@@ -126,7 +127,17 @@ Singleton {
 
     readonly property var trayApps: ["slack", "discord", "kitty", "mlqs"]
     function isTrayApp(n) {
-        return !!(n && root.trayApps.indexOf((n.appName || "").toLowerCase()) !== -1)
+        return !!(n && (root.trayApps.indexOf((n.appName || "").toLowerCase()) !== -1
+                        || root.isPhoneNotif(n.appName)))
+    }
+
+    // ancs4linux sends the app name as "<app> (<device>)", e.g.
+    // "Telefon (David's iPhone)". Matching on "iphone" rather than the full
+    // device name survives both the curly apostrophe and renaming the phone.
+    // Phone-origin notifications are tray apps: a missed call should still be
+    // in the Super+i centre after its toast has gone.
+    function isPhoneNotif(appName) {
+        return (appName || "").toLowerCase().indexOf("iphone") !== -1
     }
     // Slack/Discord messages are durable history: kept across "seen", never
     // cleared on focus, bounded only by messageMax. Claude (kitty) prompts are
