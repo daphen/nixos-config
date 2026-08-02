@@ -270,7 +270,7 @@ end
 -- omitted. Press <CR> on a hunk to jump there. Returns (text, hunks); hunks[i] =
 -- {path, anchor, line} for the i-th hunk line, in render order.
 local HUNK = "  · "
-local THINK = "💭 " -- collapsed-thinking marker (a dim one-liner, not the answer)
+local THINK = "✻ " -- collapsed-thinking marker (a dim one-liner, not the answer)
 local BARW = 5 -- width of the per-hunk proportional add/del bar
 local function tool_edits(c, cwd)
   local a = c.arguments or c.input or c.args or {}
@@ -805,7 +805,7 @@ render_chat = function(scroll)
   local q = S.selected and S.queued and S.queued[S.selected]
   if q and q ~= "" then
     push("")
-    decor[#decor + 1] = { line = push("  ⏳ queued  ·  esc to edit"), fg = "AgentAttn" }
+    decor[#decor + 1] = { line = push("  ⏳ queued  ·  sends after this turn · esc = interrupt + send now"), fg = "AgentAttn" }
     for _, para in ipairs(vim.split(q, "\n", { plain = true })) do
       decor[#decor + 1] = { line = push("  " .. para), fg = "AgentMuted" }
     end
@@ -2327,24 +2327,24 @@ ensure_buf = function()
     return false
   end
   local function esc_action()
-    -- Esc peels layers: a queued message first (cancel → pull it back to the
-    -- composer to edit/resend), then interrupt a running turn, then rewind.
-    if S.selected and S.queued and S.queued[S.selected] then
-      local q = S.queued[S.selected]; S.queued[S.selected] = nil
-      api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, vim.split(q, "\n", { plain = true }))
-      render_chips(); composer_placeholder(); render_chat(false)
-      if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
-        api.nvim_set_current_win(S.composerwin)
-        pcall(api.nvim_win_set_cursor, S.composerwin, { api.nvim_buf_line_count(S.composerbuf), 0 })
-        vim.cmd("startinsert!")
-      end
-      return true
-    end
+    -- Esc while the agent is working: interrupt the turn AND immediately send any
+    -- queued message — so BOTH your messages land in context (the interrupted
+    -- turn + the queued follow-up), like Claude Code. Idle → rewind.
     if is_working() then
       send({ type = "abort", session = S.selected })
       S.stream[S.selected] = nil
+      local q = S.selected and S.queued and S.queued[S.selected]
+      if q and q ~= "" then
+        S.queued[S.selected] = nil
+        local c = S.chat[S.selected] or { msgs = {} }
+        c.msgs[#c.msgs + 1] = { role = "user", text = q }
+        S.chat[S.selected] = c
+        send({ type = "prompt", session = S.selected, message = q })
+        vim.notify("interrupted — sent your queued message")
+      else
+        vim.notify("agent: interrupted")
+      end
       render_chat(false)
-      vim.notify("agent: interrupted")
       return true
     end
     -- idle → TRUE rewind: agentd truncates the session to before the last user
