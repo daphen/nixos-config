@@ -2420,6 +2420,13 @@ ensure_buf = function()
     callback = function() render_chips(); composer_placeholder(); sl_update() end,
   })
   api.nvim_create_autocmd("InsertLeave", { buffer = S.composerbuf, callback = sl_close })
+  -- Robustness: always re-derive the composer state (editable + placeholder) from
+  -- the current S.selected when the composer is entered, so a missed render can
+  -- never leave you stuck showing "open a session first" while a session is open.
+  api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
+    buffer = S.composerbuf,
+    callback = function() composer_placeholder() end,
+  })
 
   -- Slash picker: while it's open, these drive it; otherwise they fall through to
   -- their normal insert-mode behaviour (newline / esc / literal tab).
