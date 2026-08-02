@@ -26,6 +26,16 @@ let
     + "            log.debug(\"Filtered out \" + data.app_id)\n"
     + "            return\n"
     + guardAnchor;
+
+  # remove_observers fires on InterfacesRemoved without checking WHICH interface
+  # went away, so a phone merely disconnecting (BlueZ drops its GATT interfaces)
+  # tears down the device watcher. On reconnect the device is still bonded, so
+  # Device1 is never re-added and process_object — which only attaches when
+  # Device1 appears — never restores it. The observer goes permanently deaf,
+  # silently, until the service restarts. Make the teardown symmetric with the
+  # setup: forget a device only when the device object itself disappears.
+  removeAnchor = "        if path in self.property_observers:";
+  removeFixed = "        if BluezDeviceAPI.interface in services and path in self.property_observers:";
 in
 pkgs.python3Packages.buildPythonApplication rec {
   pname = "ancs4linux";
@@ -59,7 +69,10 @@ pkgs.python3Packages.buildPythonApplication rec {
     substituteInPlace ancs4linux/desktop_integration/main.py \
       --replace-fail ${pkgs.lib.escapeShellArg helperAnchor} ${pkgs.lib.escapeShellArg helper} \
       --replace-fail ${pkgs.lib.escapeShellArg guardAnchor} ${pkgs.lib.escapeShellArg guard}
-    ${pkgs.python3}/bin/python3 -m compileall -q ancs4linux/desktop_integration/main.py
+    substituteInPlace ancs4linux/observer/scanner.py \
+      --replace-fail ${pkgs.lib.escapeShellArg removeAnchor} ${pkgs.lib.escapeShellArg removeFixed}
+    ${pkgs.python3}/bin/python3 -m compileall -q \
+      ancs4linux/desktop_integration/main.py ancs4linux/observer/scanner.py
   '';
 
   # Upstream ships these as install.sh copies into /etc; expose them where
@@ -77,7 +90,11 @@ pkgs.python3Packages.buildPythonApplication rec {
 
   # The submodule matters: the allowlist patch edits it, and importing only the
   # top package would let a mangled block ship as a runtime crash.
-  pythonImportsCheck = [ "ancs4linux" "ancs4linux.desktop_integration.main" ];
+  pythonImportsCheck = [
+    "ancs4linux"
+    "ancs4linux.desktop_integration.main"
+    "ancs4linux.observer.scanner"
+  ];
 
   meta = {
     description = "Receive iOS notifications on Linux over Bluetooth LE (ANCS)";
