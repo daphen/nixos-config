@@ -926,6 +926,98 @@ local function run_slash(text)
   return true
 end
 
+--------------------------------------------------------------------------------
+-- slash picker: live-filtered menu of rail commands + pi templates/skills while
+-- you type `/…` in the composer (before a space). Floats above the input.
+--------------------------------------------------------------------------------
+local RAIL_CMDS = {
+  { "abort", "stop the current turn" }, { "steer", "steer mid-turn <msg>" },
+  { "clear", "clear the chat" }, { "diff", "open a git diff tab" },
+  { "plan", "open the plan view" }, { "retry", "retry the previous step" },
+  { "help", "rail cheatsheet" },
+}
+
+local function slash_items()
+  local items = {}
+  for _, c in ipairs(RAIL_CMDS) do
+    items[#items + 1] = { insert = "/" .. c[1] .. " ", label = "/" .. c[1], hint = c[2] }
+  end
+  for _, f in ipairs(fn.glob(fn.expand("~/.pi/agent/prompts/*.md"), true, true)) do
+    local n = fn.fnamemodify(f, ":t:r")
+    items[#items + 1] = { insert = "/" .. n .. " ", label = "/" .. n, hint = "pi template" }
+  end
+  for _, d in ipairs(fn.glob(fn.expand("~/.pi/agent/skills/*"), true, true)) do
+    if fn.isdirectory(d) == 1 then
+      local n = fn.fnamemodify(d, ":t")
+      items[#items + 1] = { insert = "/skill:" .. n .. " ", label = "/skill:" .. n, hint = "pi skill" }
+    end
+  end
+  return items
+end
+
+local SL = { win = nil, buf = nil, items = nil, sel = 1 }
+
+local function sl_close()
+  if SL.win and api.nvim_win_is_valid(SL.win) then pcall(api.nvim_win_close, SL.win, true) end
+  SL.win, SL.buf, SL.items = nil, nil, nil
+end
+
+local function sl_render()
+  if not SL.items or #SL.items == 0 then sl_close(); return end
+  local lines, width = {}, 12
+  for _, it in ipairs(SL.items) do
+    local l = string.format("  %-18s %s", it.label, it.hint or "")
+    lines[#lines + 1] = l
+    width = math.max(width, #l + 1)
+  end
+  if not (SL.buf and api.nvim_buf_is_valid(SL.buf)) then SL.buf = api.nvim_create_buf(false, true) end
+  vim.bo[SL.buf].modifiable = true
+  api.nvim_buf_set_lines(SL.buf, 0, -1, false, lines)
+  vim.bo[SL.buf].modifiable = false
+  local cfg = { relative = "cursor", anchor = "SW", row = 0, col = 0, width = width,
+    height = math.min(#lines, 8), style = "minimal", focusable = false, zindex = 200 }
+  if SL.win and api.nvim_win_is_valid(SL.win) then
+    api.nvim_win_set_config(SL.win, cfg)
+  else
+    SL.win = api.nvim_open_win(SL.buf, false, cfg)
+    vim.wo[SL.win].winhighlight = "Normal:AgentCard"
+  end
+  api.nvim_buf_clear_namespace(SL.buf, S.ns, 0, -1)
+  pcall(api.nvim_buf_set_extmark, SL.buf, S.ns, SL.sel - 1, 0, { line_hl_group = "AgentAccent", end_row = SL.sel })
+end
+
+local function sl_update()
+  if not (S.composerwin and api.nvim_get_current_win() == S.composerwin) then sl_close(); return end
+  local line = api.nvim_get_current_line()
+  if not line:match("^/%S*$") then sl_close(); return end
+  local pfx = line:lower()
+  local matches = {}
+  for _, it in ipairs(slash_items()) do
+    local lab = it.label:lower()
+    if lab:sub(1, #pfx) == pfx or lab:find(pfx:sub(2), 1, true) then matches[#matches + 1] = it end
+  end
+  if #matches == 0 then sl_close(); return end
+  SL.items = matches
+  if not SL.sel or SL.sel > #matches then SL.sel = 1 end
+  sl_render()
+end
+
+local function sl_open() return SL.win ~= nil and api.nvim_win_is_valid(SL.win) end
+local function sl_move(d)
+  if not (sl_open() and SL.items) then return false end
+  SL.sel = ((SL.sel - 1 + d) % #SL.items) + 1
+  sl_render()
+  return true
+end
+local function sl_accept()
+  if not (sl_open() and SL.items and SL.items[SL.sel]) then return false end
+  local ins = SL.items[SL.sel].insert
+  api.nvim_set_current_line(ins)
+  pcall(api.nvim_win_set_cursor, 0, { 1, #ins })
+  sl_close()
+  return true
+end
+
 composer_send = function()
   if not S.selected then vim.notify("agent-nvim: open a session first (<CR>)", vim.log.levels.INFO); return end
   local text = table.concat(api.nvim_buf_get_lines(S.composerbuf, 0, -1, false), "\n"):gsub("%s+$", "")
@@ -1528,8 +1620,23 @@ ensure_buf = function()
     -- render_chips (not just composer_resize) so the top pad extmark is re-anchored
     -- at row 0 every edit — otherwise it drifts down with inserted lines and draws
     -- a phantom blank line mid-buffer.
-    callback = function() render_chips(); composer_placeholder() end,
+    callback = function() render_chips(); composer_placeholder(); sl_update() end,
   })
+  api.nvim_create_autocmd("InsertLeave", { buffer = S.composerbuf, callback = sl_close })
+
+  -- Slash picker: while it's open, these drive it; otherwise they fall through to
+  -- their normal insert-mode behaviour (newline / esc / literal tab).
+  local function passthru(keys)
+    api.nvim_feedkeys(api.nvim_replace_termcodes(keys, true, false, true), "n", false)
+  end
+  vim.keymap.set("i", "<CR>", function() if not sl_accept() then passthru("<CR>") end end,
+    { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<Esc>", function() if sl_open() then sl_close() else passthru("<Esc>") end end,
+    { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<C-n>", function() if not sl_move(1) then passthru("<C-n>") end end, { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<C-p>", function() if not sl_move(-1) then passthru("<C-p>") end end, { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<Tab>", function() if not sl_move(1) then passthru("<Tab>") end end, { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<S-Tab>", function() if not sl_move(-1) then passthru("<S-Tab>") end end, { buffer = S.composerbuf, nowait = true })
 
   -- roster keymaps
   local function map(lhs, fn_) vim.keymap.set("n", lhs, fn_, { buffer = S.buf, nowait = true, silent = true }) end
