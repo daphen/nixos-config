@@ -142,6 +142,12 @@ Singleton {
         if (n) { delete root.seenIds[n.id]; n.dismiss() }
     }
 
+    // Acting on a notification (Super+i, or the picker) doesn't touch the
+    // island, so the capsule would sit there showing something already handled
+    // until its hold timer expires. Carries the id rather than closing blindly:
+    // a newer notification may already have taken over the capsule.
+    signal toastHandled(var id)
+
     // Drop older tracked notifications sharing this one's app + summary, so the
     // center keeps a single (latest) entry per channel / Claude session instead
     // of a stack of them.

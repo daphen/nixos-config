@@ -104,6 +104,11 @@ PanelWindow {
         holdTimer.stop()
         closeDelay.restart()
     }
+
+    Connections {
+        target: Notifications
+        function onToastHandled(id) { if (root.open && root.nId === id) root.hide() }
+    }
     // Wordy messages (3+ wrapped lines) get 2s more reading time.
     Timer { id: holdTimer; interval: bodyText.lineCount >= 3 ? 7000 : 5000; onTriggered: root.hide() }
     Timer {

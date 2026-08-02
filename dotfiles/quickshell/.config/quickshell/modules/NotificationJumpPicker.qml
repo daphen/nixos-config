@@ -69,6 +69,9 @@ Picker {
     function openItem(item) {
         if (!item || item.divider) return
         NotificationJumpPickerState.open = false
+        // Close the capsule up front: acting on it is the answer to it, and for
+        // message apps nothing below dismisses the live notification.
+        Notifications.toastHandled(item.id)
         const n = item.notif   // live Notification, or null for a retained entry
         const isMsg = Notifications.isMessageAppName(item.app)
         // A message's open-channel action deletes the live notification, so
