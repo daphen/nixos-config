@@ -10,6 +10,7 @@ opt.number = true
 
 opt.scrolloff = 5
 opt.sidescrolloff = 15
+opt.mousescroll = "ver:10,hor:6" -- lines per wheel notch; higher = faster, chunkier (1 = smoothest)
 
 -- tabs & indent
 opt.tabstop = 2

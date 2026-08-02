@@ -29,6 +29,10 @@ return {
 			local code, inline, hbg = get("RenderMarkdownCode"), get("RenderMarkdownCodeInline"), get("RenderMarkdownH2Bg")
 			if not (code.bg or inline.bg) then return end -- non-custom theme: leave markview alone
 			vim.api.nvim_set_hl(0, "MarkviewCode", { bg = code.bg })
+			-- YAML frontmatter borders are half-block chars (▄▀) drawn with MarkviewCodeFg
+			-- as FOREGROUND; unset it fell to markview's purple, bg-only left the fill white.
+			-- Set fg AND bg to the heading-bar bg so the border reads as a solid heading bar.
+			vim.api.nvim_set_hl(0, "MarkviewCodeFg", { fg = hbg.bg, bg = hbg.bg })
 			vim.api.nvim_set_hl(0, "MarkviewCodeInfo", { fg = get("Comment").fg, bg = code.bg })
 			vim.api.nvim_set_hl(0, "MarkviewInlineCode", { fg = inline.fg, bg = inline.bg })
 			for i = 1, 6 do

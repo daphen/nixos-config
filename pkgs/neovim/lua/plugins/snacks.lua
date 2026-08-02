@@ -12,8 +12,9 @@ local function open_changed_files_picker()
 	end
 	local uv = vim.loop or vim.uv
 	local repo_root = vim.fn.systemlist({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })[1]
+	local branch = repo_root and vim.fn.systemlist({ "git", "-C", repo_root, "branch", "--show-current" })[1] or ""
 	Snacks.picker.pick({
-		title = "Changed vs " .. base:sub(1, 8),
+		title = (branch ~= "" and (branch .. "  ·  ") or "") .. "changed vs " .. base:sub(1, 8),
 		layout = {
 			layout = {
 				backdrop = false,
