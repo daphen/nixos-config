@@ -236,10 +236,16 @@ Singleton {
     // Deliberately tile_* and not window_size: a fixed-size fullscreen window
     // is centered on a black backdrop, so its surface stays smaller than the
     // output while its tile still covers it.
+    // Same test against an arbitrary geometry, so a caller holding a frozen box
+    // (e.g. while a layer-shell picker owns focus) still reads fullscreen right.
+    function isFullscreenGeom(g, outputHeight) {
+        return !!(g && outputHeight && g.y <= 1 && g.h >= outputHeight - 1)
+    }
+
     function focusedIsFullscreen(outputHeight) {
         if (!outputHeight) return false
         const g = focusedWindowGeom()
-        if (g) return g.y <= 1 && g.h >= outputHeight - 1
+        if (g) return isFullscreenGeom(g, outputHeight)
         // Unpatched niri reports no tile position for tiled windows. Fall back
         // to the surface size — misses the letterboxed case, but it is what the
         // island relied on before, so behaviour never regresses on old niri.
