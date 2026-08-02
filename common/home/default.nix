@@ -14,8 +14,7 @@ in
     ./symlinks.nix
     ./programs.nix
     ./theme-system.nix
-    ./notes-sync.nix
-    ./claude-backup.nix
+    ./daemons.nix
     inputs.worktrunk.homeModules.default
   ];
 

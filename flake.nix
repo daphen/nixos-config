@@ -217,6 +217,7 @@
         ./common/niri.nix
         ./common/audio.nix
         ./common/bluetooth.nix
+        ./common/ancs4linux.nix
         ./common/networking.nix
 
         # Home Manager integration

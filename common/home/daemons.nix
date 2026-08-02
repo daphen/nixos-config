@@ -1,0 +1,118 @@
+# Every long-running user daemon (and the one periodic timer) in one place.
+#
+# Machine-scoped hardware units deliberately stay in machines/<host>/ — the
+# nvidia/lid/usb-wakeup quirks only apply to one laptop, and hoisting them here
+# would fire them on thinkpad and zenbook too.
+{ pkgs, inputs, ... }:
+let
+  palette-daemon = inputs.palette-daemon.packages.${pkgs.system}.default;
+  ancs4linux = import ../../pkgs/ancs4linux { inherit pkgs; };
+
+  claudeBackupSrc = "%h/.claude/projects/";
+  claudeBackupDest = "%h/.local/state/claude-transcript-backups/mirror/";
+in
+{
+  # Burst-based WPM counter. Reads /dev/input/event* (needs the `input` group,
+  # added in common/default.nix) and writes to ~/.local/state/wpm, where the QS
+  # Wpm widget picks it up. Local-source build; lives at ~/personal/wpm-daemon.
+  systemd.user.services.wpm-daemon = {
+    Unit = {
+      Description = "WPM daemon — keystroke rate counter for the QS bar";
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "%h/personal/wpm-daemon/target/release/wpm-daemon";
+      Restart = "on-failure";
+      RestartSec = 2;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
+  # Runs headless — quickshell renders the palette UI over palette-ui.sock, so
+  # the daemon loads no popup bundle. The SW half of chromium-palette is loaded
+  # unpacked from ~/personal/chromium-palette/dist.
+  systemd.user.services.palette-daemon = {
+    Unit = {
+      Description = "Palette Daemon (browser state mirror for the quickshell palette)";
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      Type = "simple";
+      # A failed pre-check RETRIES via Restart (re-reading the manager env each
+      # attempt); ExecCondition would skip permanently — which is how a boot
+      # where WAYLAND_DISPLAY landed late left the palette dead.
+      ExecStartPre = "/bin/sh -c '[ -n \"$WAYLAND_DISPLAY\" ]'";
+      ExecStart = "${palette-daemon}/bin/palette-daemon";
+      Environment = [
+        "PALETTE_HEADLESS=1"
+        "RUST_LOG=palette_daemon=info"
+      ];
+      Restart = "on-failure";
+      RestartSec = 2;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
+  # Turns an iPhone ANCS notification into a desktop notification. The root
+  # observer/advertising daemons that feed it live in common/ancs4linux.nix,
+  # since those need system-bus names and a D-Bus policy.
+  systemd.user.services.ancs4linux-desktop-integration = {
+    Unit = {
+      Description = "ancs4linux desktop integration (iPhone notifications)";
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "${ancs4linux}/bin/ancs4linux-desktop-integration";
+      # Only calls and texts reach the desktop; an unfiltered phone mirrors
+      # every app's notifications. Bundle ids, not ANCS categories — Messages
+      # reports as category Social, which would also admit Messenger/WhatsApp.
+      # Empty or unset = allow everything (upstream behaviour).
+      Environment = [
+        "ANCS_APP_ALLOWLIST=com.apple.mobilephone,com.apple.MobileSMS,com.apple.facetime"
+      ];
+      Restart = "on-failure";
+      RestartSec = 3;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
+  systemd.user.services.notes-sync = {
+    Unit = {
+      Description = "notes-cli watch: keep local vault in sync with webapp";
+      After = [ "network-online.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "%h/personal/notes/cli/notes-cli -watch";
+      Restart = "on-failure";
+      RestartSec = "10s";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+
+  systemd.user.services.claude-transcript-backup = {
+    Unit.Description = "Append-only mirror of Claude Code transcripts";
+    Service = {
+      Type = "oneshot";
+      ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p ${claudeBackupDest}";
+      # No --delete: a transcript that vanishes from the source is kept here,
+      # so an accidental deletion (or crash) can never lose a conversation.
+      ExecStart = "${pkgs.rsync}/bin/rsync -a ${claudeBackupSrc} ${claudeBackupDest}";
+    };
+  };
+
+  systemd.user.timers.claude-transcript-backup = {
+    Unit.Description = "Periodic append-only backup of Claude transcripts";
+    Timer = {
+      OnBootSec = "2min";
+      OnUnitActiveSec = "15min";
+      Persistent = true;
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+}

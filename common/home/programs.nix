@@ -84,57 +84,6 @@ in
     agentd
   ];
 
-  # wpm-daemon — burst-based WPM counter. Reads /dev/input/event* (needs
-  # `input` group, added in common/default.nix) and writes the current
-  # value to ~/.local/state/wpm where the QS Wpm widget picks it up.
-  # Local-source build for now; lives at ~/personal/wpm-daemon.
-  systemd.user.services.wpm-daemon = {
-    Unit = {
-      Description = "WPM daemon — keystroke rate counter for the QS bar";
-      PartOf = [ "graphical-session.target" ];
-      After = [ "graphical-session.target" ];
-    };
-    Service = {
-      Type = "simple";
-      ExecStart = "%h/personal/wpm-daemon/target/release/wpm-daemon";
-      Restart = "on-failure";
-      RestartSec = 2;
-    };
-    Install.WantedBy = [ "graphical-session.target" ];
-  };
-
-  # palette-daemon as a user systemd service, mirroring mako's pattern
-  # (PartOf graphical-session.target, ExecCondition gate on
-  # WAYLAND_DISPLAY). Runs headless — quickshell renders the palette
-  # UI, so the popup bundle isn't loaded by the daemon; the SW half of
-  # chromium-palette is loaded unpacked from
-  # ~/personal/chromium-palette/dist. (PALETTE_POPUP_DIST would pin a
-  # popup dist path, but headless mode makes it moot.)
-  systemd.user.services.palette-daemon = {
-    Unit = {
-      Description = "Palette Daemon (browser state mirror for the quickshell palette)";
-      PartOf = [ "graphical-session.target" ];
-      After = [ "graphical-session.target" ];
-    };
-    Service = {
-      Type = "simple";
-      # A failed pre-check RETRIES via Restart (re-reading the manager env
-      # each attempt); ExecCondition would skip permanently — which is how
-      # a boot where WAYLAND_DISPLAY landed late left the palette dead.
-      ExecStartPre = "/bin/sh -c '[ -n \"$WAYLAND_DISPLAY\" ]'";
-      ExecStart = "${palette-daemon}/bin/palette-daemon";
-      Environment = [
-        # Headless: no GTK/WebKit window — quickshell's CmdPalette renders
-        # the UI over palette-ui.sock. Ends the WebKit fractional-scale
-        # fuzziness and the cold-start cost for good.
-        "PALETTE_HEADLESS=1"
-        "RUST_LOG=palette_daemon=info"
-      ];
-      Restart = "on-failure";
-      RestartSec = 2;
-    };
-    Install.WantedBy = [ "graphical-session.target" ];
-  };
   home.sessionVariables.EDITOR = "nvim";
   programs.fish.shellAliases = {
     vi = "nvim";
