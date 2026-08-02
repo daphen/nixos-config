@@ -11,11 +11,11 @@ Picker {
 
     placeholder: "search PRs — or paste a PR number / url"
     refreshing: prProc.running
-    enterLabel: "review / open"
-    altLabel: "Ctrl+Enter: worktree   ·   Ctrl+O: open   ·   Ctrl+Y: copy url"
+    enterLabel: "review in rail / open"
+    altLabel: "Ctrl+Enter: + devenv   ·   Ctrl+O: open   ·   Ctrl+Y: copy url"
 
     // Ctrl+O: open the focused PR on GitHub in the work browser — works from
-    // both tabs (Enter on the reviews tab starts a claude review instead).
+    // both tabs (Enter on the reviews tab starts a rail review instead).
     onCtrlO: item => {
         const u = (item && (item.url || item.target)) || ""
         if (!u) return
@@ -52,9 +52,10 @@ Picker {
                           : buildItems(ReviewCreatePickerState.requestedNodes,
                                        ReviewCreatePickerState.reviewedNodes, root.query)
 
-    // Enter — reviews tab: lightweight review (claude in the main checkout;
-    // the skill fetches via gh and serves the visual itself). my-PRs tab:
-    // open the PR on GitHub in the work browser.
+    // Enter — reviews tab: spin up a background review in the cockpit nvim
+    // agent rail (agent-review checks out the PR on a review/pr-<n> worktree and
+    // starts a rail session seeded "review this PR"). It lands in the roster —
+    // no focus steal. my-PRs tab: open the PR on GitHub in the work browser.
     onEnter: item => {
         if (!item) return
         ReviewCreatePickerState.open = false
@@ -64,16 +65,15 @@ Picker {
             return
         }
         if (!item.number) return
-        Quickshell.execDetached(["kitty", "--class", "claude",
-            "--working-directory", Quickshell.env("HOME") + "/work/lovable",
-            "-e", "bash", "-lc", "claude 'review PR #" + item.number + "'"])
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/agent-review", item.number])
     }
 
-    // Ctrl+Enter: full worktree + devenv stack, for when you want to run the PR.
+    // Ctrl+Enter: same rail review, plus boot devenv for the worktree — for PRs
+    // you want to actually run, not just read the diff.
     onAltAction: item => {
         if (!item || !item.number) return
         ReviewCreatePickerState.open = false
-        Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/ws-createreview", item.number])
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/agent-review", item.number, "--devenv"])
     }
 
     Process {

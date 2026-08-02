@@ -476,8 +476,12 @@ local function compose(title, on_submit)
 		col = math.floor((vim.o.columns - width) / 2),
 		style = "minimal",
 		border = "rounded",
-		title = " " .. title .. "  ·  ⏎ send · q cancel ",
+		-- Short title (a long one overruns the 76-col float and center-truncates
+		-- into "…k about selection"); the key hints live in the footer instead.
+		title = " " .. title .. " ",
 		title_pos = "center",
+		footer = " ⏎ send · esc cancel ",
+		footer_pos = "center",
 	})
 	vim.wo[win].wrap = true
 	vim.cmd("startinsert")
@@ -540,8 +544,8 @@ end
 -- Send a /plan-ticket prompt to the agent driving the plan's repo
 -- (state.root) — repo-targeted via `wt-send --cwd`, which routes to the pi rail session
 -- kicked the plan off in, worktree or not. Prompt goes on stdin to avoid arg-quoting.
-local function dispatch(prompt, wait)
-	local root = state.root or git_root()
+local function dispatch(prompt, wait, cwd)
+	local root = cwd or state.root or git_root()
 	if not root then
 		vim.notify("plan: no repo bound — open the plan from inside its repo", vim.log.levels.WARN)
 		return false
@@ -578,7 +582,7 @@ local function ask_at(anchor, title)
 end
 
 function M.ask()
-	ask_at(vim.api.nvim_win_get_cursor(0)[1], "❓ ask the agent")
+	ask_at(vim.api.nvim_win_get_cursor(0)[1], "ask the agent")
 end
 
 -- Visual variant: the x-mode map presses <Esc> first, so '> holds the selection end.
@@ -588,16 +592,37 @@ end
 function M.ask_visual()
 	local l1, l2 = vim.fn.line("'<"), vim.fn.line("'>")
 	local sel = table.concat(vim.api.nvim_buf_get_lines(0, l1 - 1, l2, false), "\n")
-	local file = vim.api.nvim_buf_get_name(0)
-	local root = state.root or git_root()
-	if root and file:sub(1, #root) == root then file = file:sub(#root + 2) end
-	compose("❓ ask about selection — answer arrives in the agent chat", function(text)
-		-- The trailing guard matters: plan-ticket sessions habitually answer
-		-- questions by writing 💬 blocks into the plan — pin them to chat.
-		local prompt = ("%s:%d-%d\n```\n%s\n```\n%s\n(answer in chat, no edits)")
-			:format(file, l1, l2, sel, text)
-		if dispatch(prompt) then
-			vim.notify("plan: question sent — answer arrives in the agent chat")
+	local abs = vim.api.nvim_buf_get_name(0)
+	-- Route to the active rail session ("the agent") whenever one is open, so
+	-- <C-p> works from ANY buffer, not just a plan; fall back to the plan's repo.
+	local target_cwd
+	local ok, agent = pcall(require, "agent-nvim")
+	if ok and agent.active_session then
+		local a = agent.active_session()
+		if a then target_cwd = a.cwd end
+	end
+	local root = target_cwd or state.root or git_root()
+	-- pretty ref: repo-relative under the routed cwd, else just the filename
+	local ref = (root and abs:sub(1, #root) == root) and abs:sub(#root + 2)
+		or vim.fn.fnamemodify(abs, ":t")
+	-- the "don't edit the plan" guard only applies when asking ABOUT a plan;
+	-- for ordinary code selections it's just an answer-in-chat question.
+	local from_plan = state.plan_path and abs == state.plan_path
+	compose("ask about selection", function(text)
+		-- Render clean in the rail chat: an inline-code ref + the selection in a
+		-- fenced code block (markview shows it literally on a card background — no
+		-- blockquote > markers, no rendered list bullets). Strip a leading list
+		-- marker so the highlighted text reads as plain content. The selection
+		-- travels inline, so the agent needs no file read.
+		local block = table.concat(
+			vim.tbl_map(function(x) return (x:gsub("^%s*[-*+]%s+", "")) end,
+				vim.split(sel, "\n", { plain = true })), "\n")
+		local guard = from_plan and "_(answer in chat — don't edit the plan)_"
+			or "_(answer in chat)_"
+		local prompt = ("`%s:%d-%d`\n```\n%s\n```\n\n%s\n\n%s")
+			:format(ref, l1, l2, block, text, guard)
+		if dispatch(prompt, nil, target_cwd) then
+			vim.notify("plan: question sent — answer in the agent chat")
 		end
 	end)
 end

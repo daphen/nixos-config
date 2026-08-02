@@ -170,6 +170,23 @@ For anything touching the desktop, look here before guessing:
 - **palette-daemon** (cmd-palette overlay, source) — `~/personal/palette-daemon/`.
 - **wpm-daemon** (bar WPM counter, source) — `~/personal/wpm-daemon/`.
 - **Charybdis firmware fork** — `~/work/bastardkb-qmk/keyboards/bastardkb/charybdis/3x6/keymaps/daphen/`.
+- **Agent rail (the cockpit agent)** — the in-nvim sidebar (roster/chat/composer)
+  that drives `pi` sessions via the `agentd` daemon. This is the orchestrator you
+  are (or are replacing): the rail UI is `~/nixos/pkgs/neovim/lua/agent-nvim/init.lua`,
+  the daemon is `~/personal/agentd/` (Go, one socket per scope), and pi is the
+  agent. **Read `~/personal/notes/storage/references/agent-rail.md` before touching
+  any of it** — it has the full architecture, keybinds, dev loop, and the current
+  state + pending work (e.g. true rewind for pi). Deploy note: nvim Lua / niri
+  scripts / quickshell are live symlinks (nvim needs a restart to reload Lua;
+  quickshell hot-reloads); agentd is Go (build + restart the daemon, which is
+  disruptive to a live session).
+  - **Coordinating with other agents** (agentd is the hub): `wt-agents` lists
+    active sessions; `wt-send <name|cwd> "…"` dispatches a prompt to an existing
+    agent; `wt-read <name|cwd> [N]` reads another agent's last N turns;
+    `wt-spawn <dir|name> [prompt] [--create]` stands up a NEW roster agent (the
+    orchestrator's way to launch per-ticket agents). Shared knowledge = the
+    notes vault. Root/orchestrator role + topology (orchestrator-mediated, no
+    agent→agent ping-pong): see the rail reference + `inbox/orchestrator-bootstrap.md`.
 
 # Memory routing
 

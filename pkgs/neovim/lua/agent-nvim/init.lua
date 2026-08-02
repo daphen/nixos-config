@@ -25,7 +25,12 @@ local COMPOSER_MAX = 12
 
 -- Fancy, tofu-safe glyphs (geometric unicode + braille spinner — no private-use
 -- codepoints, so they render on any font).
-local SPIN = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+-- QsLib "Diagswipe" braille loader (frames from vyfor/rattles) — same animation as
+-- the dsqrd AI-summary button, at ~60ms/frame.
+local SPIN = {
+  "⠁⠀", "⠋⠀", "⠟⠁", "⡿⠋", "⣿⠟", "⣿⡿", "⣿⣿", "⣿⣿",
+  "⣾⣿", "⣴⣿", "⣠⣾", "⢀⣴", "⠀⣠", "⠀⢀", "⠀⠀", "⠀⠀",
+}
 local GLYPH = {
   idle = "○",
   streaming = "●",
@@ -83,9 +88,12 @@ local S = {
   chat = {},          -- id -> { msgs = { {role,text}, ... } }
   drafts = {},        -- id -> unsent composer text
   attach = {},        -- pending composer attachments { {path,l1,l2,lang,text} }
+  paste_images = {},  -- pending pasted images { {type="image", data=<b64>, mimeType} }
   pending = {},       -- id -> extension_ui_request awaiting an answer
   stream = {},        -- id -> partial streaming assistant text (live)
   stream_since = {},  -- id -> os.time() when streaming began (elapsed counter)
+  lastdur = {},       -- id -> seconds the last completed turn worked
+  edited = {},        -- id -> set of paths the agent edited this turn (reload at turn end)
   idle_since = {},    -- id -> os.time() when the session last went idle
   folds = {},         -- id -> { [msgIndex]=true }
   plan = {},          -- id -> { done, total, phase } | false  (cached, refreshed slowly)
@@ -102,6 +110,7 @@ local S = {
 
 local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send
 local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, sync_approval_keys
+local session_cwd, load_plan, answer, apply_prompt_mode
 local composer_send, composer_resize, composer_placeholder, render_chips
 local add_attachment, session_state
 
@@ -117,6 +126,14 @@ end
 local function base(dir) return fn.fnamemodify(dir, ":t") end
 local function rule(w) return string.rep("─", math.max(1, w or WIDTH)) end
 local function palette() return vim.g.theme_palette or {} end
+
+-- The rail restyles markview's markdown groups (accent headings, cyan inline
+-- code) so chat messages read well. Those groups are GLOBAL, so writing them
+-- directly would leak into every markdown buffer (e.g. the plan on the left).
+-- Scope them to a highlight namespace the chat window alone resolves against
+-- (nvim_win_set_hl_ns); everything undefined here falls back to the global
+-- theme, so the plan keeps markview.lua's styling.
+local MDNS = api.nvim_create_namespace("agent-md")
 
 --------------------------------------------------------------------------------
 -- highlights
@@ -145,6 +162,11 @@ local function set_hl()
   hl("AgentAccent", { fg = accent, bold = true })
   hl("AgentFocusName", { fg = p.fg or "#c7ccd1", bold = true }) -- focused-but-not-open row
   hl("AgentMuted", { fg = p.fg_muted or "#5c6773" })
+  hl("AgentHunkRange", { fg = p.blue or p.cyan or "#5aa9e6" }) -- hunk line-range in the chat
+  -- approval-card key caps (a subtle elevated pill behind the key char)
+  hl("AgentKeyOk", { fg = p.green or "#5fca8b", bg = cardbg, bold = true })
+  hl("AgentKeyNo", { fg = p.red or "#e5675f", bg = cardbg, bold = true })
+  hl("AgentKeyNum", { fg = accent, bg = cardbg, bold = true })
   hl("AgentAttn", { fg = attn, bold = true })
   hl("AgentDivider", { fg = p.bg_surface2 or p.bg_secondary or "#2a3038" }) -- subtle line
 
@@ -152,7 +174,15 @@ local function set_hl()
   -- cell, not a ▌ glyph, so it's continuous across rows (glyphs leave inter-row
   -- gaps in fonts that don't draw block chars full-height).
   hl("AgentCard", { bg = cardbg })
+  -- full-line background for fenced code blocks in the chat: applied via
+  -- line_hl_group so it spans the whole rail width (a uniform rectangle), unlike
+  -- markview's char-level bg which stops at the text and reads ragged.
+  hl("AgentCode", { bg = cardbg })
   hl("AgentBarSolid", { bg = accent })
+  -- dim edge for the selected row when the roster is NOT the focused pane: a
+  -- grey marker keeps the selection visible, but only the accent bar + card fill
+  -- (below) signal "the roster has keyboard focus" — so entering it lights up.
+  hl("AgentBarDim", { bg = p.fg_muted or p.bg_surface3 or "#5c6773" })
   hl("AgentSel", { bg = p.bg_surface3 or p.bg_selection or surface, bold = true }) -- picker selection bar
 
   -- pills + rounded caps
@@ -183,19 +213,28 @@ local function set_hl()
   -- a calm distinct hue (cyan) on the subtle surface bg — distinguishable from body
   -- text, but not the accent orange (which floods a code-dense chat, see #156/#157).
   local code = p.cyan or p.blue or "#7dcfff"
-  hl("MarkviewInlineCode", { fg = code, bg = surface })
-  hl("MarkviewCode", { bg = surface })
-  hl("MarkviewCodeInfo", { fg = p.fg_muted or "#5c6773", bg = surface })
-  hl("MarkviewCodeFg", { bg = surface })
-  hl("@markup.raw.markdown_inline", { fg = code, bg = surface })
-  hl("@markup.raw.block.markdown", { bg = surface })
+  local function hlmd(n, o) api.nvim_set_hl(MDNS, n, o) end
+  -- the chat window resolves highlights through MDNS, which supersedes its
+  -- winhighlight — so the WinSeparator:AgentDivider remap must live here too,
+  -- else the chat's borders fall back to the default separator.
+  hlmd("WinSeparator", { fg = p.bg_surface2 or p.bg_secondary or "#2a3038" })
+  -- fenced code blocks sit on the elevated card tone so they read as a distinct
+  -- block (surface alone is ~indistinguishable from the chat bg). Inline code
+  -- stays on the calmer surface so ref chips don't shout.
+  local codebg = p.bg_surface2 or p.bg_selection or surface
+  hlmd("MarkviewInlineCode", { fg = code, bg = surface })
+  hlmd("MarkviewCode", { bg = codebg })
+  hlmd("MarkviewCodeInfo", { fg = p.fg_muted or "#5c6773", bg = codebg })
+  hlmd("MarkviewCodeFg", { bg = codebg })
+  hlmd("@markup.raw.markdown_inline", { fg = code, bg = surface })
+  hlmd("@markup.raw.block.markdown", { bg = codebg })
   for i = 1, 6 do
-    hl("MarkviewHeading" .. i, { fg = accent, bold = true })
-    hl("MarkviewHeading" .. i .. "Sign", { fg = accent })
+    hlmd("MarkviewHeading" .. i, { fg = accent, bold = true })
+    hlmd("MarkviewHeading" .. i .. "Sign", { fg = accent })
   end
-  hl("MarkviewListItemMinus", { fg = p.blue or "#5aa9e6" })
-  hl("MarkviewListItemStar", { fg = p.blue or "#5aa9e6" })
-  hl("MarkviewListItemPlus", { fg = p.blue or "#5aa9e6" })
+  hlmd("MarkviewListItemMinus", { fg = p.blue or "#5aa9e6" })
+  hlmd("MarkviewListItemStar", { fg = p.blue or "#5aa9e6" })
+  hlmd("MarkviewListItemPlus", { fg = p.blue or "#5aa9e6" })
 end
 
 --------------------------------------------------------------------------------
@@ -224,44 +263,116 @@ end
 
 -- Inline diff for an edit/write tool call, as a ```diff fence so markview colors
 -- it. Capped so a big write doesn't flood the chat (folds handle the rest).
-local function tool_diff(c)
-  local a = c.arguments or c.input or {}
+-- Compact, navigable summary of an edit/write tool call: the file header (from
+-- tool_hint) then one line per hunk — its file line-range and +/- size, no code.
+-- pi's edit tool gives no line numbers, so the range is located by finding the
+-- edit's text in the file (kept current by the file-watcher); unfound → range
+-- omitted. Press <CR> on a hunk to jump there. Returns (text, hunks); hunks[i] =
+-- {path, anchor, line} for the i-th hunk line, in render order.
+local HUNK = "  · "
+local THINK = "💭 " -- collapsed-thinking marker (a dim one-liner, not the answer)
+local BARW = 5 -- width of the per-hunk proportional add/del bar
+local function tool_edits(c, cwd)
+  local a = c.arguments or c.input or c.args or {}
+  local path = a.path or a.file_path or a.filePath
   local edits = a.edits
   if not edits and type(a.content) == "string" then edits = { { newText = a.content } } end
-  if type(edits) ~= "table" or #edits == 0 then return nil end
-  local out, n, CAP = { "```diff" }, 0, 60
-  for _, e in ipairs(edits) do
-    for _, l in ipairs(vim.split(e.oldText or "", "\n", { plain = true })) do
-      if e.oldText and e.oldText ~= "" and n < CAP then out[#out + 1] = "-" .. l; n = n + 1 end
+  if not path or type(edits) ~= "table" or #edits == 0 then return nil, nil end
+  local function split(s) return vim.split(s or "", "\n", { plain = true }) end
+  local function nonempty(ls) local n = 0; for _, l in ipairs(ls) do if vim.trim(l) ~= "" then n = n + 1 end end; return n end
+  local function firstidx(ls) for i, l in ipairs(ls) do if vim.trim(l) ~= "" then return i, vim.trim(l) end end end
+
+  local file = path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)
+  file = fn.expand(file)
+  local flines = fn.filereadable(file) == 1 and fn.readfile(file) or nil
+  local function locate(newLines)
+    if not flines then return nil end
+    -- drop a trailing empty line (vim.split of "a\nb\n" yields a spurious "")
+    local nl = vim.deepcopy(newLines)
+    if #nl > 0 and nl[#nl] == "" then nl[#nl] = nil end
+    local ai, anchor = firstidx(nl)
+    if not ai then return nil end
+    -- exact: the newText block sits verbatim in the file — match it contiguously
+    if #nl > 0 then
+      for i = 1, #flines - #nl + 1 do
+        local ok = true
+        for j = 1, #nl do
+          if flines[i + j - 1] ~= nl[j] then ok = false; break end
+        end
+        if ok then return i, i + #nl - 1, anchor end
+      end
     end
-    for _, l in ipairs(vim.split(e.newText or "", "\n", { plain = true })) do
-      if e.newText and e.newText ~= "" and n < CAP then out[#out + 1] = "+" .. l; n = n + 1 end
+    -- fallback: first-line anchor (block drifted from later edits)
+    for i, l in ipairs(flines) do
+      if l:find(anchor, 1, true) then
+        return math.max(1, i - (ai - 1)), math.max(1, i - (ai - 1)) + #nl - 1, anchor
+      end
     end
+    return nil, nil, anchor
   end
-  if n >= CAP then out[#out + 1] = "… diff truncated" end
-  out[#out + 1] = "```"
-  return table.concat(out, "\n")
+
+  -- pass 1: collect each hunk's range + counts; pass 2: pad into aligned columns
+  local rows = {}
+  for _, e in ipairs(edits) do
+    local nl = split(e.newText)
+    local s, en, anchor = locate(nl)
+    if not anchor then anchor = select(2, firstidx(split(e.oldText))) end
+    rows[#rows + 1] = {
+      rng = s and (s == en and tostring(s) or (s .. "-" .. en)) or "",
+      na = nonempty(nl), nd = nonempty(split(e.oldText)),
+      path = path, anchor = anchor, line = s,
+    }
+  end
+  local rw, aw, dw = 0, 0, 0
+  for _, r in ipairs(rows) do
+    r.add, r.del = "+" .. r.na, "-" .. r.nd
+    rw = math.max(rw, #r.rng); aw = math.max(aw, #r.add); dw = math.max(dw, #r.del)
+  end
+  local pad = function(s, w) return string.rep(" ", w - #s) end
+  local lines, hunks = { tool_hint(c) }, {}
+  for _, r in ipairs(rows) do
+    -- proportional add/del bar: BARW blocks split green|red by ratio (both
+    -- colours always show when both sides are non-empty)
+    local total = r.na + r.nd
+    local gb = total == 0 and 0 or math.floor(r.na / total * BARW + 0.5)
+    if r.na > 0 and gb == 0 then gb = 1 elseif r.nd > 0 and gb == BARW then gb = BARW - 1 end
+    lines[#lines + 1] = HUNK .. r.rng .. pad(r.rng, rw) .. "   " .. pad(r.add, aw) .. r.add
+      .. "  " .. pad(r.del, dw) .. r.del .. "   " .. string.rep("█", BARW)
+    hunks[#hunks + 1] = { path = r.path, anchor = r.anchor, line = r.line, gb = gb }
+  end
+  return table.concat(lines, "\n"), hunks
 end
 
 -- Flatten a message's content blocks into displayable text. Beyond the final
 -- prose (text blocks), surface the agent's WORK: thinking (💭), tool calls
 -- (⚙ read/edit/bash/…), and inline diffs for edits — otherwise a turn that's all
 -- tool calls looks empty.
-local function msg_text(msg)
-  local t = {}
+local function msg_text(msg, cwd)
+  local t, hunks = {}, {}
   for _, c in ipairs((msg and msg.content) or {}) do
     if c.type == "text" and c.text then
       t[#t + 1] = c.text
     elseif c.type == "thinking" then
       local th = c.thinking or c.text or ""
-      if type(th) == "string" and th:gsub("%s", "") ~= "" then t[#t + 1] = "💭 " .. th end
+      if type(th) == "string" and th:gsub("%s", "") ~= "" then
+        -- Collapse thinking to a dim one-liner: it's reasoning noise, not the
+        -- answer. Prefer the agent's own bold **title**, else the first line.
+        local summary = th:match("%*%*(.-)%*%*") or th:match("^%s*([^\n]+)") or "thinking"
+        summary = summary:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", ""):sub(1, 76)
+        t[#t + 1] = THINK .. summary
+      end
     elseif c.type == "toolCall" or c.type == "tool_use" then
-      local hint = tool_hint(c)
-      local diff = (c.name == "edit" or c.name == "write") and tool_diff(c) or nil
-      t[#t + 1] = diff and (hint .. "\n" .. diff) or hint
+      local txt, hs = nil, nil
+      if c.name == "edit" or c.name == "write" then txt, hs = tool_edits(c, cwd) end
+      if txt then
+        t[#t + 1] = txt
+        for _, h in ipairs(hs) do hunks[#hunks + 1] = h end
+      else
+        t[#t + 1] = tool_hint(c)
+      end
     end
   end
-  return table.concat(t, "\n\n")
+  return table.concat(t, "\n\n"), hunks
 end
 
 -- compact elapsed: 12s · 5m · 3h
@@ -272,6 +383,14 @@ local function dur(since)
   if el < 60 then return el .. "s" end
   if el < 3600 then return math.floor(el / 60) .. "m" end
   return math.floor(el / 3600) .. "h"
+end
+
+-- format an elapsed SECONDS count (not a timestamp) → "45s" / "2m 14s" / "1h 3m"
+local function fmt_el(el)
+  if not el or el < 1 then return nil end
+  if el < 60 then return el .. "s" end
+  if el < 3600 then return string.format("%dm %ds", math.floor(el / 60), el % 60) end
+  return string.format("%dh %dm", math.floor(el / 3600), math.floor((el % 3600) / 60))
 end
 
 -- Resolve a session's visual state: glyph, name-highlight, pill text/groups.
@@ -303,27 +422,76 @@ local function short_name(n)
   return (n and n:match("%a+%-%d+")) or n or "?"
 end
 
+--------------------------------------------------------------------------------
+-- prompt state machine — the SINGLE source of truth for the composer's mode while
+-- the agent is asking something. Three states, derived once from S.pending:
+--   idle   — no question: normal, editable composer, insert-ready.
+--   type   — an input/editor prompt: editable composer, you type the answer.
+--   choose — a confirm/select prompt: composer DISABLED + cursor hidden; you
+--            answer with y/n or a number (bound on both panes).
+-- prompt_mode() resolves the state; apply_prompt_mode() applies EVERY effect in
+-- one place (keys, cursor, focus/insert, placeholder) — called on each transition.
+--------------------------------------------------------------------------------
+local function prompt_mode()
+  local ap = S.selected and S.pending[S.selected]
+  local m = ap and ap.method
+  if not ap or m == "notify" then
+    return { kind = "idle", editable = true, insert = true, hide_cursor = false,
+      placeholder = S.selected and ("message " .. short_name(S.selected) .. "…  (/ for commands)") or "open a session first",
+      placeholder_hl = "AgentMuted" }
+  elseif m == "input" or m == "editor" then
+    return { kind = "type", ap = ap, editable = true, insert = true, hide_cursor = false,
+      placeholder = "type your reply · ⏎ to send · esc cancels", placeholder_hl = "AgentAttn" }
+  else
+    local ph = (m == "select") and ("↑ pick an option above · 1–" .. math.min(9, #(ap.options or {})))
+      or "↑ answer above · y / n · esc cancels"
+    return { kind = "choose", ap = ap, editable = false, insert = false, hide_cursor = true,
+      placeholder = ph, placeholder_hl = "AgentAttn" }
+  end
+end
+
+apply_prompt_mode = function()
+  local pm = prompt_mode()
+  if sync_approval_keys then sync_approval_keys() end -- (un)bind y/n/number for `choose`
+  if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
+    pcall(api.nvim_set_current_win, S.composerwin)
+    pcall(vim.cmd, pm.insert and "startinsert" or "stopinsert")
+  end
+  -- Set the cursor AFTER focusing: entering the composer fires WinLeave on the
+  -- roster, whose callback restores guicursor — so our hide has to come last to win.
+  if pm.hide_cursor then
+    if not S.prompt_gcr then S.prompt_gcr = vim.o.guicursor end
+    vim.o.guicursor = "a:AgentCursorFloat" -- bg-matching → invisible while answering
+  elseif S.prompt_gcr then
+    vim.o.guicursor = S.prompt_gcr; S.prompt_gcr = nil
+  end
+  if composer_placeholder then composer_placeholder() end
+end
+
 -- The active session isn't a roster row — it's the header of its own chat. Build
 -- a rich winbar for it: name + live state (spinner when working) + plan.
 local function active_winbar()
-  if not S.selected then return "%#AgentMuted#  no session" end
+  if not S.selected then return "" end
   local a
   for _, x in ipairs(S.roster) do if x.id == S.selected then a = x break end end
-  if not a then return "%#AgentAccent#  ◆ " .. S.selected end
+  if not a then return "" end
+  -- state (spinner while working) + plan progress. The session id is NOT repeated
+  -- here — the lualine's project component shows it.
   local ss = session_state(a)
-  local parts = { "%#AgentAccent#  ◆ " .. short_name(a.name),
-    "%#AgentMuted# · %#" .. ss.name .. "#" .. ss.glyph .. " " .. ss.label }
+  local parts = { "%#" .. ss.name .. "#  " .. ss.glyph .. " " .. ss.label }
   local pl = S.plan[a.id]
   if pl and pl.total and pl.total > 0 then
-    parts[#parts + 1] = "%#AgentMuted#   ◆ " .. pl.done .. "/" .. pl.total
+    parts[#parts + 1] = "%#AgentMuted#  ◆ " .. pl.done .. "/" .. pl.total
+  end
+  if #S.paste_images > 0 then
+    parts[#parts + 1] = "%#AgentMuted#  🖼 ×" .. #S.paste_images
   end
   return table.concat(parts)
 end
 
 local function refresh_active_header()
-  -- The active-session status sits right above the input (composer winbar),
-  -- Claude-Code style — not at the top. The chat winbar stays clear in chat view
-  -- (the changes view sets its own "changes ·" label).
+  -- Live state + spinner sit right above the input (composer winbar) — updated on
+  -- every render/spin tick, so it's smooth (unlike the lualine's slow timer).
   if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
     vim.wo[S.composerwin].winbar = active_winbar()
   end
@@ -336,7 +504,7 @@ end
 -- roster (sticky top) — focus-ring selection, no cursor, collapsible
 --------------------------------------------------------------------------------
 render_roster = function()
-  if not (S.buf and api.nvim_buf_is_valid(S.buf)) then return end
+  if not (S.buf and api.nvim_buf_is_valid(S.buf) and S.ns) then return end
 
   -- track streaming / idle start times so the pill can show elapsed
   for _, a in ipairs(S.roster) do
@@ -344,6 +512,7 @@ render_roster = function()
       S.stream_since[a.id] = S.stream_since[a.id] or os.time()
       S.idle_since[a.id] = nil
     else
+      if S.stream_since[a.id] then S.lastdur[a.id] = os.time() - S.stream_since[a.id] end
       S.stream_since[a.id] = nil
       if a.status ~= "error" then
         S.idle_since[a.id] = S.idle_since[a.id] or os.time()
@@ -396,9 +565,13 @@ render_roster = function()
       local ml = push("  " .. sstate.glyph .. " " .. nm)
       mainline[i] = ml
       decor[#decor + 1] = { line = ml, fg = isSel and "AgentAccent" or (focused and "AgentFocusName" or sstate.name) }
+      -- focus edge: accent bar + card fill ONLY when the roster is the active
+      -- pane (S.roster_active) — that's the cursor-less "you're here" signal;
+      -- when the roster is unfocused the selected row keeps just a dim marker.
+      local edge = S.roster_active and "AgentBarSolid" or "AgentBarDim"
       if focused then
-        decor[#decor + 1] = { line = ml, card = true }
-        decor[#decor + 1] = { line = ml, range = { 0, 1, "AgentBarSolid" } }
+        if S.roster_active then decor[#decor + 1] = { line = ml, card = true } end
+        decor[#decor + 1] = { line = ml, range = { 0, 1, edge } }
       end
 
       -- substatus line as REAL text + range highlights, so fg-only segments
@@ -424,8 +597,8 @@ render_roster = function()
       for _, s in ipairs(segs) do sline = sline .. s.t end
       local sl = push(sline)
       if focused then
-        decor[#decor + 1] = { line = sl, card = true }
-        decor[#decor + 1] = { line = sl, range = { 0, 1, "AgentBarSolid" } }
+        if S.roster_active then decor[#decor + 1] = { line = sl, card = true } end
+        decor[#decor + 1] = { line = sl, range = { 0, 1, edge } }
       end
       local col = 0
       for _, s in ipairs(segs) do
@@ -463,9 +636,28 @@ end
 --------------------------------------------------------------------------------
 -- chat (scrollable middle) — message blocks, folds, streaming, approval card
 --------------------------------------------------------------------------------
+-- Build a row of key-cap buttons for the approval card. buttons =
+-- { {key, label, keyhl, labelhl}, … }. Returns (line, segments) where each
+-- segment is { cs, ce, fg } byte-range to highlight (key cap + label).
+local function button_row(indent, buttons)
+  local line, segs = indent, {}
+  for i, b in ipairs(buttons) do
+    if i > 1 then line = line .. "     " end
+    local cs = #line
+    line = line .. " " .. b.key .. " " -- caps: space-padded key char
+    segs[#segs + 1] = { cs = cs, ce = #line, fg = b.keyhl }
+    line = line .. "  "
+    local ls = #line
+    line = line .. b.label
+    segs[#segs + 1] = { cs = ls, ce = #line, fg = b.labelhl }
+  end
+  return line, segs
+end
+
 render_chat = function(scroll)
   if not (S.chatbuf and api.nvim_buf_is_valid(S.chatbuf)) then return end
   local lines, decor = {}, {}
+  S.hunknav = {} -- 1-indexed bufline -> {path, anchor} for navigable hunk lines
   local line_msg, blocks = {}, {}
   local function push(l, mi)
     lines[#lines + 1] = l
@@ -493,8 +685,47 @@ render_chat = function(scroll)
           local n = select(2, m.text:gsub("\n", "\n")) + 1
           decor[#decor + 1] = { line = push("  ⋯ " .. n .. " lines", mi), fg = "AgentMuted" }
         else
+          local hq, hi = m.hunks or {}, 0
+          local in_fence = false
           for _, para in ipairs(vim.split(m.text or "", "\n", { plain = true })) do
-            push(para, mi)
+            local bl = push(para, mi)
+            if para:match("^%s*```") then
+              -- fence delimiter (markview conceals the ```): paint it so the block
+              -- gets clean top/bottom padding rows.
+              in_fence = not in_fence
+              decor[#decor + 1] = { line = bl, bg = "AgentCode" }
+            elseif in_fence then
+              decor[#decor + 1] = { line = bl, bg = "AgentCode" } -- uniform full-width block
+            else
+            local mk = para:sub(1, #HUNK) == HUNK and HUNK or nil
+            if mk then
+              hi = hi + 1
+              if hq[hi] then S.hunknav[bl + 1] = hq[hi] end
+              -- marker grey · line-range blue · +adds green · -dels red
+              decor[#decor + 1] = { line = bl, fg = "AgentMuted", cs = 0, ce = #mk }
+              local ps, pe = para:find("%+%d+")
+              if ps and ps > #mk + 1 then decor[#decor + 1] = { line = bl, fg = "AgentHunkRange", cs = #mk, ce = ps - 1 } end
+              if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
+              local ms, me = para:find("%-%d+", (pe or #mk) + 1)
+              if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
+              -- proportional add/del bar: green for the adds' share, red for the rest
+              local bs = para:find("█")
+              if bs and hq[hi] then
+                local g, off = hq[hi].gb or 0, bs - 1
+                if g > 0 then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = off, ce = off + g * 3 } end
+                if g < BARW then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = off + g * 3, ce = -1 } end
+              end
+            elseif para:match("^⚙ ") then
+              decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
+              decor[#decor + 1] = { line = bl, fg = "AgentAccent", cs = 0, ce = 3 } -- ⚙ glyph (3 bytes)
+              if para:match("^⚙ edit ") or para:match("^⚙ write ") then
+                local fs = para:find("%S+$") -- last token = the path
+                if fs then decor[#decor + 1] = { line = bl, fg = "AgentFocusName", cs = fs - 1, ce = -1 } end
+              end
+            elseif para:sub(1, #THINK) == THINK then
+              decor[#decor + 1] = { line = bl, fg = "AgentMuted" } -- thinking: dim, secondary
+            end
+            end
           end
         end
       end
@@ -513,23 +744,36 @@ render_chat = function(scroll)
   -- inline approval card for the selected session
   local ap = S.selected and S.pending[S.selected]
   if ap then
+    local function seg(line, segs) local bl = push(line); for _, s in ipairs(segs) do decor[#decor + 1] = { line = bl, fg = s.fg, cs = s.cs, ce = s.ce } end end
     push(""); push("")
-    decor[#decor + 1] = { line = push("╭─ approval · " .. (ap.method or "confirm")), fg = "AgentApproval" }
-    if ap.title and ap.title ~= "" then decor[#decor + 1] = { line = push("│ " .. ap.title), fg = "AgentApproval" } end
+    decor[#decor + 1] = { line = push("╭─ needs your input"), fg = "AgentApproval" }
+    decor[#decor + 1] = { line = push("│"), fg = "AgentApproval" }
+    if ap.title and ap.title ~= "" then
+      decor[#decor + 1] = { line = push("│  " .. ap.title), fg = "AgentFocusName" }
+    end
     if ap.message and ap.message ~= "" then
       for _, l in ipairs(vim.split(ap.message, "\n", { plain = true })) do
-        decor[#decor + 1] = { line = push("│ " .. l), fg = "AgentMuted" }
+        decor[#decor + 1] = { line = push("│  " .. l), fg = "AgentMuted" }
       end
     end
+    push("")
     if ap.method == "select" and ap.options then
       for oi, opt in ipairs(ap.options) do
-        decor[#decor + 1] = { line = push("│  [" .. oi .. "] " .. tostring(opt)), fg = "AgentAccent" }
+        local line, segs = button_row("│  ", { { key = tostring(oi), label = tostring(opt), keyhl = "AgentKeyNum", labelhl = "AgentFocusName" } })
+        seg(line, segs)
       end
-      decor[#decor + 1] = { line = push("╰ press a number · <Esc> cancel"), fg = "AgentMuted" }
+      decor[#decor + 1] = { line = push("╰  press a number · esc cancels"), fg = "AgentMuted" }
     elseif ap.method == "input" or ap.method == "editor" then
-      decor[#decor + 1] = { line = push("╰ press i to type a reply · <Esc> cancel"), fg = "AgentMuted" }
+      local line, segs = button_row("│  ", { { key = "i", label = "type a reply", keyhl = "AgentKeyNum", labelhl = "AgentFocusName" } })
+      seg(line, segs)
+      decor[#decor + 1] = { line = push("╰  esc cancels"), fg = "AgentMuted" }
     else
-      decor[#decor + 1] = { line = push("╰  [y] yes    [n] no    <Esc> cancel"), fg = "AgentAccent" }
+      local line, segs = button_row("│  ", {
+        { key = "y", label = "yes", keyhl = "AgentKeyOk", labelhl = "AgentStream" },
+        { key = "n", label = "no", keyhl = "AgentKeyNo", labelhl = "AgentErr" },
+      })
+      seg(line, segs)
+      decor[#decor + 1] = { line = push("╰  esc cancels"), fg = "AgentMuted" }
     end
   end
 
@@ -545,12 +789,37 @@ render_chat = function(scroll)
     decor[#decor + 1] = { line = push("╰ send again to retry"), fg = "AgentMuted" }
   end
 
+  -- footer: agent is done (not streaming) and nothing awaits you → mark the end of
+  -- the chat, so you know it finished thinking and you're at the bottom.
+  local streaming = S.selected and S.stream[S.selected] and S.stream[S.selected] ~= ""
+  if has_any and not streaming and not ap and not errmsg then
+    local el = S.selected and fmt_el(S.lastdur[S.selected])
+    local label = el and ("✓ done in " .. el) or "✓ done"
+    local pl = S.selected and S.plan[S.selected]
+    if pl and pl.total and pl.total > 0 then label = label .. " · ◆ " .. pl.done .. "/" .. pl.total .. " steps" end
+    push(""); push("")
+    decor[#decor + 1] = { line = push("  ─────  " .. label .. "  ─────"), fg = "AgentIdle" }
+  end
+
+  -- queued message (held until the turn ends) — dim, with the esc hint to edit it
+  local q = S.selected and S.queued and S.queued[S.selected]
+  if q and q ~= "" then
+    push("")
+    decor[#decor + 1] = { line = push("  ⏳ queued  ·  esc to edit"), fg = "AgentAttn" }
+    for _, para in ipairs(vim.split(q, "\n", { plain = true })) do
+      decor[#decor + 1] = { line = push("  " .. para), fg = "AgentMuted" }
+    end
+  end
+
   vim.bo[S.chatbuf].modifiable = true
   api.nvim_buf_set_lines(S.chatbuf, 0, -1, false, lines)
   vim.bo[S.chatbuf].modifiable = false
   api.nvim_buf_clear_namespace(S.chatbuf, S.ns, 0, -1)
   for _, d in ipairs(decor) do
-    if d.fg then pcall(api.nvim_buf_add_highlight, S.chatbuf, S.ns, d.fg, d.line, 0, -1) end
+    if d.bg then
+      pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0, { line_hl_group = d.bg, priority = 60 })
+    end
+    if d.fg then pcall(api.nvim_buf_add_highlight, S.chatbuf, S.ns, d.fg, d.line, d.cs or 0, d.ce or -1) end
     if d.caret then
       pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0, { line_hl_group = "AgentStream", priority = 80 })
     end
@@ -568,15 +837,93 @@ end
 
 render = function() render_roster(); render_chat(true) end
 
+-- Coalesce streaming re-renders: message_update / text_delta can fire many
+-- times per second, and each render_chat rebuilds the whole chat buffer (+
+-- markview re-parse). Unthrottled that saturates the main loop and starves the
+-- 60ms animation timer — the spinner/elapsed freeze then jump. Cap to ~1
+-- render / 70ms; the final state always lands via message_end's direct render.
+local _stream_pending = false
+local function render_stream()
+  if _stream_pending then return end
+  _stream_pending = true
+  vim.defer_fn(function()
+    _stream_pending = false
+    if S.selected and S.chatwin and api.nvim_win_is_valid(S.chatwin) then render_chat(true) end
+  end, 70)
+end
+
 --------------------------------------------------------------------------------
 -- daemon event handling
 --------------------------------------------------------------------------------
+-- Desktop ping for a BACKGROUND session (not the one you're viewing), so you
+-- learn a dispatched/spawned agent needs input or finished without watching the
+-- rail. The active session is skipped — you're already looking at it.
+local function desktop_notify(session, body, urgency)
+  if not session or session == S.selected then return end
+  local name = session
+  for _, a in ipairs(S.roster) do
+    if a.id == session then name = short_name(a.name or session); break end
+  end
+  pcall(fn.jobstart, { "notify-send", "-u", urgency or "normal", "-a", "agent-rail",
+    "agent · " .. name, body or "" }, { detach = true })
+end
+
 -- Best-effort extraction of an incremental text chunk from a streaming event.
 local function delta_text(m)
   if type(m.text) == "string" then return m.text end
   if type(m.delta) == "table" and type(m.delta.text) == "string" then return m.delta.text end
   if type(m.content) == "string" then return m.content end
   return nil
+end
+
+-- When a decision lands, scroll the open plan buffer to it so the user reads
+-- the decision and answers in the chat. The request title is the plan heading
+-- (the skill sets it to the decision's `### D#:` line); match it, else fall
+-- back to the first unresolved decision marker. Never steals focus.
+local function reveal_decision(title)
+  for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
+    local name = api.nvim_buf_get_name(api.nvim_win_get_buf(w))
+    if name:match("/plans/[^/]*%.md$") then
+      local lines = api.nvim_buf_get_lines(api.nvim_win_get_buf(w), 0, -1, false)
+      local needle = title and title:lower():gsub("^%s+", "")
+      local hit
+      for i, l in ipairs(lines) do
+        local low = l:lower()
+        if needle and needle ~= "" and low:find(needle, 1, true) then hit = i; break end
+        if not hit and (low:find("your call:", 1, true) or l:match("^###%s+d%d")) then hit = hit or i end
+      end
+      if hit then
+        api.nvim_win_call(w, function()
+          api.nvim_win_set_cursor(w, { hit, 0 })
+          vim.cmd("normal! zz")
+        end)
+      end
+      return
+    end
+  end
+end
+
+-- Deterministic agent→buffer sync. The rail knows every file the agent edited
+-- this turn (from the edit/write hunks); at turn end (writes settled) reload each
+-- OPEN buffer from disk and refresh its hunk signs — so the change shows even if
+-- the inotify file-watcher missed it. A buffer with unsaved edits is never
+-- clobbered; we flag the conflict instead.
+local function sync_edited(cwd, paths)
+  for path in pairs(paths or {}) do
+    local abs = fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
+    local bufnr
+    for _, b in ipairs(api.nvim_list_bufs()) do
+      if api.nvim_buf_is_loaded(b) and fn.fnamemodify(api.nvim_buf_get_name(b), ":p") == abs then bufnr = b; break end
+    end
+    if bufnr then
+      if vim.bo[bufnr].modified then
+        vim.notify("agent edited " .. fn.fnamemodify(abs, ":.") .. " — you have unsaved changes; not reloaded", vim.log.levels.WARN)
+      else
+        pcall(vim.cmd, "checktime " .. bufnr)
+        pcall(function() require("hunk-nvim.signs").refresh(bufnr) end)
+      end
+    end
+  end
 end
 
 handle = function(obj)
@@ -599,20 +946,44 @@ handle = function(obj)
     end
   elseif t == "sources" then
     S.sources = obj.sources or {}
+  elseif t == "response" and obj.command == "cycle_model" then
+    local m = obj.data and obj.data.model
+    local name = m and (m.id or m.modelId or m.name or m.model) or "?"
+    local lvl = obj.data and obj.data.thinkingLevel
+    vim.notify("agent: model → " .. tostring(name) .. (lvl and ("  ·  " .. tostring(lvl)) or ""))
+  elseif t == "response" and obj.command == "cycle_thinking_level" then
+    vim.notify("agent: reasoning → " .. tostring(obj.data and obj.data.level or "?"))
   elseif t == "response" and obj.command == "get_messages" and obj.data and obj.data.messages then
     local msgs = {}
+    local cwd = session_cwd(obj.session)
     for _, msg in ipairs(obj.data.messages) do
-      local text = msg_text(msg)
+      local text, hunks = msg_text(msg, cwd)
       if (msg.role == "user" or msg.role == "assistant") and text:gsub("%s", "") ~= "" then
-        msgs[#msgs + 1] = { role = msg.role, text = text }
+        msgs[#msgs + 1] = { role = msg.role, text = text, hunks = hunks }
       end
     end
     S.chat[obj.session] = { msgs = msgs }
     if obj.session == S.selected then render_chat(true) end
+  elseif t == "rewound" and obj.session then
+    -- true rewind landed: pi respawned on the truncated session. Reload the
+    -- (now shorter) history and drop the removed message back into the composer
+    -- to edit and resend. get_messages waits for the respawned pi's stdin.
+    S.stream[obj.session] = nil
+    send({ type = "get_messages", session = obj.session })
+    if obj.session == S.selected and S.composerbuf and api.nvim_buf_is_valid(S.composerbuf) then
+      local msg = obj.message or ""
+      api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, vim.split(msg, "\n", { plain = true }))
+      render_chips(); composer_placeholder()
+      if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
+        api.nvim_set_current_win(S.composerwin)
+        pcall(api.nvim_win_set_cursor, S.composerwin, { api.nvim_buf_line_count(S.composerbuf), 0 })
+        vim.cmd("startinsert!")
+      end
+    end
   elseif t == "message_start" and obj.session and obj.message and obj.message.role == "user" then
     -- echo the user prompt — covers prompts injected via wt-send / plan dispatch
     -- that the composer never optimistically echoed. Dedup vs a just-echoed one.
-    local text = msg_text(obj.message)
+    local text = msg_text(obj.message, session_cwd(obj.session))
     if text:gsub("%s", "") ~= "" then
       local c = S.chat[obj.session] or { msgs = {} }
       local last = c.msgs[#c.msgs]
@@ -630,30 +1001,49 @@ handle = function(obj)
     local partial = ev and ev.partial
     if partial and type(partial.content) == "table" then
       if S.errors then S.errors[obj.session] = nil end
-      S.stream[obj.session] = msg_text({ content = partial.content })
-      if obj.session == S.selected then render_chat(true) end
+      S.stream[obj.session] = msg_text({ content = partial.content }, session_cwd(obj.session))
+      if obj.session == S.selected then render_stream() end
     end
   elseif t == "message_end" and obj.session then
     local m = obj.message or {}
-    local text = msg_text(m)
+    local text, hunks = msg_text(m, session_cwd(obj.session))
     S.stream[obj.session] = nil -- finalize any live stream
     if m.role ~= "assistant" or text:gsub("%s", "") == "" then
       if obj.session == S.selected then render_chat(false) end
       return
     end
     local c = S.chat[obj.session] or { msgs = {} }
-    c.msgs[#c.msgs + 1] = { role = "assistant", text = text }
+    c.msgs[#c.msgs + 1] = { role = "assistant", text = text, hunks = hunks }
     S.chat[obj.session] = c
+    -- remember which files the agent touched, to reload them at turn end
+    if hunks and #hunks > 0 then
+      S.edited[obj.session] = S.edited[obj.session] or {}
+      for _, h in ipairs(hunks) do if h.path then S.edited[obj.session][h.path] = true end end
+    end
     if obj.session == S.selected then render_chat(true) end
   elseif (t == "text_delta" or t == "content_block_delta" or t == "message_delta" or t == "text") and obj.session then
     local chunk = delta_text(obj)
     if chunk and chunk ~= "" then
       if S.errors then S.errors[obj.session] = nil end -- new output → clear stale error
       S.stream[obj.session] = (S.stream[obj.session] or "") .. chunk
-      if obj.session == S.selected then render_chat(true) end
+      if obj.session == S.selected then render_stream() end
     end
   elseif (t == "turn_end" or t == "agent_end") and obj.session then
     S.stream[obj.session] = nil
+    if S.queued and S.queued[obj.session] then
+      -- a message was queued mid-turn → it becomes the next turn now
+      local q = S.queued[obj.session]; S.queued[obj.session] = nil
+      local cq = S.chat[obj.session] or { msgs = {} }
+      cq.msgs[#cq.msgs + 1] = { role = "user", text = q }
+      S.chat[obj.session] = cq
+      send({ type = "prompt", session = obj.session, message = q })
+    elseif not S.pending[obj.session] then
+      -- a background agent finished and isn't blocked on you → ready for you
+      desktop_notify(obj.session, "finished — ready for you", "normal")
+    end
+    -- writes are settled → reload the exact files the agent edited (see sync_edited)
+    local ed = S.edited[obj.session]
+    if ed then S.edited[obj.session] = nil; vim.schedule(function() sync_edited(session_cwd(obj.session), ed) end) end
     if obj.session == S.selected then render_chat(false) end
   elseif t == "extension_ui_request" then
     local m = obj.method
@@ -662,8 +1052,13 @@ handle = function(obj)
     elseif m == "confirm" or m == "select" or m == "input" or m == "editor" then
       -- only genuine questions become an inline approval card / "needs input"
       S.pending[obj.session] = obj
+      desktop_notify(obj.session, (obj.title or "needs your input"), "critical")
       render_roster()
-      if obj.session == S.selected then render_chat(true) end
+      if obj.session == S.selected then
+        render_chat(true)
+        reveal_decision(obj.title)
+        apply_prompt_mode() -- one place applies keys/cursor/focus/placeholder
+      end
     end
     -- setStatus/setWidget/setTitle/set_editor_text: UI directives, not questions —
     -- ignored (surfacing them as approvals was the spurious "setStatus" card)
@@ -685,7 +1080,25 @@ handle = function(obj)
 end
 
 on_read = function(err, chunk)
-  if err or not chunk then return end
+  -- err or nil chunk = the daemon closed the pipe (restart, socket drop). Flip
+  -- to disconnected and self-heal: without this S.connected stays true forever
+  -- on the first success, so a dropped socket left the roster silently empty
+  -- with no recovery until nvim restarted.
+  if err or not chunk then
+    if S.connected then
+      S.connected = false
+      pcall(function() if S.pipe then S.pipe:close() end end)
+      S.pipe = nil
+      S.readbuf = ""
+      vim.schedule(function()
+        render_roster() -- show the offline glyph
+        -- re-request the roster on reconnect: the daemon only pushes it on
+        -- change, so a fresh connection needs an explicit list_sources.
+        connect(function() send({ type = "list_sources" }) end)
+      end)
+    end
+    return
+  end
   S.readbuf = S.readbuf .. chunk
   while true do
     local nl = S.readbuf:find("\n", 1, true)
@@ -701,35 +1114,40 @@ end
 
 try_connect = function(cb, tries)
   tries = tries or 0
+  S.connecting = true
   local p = uv.new_pipe(false)
   p:connect(sock(), function(cerr)
     if not cerr then
+      S.connecting = false
       S.pipe = p
       S.connected = true
+      S.ever_connected = true
       p:read_start(vim.schedule_wrap(on_read))
       vim.schedule(function() render_roster() end)
       if cb then vim.schedule(cb) end
       return
     end
     pcall(function() p:close() end)
-    if tries == 0 then
+    -- Only spawn a daemon on the very first boot attempt: a reconnect after a
+    -- drop (S.ever_connected) means the daemon is normally already up and just
+    -- blipped — spawning a duplicate would race the socket bind and log-spam.
+    if tries == 0 and not S.ever_connected then
       vim.schedule(function()
         fn.jobstart({ agentd_bin(), "--scope", scope, "--repo", scope_root() }, { detach = true })
       end)
     end
-    if tries < 30 then
-      local tm = uv.new_timer()
-      tm:start(200, 0, function() tm:close(); try_connect(cb, tries + 1) end)
-    else
-      vim.schedule(function()
-        vim.notify("agent-nvim: could not reach agentd (" .. scope .. ")", vim.log.levels.ERROR)
-      end)
-    end
+    -- Never give up: fast retries (200ms) for the first ~6s while a
+    -- just-spawned daemon boots, then back off to a steady 2s poll so a longer
+    -- daemon restart still reconnects on its own without an nvim restart.
+    local delay = (tries < 30) and 200 or 2000
+    local tm = uv.new_timer()
+    tm:start(delay, 0, function() tm:close(); try_connect(cb, tries + 1) end)
   end)
 end
 
 connect = function(cb)
   if S.connected then if cb then cb() end return end
+  if S.connecting then return end -- a retry loop is already spinning
   try_connect(cb, 0)
 end
 
@@ -835,19 +1253,30 @@ end
 local function start_spin()
   if S.timer then return end
   S.timer = uv.new_timer()
-  S.timer:start(90, 90, vim.schedule_wrap(function()
+  S.timer:start(60, 60, vim.schedule_wrap(function() -- 60ms/frame, matches the Diagswipe loader
     if not (S.win and api.nvim_win_is_valid(S.win)) then return end
     local streaming = false
     for _, a in ipairs(S.roster) do
       if a.status == "streaming" then streaming = true; break end
     end
     S.tick = (S.tick or 0) + 1
-    if S.tick % 200 == 0 then refresh_plans() end -- ~18s: refresh plan progress
+    if S.tick % 300 == 0 then refresh_plans() end -- ~18s: refresh plan progress
+    -- Watchdog: guarantee liveness even if a socket EOF is somehow missed. If we
+    -- ever find ourselves disconnected (and no retry loop is already spinning),
+    -- kick a reconnect. This is why the rail stays alive on its own — no manual
+    -- :AgentReconnect needed.
+    if S.tick % 33 == 0 and not S.connected and not S.connecting then
+      connect(function() send({ type = "list_sources" }) end)
+    end
     if streaming then
       S.spin = S.spin + 1
-      render_roster()
-      if S.view == "chat" then refresh_active_header() end -- animate the active spinner
-    elseif S.tick % 22 == 0 then
+      -- The winbar spinner is the one you watch — a cheap string set, so animate
+      -- it every frame. render_roster rebuilds a whole buffer + decor; at 60ms
+      -- that competed with streaming renders and made the whole thing wonky, so
+      -- refresh the roster spinner/elapsed only every ~4th frame (~240ms).
+      if S.view == "chat" then refresh_active_header() end
+      if S.tick % 4 == 0 then render_roster() end
+    elseif S.tick % 33 == 0 then
       render_roster() -- ~2s refresh so idle durations tick up
     end
   end))
@@ -873,18 +1302,20 @@ composer_resize = function()
   vim.wo[S.composerwin].wrap = true -- long lines wrap+grow, never side-scroll
   -- Height = total display rows, which includes the single blank pad virtual line
   -- above the input (see render_chips) plus wrapped content.
+  local extra = #S.attach + #S.paste_images -- chip virt-lines above the input
   local ok, h = pcall(api.nvim_win_text_height, S.composerwin, {})
-  local all = (ok and type(h) == "table" and h.all) or (api.nvim_buf_line_count(S.composerbuf) + #S.attach)
-  all = math.max(1, math.min(all, COMPOSER_MAX + #S.attach))
+  local all = (ok and type(h) == "table" and h.all) or (api.nvim_buf_line_count(S.composerbuf) + extra)
+  all = math.max(1, math.min(all, COMPOSER_MAX + extra))
   pcall(api.nvim_win_set_height, S.composerwin, all)
 end
 
 composer_placeholder = function()
   api.nvim_buf_clear_namespace(S.composerbuf, S.composer_ns, 0, -1)
+  local pm = prompt_mode()
+  vim.bo[S.composerbuf].modifiable = pm.editable
   if composer_empty() then
-    local hint = S.selected and ("message " .. short_name(S.selected) .. "…  (/ for commands)") or "open a session first"
     pcall(api.nvim_buf_set_extmark, S.composerbuf, S.composer_ns, 0, 0, {
-      virt_text = { { hint, "AgentMuted" } }, virt_text_pos = "overlay",
+      virt_text = { { pm.placeholder, pm.placeholder_hl } }, virt_text_pos = "overlay",
     })
   end
 end
@@ -905,6 +1336,9 @@ render_chips = function()
     local tag = (at.lang and at.lang ~= "") and ("  " .. at.lang) or ""
     vls[#vls + 1] = { { CHIP_BAR .. " ", "AgentChipBar" }, { " " .. loc .. tag .. " ", "AgentChip" } }
   end
+  for i, img in ipairs(S.paste_images) do
+    vls[#vls + 1] = { { CHIP_BAR .. " ", "AgentChipBar" }, { "  image " .. i .. " · " .. img.mimeType .. " ", "AgentChip" } }
+  end
   pcall(api.nvim_buf_set_extmark, S.composerbuf, S.chip_ns, 0, 0, { virt_lines = vls, virt_lines_above = true })
   -- And a blank below the input so it doesn't butt the lualine bar.
   local last = math.max(0, api.nvim_buf_line_count(S.composerbuf) - 1)
@@ -920,7 +1354,29 @@ end
 
 local function clear_attachments()
   S.attach = {}
-  render_chips()
+  S.paste_images = {}
+  render_chips(); refresh_active_header() -- also clear the winbar 🖼 count
+end
+
+-- <C-v>: paste the clipboard. An image → attach it (sent to the agent as a real
+-- image on the next send); otherwise the text is inserted at the cursor.
+local function paste_clipboard()
+  local img_type
+  for _, t in ipairs(fn.systemlist({ "wl-paste", "--list-types" })) do
+    if t:match("^image/") then img_type = t; break end
+  end
+  if img_type then
+    local b64 = fn.system({ "sh", "-c", "wl-paste --no-newline --type " .. img_type .. " | base64 -w0" }):gsub("%s+$", "")
+    if b64 ~= "" then
+      S.paste_images[#S.paste_images + 1] = { type = "image", data = b64, mimeType = img_type }
+      render_chips(); refresh_active_header() -- chip + always-visible winbar count
+      vim.notify("agent: image attached (" .. img_type .. ") — send to include it")
+    end
+  else
+    local txt = fn.getreg("+")
+    if txt == "" then txt = (fn.system({ "wl-paste", "--no-newline" }) or ""):gsub("%s+$", "") end
+    if txt ~= "" then pcall(vim.api.nvim_paste, txt, false, -1) end
+  end
 end
 
 -- Format the outgoing prompt: attachments as fenced code, then the message.
@@ -950,9 +1406,16 @@ local function run_slash(text)
   elseif cmd == "diff" then
     pcall(vim.cmd, "tab Git diff")
   elseif cmd == "plan" then
-    pcall(function() require("plan-nvim").open() end)
+    -- default to the active session's plan (matched by branch) — no picker
+    local cwd = S.selected and session_cwd(S.selected)
+    local plan = cwd and load_plan(cwd)
+    pcall(function() require("plan-nvim").open(plan and plan.key or nil) end)
   elseif cmd == "retry" then
     send({ type = "follow_up", session = S.selected, message = "retry the previous step" })
+  elseif cmd == "model" then
+    send({ type = "cycle_model", session = S.selected }) -- next model; response shows it
+  elseif cmd == "think" then
+    send({ type = "cycle_thinking_level", session = S.selected }) -- next reasoning level
   elseif cmd == "help" then
     M.help()
   else
@@ -971,6 +1434,7 @@ local RAIL_CMDS = {
   { "abort", "stop the current turn" }, { "steer", "steer mid-turn <msg>" },
   { "clear", "clear the chat" }, { "diff", "open a git diff tab" },
   { "plan", "open the plan view" }, { "retry", "retry the previous step" },
+  { "model", "switch the model (cycle)" }, { "think", "cycle reasoning level" },
   { "help", "rail cheatsheet" },
 }
 
@@ -978,6 +1442,23 @@ local function slash_items()
   local items = {}
   for _, c in ipairs(RAIL_CMDS) do
     items[#items + 1] = { insert = "/" .. c[1] .. " ", label = "/" .. c[1], hint = c[2] }
+  end
+  -- plan-ticket lifecycle: offer each phase and mark the one that's next given the
+  -- plan's current phase (cached in S.plan). Sends the same string plan-nvim does.
+  local pl = S.selected and S.plan[S.selected]
+  local phase = pl and pl.phase
+  local suffix = (pl and pl.key) and (" " .. pl.key) or ""
+  local nextflag = ({ draft = "--finalize", planned = "--finalize", finalized = "--go",
+    implementing = "--reconcile", reconciled = "--amend" })[phase or ""] or ""
+  for _, p in ipairs({
+    { "", "draft the plan" }, { "--finalize", "bake decisions + how-it-works" },
+    { "--go", "implement the plan" }, { "--reconcile", "reconcile after --go" },
+    { "--amend", "fold in new scope" },
+  }) do
+    local flagpart = p[1] ~= "" and (" " .. p[1]) or ""
+    local hint = p[2]
+    if p[1] == nextflag then hint = hint .. "   ← next" .. (phase and ("  (now: " .. phase .. ")") or "") end
+    items[#items + 1] = { insert = "/plan-ticket" .. flagpart .. suffix .. " ", label = "/plan-ticket" .. flagpart, hint = hint }
   end
   -- expand only the ~, then glob the pattern — expanding the wildcard inside
   -- fn.expand and re-globbing returns nothing (the bug that hid the skills).
@@ -1016,12 +1497,13 @@ local function sl_render()
   api.nvim_buf_set_lines(SL.buf, 0, -1, false, lines)
   vim.bo[SL.buf].modifiable = false
   local cfg = { relative = "cursor", anchor = "SW", row = 0, col = 0, width = width,
-    height = math.min(#lines, 14), style = "minimal", focusable = false, zindex = 200 }
+    height = math.min(#lines, 14), style = "minimal", border = "rounded", focusable = false, zindex = 200 }
   if SL.win and api.nvim_win_is_valid(SL.win) then
     api.nvim_win_set_config(SL.win, cfg)
   else
     SL.win = api.nvim_open_win(SL.buf, false, cfg)
-    vim.wo[SL.win].winhighlight = "Normal:AgentCard"
+    -- match the LSP-hover float: theme's rounded border + float bg, not a custom card
+    vim.wo[SL.win].winhighlight = "Normal:NormalFloat,FloatBorder:FloatBorder"
   end
   api.nvim_buf_clear_namespace(SL.buf, S.ns, 0, -1)
   pcall(api.nvim_buf_set_extmark, SL.buf, S.ns, SL.sel - 1, 0, { line_hl_group = "AgentSel" })
@@ -1065,7 +1547,18 @@ end
 composer_send = function()
   if not S.selected then vim.notify("agent-nvim: open a session first (<CR>)", vim.log.levels.INFO); return end
   local text = table.concat(api.nvim_buf_get_lines(S.composerbuf, 0, -1, false), "\n"):gsub("%s+$", "")
-  if text == "" and #S.attach == 0 then return end
+  -- a pending prompt takes over the input: <CR> submits an input answer, and a
+  -- confirm/select is answered with y/n/number (not by sending a message)
+  local pm = prompt_mode()
+  if pm.kind == "type" then
+    answer({ value = text })
+    api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, { "" }); render_chips()
+    return
+  elseif pm.kind == "choose" then
+    vim.notify("answer the prompt above — y / n or a number")
+    return
+  end
+  if text == "" and #S.attach == 0 and #S.paste_images == 0 then return end
 
   -- slash command (only when there are no attachments and it's a lone command)
   if #S.attach == 0 and text:match("^/%S") and run_slash(text) then
@@ -1075,12 +1568,33 @@ composer_send = function()
   end
 
   if S.errors then S.errors[S.selected] = nil end -- clear last error on retry
+  S.last_sent = S.last_sent or {}
+  S.last_sent[S.selected] = text -- for Esc-restore (edit + resend the last message)
   local prompt = build_prompt(text)
+  local imgs = (#S.paste_images > 0) and vim.deepcopy(S.paste_images) or nil
   local c = S.chat[S.selected] or { msgs = {} }
-  c.msgs[#c.msgs + 1] = { role = "user", text = prompt } -- optimistic echo
+
+  -- Sending mid-turn QUEUES locally (held in the rail, flushed on turn_end) so
+  -- you can still cancel or edit it with Esc — unlike a fired-off follow_up.
+  -- Images can't be queued, so a message with attachments always sends now.
+  local working = S.stream[S.selected] and S.stream[S.selected] ~= ""
+  if working and not imgs then
+    S.queued = S.queued or {}
+    S.queued[S.selected] = (S.queued[S.selected] and (S.queued[S.selected] .. "\n\n") or "") .. prompt
+    S.chat[S.selected] = c
+    S.drafts[S.selected] = nil
+    clear_attachments()
+    api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, { "" })
+    render_chips(); composer_placeholder()
+    render_chat(false) -- show the queued indicator
+    vim.cmd("startinsert!")
+    return
+  end
+
+  c.msgs[#c.msgs + 1] = { role = "user", text = prompt .. (imgs and ("  🖼×" .. #imgs) or "") } -- optimistic echo
   S.chat[S.selected] = c
   render_chat(true)
-  send({ type = "prompt", session = S.selected, message = prompt })
+  send({ type = "prompt", session = S.selected, message = prompt, images = imgs })
   S.drafts[S.selected] = nil
   clear_attachments()
   api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, { "" })
@@ -1213,9 +1727,16 @@ local function chat_fold_toggle()
 end
 
 -- cwd of a roster session by id
-local function session_cwd(id)
+session_cwd = function(id)
   for _, a in ipairs(S.roster) do if a.id == id then return a.cwd end end
   return nil
+end
+
+-- The active session's id + cwd, for callers that want to route to "the agent"
+-- (e.g. plan-nvim's <C-p> ask-about-selection from any buffer). nil if none open.
+function M.active_session()
+  if not S.selected then return nil end
+  return { id = S.selected, cwd = session_cwd(S.selected) }
 end
 
 -- open a file in the main editor window (not a rail pane), at an optional line.
@@ -1233,6 +1754,26 @@ local function open_in_editor(cwd, path, line)
   if line then pcall(api.nvim_win_set_cursor, 0, { tonumber(line), 0 }) end
 end
 
+-- Follow the cursor to a hunk line WITHOUT stealing focus — but only if the file
+-- is ALREADY open in a window (hover previews, it never opens a new file; <CR>
+-- does the opening). Dedups redundant work.
+local function reveal_file(cwd, path, line)
+  if not line then return end
+  local file = fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
+  local target
+  for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
+    if fn.fnamemodify(api.nvim_buf_get_name(api.nvim_win_get_buf(w)), ":p") == file then target = w; break end
+  end
+  if not target then return end -- only follow files already open
+  local key = file .. ":" .. tostring(line)
+  if S._reveal == key then return end
+  S._reveal = key
+  api.nvim_win_call(target, function()
+    pcall(api.nvim_win_set_cursor, target, { tonumber(line), 0 })
+    vim.cmd("normal! zz")
+  end)
+end
+
 -- reverse bridge: open the file referenced in the nearest fenced-code header
 -- (```lang path:l1-l2). Opens in the main editor window, not the rail.
 local function chat_open_ref()
@@ -1245,6 +1786,26 @@ local function chat_open_ref()
   if not loc then vim.notify("agent-nvim: no file reference at cursor", vim.log.levels.INFO); return end
   local path, l1 = loc:match("^([^:]+):(%d+)")
   open_in_editor(nil, path or loc, l1)
+end
+
+-- <CR>/gf in the chat: jump to the hunk under the cursor — open its file (kept
+-- current by the file-watcher) and land on the changed line — else fall back to
+-- a fenced-code file reference.
+local function chat_open()
+  if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
+  local nav = S.hunknav and S.hunknav[api.nvim_win_get_cursor(S.chatwin)[1]]
+  if not nav then return chat_open_ref() end
+  open_in_editor(S.selected and session_cwd(S.selected), nav.path, nav.line)
+  -- if the located line drifted (later edits), re-find the anchor text
+  if not nav.line and nav.anchor and nav.anchor ~= "" then
+    for i, l in ipairs(api.nvim_buf_get_lines(0, 0, -1, false)) do
+      if l:find(nav.anchor, 1, true) then
+        pcall(api.nvim_win_set_cursor, 0, { i, 0 })
+        vim.cmd("normal! zz")
+        break
+      end
+    end
+  end
 end
 
 -- yank the fenced code block the cursor sits in (``` … ```), else the line
@@ -1277,7 +1838,7 @@ local function plandir(cwd)
 end
 
 -- find the plan whose progress.json branch matches the session's branch
-local function load_plan(cwd)
+load_plan = function(cwd)
   local dir = plandir(cwd)
   if not dir then return nil end
   local branch = fn.system({ "git", "-C", cwd, "branch", "--show-current" }):gsub("%s+$", "")
@@ -1343,7 +1904,7 @@ refresh_plans = function()
       if plan then
         local flow, done = plan.progress.flow or {}, 0
         for _, s in ipairs(flow) do if s.status == "done" then done = done + 1 end end
-        S.plan[a.id] = { done = done, total = #flow, phase = plan.progress.phase }
+        S.plan[a.id] = { done = done, total = #flow, phase = plan.progress.phase, key = plan.key }
       else
         S.plan[a.id] = false
       end
@@ -1369,6 +1930,38 @@ render_changes = function()
     local bypath = {}
     for _, c in ipairs(changes) do bypath[c.path] = c end
 
+    -- render a file list with the path in its status colour and aligned,
+    -- colour-coded stats (+green −red) plus a proportional add/del bar, matching
+    -- the inline-diff hunks. rows: { dot, grp, path, add?, del? }.
+    local function push_files(rows)
+      local mw = 0
+      for _, r in ipairs(rows) do mw = math.max(mw, #r.path) end
+      for _, r in ipairs(rows) do
+        local base = "  " .. r.dot .. " " .. r.path
+        if not r.add then
+          decor[#decor + 1] = { line = push(base, r.path), fg = r.grp }
+        else
+          local a, d, total = r.add, r.del, r.add + r.del
+          local gb = total == 0 and 0 or math.floor(a / total * BARW + 0.5)
+          if a > 0 and gb == 0 then gb = 1 elseif d > 0 and gb == BARW then gb = BARW - 1 end
+          local bar = total > 0 and ("   " .. string.rep("█", BARW)) or ""
+          local line = base .. string.rep(" ", mw - #r.path) .. "   +" .. a .. "  -" .. d .. bar
+          local bl = push(line, r.path)
+          decor[#decor + 1] = { line = bl, fg = r.grp }
+          local ps, pe = line:find("%+%d+")
+          if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
+          local ms, me = line:find("%-%d+", (pe or 0) + 1)
+          if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
+          local bs = total > 0 and line:find("█")
+          if bs then
+            local off = bs - 1
+            if gb > 0 then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = off, ce = off + gb * 3 } end
+            if gb < BARW then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = off + gb * 3, ce = -1 } end
+          end
+        end
+      end
+    end
+
     if plan then
       local pg = plan.progress
       decor[#decor + 1] = { line = push("  plan · " .. plan.key .. " · " .. (pg.phase or "?")), fg = "AgentMuted" }
@@ -1380,13 +1973,17 @@ render_changes = function()
       end
       push("")
       decor[#decor + 1] = { line = push("  files"), fg = "AgentMuted" }
+      local rows = {}
       for _, pf in ipairs(pg.planned or {}) do
         local c = bypath[pf.file]
-        local mark = pf.status == "done" and "●" or (pf.status == "touched" and "◐" or "○")
-        local grp = pf.status == "done" and "AgentStream" or (pf.status == "touched" and "AgentAccent" or "AgentIdle")
-        decor[#decor + 1] = { line = push("  " .. mark .. " " .. pf.file .. statmark(c and c.add, c and c.del), pf.file), fg = grp }
+        rows[#rows + 1] = {
+          dot = pf.status == "done" and "●" or (pf.status == "touched" and "◐" or "○"),
+          grp = pf.status == "done" and "AgentStream" or (pf.status == "touched" and "AgentAccent" or "AgentIdle"),
+          path = pf.file, add = c and c.add, del = c and c.del,
+        }
         bypath[pf.file] = nil
       end
+      push_files(rows)
       local drift = {}
       for _, c in pairs(bypath) do drift[#drift + 1] = c end
       if #drift > 0 then
@@ -1403,9 +2000,11 @@ render_changes = function()
       if #changes == 0 then
         decor[#decor + 1] = { line = push("  no changes on this branch"), fg = "AgentMuted" }
       else
+        local rows = {}
         for _, c in ipairs(changes) do
-          decor[#decor + 1] = { line = push("  " .. c.path .. statmark(c.add, c.del), c.path), fg = "AgentIdle" }
+          rows[#rows + 1] = { dot = "○", grp = "AgentIdle", path = c.path, add = c.add, del = c.del }
         end
+        push_files(rows)
       end
     end
 
@@ -1467,14 +2066,28 @@ end
 --------------------------------------------------------------------------------
 -- approvals answered inline from the chat
 --------------------------------------------------------------------------------
-local function answer(payload)
+answer = function(payload)
   local ap = S.selected and S.pending[S.selected]
   if not ap then return end
-  local msg = { type = "extension_ui_response", session = ap.session, id = ap.id }
-  for k, v in pairs(payload) do msg[k] = v end
-  send(msg)
+  -- echo the reply into the chat so there's a record of what you answered
+  local label = payload.cancelled and "cancelled"
+    or (payload.confirmed ~= nil and (payload.confirmed and "approved" or "declined"))
+    or (payload.value ~= nil and tostring(payload.value)) or nil
+  if label and label ~= "" then
+    local c = S.chat[S.selected] or { msgs = {} }
+    c.msgs[#c.msgs + 1] = { role = "user", text = "↳ " .. label }
+    S.chat[S.selected] = c
+  end
+  if ap.mock then
+    vim.notify("mock approval → " .. vim.inspect(payload))
+  else
+    local msg = { type = "extension_ui_response", session = ap.session, id = ap.id }
+    for k, v in pairs(payload) do msg[k] = v end
+    send(msg)
+  end
   S.pending[S.selected] = nil
-  render_roster(); render_chat(false)
+  render_roster(); render_chat(true)
+  apply_prompt_mode() -- prompt cleared → re-enable + insert-ready composer
 end
 
 -- Bind the answer keys (y/n confirm, 1-9 select) on the chat buffer ONLY while
@@ -1483,23 +2096,33 @@ end
 local approval_keys_on = false
 sync_approval_keys = function()
   if not (S.chatbuf and api.nvim_buf_is_valid(S.chatbuf)) then return end
-  local ap = S.selected and S.pending[S.selected]
-  local want = ap ~= nil and ap.method ~= "notify"
+  local want = prompt_mode().kind == "choose" -- y/n/number only for confirm/select
   if want == approval_keys_on then return end
   approval_keys_on = want
-  local o = { buffer = S.chatbuf, nowait = true, silent = true }
   local keys = { "y", "n", "1", "2", "3", "4", "5", "6", "7", "8", "9" }
-  if want then
-    vim.keymap.set("n", "y", function() if S.selected and S.pending[S.selected] then answer({ confirmed = true }) end end, o)
-    vim.keymap.set("n", "n", function() if S.selected and S.pending[S.selected] then answer({ confirmed = false }) end end, o)
-    for d = 1, 9 do
-      vim.keymap.set("n", tostring(d), function()
-        local a = S.selected and S.pending[S.selected]
-        if a and a.method == "select" and a.options and a.options[d] then answer({ value = a.options[d] }) end
-      end, o)
+  local bufs = { S.chatbuf, S.composerbuf }
+  if not want then
+    for _, b in ipairs(bufs) do
+      if b then for _, k in ipairs(keys) do pcall(vim.keymap.del, "n", k, { buffer = b }) end end
     end
-  else
-    for _, k in ipairs(keys) do pcall(vim.keymap.del, "n", k, { buffer = S.chatbuf }) end
+    return
+  end
+  local yes = function() if S.selected and S.pending[S.selected] then answer({ confirmed = true }) end end
+  local no = function() if S.selected and S.pending[S.selected] then answer({ confirmed = false }) end end
+  local function pick(d)
+    return function()
+      local a = S.selected and S.pending[S.selected]
+      if a and a.method == "select" and a.options and a.options[d] then answer({ value = a.options[d] }) end
+    end
+  end
+  -- both the chat and the (disabled, cursor-hidden) composer answer, so you don't
+  -- have to move — the composer is in normal mode during confirm/select prompts.
+  for _, b in ipairs(bufs) do
+    if b and api.nvim_buf_is_valid(b) then
+      local o = { buffer = b, nowait = true, silent = true }
+      vim.keymap.set("n", "y", yes, o); vim.keymap.set("n", "n", no, o)
+      for d = 1, 9 do vim.keymap.set("n", tostring(d), pick(d), o) end
+    end
   end
 end
 
@@ -1554,7 +2177,7 @@ function M.help()
     " composer <CR> send · <C-s> send(insert) · <C-f> attach file",
     "          <C-x> drop attachments · q roster · / commands",
     "",
-    " anywhere <leader>a toggle · <leader>A quick-message active session",
+    " anywhere R focus roster · <leader>a toggle · <leader>A quick-message active session",
     "          <leader>as (visual) send selection · :AgentSend / File / Diff / Diagnostics",
     "",
     " slash    /abort  /steer <m>  /clear  /diff  /plan  /retry  /help",
@@ -1620,8 +2243,13 @@ ensure_buf = function()
   cmap("<Tab>", function() toggle_view() end)   -- flip to the Changes view
   cmap("za", function() chat_fold_toggle() end) -- fold the message under cursor
   cmap("Y", function() chat_yank_code() end)
-  cmap("gf", function() chat_open_ref() end)
-  cmap("<Esc>", function() if S.win and api.nvim_win_is_valid(S.win) then api.nvim_set_current_win(S.win) end end)
+  cmap("gf", function() chat_open() end)
+  cmap("<CR>", function() chat_open() end)
+  cmap("<Esc>", function()
+    -- a pending approval? Esc cancels it (real: sends {cancelled}; mock: just clears)
+    if S.selected and S.pending[S.selected] then answer({ cancelled = true }); return end
+    if S.win and api.nvim_win_is_valid(S.win) then api.nvim_set_current_win(S.win) end
+  end)
   -- y/n/digit answer keys are bound only while an approval card is up (see
   -- sync_approval_keys) so they don't swallow count prefixes (22k) or yank (y)
 
@@ -1650,11 +2278,23 @@ ensure_buf = function()
     end,
   })
 
+  -- hover-follow: as the cursor lands on a hunk range, scroll the file (if it's
+  -- already open) to that line — no focus steal, no opening files
+  api.nvim_create_autocmd("CursorMoved", {
+    group = chatnum, buffer = S.chatbuf,
+    callback = function()
+      if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
+      local nav = S.hunknav and S.hunknav[api.nvim_win_get_cursor(S.chatwin)[1]]
+      if nav then reveal_file(S.selected and session_cwd(S.selected), nav.path, nav.line) end
+    end,
+  })
+
   -- composer keymaps
   vim.keymap.set("n", "<CR>", composer_send, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("i", "<C-s>", function() vim.cmd("stopinsert"); composer_send() end, { buffer = S.composerbuf, nowait = true, silent = true })
-  vim.keymap.set("n", "<C-x>", function() clear_attachments() end, { buffer = S.composerbuf, nowait = true, silent = true })
+  vim.keymap.set({ "n", "i" }, "<C-x>", function() clear_attachments() end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set({ "n", "i" }, "<C-f>", function() vim.cmd("stopinsert"); M.attach_file() end, { buffer = S.composerbuf, nowait = true, silent = true })
+  vim.keymap.set({ "n", "i" }, "<C-v>", paste_clipboard, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("n", "q", function()
     save_draft()
     if S.win and api.nvim_win_is_valid(S.win) then api.nvim_set_current_win(S.win) end
@@ -1673,15 +2313,81 @@ ensure_buf = function()
   local function passthru(keys)
     api.nvim_feedkeys(api.nvim_replace_termcodes(keys, true, false, true), "n", false)
   end
-  vim.keymap.set("i", "<CR>", function() if not sl_accept() then passthru("<CR>") end end,
-    { buffer = S.composerbuf, nowait = true })
-  vim.keymap.set("i", "<Esc>", function() if sl_open() then sl_close() else passthru("<Esc>") end end,
-    { buffer = S.composerbuf, nowait = true })
+  -- <CR> in insert sends (picker open → accept the completion instead). Newlines
+  -- are a normal-mode action (o/O), so the input stays a one-keystroke send.
+  vim.keymap.set("i", "<CR>", function()
+    if not sl_accept() then vim.cmd("stopinsert"); composer_send() end
+  end, { buffer = S.composerbuf, nowait = true })
+  -- Esc, Claude-Code style: interrupt a running turn; otherwise pull the last
+  -- sent message back into the composer to edit and resend. is_working() also
+  -- catches the pre-first-token "thinking" window via the roster status.
+  local function is_working()
+    if S.selected and S.stream[S.selected] and S.stream[S.selected] ~= "" then return true end
+    for _, a in ipairs(S.roster) do if a.id == S.selected then return a.status == "streaming" end end
+    return false
+  end
+  local function esc_action()
+    -- Esc peels layers: a queued message first (cancel → pull it back to the
+    -- composer to edit/resend), then interrupt a running turn, then rewind.
+    if S.selected and S.queued and S.queued[S.selected] then
+      local q = S.queued[S.selected]; S.queued[S.selected] = nil
+      api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, vim.split(q, "\n", { plain = true }))
+      render_chips(); composer_placeholder(); render_chat(false)
+      if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
+        api.nvim_set_current_win(S.composerwin)
+        pcall(api.nvim_win_set_cursor, S.composerwin, { api.nvim_buf_line_count(S.composerbuf), 0 })
+        vim.cmd("startinsert!")
+      end
+      return true
+    end
+    if is_working() then
+      send({ type = "abort", session = S.selected })
+      S.stream[S.selected] = nil
+      render_chat(false)
+      vim.notify("agent: interrupted")
+      return true
+    end
+    -- idle → TRUE rewind: agentd truncates the session to before the last user
+    -- turn and respawns pi; the "rewound" event brings the removed message back
+    -- into the composer (see handle). Falls back to a local restore if offline.
+    if S.selected and S.connected then
+      send({ type = "rewind", session = S.selected })
+      return true
+    end
+    local last = S.selected and S.last_sent and S.last_sent[S.selected]
+    if last and last ~= "" then
+      api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, vim.split(last, "\n", { plain = true }))
+      render_chips(); composer_placeholder()
+      if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
+        api.nvim_set_current_win(S.composerwin)
+        pcall(api.nvim_win_set_cursor, S.composerwin, { api.nvim_buf_line_count(S.composerbuf), 0 })
+        vim.cmd("startinsert!")
+      end
+      return true
+    end
+    return false
+  end
+  vim.keymap.set("i", "<Esc>", function()
+    if sl_open() then sl_close(); return end
+    -- interrupt always; restore only when the input is empty (don't clobber text
+    -- you're actively typing — there, Esc just leaves insert).
+    local empty = table.concat(api.nvim_buf_get_lines(S.composerbuf, 0, -1, false), ""):gsub("%s", "") == ""
+    if is_working() or empty then vim.cmd("stopinsert"); esc_action(); return end
+    passthru("<Esc>")
+  end, { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("n", "<Esc>", function()
+    if not esc_action() then pcall(vim.cmd, "nohlsearch") end
+  end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("i", "<C-n>", function() if not sl_move(1) then passthru("<C-n>") end end, { buffer = S.composerbuf, nowait = true })
   vim.keymap.set("i", "<C-p>", function() if not sl_move(-1) then passthru("<C-p>") end end, { buffer = S.composerbuf, nowait = true })
-  vim.keymap.set("i", "<C-j>", function() if not sl_move(1) then passthru("<C-j>") end end, { buffer = S.composerbuf, nowait = true })
-  vim.keymap.set("i", "<C-k>", function() if not sl_move(-1) then passthru("<C-k>") end end, { buffer = S.composerbuf, nowait = true })
-  vim.keymap.set("i", "<Tab>", function() if not sl_move(1) then passthru("<Tab>") end end, { buffer = S.composerbuf, nowait = true })
+  -- C-hjkl from insert: leave insert and jump to the adjacent panel. C-j/C-k also
+  -- drive the slash picker while it's open.
+  vim.keymap.set("i", "<C-j>", function() if not sl_move(1) then passthru("<Esc><C-w>j") end end, { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<C-k>", function() if not sl_move(-1) then passthru("<Esc><C-w>k") end end, { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<C-h>", "<Esc><C-w>h", { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<C-l>", "<Esc><C-w>l", { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<Tab>", function() if not sl_move(1) then toggle_view() end end, { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("n", "<Tab>", function() toggle_view() end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("i", "<S-Tab>", function() if not sl_move(-1) then passthru("<S-Tab>") end end, { buffer = S.composerbuf, nowait = true })
 
   -- roster keymaps
@@ -1693,7 +2399,14 @@ ensure_buf = function()
   map("<Up>", function() move(-1) end)
   map("g", function() S.focus = 1; render_roster() end)
   map("G", function() S.focus = #S.displayed; render_roster() end)
-  map("<CR>", function() local a = S.displayed[S.focus]; if a then view_session(a.id, a.cwd) end end)
+  -- Enter opens the session AND drops you in its composer (insert mode), ready
+  -- to type — even if it was already the active one (then just focus, no reload).
+  map("<CR>", function()
+    local a = S.displayed[S.focus]
+    if not a then return end
+    if a.id ~= S.selected then view_session(a.id, a.cwd) end
+    focus_composer()
+  end)
   map("i", function() focus_composer() end)
   map("n", function() open_picker() end)
   map(".", function() local d = fn.getcwd(); start_session(fn.fnamemodify(d, ":t"), d) end)
@@ -1715,11 +2428,30 @@ ensure_buf = function()
     callback = function()
       if not S.saved_gcr then S.saved_gcr = vim.o.guicursor end
       vim.o.guicursor = "a:AgentCursorRoster"
+      -- roster is the active pane → light up the selected row's focus edge.
+      S.roster_active = true
+      -- focusing the roster to switch sessions → show them all (collapses on leave).
+      -- Gated on S.built: nvim_win_set_buf during M.open fires BufEnter here before
+      -- the chat/composer windows exist — render_roster then shrinks the roster to
+      -- fit its (empty) content, and the next `belowright split` dies with E36
+      -- "not enough room", aborting the rail half-built. Only render once the rail
+      -- is fully constructed (i.e. a real user focus, not construction).
+      if S.built then
+        S.show_all = true
+        if render_roster then render_roster() end
+      end
     end,
   })
   api.nvim_create_autocmd({ "BufLeave", "WinLeave" }, {
     group = grp, buffer = S.buf,
-    callback = function() if S.saved_gcr then vim.o.guicursor = S.saved_gcr end end,
+    callback = function()
+      if S.saved_gcr then vim.o.guicursor = S.saved_gcr end
+      S.roster_active = false
+      if S.built then
+        S.show_all = false
+        if render_roster then render_roster() end
+      end
+    end,
   })
 
   -- rail-local resize: h widens, l narrows (the rail is on the right, so its
@@ -1748,7 +2480,7 @@ function M.open()
   vim.cmd("botright vsplit") -- rail on the right (more reading whitespace there)
   S.win = api.nvim_get_current_win()
   api.nvim_win_set_buf(S.win, S.buf)
-  api.nvim_win_set_width(S.win, WIDTH)
+  api.nvim_win_set_width(S.win, math.max(40, math.min(120, math.floor(vim.o.columns * 0.40)))) -- 40% of the window, capped at 120 cols
   vim.wo[S.win].winfixwidth = true
   vim.wo[S.win].number = false; vim.wo[S.win].relativenumber = false; vim.wo[S.win].signcolumn = "no"
   vim.wo[S.win].wrap = true
@@ -1772,8 +2504,10 @@ function M.open()
   vim.wo[S.chatwin].breakindentopt = "list:-1"
   vim.bo[S.chatbuf].formatlistpat = [[^\s*\%(\d\+[.)]\|[-*+•]\)\s\+]]
   vim.wo[S.chatwin].statuscolumn = "  " -- 2-col left gutter, aligns body with roster + composer
-  vim.wo[S.chatwin].winhighlight = "WinSeparator:AgentDivider"
   vim.wo[S.chatwin].fillchars = "eob: "
+  -- MDNS scopes the rail's markdown styling to this window AND carries WinSeparator
+  -- (see set_hl) — it supersedes winhighlight, so we don't set winhighlight here.
+  pcall(api.nvim_win_set_hl_ns, S.chatwin, MDNS)
 
   vim.cmd("belowright split")
   S.composerwin = api.nvim_get_current_win()
@@ -1815,9 +2549,22 @@ function M.open()
   connect(function() send({ type = "list_sources" }); render() end)
   vim.defer_fn(function() if S.win and api.nvim_win_is_valid(S.win) then refresh_plans(); render_roster() end end, 300)
   render()
+  -- rail is now fully constructed: focus autocmds may resize/expand from here on
+  S.built = true
+  -- Focus already landed on the roster during construction (set_current_win
+  -- above), but the expand-on-focus autocmd was gated out because S.built was
+  -- still false then — so mirror it now: a roster you're focused on shows ALL
+  -- sessions, not just the attention queue (which hides an already-selected
+  -- idle session, reading as "nothing needs attention" on startup).
+  if api.nvim_get_current_win() == S.win then
+    S.roster_active = true
+    S.show_all = true
+    render_roster()
+  end
 end
 
 function M.close()
+  S.built = false
   save_draft()
   stop_spin()
   if S.editorwin and api.nvim_win_is_valid(S.editorwin) then
@@ -1847,16 +2594,19 @@ function M.toggle()
   if S.win and api.nvim_win_is_valid(S.win) then M.close() else M.open() end
 end
 
+-- The rail's active-session status for the lualine — state · plan progress ·
+-- model · cost. The session id (every-2585) is NOT repeated here; the lualine's
+-- project component already shows it. Was the composer winbar; moved down.
 function M.statusline()
   if not S.selected then return "" end
   local a
   for _, x in ipairs(S.roster) do if x.id == S.selected then a = x break end end
   if not a then return "▸ " .. short_name(S.selected) end
-  local s = "▸ " .. short_name(a.name) .. " · " .. ((a.model and a.model ~= "") and a.model or "?")
-  if a.status == "streaming" then s = s .. " " .. GLYPH.streaming end
-  if S.pending[a.id] then s = s .. " " .. GLYPH.needs_input end
-  if a.costUsd and a.costUsd > 0 then s = s .. string.format(" · $%.2f", a.costUsd) end
-  return s
+  local ss = session_state(a)
+  local parts = { ss.glyph .. " " .. ss.label }
+  local pl = S.plan[a.id]
+  if pl and pl.total and pl.total > 0 then parts[#parts + 1] = "◆ " .. pl.done .. "/" .. pl.total end
+  return table.concat(parts, " · ")
 end
 
 --------------------------------------------------------------------------------
@@ -1876,13 +2626,76 @@ function M.setup(opts)
   })
 
   api.nvim_create_user_command("AgentRail", function() M.toggle() end, {})
+  api.nvim_create_user_command("AgentReconnect", function()
+    S.connected = false
+    pcall(function() if S.pipe then S.pipe:close() end end)
+    S.pipe, S.readbuf, S.connecting = nil, "", false
+    render_roster()
+    connect(function() send({ type = "list_sources" }) end)
+  end, {})
   api.nvim_create_user_command("AgentReroot", function(o) reroot(o.args) end, { nargs = 1 })
   api.nvim_create_user_command("AgentSend", function() M.send_range() end, { range = true })
   api.nvim_create_user_command("AgentSendFile", function() M.send_file() end, {})
   api.nvim_create_user_command("AgentSendDiff", function() M.send_diff() end, {})
   api.nvim_create_user_command("AgentSendDiagnostics", function() M.send_diagnostics() end, {})
   api.nvim_create_user_command("AgentMsg", function() M.send_message() end, {})
+  -- preview the approval card without a real agent: :AgentMockApproval [confirm|select|input]
+  api.nvim_create_user_command("AgentMockApproval", function(o)
+    M.open()
+    if not S.selected then
+      if not S.roster or #S.roster == 0 then S.roster = { { id = "mock", name = "mock-0000", cwd = fn.getcwd(), status = "idle" } } end
+      S.selected = S.roster[1].id
+    end
+    local sid = S.selected
+    local samples = {
+      confirm = { method = "confirm", title = "Approve adding this test cleanup to the plan boundary?",
+        message = "useDsFrameSelection.test.ts is outside the plan's surface area, but it tests the code being removed — leaving it fails CI.",
+        session = sid, id = "mock", mock = true },
+      select = { method = "select", title = "How should the boundary grow?",
+        message = "The test file is outside scope.",
+        options = { "approve & add to boundary", "decline, find another way", "skip the file" },
+        session = sid, id = "mock", mock = true },
+      input = { method = "input", title = "Name the new view wrapper?", message = "Used as the component + file name.",
+        session = sid, id = "mock", mock = true },
+    }
+    S.pending[sid] = samples[o.args ~= "" and o.args or "confirm"] or samples.confirm
+    render_roster(); render_chat(true)
+    apply_prompt_mode()
+  end, { nargs = "?", complete = function() return { "confirm", "select", "input" } end })
 
+  -- R (normally Replace mode — unused here) → jump straight to the roster from
+  -- anywhere. M.open focuses the roster if the rail is already up, else opens it.
+  vim.keymap.set("n", "R", function() M.open() end, { desc = "Focus agent roster" })
+
+  -- Remember which rail pane you were last in, so returning to the rail with
+  -- <C-l> lands you back there (e.g. the composer) instead of nvim's positional
+  -- guess. Native <C-w>l picks the rightward window by cursor row, which loses
+  -- your place in the stacked rail.
+  local function rail_set()
+    local r = {}
+    for _, k in ipairs({ "win", "chatwin", "composerwin" }) do
+      if S[k] and api.nvim_win_is_valid(S[k]) then r[S[k]] = true end
+    end
+    return r
+  end
+  api.nvim_create_autocmd("WinEnter", {
+    callback = function()
+      if rail_set()[api.nvim_get_current_win()] then
+        S.last_rail_win = api.nvim_get_current_win()
+      end
+    end,
+  })
+  vim.keymap.set("n", "<C-l>", function()
+    local rail = rail_set()
+    if rail[api.nvim_get_current_win()] then return end -- already in the rail
+    vim.cmd("wincmd l")
+    -- Only redirect when <C-l> actually entered the rail; other splits keep
+    -- native window-right.
+    if rail[api.nvim_get_current_win()]
+      and S.last_rail_win and rail[S.last_rail_win] then
+      api.nvim_set_current_win(S.last_rail_win)
+    end
+  end, { desc = "Window right (rail-aware)" })
   vim.keymap.set("n", "<leader>a", function() M.toggle() end, { desc = "Toggle agent rail" })
   vim.keymap.set("n", "<leader>A", function() M.send_message() end, { desc = "Quick-message the active agent" })
   vim.keymap.set("x", "<leader>as", ":<C-u>lua require('agent-nvim').send_range()<CR>", { silent = true, desc = "Send selection to agent" })

@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""
+pi-to-vault [--all] [--since-days N]
+
+Export pi agent sessions as markdown transcripts into the notes vault
+(~/personal/notes/storage/sessions/), so agent conversations become durable and
+searchable via notes-memory. One .md per session (keyed by its uuid), idempotent
+— re-running refreshes growing sessions. The notes-cli watcher syncs them up.
+
+Only user + assistant text is kept (thinking and tool noise are dropped) for a
+readable, searchable transcript. By default exports sessions from real project
+dirs (~/work, ~/nixos, ~/personal) touched in the last 30 days; --all lifts both
+filters.
+"""
+from __future__ import annotations
+import argparse
+import json
+import os
+import re
+import time
+from pathlib import Path
+
+HOME = Path(os.environ["HOME"])
+SESSIONS = HOME / ".pi" / "agent" / "sessions"
+OUT = HOME / "personal" / "notes" / "storage" / "sessions"
+REAL_ROOTS = (str(HOME / "work"), str(HOME / "nixos"), str(HOME / "personal"))
+
+
+def text_of(msg: dict) -> str:
+    c = msg.get("content")
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        return "\n".join(
+            b.get("text", "") for b in c
+            if isinstance(b, dict) and b.get("type") == "text"
+        )
+    return ""
+
+
+def slug(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:60] or "session"
+
+
+def export(path: Path, all_mode: bool, cutoff: float) -> bool:
+    try:
+        lines = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    except (OSError, ValueError):
+        return False
+    if not lines:
+        return False
+    header = lines[0]
+    cwd = str(header.get("cwd", "") or "")
+    sid = str(header.get("id", "") or path.stem)
+    if not all_mode:
+        if cwd and not cwd.startswith(REAL_ROOTS):
+            return False
+        if path.stat().st_mtime < cutoff:
+            return False
+
+    turns = []
+    for o in lines:
+        m = o.get("message") or {}
+        if m.get("role") in ("user", "assistant"):
+            t = text_of(m).strip()
+            if t:
+                turns.append((m["role"], t))
+    if not any(r == "user" for r, _ in turns):
+        return False  # nothing a person said → not worth indexing
+
+    base = slug(Path(cwd).name if cwd else path.stem)
+    name = f"{base}-{sid[:8]}"
+    date = str(header.get("timestamp", ""))[:10]
+    body = [
+        "---",
+        f"name: session-{name}",
+        f"description: pi agent session in {cwd or path.stem} ({date}) — {len(turns)} turns",
+        "metadata:",
+        "  type: reference",
+        "---",
+        "",
+        f"# Agent session — {base}",
+        "",
+        f"- **cwd**: `{cwd}`",
+        f"- **session**: `{sid}`",
+        f"- **date**: {date}",
+        f"- **turns**: {len(turns)}",
+        "",
+    ]
+    for role, t in turns:
+        body.append("## you" if role == "user" else "## agent")
+        body.append("")
+        body.append(t)
+        body.append("")
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    dest = OUT / f"{name}.md"
+    new = "\n".join(body) + "\n"
+    if dest.exists() and dest.read_text() == new:
+        return False  # unchanged → don't churn the watcher
+    dest.write_text(new)
+    return True
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--all", action="store_true", help="all sessions, all dirs (no filters)")
+    ap.add_argument("--since-days", type=int, default=30)
+    a = ap.parse_args()
+    if not SESSIONS.is_dir():
+        print("no pi sessions dir", flush=True)
+        return 0
+    cutoff = time.time() - a.since_days * 86400
+    n = 0
+    for f in SESSIONS.glob("*/*.jsonl"):
+        if export(f, a.all, cutoff):
+            n += 1
+    print(f"pi-to-vault: wrote/updated {n} session transcript(s) → {OUT}")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""
+agent-review <pr-num | github PR url> [--devenv]
+
+Spin up a local PR review in the cockpit nvim agent rail — in the background,
+never stealing focus:
+
+  1. fetch the PR head and check it out on a `review/pr-<num>` branch in a
+     worktree (the shape the review-pr pi skill auto-detects from the branch).
+  2. start an agentd session for that worktree in the lovable-scope rail,
+     seeded with "review this PR" — it appears in the rail roster to open when
+     you're ready.
+  --devenv also boots `devenv wt` for the worktree as a cockpit devenv tab, for
+  PRs you want to actually run rather than just read.
+
+Background by design: nothing is focused, no workspace is claimed. The old
+full 4-window flow still lives in ws-createreview.
+"""
+from __future__ import annotations
+import argparse
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = os.environ["HOME"]
+LOVABLE_DIR = Path(HOME) / "work" / "lovable"
+SCOPE = os.environ.get("AGENT_SCOPE", "lovable")
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+PR_URL_RE = re.compile(r"https?://github\.com/[^/]+/[^/]+/pull/(\d+)")
+
+
+def notify(msg: str) -> None:
+    subprocess.run(["notify-send", "-t", "2500", "PR review", msg],
+                   capture_output=True)
+
+
+def parse_pr(s: str) -> int:
+    if s.isdigit():
+        return int(s)
+    m = PR_URL_RE.search(s)
+    if m:
+        return int(m.group(1))
+    raise SystemExit(f"could not parse PR number from: {s!r}")
+
+
+def slugify(title: str, max_segments: int = 3) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "-", title.lower()).strip("-")
+    parts = [p for p in cleaned.split("-") if p][:max_segments]
+    return "-".join(parts) or "pr"
+
+
+def gh_pr_title(num: int) -> str:
+    try:
+        out = subprocess.run(
+            ["gh", "pr", "view", str(num), "--json", "title"],
+            capture_output=True, text=True, check=True, cwd=str(LOVABLE_DIR),
+        )
+        return json.loads(out.stdout).get("title", "")
+    except Exception:
+        return ""
+
+
+def ensure_worktree(num: int, slug: str) -> Path:
+    """Check out the PR head on review/pr-<num> in a worktree (idempotent)."""
+    wt = Path(HOME) / f"work/lovable.review-{num}-{slug}"
+    branch = f"review/pr-{num}"
+    if wt.is_dir():
+        return wt
+    subprocess.run(
+        ["git", "-C", str(LOVABLE_DIR), "fetch", "origin", f"pull/{num}/head"],
+        check=True,
+    )
+    sha = subprocess.run(
+        ["git", "-C", str(LOVABLE_DIR), "rev-parse", "FETCH_HEAD"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    # Drop a stale branch from a prior attempt so the add is idempotent.
+    subprocess.run(
+        ["git", "-C", str(LOVABLE_DIR), "branch", "-D", branch],
+        capture_output=True,
+    )
+    rc = subprocess.run(
+        ["git", "-C", str(LOVABLE_DIR), "worktree", "add",
+         "-b", branch, str(wt), sha],
+    ).returncode
+    if rc != 0:
+        raise SystemExit("git worktree add failed")
+    subprocess.run(["zoxide", "add", str(wt)], capture_output=True)
+    return wt
+
+
+def agentd_connect():
+    """Connect to the scope's agentd, starting the daemon if the socket is down."""
+    path = os.path.join(RUNTIME, f"agentd-{SCOPE}.sock")
+    for attempt in range(30):
+        try:
+            s = socket.socket(socket.AF_UNIX)
+            s.settimeout(6)
+            s.connect(path)
+            return s
+        except OSError:
+            if attempt == 0:
+                # Mirror the rail's own cold-start: spawn the daemon, then retry.
+                subprocess.Popen(
+                    ["agentd", "--scope", SCOPE, "--repo", str(LOVABLE_DIR)],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, start_new_session=True,
+                )
+            time.sleep(0.2)
+    raise SystemExit(f"could not reach agentd ({SCOPE}) at {path}")
+
+
+def start_rail_session(sid: str, cwd: Path, prompt: str) -> None:
+    """Spawn the session and seed the review prompt via agentd.
+
+    The daemon forwards the prompt to pi's stdin, waiting up to 4s for it to
+    come up (agent.Supervisor.Send), so a prompt fired right after spawn lands.
+    We just have to deliver both lines and let the daemon drain them.
+    """
+    s = agentd_connect()
+    try:
+        s.sendall((json.dumps({"type": "spawn", "session": sid,
+                               "cwd": str(cwd)}) + "\n").encode())
+        s.sendall((json.dumps({"type": "prompt", "session": sid,
+                               "message": prompt}) + "\n").encode())
+        # Half-close so the daemon reads EOF after both lines, then give it a
+        # beat to process the spawn+prompt before we drop the connection.
+        try:
+            s.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+        time.sleep(0.5)
+    finally:
+        s.close()
+
+
+def boot_devenv(num: int, wt: Path) -> None:
+    """Run `devenv wt` for the worktree as a cockpit devenv tab (no focus steal).
+
+    Mirrors the cockpit config's devenv leg: seed pnpm for a fresh worktree
+    (else the app filewatcher loops), tear the slice down on exit, keep failures
+    visible. Falls back to a detached window if the cockpit isn't open.
+    """
+    seed = (
+        '[ -f .devenv/state/pnpm-lock.sha ] || { echo "[review] seeding pnpm…"; '
+        'direnv exec . pnpm install && mkdir -p .devenv/state && '
+        'sha256sum pnpm-lock.yaml | cut -d" " -f1 > .devenv/state/pnpm-lock.sha; }; '
+    )
+    cmd = (
+        f"trap 'slice-down \"{wt}\"' EXIT HUP TERM; {seed}"
+        "while true; do direnv exec . devenv wt; rc=$?; "
+        f"slice-down \"{wt}\"; echo; "
+        "echo \"[review] devenv wt exited ($rc) — enter to restart, ctrl-c for a shell\"; "
+        "read -r || break; done; fish"
+    )
+    title = f"review-pr-{num}"
+    sock = os.path.join(RUNTIME, "kitty-cockpit-devenv")
+    if os.path.exists(sock):
+        subprocess.run(
+            ["kitty", "@", "--to", f"unix:{sock}", "launch",
+             "--type=tab", "--tab-title", title, "--cwd", str(wt),
+             "--keep-focus", "--", "bash", "-c", cmd],
+            capture_output=True,
+        )
+    else:
+        subprocess.Popen(
+            ["setsid", "kitty", "--working-directory", str(wt),
+             "-e", "bash", "-c", cmd],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True,
+        )
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("pr", help="PR number or github.com PR URL")
+    ap.add_argument("--devenv", action="store_true",
+                    help="also boot devenv wt for the worktree")
+    a = ap.parse_args()
+
+    num = parse_pr(a.pr)
+    notify(f"preparing PR #{num}…")
+    slug = slugify(gh_pr_title(num))
+    wt = ensure_worktree(num, slug)
+    start_rail_session(f"review-pr-{num}", wt, "review this PR")
+    if a.devenv:
+        boot_devenv(num, wt)
+    notify(f"PR #{num} review is in the rail roster"
+           + (" · devenv booting" if a.devenv else ""))
+    print(f"review-pr-{num}: session started in the {SCOPE} rail (cwd {wt})"
+          + (" + devenv" if a.devenv else ""))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

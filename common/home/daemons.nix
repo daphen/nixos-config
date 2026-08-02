@@ -115,4 +115,25 @@ in
     };
     Install.WantedBy = [ "timers.target" ];
   };
+
+  # Export pi agent sessions into the notes vault as markdown transcripts, so
+  # agent conversations become durable + searchable via notes-memory (the notes
+  # watcher above syncs them up). Explicit python3 — a user unit's PATH may lack it.
+  systemd.user.services.pi-to-vault = {
+    Unit.Description = "Export pi agent sessions into the notes vault";
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.python3}/bin/python3 %h/.local/bin/pi-to-vault";
+    };
+  };
+
+  systemd.user.timers.pi-to-vault = {
+    Unit.Description = "Periodic pi-session → vault export";
+    Timer = {
+      OnBootSec = "3min";
+      OnUnitActiveSec = "15min";
+      Persistent = true;
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
 }
