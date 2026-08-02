@@ -7,8 +7,8 @@
 -- Scope = one agentd instance = one socket. Set AGENT_SCOPE per niri workspace to
 -- get independent rails (e.g. lovable vs personal).
 --
--- Rail keys — roster:  j/k move · <CR> open · n new · . cwd · x stop · a abort
---                      z collapse · r refresh · ? help · q close
+-- Rail keys — roster:  j/k move · <CR> open · ]a/[a next needing you · n new
+--                      . cwd · x stop · a abort · z collapse · r refresh · ? help · q close
 --          — chat:     ]m/[m next/prev message · <Tab> changes view · Y yank code
 --                      za fold msg · zM/zR fold/unfold all · yr reply · yc convo
 --                      i compose · <Esc> back to roster · (y/n answer approvals)
@@ -2333,7 +2333,8 @@ end
 function M.help()
   float({
     " roster   attention queue only · z show all (incl idle)",
-    "          j/k move · <CR> open · n new · . cwd · x stop · a abort · p peek",
+    "          j/k move · <CR> open · ]a/[a next needing you · n new · . cwd",
+    "          x stop · a abort · p peek · z show all",
     " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
     "          gf open ref · i compose · <Esc> roster · y/n approve",
     " changes  <CR> open file · <Tab> back to chat · r refresh (plan · git · mcp)",
@@ -2591,6 +2592,23 @@ ensure_buf = function()
   map("a", function() local a = S.displayed[S.focus]; if a then send({ type = "abort", session = a.id }); S.stream[a.id] = nil; render_chat(false) end end)
   map("z", function() S.show_all = not S.show_all; S.focus = 1; render_roster() end)
   map("p", function() M.peek() end)
+  -- ]a / [a — cycle to the next/prev session that needs YOU (pending approval or
+  -- error), across the whole roster, and open it. Juggling many agents: jump
+  -- straight to whoever is waiting rather than hunting the roster.
+  local function attention_jump(delta)
+    local q = {}
+    for _, a in ipairs(S.roster) do
+      if S.pending[a.id] or a.status == "error" then q[#q + 1] = a end
+    end
+    if #q == 0 then vim.notify("agent-nvim: nothing needs you"); return end
+    local at = 0
+    for i, a in ipairs(q) do if a.id == S.selected then at = i break end end
+    local nxt = q[((at - 1 + delta) % #q) + 1]
+    if nxt.id ~= S.selected then view_session(nxt.id, nxt.cwd) end
+    focus_composer()
+  end
+  map("]a", function() attention_jump(1) end)
+  map("[a", function() attention_jump(-1) end)
   map("r", function() if S.selected then send({ type = "get_messages", session = S.selected }) end end)
   map("?", function() M.help() end)
   map("q", function() M.close() end)
