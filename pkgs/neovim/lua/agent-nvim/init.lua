@@ -2217,6 +2217,26 @@ local function changes_open()
   if e then open_in_editor(S.selected and session_cwd(S.selected), e.path, e.l1) end
 end
 
+-- ]f / [f — jump to the next/prev changed-file row in the changes view (rows are
+-- interleaved with plan steps / mcp lines, so plain j/k is slow). Wraps.
+local function changes_file_jump(delta)
+  if not (S.chatwin and api.nvim_win_is_valid(S.chatwin) and S.view == "changes") then return end
+  local cur0 = api.nvim_win_get_cursor(S.chatwin)[1] - 1
+  local keys = {}
+  for k in pairs(S.changes_open) do keys[#keys + 1] = k end
+  if #keys == 0 then return end
+  table.sort(keys)
+  local target
+  if delta > 0 then
+    for _, k in ipairs(keys) do if k > cur0 then target = k; break end end
+    target = target or keys[1]
+  else
+    for i = #keys, 1, -1 do if keys[i] < cur0 then target = keys[i]; break end end
+    target = target or keys[#keys]
+  end
+  api.nvim_win_set_cursor(S.chatwin, { target + 1, 2 })
+end
+
 -- Resize the rail column. The rail lives on the RIGHT, so its movable edge is on
 -- its left: h widens it (edge moves left), l narrows it — the intuitive direction,
 -- opposite the global <leader>h/l which just shrink/grow the focused window.
@@ -2337,7 +2357,7 @@ function M.help()
     "          x stop · a abort · p peek · z show all",
     " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
     "          gf open ref · i compose · <Esc> roster · y/n approve",
-    " changes  <CR> open file · <Tab> back to chat · r refresh (plan · git · mcp)",
+    " changes  <CR> open file · ]f/[f next file · <Tab> back to chat · r refresh",
     " composer <CR> send · <C-s> send(insert) · <C-f> attach file",
     "          <C-x> drop attachments · q roster · / commands",
     "",
@@ -2384,6 +2404,8 @@ ensure_buf = function()
   local function xmap(lhs, fn_) vim.keymap.set("n", lhs, fn_, { buffer = S.changesbuf, nowait = true, silent = true }) end
   xmap("<Tab>", function() toggle_view() end)
   xmap("<CR>", function() changes_open() end)
+  xmap("]f", function() changes_file_jump(1) end)
+  xmap("[f", function() changes_file_jump(-1) end)
   xmap("r", function() render_changes() end)
   xmap("i", function() focus_composer() end)
   xmap("q", function() M.close() end)
