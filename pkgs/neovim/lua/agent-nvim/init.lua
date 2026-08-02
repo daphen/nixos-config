@@ -1865,10 +1865,25 @@ function M.setup(opts)
   local autostart = opts.autostart
   if autostart == nil then autostart = vim.env.AGENT_RAIL_NOAUTOSTART == nil end
   if autostart then
+    local RAIL_BUFS = { ["agent-rail"] = 1, ["agent-chat"] = 1, ["agent-changes"] = 1, ["agent-composer"] = 1 }
     local function boot()
-      -- A cockpit `-S` session restore leaves the rail's window state stale, so
-      -- drop it and open fresh; then focus the composer so the rail is ready to type.
+      -- A cockpit `-S` restore recreates the rail's saved buffers/windows as empty
+      -- husks that collide with the real ones (duplicate panes, the plan landing in
+      -- a stray agent window). Close + wipe them, then open a clean rail and focus
+      -- the composer so it's ready to type.
+      for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
+        if #api.nvim_tabpage_list_wins(0) > 1
+          and RAIL_BUFS[fn.fnamemodify(api.nvim_buf_get_name(api.nvim_win_get_buf(w)), ":t")] then
+          pcall(api.nvim_win_close, w, true)
+        end
+      end
+      for _, b in ipairs(api.nvim_list_bufs()) do
+        if RAIL_BUFS[fn.fnamemodify(api.nvim_buf_get_name(b), ":t")] then
+          pcall(api.nvim_buf_delete, b, { force = true })
+        end
+      end
       S.win, S.chatwin, S.composerwin = nil, nil, nil
+      S.buf, S.chatbuf, S.changesbuf, S.composerbuf = nil, nil, nil, nil
       M.open()
       if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
         api.nvim_set_current_win(S.composerwin)
