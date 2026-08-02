@@ -1806,14 +1806,37 @@ end
 
 -- reverse bridge: open the file referenced in the nearest fenced-code header
 -- (```lang path:l1-l2). Opens in the main editor window, not the rail.
+-- find a `path[:line]` token spanning the cursor column on one line (agent prose
+-- often names files inline: "see agent-nvim/init.lua:409"). Requires a .ext or a
+-- :line so ordinary words don't match. col is 0-indexed byte.
+local function inline_ref(line, col)
+  local i = 1
+  while true do
+    local s, e, tok = line:find("([%w%._%-/]+%.%w+:?%d*)", i)
+    if not s then return nil end
+    if col + 1 >= s and col + 1 <= e then return tok end
+    i = e + 1
+  end
+end
+
 local function chat_open_ref()
   if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
-  local cur = api.nvim_win_get_cursor(S.chatwin)[1]
+  local pos = api.nvim_win_get_cursor(S.chatwin)
+  local cur = pos[1]
   local all = api.nvim_buf_get_lines(S.chatbuf, 0, -1, false)
   local s = cur
   while s >= 1 and not (all[s] and all[s]:match("^```")) do s = s - 1 end
   local loc = all[s] and all[s]:match("^```%S*%s+(%S+)")
-  if not loc then vim.notify("agent-nvim: no file reference at cursor", vim.log.levels.INFO); return end
+  if not loc then
+    -- no fenced-code file header — try an inline path:line under the cursor
+    local tok = inline_ref(all[cur] or "", pos[2])
+    if tok then
+      local p, l1 = tok:match("^([^:]+):(%d+)")
+      open_in_editor(S.selected and session_cwd(S.selected), p or tok, l1)
+      return
+    end
+    vim.notify("agent-nvim: no file reference at cursor", vim.log.levels.INFO); return
+  end
   local path, l1 = loc:match("^([^:]+):(%d+)")
   open_in_editor(nil, path or loc, l1)
 end
@@ -2356,7 +2379,7 @@ function M.help()
     "          j/k move · <CR> open · ]a/[a next needing you · n new · . cwd",
     "          x stop · a abort · p peek · z show all",
     " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
-    "          gf open ref · i compose · <Esc> roster · y/n approve",
+    "          gf open ref (hunk · fence · inline path:line) · i compose · <Esc> roster",
     " changes  <CR> open file · ]f/[f next file · <Tab> back to chat · r refresh",
     " composer <CR> send · <C-s> send(insert) · <C-f> attach file",
     "          <C-x> drop attachments · q roster · / commands",
