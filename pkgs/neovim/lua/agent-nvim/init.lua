@@ -1861,10 +1861,20 @@ function M.setup(opts)
   local autostart = opts.autostart
   if autostart == nil then autostart = (vim.env.AGENT_SCOPE ~= nil) or (scope == "lovable") end
   if autostart then
+    -- open the rail, then (once the plan autostart / session restore settle) put
+    -- focus in the composer so the rail is ACTIVE and ready to type by default.
+    local function boot()
+      M.open()
+      vim.defer_fn(function()
+        if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
+          pcall(api.nvim_set_current_win, S.composerwin)
+        end
+      end, 300)
+    end
     if vim.v.vim_did_enter == 1 then
-      vim.schedule(function() M.open() end)
+      vim.schedule(boot)
     else
-      api.nvim_create_autocmd("VimEnter", { once = true, callback = function() M.open() end })
+      api.nvim_create_autocmd("VimEnter", { once = true, callback = boot })
     end
   end
 end

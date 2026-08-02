@@ -295,7 +295,9 @@ local function want_auto_open()
 	return _auto_open
 end
 
-local function open_path(path)
+-- keep_focus: open the plan in the editor window WITHOUT moving focus there (used
+-- by autostart so the agent rail stays active by default); otherwise switch to it.
+local function open_path(path, keep_focus)
 	state.root = git_root()
 	state.plan_path = path
 	-- Open in a real editor window — never the agent rail, a float, or a special
@@ -311,10 +313,15 @@ local function open_path(path)
 			break
 		end
 	end
+	local edit = "edit " .. vim.fn.fnameescape(path)
+	if target and keep_focus then
+		vim.api.nvim_win_call(target, function() vim.cmd(edit) end)
+		return
+	end
 	if target and target ~= vim.api.nvim_get_current_win() then
 		pcall(vim.api.nvim_set_current_win, target)
 	end
-	vim.cmd("edit " .. vim.fn.fnameescape(path))
+	vim.cmd(edit)
 end
 
 function M.open(ticket)
@@ -1021,7 +1028,7 @@ function M.autostart()
 	if not key then return end
 	local target = plans_dir() .. "/" .. key .. ".md"
 	local function try_open()
-		if vim.uv.fs_stat(target) then open_path(target); return true end
+		if vim.uv.fs_stat(target) then open_path(target, true); return true end
 		return false
 	end
 	if try_open() then return end
@@ -1059,7 +1066,7 @@ local function watch_for_plan(key)
 			local scratch = (vim.api.nvim_buf_get_name(cur) == "" and not vim.bo[cur].modified)
 				or vim.bo[cur].filetype == "snacks_dashboard"
 			if scratch or want_auto_open() then
-				open_path(target) -- cockpit / plan pane: surface it in the editor window
+				open_path(target, true) -- cockpit / plan pane: surface it in the editor window
 			else
 				vim.notify("plan: " .. key .. " ready — :PlanOpen to review")
 			end
