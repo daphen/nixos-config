@@ -12,7 +12,7 @@
 --          — chat:     ]m/[m next/prev message · <Tab> changes view · Y yank code
 --                      za fold msg · zM/zR fold/unfold all · yr reply · yc convo
 --                      i compose · <Esc> back to roster · (y/n answer approvals)
---          — composer: <CR> send · <C-s> send-from-insert · <C-x> drop attachments
+--          — composer: <CR> send · <C-s> send-from-insert · <C-↑/↓> scroll chat · <C-x> drop attachments
 --                      q back to roster · /slash commands · @ path hints
 -- Anywhere: <leader>as (visual) send selection · :AgentSend[File|Diff|Diagnostics]
 local M = {}
@@ -2381,7 +2381,7 @@ function M.help()
     " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
     "          gf open ref (hunk · fence · inline path:line) · i compose · <Esc> roster",
     " changes  <CR> open file · ]f/[f next file · <Tab> back to chat · r refresh",
-    " composer <CR> send · <C-s> send(insert) · <C-f> attach file",
+    " composer <CR> send · <C-s> send(insert) · <C-f> attach · <C-↑/↓> scroll chat",
     "          <C-x> drop attachments · q roster · / commands",
     "",
     " anywhere R focus roster · <leader>a toggle · <leader>A quick-message active session",
@@ -2503,6 +2503,16 @@ ensure_buf = function()
   })
 
   -- composer keymaps
+  -- <C-Up>/<C-Down> scroll the transcript (half-page) without leaving the
+  -- composer — read back through the conversation while you keep typing. Chosen
+  -- because they don't collide with insert-mode C-u (kill-line) or the C-j/k nav.
+  local function scroll_chat(up)
+    if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
+    local keys = api.nvim_replace_termcodes(up and "<C-u>" or "<C-d>", true, false, true)
+    pcall(api.nvim_win_call, S.chatwin, function() vim.cmd("normal! " .. keys) end)
+  end
+  vim.keymap.set({ "n", "i" }, "<C-Up>", function() scroll_chat(true) end, { buffer = S.composerbuf, nowait = true, silent = true })
+  vim.keymap.set({ "n", "i" }, "<C-Down>", function() scroll_chat(false) end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("n", "<CR>", composer_send, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("i", "<C-s>", function() vim.cmd("stopinsert"); composer_send() end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set({ "n", "i" }, "<C-x>", function() clear_attachments() end, { buffer = S.composerbuf, nowait = true, silent = true })
