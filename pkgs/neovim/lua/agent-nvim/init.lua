@@ -1865,20 +1865,20 @@ function M.setup(opts)
   local autostart = opts.autostart
   if autostart == nil then autostart = vim.env.AGENT_RAIL_NOAUTOSTART == nil end
   if autostart then
-    -- open the rail, then (once the plan autostart / session restore settle) put
-    -- focus in the composer so the rail is ACTIVE and ready to type by default.
     local function boot()
+      -- A cockpit `-S` session restore leaves the rail's window state stale, so
+      -- drop it and open fresh; then focus the composer so the rail is ready to type.
+      S.win, S.chatwin, S.composerwin = nil, nil, nil
       M.open()
-      vim.defer_fn(function()
-        if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
-          pcall(api.nvim_set_current_win, S.composerwin)
-        end
-      end, 300)
+      if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
+        api.nvim_set_current_win(S.composerwin)
+      end
     end
+    -- schedule so it runs after VimEnter's session restore, not during it
     if vim.v.vim_did_enter == 1 then
       vim.schedule(boot)
     else
-      api.nvim_create_autocmd("VimEnter", { once = true, callback = boot })
+      api.nvim_create_autocmd("VimEnter", { once = true, callback = function() vim.schedule(boot) end })
     end
   end
 end
