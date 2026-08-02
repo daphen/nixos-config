@@ -1842,6 +1842,22 @@ local function chat_yank_code()
   vim.notify("agent-nvim: yanked code block (" .. #body .. " lines)", vim.log.levels.INFO)
 end
 
+-- Copy the LAST agent reply's full text to the clipboard (Claude-Code parity —
+-- "copy response"). Whole message, not just the code block under the cursor.
+local function chat_yank_reply()
+  local c = S.selected and S.chat[S.selected]
+  if not (c and c.msgs) then vim.notify("agent-nvim: no reply to copy"); return end
+  for i = #c.msgs, 1, -1 do
+    if c.msgs[i].role == "assistant" then
+      local text = c.msgs[i].text or ""
+      fn.setreg("+", text); fn.setreg('"', text)
+      vim.notify("agent-nvim: copied last agent reply (" .. #text .. " chars)")
+      return
+    end
+  end
+  vim.notify("agent-nvim: no agent reply to copy")
+end
+
 --------------------------------------------------------------------------------
 -- changes view: plan (progress.json) first, git diff as fallback/overlay
 --------------------------------------------------------------------------------
@@ -2284,7 +2300,7 @@ function M.help()
   float({
     " roster   attention queue only · z show all (incl idle)",
     "          j/k move · <CR> open · n new · . cwd · x stop · a abort · p peek",
-    " chat     <Tab> changes view · ]m/[m message · za fold · Y yank code",
+    " chat     <Tab> changes view · ]m/[m message · za fold · Y yank code · yr copy reply",
     "          gf open ref · i compose · <Esc> roster · y/n approve",
     " changes  <CR> open file · <Tab> back to chat · r refresh (plan · git · mcp)",
     " composer <CR> send · <C-s> send(insert) · <C-f> attach file",
@@ -2356,6 +2372,7 @@ ensure_buf = function()
   cmap("<Tab>", function() toggle_view() end)   -- flip to the Changes view
   cmap("za", function() chat_fold_toggle() end) -- fold the message under cursor
   cmap("Y", function() chat_yank_code() end)
+  cmap("yr", function() chat_yank_reply() end) -- yank (copy) the last agent reply
   cmap("gf", function() chat_open() end)
   cmap("<CR>", function() chat_open() end)
   cmap("<Esc>", function()
