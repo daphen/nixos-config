@@ -16,9 +16,14 @@ win_sock() { printf '%s/kitty-cockpit-%s' "${XDG_RUNTIME_DIR:-/tmp}" "$1"; }
 name=${1:?usage: cockpit-switch <context>}
 dir=$(cockpit_context_dir "$name")
 
+# Which windows to focus-tab. Defaults to all cockpit windows; a caller may pass
+# a subset via COCKPIT_SWITCH_WINDOWS (e.g. the nvim rail syncs only the `devenv`
+# tab + the active marker, staying in the rail it's already driving).
+read -ra _switch_windows <<< "${COCKPIT_SWITCH_WINDOWS:-${COCKPIT_WINDOWS[*]}}"
+
 # Concurrent, not sequential: the legs are independent, and each `kitty @` pays
 # ~30ms of client startup — serialized, three of them eat the whole budget.
-for w in "${COCKPIT_WINDOWS[@]}"; do
+for w in "${_switch_windows[@]}"; do
     sock=$(win_sock "$w")
     [ -S "$sock" ] || continue
     kitty @ --to "unix:$sock" focus-tab --match "title:^${name}\$" >/dev/null 2>&1 &

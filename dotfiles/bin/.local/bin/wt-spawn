@@ -96,11 +96,12 @@ def main() -> int:
     ap.add_argument("prompt", nargs="*", help="optional seed prompt for the new agent")
     ap.add_argument("--create", action="store_true", help="create the worktree if missing")
     ap.add_argument("--scope", help="agentd scope (default: inferred from the dir)")
+    ap.add_argument("--name", help="session name (default: the dir basename)")
     a = ap.parse_args()
 
     d = resolve_dir(a.target, a.create)
     scope = scope_for(d, a.scope)
-    name = d.name  # matches the rail's own `.` (basename) convention
+    name = a.name or d.name  # default matches the rail's own `.` (basename) convention
     prompt = " ".join(a.prompt).strip()
 
     c = agentd_connect(scope)

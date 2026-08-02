@@ -19,37 +19,45 @@ return {
 		local function refresh_git()
 			if refreshing then return end
 			refreshing = true
-			vim.schedule(function()
-				local added, changed, removed = 0, 0, 0
-				local root = vim.fn.systemlist({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })[1]
-				if root and root ~= "" then
-					local base = "HEAD"
-					local ok, signs = pcall(require, "hunk-nvim.signs")
-					if ok and signs.current_base then
-						local b = signs.current_base()
-						if b and b ~= "" then base = b end
-					end
-					local file = vim.fn.expand("%:p")
-					local in_worktree = file ~= "" and vim.bo.buftype == "" and file:sub(1, #root + 1) == root .. "/"
-					local args = { "git", "-C", root, "diff", "--unified=0", "--no-color", base }
+			-- Run git ASYNC (vim.system, off the main loop) and let git summarize the
+			-- diff with --numstat (one line per file) instead of parsing every
+			-- --unified=0 hunk line in Lua. A huge diff on a big repo (e.g. the
+			-- lovable monorepo, thousands of commits ahead of base) otherwise blocked
+			-- the main loop ~800ms on EVERY BufEnter — including each rail-panel switch.
+			-- On main/master, diff the working tree (HEAD) rather than the branch base,
+			-- so the main checkout shows uncommitted changes, not commits-ahead noise.
+			local cwd = vim.fn.getcwd()
+			local file = vim.fn.expand("%:p")
+			local editable = vim.bo.buftype == ""
+			local branch = ""
+			local base = "HEAD"
+			local ok, signs = pcall(require, "hunk-nvim.signs")
+			if ok and signs.current_base then
+				local b = signs.current_base()
+				if b and b ~= "" then base = b end
+			end
+			vim.system({ "git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD" }, { text = true }, function(rb)
+				branch = vim.trim(rb.stdout or "")
+				if branch == "main" or branch == "master" then base = "HEAD" end
+				vim.system({ "git", "-C", cwd, "rev-parse", "--show-toplevel" }, { text = true }, function(r1)
+					local root = vim.trim(r1.stdout or "")
+					if root == "" then refreshing = false; return end
+					local in_worktree = editable and file ~= "" and file:sub(1, #root + 1) == root .. "/"
+					local args = { "git", "-C", root, "diff", "--numstat", "--no-color", base }
 					if in_worktree then args[#args + 1] = "--"; args[#args + 1] = file end
-					local out = vim.fn.systemlist(args)
-					if vim.v.shell_error == 0 then
-						for _, l in ipairs(out) do
-							local oc, nc = l:match("^@@ %-%d+,?(%d*) %+%d+,?(%d*)")
-							if oc then
-								local o = (oc == "" and 1) or tonumber(oc)
-								local n = (nc == "" and 1) or tonumber(nc)
-								changed = changed + math.min(o, n)
-								added = added + math.max(0, n - o)
-								removed = removed + math.max(0, o - n)
+					vim.system(args, { text = true }, function(r2)
+						local added, removed = 0, 0
+						if r2.code == 0 then
+							for _, l in ipairs(vim.split(r2.stdout or "", "\n", { plain = true })) do
+								local a, d = l:match("^(%d+)%s+(%d+)")
+								if a then added = added + tonumber(a); removed = removed + tonumber(d) end
 							end
 						end
-					end
-				end
-				git_cache.diff = { added = added, modified = changed, removed = removed }
-				refreshing = false
-				pcall(function() require("lualine").refresh() end)
+						git_cache.diff = { added = added, modified = 0, removed = removed }
+						refreshing = false
+						vim.schedule(function() pcall(function() require("lualine").refresh() end) end)
+					end)
+				end)
 			end)
 		end
 		-- scope depends on the focused buffer, so also refresh on BufEnter; guarded so
@@ -194,7 +202,16 @@ return {
 					{ "fancy_diff", source = function() return git_cache.diff end },
 				},
 				lualine_y = {
-					-- ticket id only; live agent state/spinner lives above the composer input
+					-- work items (plan progress ◆ N/N) for the active rail session; the
+					-- live working state/spinner stays above the composer input.
+					{
+						function()
+							local ok, m = pcall(require, "agent-nvim")
+							return (ok and m.plan_chip) and m.plan_chip() or ""
+						end,
+						padding = { left = 1, right = 1 },
+					},
+					-- ticket id
 					{
 						function() return get_project_root() end,
 						padding = { left = 0, right = 0 },
@@ -262,7 +279,14 @@ return {
 								{ "fancy_diff", source = function() return git_cache.diff end },
 							},
 							lualine_y = {
-								-- agent + plan status on the right
+								-- work items (plan progress ◆ N/N) for the active rail session
+								{
+									function()
+										local ok, m = pcall(require, "agent-nvim")
+										return (ok and m.plan_chip) and m.plan_chip() or ""
+									end,
+									padding = { left = 1, right = 1 },
+								},
 								{
 									function() return get_project_root() end,
 									padding = { left = 0, right = 0 },

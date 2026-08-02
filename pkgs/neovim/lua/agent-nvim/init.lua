@@ -111,6 +111,7 @@ local S = {
 local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send
 local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, sync_approval_keys
 local session_cwd, load_plan, answer, apply_prompt_mode
+local on_cockpit_active -- reconciles the rail's selection with the cockpit active context
 local composer_send, composer_resize, composer_placeholder, render_chips
 local add_attachment, session_state
 
@@ -479,10 +480,8 @@ local function active_winbar()
   -- here — the lualine's project component shows it.
   local ss = session_state(a)
   local parts = { "%#" .. ss.name .. "#  " .. ss.glyph .. " " .. ss.label }
-  local pl = S.plan[a.id]
-  if pl and pl.total and pl.total > 0 then
-    parts[#parts + 1] = "%#AgentMuted#  ◆ " .. pl.done .. "/" .. pl.total
-  end
+  -- plan progress (◆ N/N) now lives in the lualine (M.plan_chip); this header
+  -- stays focused on the live working state + spinner.
   if #S.paste_images > 0 then
     parts[#parts + 1] = "%#AgentMuted#  🖼 ×" .. #S.paste_images
   end
@@ -789,10 +788,14 @@ render_chat = function(scroll)
     decor[#decor + 1] = { line = push("╰ send again to retry"), fg = "AgentMuted" }
   end
 
-  -- footer: agent is done (not streaming) and nothing awaits you → mark the end of
-  -- the chat, so you know it finished thinking and you're at the bottom.
-  local streaming = S.selected and S.stream[S.selected] and S.stream[S.selected] ~= ""
-  if has_any and not streaming and not ap and not errmsg then
+  -- footer: agent is done and nothing awaits you → mark the end of the chat.
+  -- "done" must key off the SESSION STATUS (streaming), not just the text-stream
+  -- buffer — between tool calls the stream buffer is empty but the agent is still
+  -- working, and showing "done" there is wrong.
+  local sstatus
+  for _, a in ipairs(S.roster) do if a.id == S.selected then sstatus = a.status break end end
+  local working = S.selected and ((S.stream[S.selected] and S.stream[S.selected] ~= "") or sstatus == "streaming")
+  if has_any and not working and not ap and not errmsg then
     local el = S.selected and fmt_el(S.lastdur[S.selected])
     local label = el and ("✓ done in " .. el) or "✓ done"
     local pl = S.selected and S.plan[S.selected]
@@ -932,6 +935,10 @@ handle = function(obj)
     S.roster = obj.sessions or {}
     table.sort(S.roster, function(a, b) return (a.name or "") < (b.name or "") end)
     render_roster()
+    -- reconcile with the cockpit active context: adopts the persisted active on
+    -- startup and picks up a session that appears after a context switch, so the
+    -- two can't drift apart (no-op once already in sync).
+    if on_cockpit_active then on_cockpit_active() end
     -- auto-open the session for THIS nvim's worktree (opening nvim in a context
     -- should land you in its chat). One-shot: skip once anything's selected.
     if not S.autopened and not S.selected then
@@ -1212,6 +1219,8 @@ view_session = function(name, cwd)
   S.selected = name
   send({ type = "get_messages", session = name })
   reroot(cwd)
+  reflect_context(cwd) -- swap a stale other-worktree file for this session's plan/scratch
+  cockpit_sync(cwd)    -- drive the cockpit devenv tab + Super+T active marker to match
   load_draft(name)
   refresh_plans()
   render_active()
@@ -1273,12 +1282,18 @@ local function start_spin()
       -- The winbar spinner is the one you watch — a cheap string set, so animate
       -- it every frame. render_roster rebuilds a whole buffer + decor; at 60ms
       -- that competed with streaming renders and made the whole thing wonky, so
-      -- refresh the roster spinner/elapsed only every ~4th frame (~240ms).
+      -- render both the winbar and the roster every frame: both are cheap (the
+      -- roster is a handful of lines) and the real lag was the git diff (now
+      -- async) + chat render (now throttled), not this. Every-frame = smooth spinner.
       if S.view == "chat" then refresh_active_header() end
-      if S.tick % 4 == 0 then render_roster() end
+      render_roster()
     elseif S.tick % 33 == 0 then
       render_roster() -- ~2s refresh so idle durations tick up
     end
+    -- safety-net reconcile (~2s): guarantees the rail↔cockpit sync converges even
+    -- if a filesystem event was missed. Guarded by S.cockpit_ctx, so it's a no-op
+    -- whenever the two already agree.
+    if S.tick % 33 == 0 and on_cockpit_active then on_cockpit_active() end
   end))
 end
 
@@ -1842,7 +1857,10 @@ load_plan = function(cwd)
   local dir = plandir(cwd)
   if not dir then return nil end
   local branch = fn.system({ "git", "-C", cwd, "branch", "--show-current" }):gsub("%s+$", "")
-  if branch == "" then return nil end
+  -- A plan belongs to a ticket/feature branch. `main`/`master` is shared across
+  -- repos and many old progress.json files recorded branch:"main", so matching on
+  -- it leaks a stray plan onto every main-checkout session (e.g. the orchestrator).
+  if branch == "" or branch == "main" or branch == "master" then return nil end
   for _, f in ipairs(fn.globpath(dir, "*.progress.json", false, true)) do
     local ok, data = pcall(function() return vim.json.decode(table.concat(fn.readfile(f), "\n")) end)
     if ok and type(data) == "table" and data.branch == branch then
@@ -1850,6 +1868,100 @@ load_plan = function(cwd)
     end
   end
   return nil
+end
+
+-- On session switch, keep the editor honest: a file open from ANOTHER session's
+-- worktree is stale in the new context (the path may not even exist there), so
+-- swap it for the new session's plan (if any) or a clean scratch. A file not
+-- under any session's worktree (e.g. ~/nixos) is your own work — left untouched.
+-- Runs via win_call so it never steals focus from the rail.
+local function reflect_context(cwd)
+  if not cwd or cwd == "" then return end
+  local ed
+  for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
+    if not api.nvim_buf_get_name(api.nvim_win_get_buf(w)):match("agent%-") then ed = w; break end
+  end
+  if not ed then return end
+  local name = api.nvim_buf_get_name(api.nvim_win_get_buf(ed))
+  if name == "" or name:sub(1, #cwd + 1) == cwd .. "/" then return end -- empty or already here
+  local stale = false
+  for _, a in ipairs(S.roster) do
+    if a.cwd and a.cwd ~= "" and a.cwd ~= cwd and name:sub(1, #a.cwd + 1) == a.cwd .. "/" then stale = true; break end
+  end
+  if not stale then return end -- your own file elsewhere → keep it
+  local pl = load_plan(cwd)
+  local pdir = plandir(cwd)
+  local plan_md = pl and pl.key and pdir and (pdir .. "/" .. pl.key .. ".md")
+  api.nvim_win_call(ed, function()
+    if plan_md and fn.filereadable(plan_md) == 1 then
+      pcall(vim.cmd, "edit " .. fn.fnameescape(plan_md))
+    else
+      pcall(vim.cmd, "enew")
+    end
+  end)
+end
+
+-- Map a session cwd to its cockpit context name (~/work/lovable → "main";
+-- ~/work/lovable.daphen-<ctx> → "<ctx>"). nil if it isn't a lovable worktree.
+local function cockpit_context(cwd)
+  local home = os.getenv("HOME") or ""
+  if cwd == home .. "/work/lovable" then return "main" end
+  return fn.fnamemodify(cwd or "", ":t"):match("^lovable%.daphen%-(.+)$")
+end
+
+-- Sync the cockpit to the rail's active session: switch the devenv tab + the
+-- active-context marker (what the Super+T picker reads) to this session's
+-- context — WITHOUT touching the nvim tab (you're already in the rail). Only for
+-- sessions that map to a real, registered cockpit context (or the main checkout).
+-- S.cockpit_ctx guards the reverse sync (Super+T → rail) from ping-ponging back.
+local function cockpit_sync(cwd)
+  local ctx = cockpit_context(cwd)
+  if not ctx then return end
+  local home = os.getenv("HOME") or ""
+  if ctx ~= "main" then
+    local ok, list = pcall(fn.readfile, home .. "/.local/state/cockpit/contexts")
+    local found = false
+    if ok then for _, l in ipairs(list) do if l == ctx then found = true; break end end end
+    if not found then return end
+  end
+  if S.cockpit_ctx == ctx then return end -- already synced (avoids a switch loop)
+  S.cockpit_ctx = ctx
+  fn.jobstart({ "sh", "-c",
+    "COCKPIT_SWITCH_WINDOWS=devenv " .. home .. "/.config/niri/scripts/cockpit-switch " .. fn.shellescape(ctx) },
+    { detach = true })
+end
+
+-- Reverse sync: when the cockpit's active context changes (you switched via the
+-- Super+T picker), select the matching session in the rail. S.cockpit_ctx guards
+-- against reacting to the rail's own cockpit_sync writes (no ping-pong).
+local cockpit_watch
+on_cockpit_active = function()
+  local home = os.getenv("HOME") or ""
+  local ok, lines = pcall(fn.readfile, home .. "/.local/state/cockpit/active")
+  if not ok or not lines[1] then return end
+  local ctx = vim.trim(lines[1])
+  if ctx == "" or ctx == S.cockpit_ctx then return end
+  for _, a in ipairs(S.roster) do
+    if cockpit_context(a.cwd) == ctx then
+      S.cockpit_ctx = ctx -- pre-set so view_session's cockpit_sync no-ops (no loop)
+      if a.id ~= S.selected then view_session(a.id, a.cwd) end
+      return
+    end
+  end
+end
+local function start_cockpit_watch()
+  if cockpit_watch then return end
+  local dir = (os.getenv("HOME") or "") .. "/.local/state/cockpit"
+  if fn.isdirectory(dir) == 0 then return end
+  cockpit_watch = uv.new_fs_event()
+  if not cockpit_watch then return end
+  -- watch the DIR: cockpit-switch replaces `active` via atomic rename, which a
+  -- file-level watch would miss.
+  cockpit_watch:start(dir, {}, function(err, filename)
+    if not err and (filename == "active" or filename == ".active.tmp") then
+      vim.schedule(on_cockpit_active)
+    end
+  end)
 end
 
 -- files changed on the branch (committed + uncommitted) vs where it forked
@@ -2541,6 +2653,7 @@ function M.open()
   if not S.saved_gcr then S.saved_gcr = vim.o.guicursor end
   vim.o.guicursor = "a:AgentCursorRoster"
   start_spin()
+  start_cockpit_watch() -- Super+T context switches → select the matching session
 
   -- responsive: redraw the divider when the rail is resized
   local grp = api.nvim_create_augroup("AgentRailResize", { clear = true })
@@ -2607,6 +2720,16 @@ function M.statusline()
   local pl = S.plan[a.id]
   if pl and pl.total and pl.total > 0 then parts[#parts + 1] = "◆ " .. pl.done .. "/" .. pl.total end
   return table.concat(parts, " · ")
+end
+
+-- Just the active session's plan progress (◆ done/total) for the lualine — the
+-- "work items", moved down out of the composer winbar (which keeps only the live
+-- working state). Empty when there's no active session or no plan.
+function M.plan_chip()
+  if not S.selected then return "" end
+  local pl = S.plan[S.selected]
+  if pl and pl.total and pl.total > 0 then return "◆ " .. pl.done .. "/" .. pl.total end
+  return ""
 end
 
 --------------------------------------------------------------------------------
