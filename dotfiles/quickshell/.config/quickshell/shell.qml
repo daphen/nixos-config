@@ -36,7 +36,6 @@ ShellRoot {
     TodoListPicker {}
     NotificationJumpPicker {}
     CockpitPicker {}
-    CockpitNotch {}
     WpmBadge {}
     WindowFocusDot {}
 }
