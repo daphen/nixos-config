@@ -561,6 +561,18 @@ handle = function(obj)
     S.roster = obj.sessions or {}
     table.sort(S.roster, function(a, b) return (a.name or "") < (b.name or "") end)
     render_roster()
+    -- auto-open the session for THIS nvim's worktree (opening nvim in a context
+    -- should land you in its chat). One-shot: skip once anything's selected.
+    if not S.autopened and not S.selected then
+      local cwd = fn.getcwd()
+      for _, a in ipairs(S.roster) do
+        if a.cwd and (cwd == a.cwd or cwd:sub(1, #a.cwd + 1) == a.cwd .. "/") then
+          S.autopened = true
+          view_session(a.id, a.cwd)
+          break
+        end
+      end
+    end
   elseif t == "sources" then
     S.sources = obj.sources or {}
   elseif t == "response" and obj.command == "get_messages" and obj.data and obj.data.messages then
