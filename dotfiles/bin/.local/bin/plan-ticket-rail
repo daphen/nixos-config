@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# plan-ticket-rail <TICKET> — open a Linear ticket straight into /plan-ticket in
+# the rail. Spawns a lovable-scope agentd session (cwd ~/work/lovable) seeded with
+# the plan-ticket skill for <TICKET>, so the plan runs and the session lands in the
+# rail roster. plan-ticket's PLAN phase needs no worktree — it writes the artifact
+# to the vault — so the main checkout is the right cwd.
+set -euo pipefail
+ticket=${1:?usage: plan-ticket-rail <TICKET>}
+# normalize: strip a leading '#', uppercase a bare "every-1234"
+ticket=${ticket#\#}
+exec "$HOME/.local/bin/wt-spawn" "$HOME/work/lovable" \
+    --name "plan-${ticket}" --scope lovable "/plan-ticket ${ticket}"

@@ -10,7 +10,7 @@ Picker {
     open: CockpitState.open
     onCloseRequested: CockpitState.open = false
 
-    placeholder: "contexts…  ·  type a new name + enter to create"
+    placeholder: "contexts…  ·  name → create · ticket id (EVERY-1234) → plan-ticket"
     enterLabel: "switch"
     altLabel: "Ctrl+Enter: open app · Ctrl+P: open plan · Ctrl+W: close context"
     emptyText: "no contexts — type a name + enter to create one"
@@ -72,7 +72,21 @@ Picker {
     onAltAction: item => CockpitState.openApp(item.name)
     onCtrlP: item => CockpitState.openPlan(item.name)
     onEmptyEnter: text => {
-        const name = text.replace(/[^a-zA-Z0-9-]/g, "")
+        const t = text.trim()
+        // A Linear ticket id (EVERY-1234 / every-1234, or a bare number in the
+        // user's shorthand) → open it straight into /plan-ticket in the rail,
+        // rather than creating a cockpit context.
+        if (/^[a-zA-Z]{2,}-\d+$/.test(t)) {
+            CockpitState.planTicket(t.toUpperCase())
+            CockpitState.open = false
+            return
+        }
+        if (/^\d+$/.test(t)) {
+            CockpitState.planTicket("EVERY-" + t)
+            CockpitState.open = false
+            return
+        }
+        const name = t.replace(/[^a-zA-Z0-9-]/g, "")
         if (name.length === 0) return
         CockpitState.add(name)
         CockpitState.open = false

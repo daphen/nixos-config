@@ -58,6 +58,13 @@ Singleton {
         Quickshell.execDetached([scripts + "cockpit-add", name])
     }
 
+    // Open a Linear ticket straight into /plan-ticket in the rail: spawns a
+    // lovable rail session (cwd ~/work/lovable) running the plan-ticket skill for
+    // the ticket, so it lands in the roster and the plan artifact gets written.
+    function planTicket(ticket) {
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/plan-ticket-rail", ticket])
+    }
+
     // Switch to the context and pull its plan artifact up in the nvim tab.
     function openPlan(name) {
         switchTo(name)

@@ -89,6 +89,7 @@ in {
     ".local/bin/wt-read".source = link "${dotfiles}/bin/.local/bin/wt-read";
     ".local/bin/wt-spawn".source = link "${dotfiles}/bin/.local/bin/wt-spawn";
     ".local/bin/pi-to-vault".source = link "${dotfiles}/bin/.local/bin/pi-to-vault";
+    ".local/bin/plan-ticket-rail".source = link "${dotfiles}/bin/.local/bin/plan-ticket-rail";
     ".local/bin/wt-plan".source = link "${dotfiles}/bin/.local/bin/wt-plan";
     # plan-open: the plan-ticket skill runs this after PLAN to open the plan in nvim
     # (no-ops if an nvim is already in the repo, e.g. the worktree stack's pane).
