@@ -153,6 +153,7 @@ local function set_hl()
   -- gaps in fonts that don't draw block chars full-height).
   hl("AgentCard", { bg = cardbg })
   hl("AgentBarSolid", { bg = accent })
+  hl("AgentSel", { fg = dark, bg = accent, bold = true }) -- picker selection bar
 
   -- pills + rounded caps
   hl("AgentPillStream", { fg = dark, bg = p.green or "#5fca8b", bold = true })
@@ -983,7 +984,7 @@ local function sl_render()
     vim.wo[SL.win].winhighlight = "Normal:AgentCard"
   end
   api.nvim_buf_clear_namespace(SL.buf, S.ns, 0, -1)
-  pcall(api.nvim_buf_set_extmark, SL.buf, S.ns, SL.sel - 1, 0, { line_hl_group = "AgentAccent", end_row = SL.sel })
+  pcall(api.nvim_buf_set_extmark, SL.buf, S.ns, SL.sel - 1, 0, { line_hl_group = "AgentSel" })
   -- scroll the (unfocused) float so the selection stays visible past the fold —
   -- this is how C-n reaches the skills that sit below the rail commands.
   pcall(api.nvim_win_set_cursor, SL.win, { SL.sel, 0 })
@@ -1638,6 +1639,8 @@ ensure_buf = function()
     { buffer = S.composerbuf, nowait = true })
   vim.keymap.set("i", "<C-n>", function() if not sl_move(1) then passthru("<C-n>") end end, { buffer = S.composerbuf, nowait = true })
   vim.keymap.set("i", "<C-p>", function() if not sl_move(-1) then passthru("<C-p>") end end, { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<C-j>", function() if not sl_move(1) then passthru("<C-j>") end end, { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set("i", "<C-k>", function() if not sl_move(-1) then passthru("<C-k>") end end, { buffer = S.composerbuf, nowait = true })
   vim.keymap.set("i", "<Tab>", function() if not sl_move(1) then passthru("<Tab>") end end, { buffer = S.composerbuf, nowait = true })
   vim.keymap.set("i", "<S-Tab>", function() if not sl_move(-1) then passthru("<S-Tab>") end end, { buffer = S.composerbuf, nowait = true })
 
