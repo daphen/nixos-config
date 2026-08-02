@@ -112,6 +112,7 @@ local render, render_roster, render_chat, render_changes, handle, on_read, try_c
 local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, sync_approval_keys
 local session_cwd, load_plan, answer, apply_prompt_mode
 local on_cockpit_active -- reconciles the rail's selection with the cockpit active context
+local reflect_context, cockpit_context, cockpit_sync -- view_session side-effects (defined later)
 local composer_send, composer_resize, composer_placeholder, render_chips
 local add_attachment, session_state
 
@@ -1875,7 +1876,7 @@ end
 -- swap it for the new session's plan (if any) or a clean scratch. A file not
 -- under any session's worktree (e.g. ~/nixos) is your own work — left untouched.
 -- Runs via win_call so it never steals focus from the rail.
-local function reflect_context(cwd)
+reflect_context = function(cwd)
   if not cwd or cwd == "" then return end
   local ed
   for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
@@ -1903,7 +1904,7 @@ end
 
 -- Map a session cwd to its cockpit context name (~/work/lovable → "main";
 -- ~/work/lovable.daphen-<ctx> → "<ctx>"). nil if it isn't a lovable worktree.
-local function cockpit_context(cwd)
+cockpit_context = function(cwd)
   local home = os.getenv("HOME") or ""
   if cwd == home .. "/work/lovable" then return "main" end
   return fn.fnamemodify(cwd or "", ":t"):match("^lovable%.daphen%-(.+)$")
@@ -1914,7 +1915,7 @@ end
 -- context — WITHOUT touching the nvim tab (you're already in the rail). Only for
 -- sessions that map to a real, registered cockpit context (or the main checkout).
 -- S.cockpit_ctx guards the reverse sync (Super+T → rail) from ping-ponging back.
-local function cockpit_sync(cwd)
+cockpit_sync = function(cwd)
   local ctx = cockpit_context(cwd)
   if not ctx then return end
   local home = os.getenv("HOME") or ""

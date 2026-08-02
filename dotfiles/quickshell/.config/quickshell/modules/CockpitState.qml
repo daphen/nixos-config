@@ -42,7 +42,12 @@ Singleton {
     }
 
     function switchTo(name) {
-        Quickshell.execDetached([scripts + "cockpit-switch", name])
+        // Switch the devenv (+ agent) tab and the active marker, but NOT the nvim
+        // window: the nvim rail is one control surface, and it follows the active
+        // context on its own (its fs-watch on the active file selects the matching
+        // session). Switching the nvim tab would yank you to a per-context nvim.
+        Quickshell.execDetached(["sh", "-c",
+            "COCKPIT_SWITCH_WINDOWS='devenv agent' " + scripts + "cockpit-switch " + JSON.stringify(name)])
         // Optimistic: the FileView watch confirms, but chips/picker must flip
         // with the tabs, not a disk round-trip later.
         active = name
