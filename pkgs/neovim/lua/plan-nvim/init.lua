@@ -655,10 +655,19 @@ end
 -- files you never opened (checktime only reloads already-open buffers; this opens them).
 -- Opened via win_call so it never steals focus from where you're working.
 local function pick_follow_win()
+	-- Only ever a REAL editor window — never the agent rail (agent-* buffers), a
+	-- float/notification, or a special buffer. Editing a file into the rail's
+	-- composer/chat window clobbers it (files bleeding into the chat input).
+	local function ok(w)
+		local b = vim.api.nvim_win_get_buf(w)
+		return vim.api.nvim_win_get_config(w).relative == ""
+			and vim.bo[b].buftype == ""
+			and not vim.api.nvim_buf_get_name(b):match("agent%-")
+	end
 	local cur = vim.api.nvim_get_current_win()
-	if vim.api.nvim_win_get_config(cur).relative == "" then return cur end
+	if ok(cur) then return cur end
 	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-		if vim.api.nvim_win_get_config(w).relative == "" then return w end
+		if ok(w) then return w end
 	end
 	return nil
 end
@@ -946,12 +955,6 @@ function M.menu()
 		{ label = "Amend — fold in new scope", run = M.amend },
 		{ label = "Ask the agent a question", run = function() open_plan(); M.ask() end },
 		{ label = "Open plan buffer", run = open_plan },
-		{
-			label = "Open live view (browser)",
-			run = function()
-				vim.fn.jobstart({ "python3", vim.fn.expand("~/nixos/dotfiles/ai/skills/plan-ticket/plan-view.py"), key, "--open" }, { detach = true })
-			end,
-		},
 	}
 
 	local labels = {}

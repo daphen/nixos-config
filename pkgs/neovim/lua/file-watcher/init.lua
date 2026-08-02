@@ -186,6 +186,12 @@ local function queue_nav(fullpath)
 		local p = state.pending_nav
 		state.pending_nav = nil
 		if p then
+			-- Reload buffers whose file changed on disk (agent edits, rebase, …) so
+			-- the buffer text matches disk BEFORE hunk-nvim redraws its signs —
+			-- otherwise a stale buffer shows no diff and the git-based signs land on
+			-- the wrong lines. autoread (on) makes this reload unmodified buffers
+			-- silently; a buffer with unsaved edits is left alone (no clobber).
+			pcall(vim.cmd, "checktime")
 			-- Decoupled from the nav gates below: subscribers (hunk-nvim) want
 			-- the signal even when the cursor jump is suppressed.
 			pcall(vim.api.nvim_exec_autocmds, "User",
@@ -253,7 +259,6 @@ end
 
 function M.start()
 	if state.running then
-		vim.notify("file-watcher: already running (" .. state.root .. ")")
 		return
 	end
 	local root = vim.fn.getcwd()
@@ -283,7 +288,7 @@ function M.start()
 	end
 	local total = (vim.uv.hrtime() - t0) / 1e6
 	vim.notify(("file-watcher: watching %s (%d dirs, git=%dms, total=%dms, late=%dms)")
-		:format(root, state.dir_count, t_git, total, state.defer_late or -1))
+		:format(root, state.dir_count, t_git, total, state.defer_late or -1), vim.log.levels.DEBUG)
 end
 
 function M.toggle_follow()
