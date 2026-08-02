@@ -9,7 +9,8 @@
 --
 -- Rail keys — roster:  j/k move · <CR> open · n new · . cwd · x stop · a abort
 --                      z collapse · r refresh · ? help · q close
---          — chat:     ]m/[m next/prev message · <Tab> fold msg · Y yank code
+--          — chat:     ]m/[m next/prev message · <Tab> changes view · Y yank code
+--                      za fold msg · zM/zR fold/unfold all · yr yank reply
 --                      i compose · <Esc> back to roster · (y/n answer approvals)
 --          — composer: <CR> send · <C-s> send-from-insert · <C-x> drop attachments
 --                      q back to roster · /slash commands · @ path hints
@@ -1742,6 +1743,19 @@ local function chat_fold_toggle()
   render_chat(false)
 end
 
+-- Collapse (zM) / expand (zR) every message in the open chat at once — the
+-- Claude-Code "read a long transcript top-down" move: fold all to skim headers,
+-- unfold to read. Preserves cursor by re-rendering in place.
+local function chat_fold_all(folded)
+  if not S.selected then return end
+  local chat = S.chat[S.selected]
+  if not (chat and chat.msgs) then return end
+  local f = {}
+  if folded then for mi = 1, #chat.msgs do f[mi] = true end end
+  S.folds[S.selected] = f
+  render_chat(false)
+end
+
 -- cwd of a roster session by id
 session_cwd = function(id)
   for _, a in ipairs(S.roster) do if a.id == id then return a.cwd end end
@@ -2300,7 +2314,7 @@ function M.help()
   float({
     " roster   attention queue only · z show all (incl idle)",
     "          j/k move · <CR> open · n new · . cwd · x stop · a abort · p peek",
-    " chat     <Tab> changes view · ]m/[m message · za fold · Y yank code · yr copy reply",
+    " chat     <Tab> changes view · ]m/[m message · za fold · zM/zR fold all · yr copy reply",
     "          gf open ref · i compose · <Esc> roster · y/n approve",
     " changes  <CR> open file · <Tab> back to chat · r refresh (plan · git · mcp)",
     " composer <CR> send · <C-s> send(insert) · <C-f> attach file",
@@ -2371,6 +2385,8 @@ ensure_buf = function()
   cmap("[m", function() chat_block_jump(-1) end)
   cmap("<Tab>", function() toggle_view() end)   -- flip to the Changes view
   cmap("za", function() chat_fold_toggle() end) -- fold the message under cursor
+  cmap("zM", function() chat_fold_all(true) end)  -- collapse every message
+  cmap("zR", function() chat_fold_all(false) end) -- expand every message
   cmap("Y", function() chat_yank_code() end)
   cmap("yr", function() chat_yank_reply() end) -- yank (copy) the last agent reply
   cmap("gf", function() chat_open() end)
