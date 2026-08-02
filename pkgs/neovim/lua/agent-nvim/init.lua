@@ -975,7 +975,7 @@ local function sl_render()
   api.nvim_buf_set_lines(SL.buf, 0, -1, false, lines)
   vim.bo[SL.buf].modifiable = false
   local cfg = { relative = "cursor", anchor = "SW", row = 0, col = 0, width = width,
-    height = math.min(#lines, 8), style = "minimal", focusable = false, zindex = 200 }
+    height = math.min(#lines, 14), style = "minimal", focusable = false, zindex = 200 }
   if SL.win and api.nvim_win_is_valid(SL.win) then
     api.nvim_win_set_config(SL.win, cfg)
   else
@@ -984,6 +984,9 @@ local function sl_render()
   end
   api.nvim_buf_clear_namespace(SL.buf, S.ns, 0, -1)
   pcall(api.nvim_buf_set_extmark, SL.buf, S.ns, SL.sel - 1, 0, { line_hl_group = "AgentAccent", end_row = SL.sel })
+  -- scroll the (unfocused) float so the selection stays visible past the fold —
+  -- this is how C-n reaches the skills that sit below the rail commands.
+  pcall(api.nvim_win_set_cursor, SL.win, { SL.sel, 0 })
 end
 
 local function sl_update()
