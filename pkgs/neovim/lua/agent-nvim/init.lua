@@ -153,7 +153,7 @@ local function set_hl()
   -- gaps in fonts that don't draw block chars full-height).
   hl("AgentCard", { bg = cardbg })
   hl("AgentBarSolid", { bg = accent })
-  hl("AgentSel", { fg = dark, bg = accent, bold = true }) -- picker selection bar
+  hl("AgentSel", { bg = p.bg_surface3 or p.bg_selection or surface, bold = true }) -- picker selection bar
 
   -- pills + rounded caps
   hl("AgentPillStream", { fg = dark, bg = p.green or "#5fca8b", bold = true })
@@ -943,11 +943,15 @@ local function slash_items()
   for _, c in ipairs(RAIL_CMDS) do
     items[#items + 1] = { insert = "/" .. c[1] .. " ", label = "/" .. c[1], hint = c[2] }
   end
-  for _, f in ipairs(fn.glob(fn.expand("~/.pi/agent/prompts/*.md"), true, true)) do
+  -- expand only the ~, then glob the pattern — expanding the wildcard inside
+  -- fn.expand and re-globbing returns nothing (the bug that hid the skills).
+  local pdir = fn.expand("~/.pi/agent/prompts")
+  for _, f in ipairs(fn.glob(pdir .. "/*.md", true, true)) do
     local n = fn.fnamemodify(f, ":t:r")
     items[#items + 1] = { insert = "/" .. n .. " ", label = "/" .. n, hint = "pi template" }
   end
-  for _, d in ipairs(fn.glob(fn.expand("~/.pi/agent/skills/*"), true, true)) do
+  local sdir = fn.expand("~/.pi/agent/skills")
+  for _, d in ipairs(fn.glob(sdir .. "/*", true, true)) do
     if fn.isdirectory(d) == 1 then
       local n = fn.fnamemodify(d, ":t")
       items[#items + 1] = { insert = "/skill:" .. n .. " ", label = "/skill:" .. n, hint = "pi skill" }
