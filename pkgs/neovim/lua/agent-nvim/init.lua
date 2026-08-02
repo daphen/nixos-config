@@ -222,9 +222,31 @@ local function tool_hint(c)
   return "⚙ " .. name
 end
 
+-- Inline diff for an edit/write tool call, as a ```diff fence so markview colors
+-- it. Capped so a big write doesn't flood the chat (folds handle the rest).
+local function tool_diff(c)
+  local a = c.arguments or c.input or {}
+  local edits = a.edits
+  if not edits and type(a.content) == "string" then edits = { { newText = a.content } } end
+  if type(edits) ~= "table" or #edits == 0 then return nil end
+  local out, n, CAP = { "```diff" }, 0, 60
+  for _, e in ipairs(edits) do
+    for _, l in ipairs(vim.split(e.oldText or "", "\n", { plain = true })) do
+      if e.oldText and e.oldText ~= "" and n < CAP then out[#out + 1] = "-" .. l; n = n + 1 end
+    end
+    for _, l in ipairs(vim.split(e.newText or "", "\n", { plain = true })) do
+      if e.newText and e.newText ~= "" and n < CAP then out[#out + 1] = "+" .. l; n = n + 1 end
+    end
+  end
+  if n >= CAP then out[#out + 1] = "… diff truncated" end
+  out[#out + 1] = "```"
+  return table.concat(out, "\n")
+end
+
 -- Flatten a message's content blocks into displayable text. Beyond the final
--- prose (text blocks), surface the agent's WORK: thinking (💭) and tool calls
--- (⚙ read/edit/bash/…) — otherwise a turn that's all tool calls looks empty.
+-- prose (text blocks), surface the agent's WORK: thinking (💭), tool calls
+-- (⚙ read/edit/bash/…), and inline diffs for edits — otherwise a turn that's all
+-- tool calls looks empty.
 local function msg_text(msg)
   local t = {}
   for _, c in ipairs((msg and msg.content) or {}) do
@@ -234,7 +256,9 @@ local function msg_text(msg)
       local th = c.thinking or c.text or ""
       if type(th) == "string" and th:gsub("%s", "") ~= "" then t[#t + 1] = "💭 " .. th end
     elseif c.type == "toolCall" or c.type == "tool_use" then
-      t[#t + 1] = tool_hint(c)
+      local hint = tool_hint(c)
+      local diff = (c.name == "edit" or c.name == "write") and tool_diff(c) or nil
+      t[#t + 1] = diff and (hint .. "\n" .. diff) or hint
     end
   end
   return table.concat(t, "\n\n")
