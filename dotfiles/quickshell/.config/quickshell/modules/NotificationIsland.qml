@@ -52,6 +52,9 @@ PanelWindow {
     property string nImage: ""
     property string nAppIcon: ""
     property bool nIsCalendar: false   // mlqs meeting reminder → accent glyph, not grey
+    // Phone-origin: marked on the RIGHT, so the left badge stays free for the
+    // caller's picture rather than being spent on a provenance glyph.
+    property bool nIsPhone: false
     property string nWindowId: ""
     property int extraCount: 0         // arrivals that replaced content this show
 
@@ -66,6 +69,7 @@ PanelWindow {
         notif = n
         nId = n.id || 0
         nApp = n.appName || ""
+        nIsPhone = Notifications.isPhoneNotif(nApp)
         nSummary = n.summary || ""
         nBody = (n.body || "").replace(/<[^>]+>/g, "").replace(/\n/g, "  ")
         // Only a real avatar path/URL is an avatar. A bare freedesktop icon
@@ -305,6 +309,29 @@ PanelWindow {
                     width: parent.width
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize - 1
+                }
+            }
+
+            // Provenance marker: this arrived from the phone. Sits opposite the
+            // avatar so the left badge can carry the caller's picture.
+            Item {
+                visible: root.nIsPhone
+                anchors.verticalCenter: parent.verticalCenter
+                width: 14; height: 14
+                Image {
+                    id: phoneGlyph
+                    anchors.fill: parent
+                    source: Qt.resolvedUrl("../assets/phone.svg")
+                    sourceSize.width: 28; sourceSize.height: 28
+                    visible: false
+                    asynchronous: true
+                }
+                MultiEffect {
+                    anchors.fill: phoneGlyph
+                    source: phoneGlyph
+                    visible: phoneGlyph.status === Image.Ready
+                    colorization: 1
+                    colorizationColor: Theme.fg_muted
                 }
             }
 

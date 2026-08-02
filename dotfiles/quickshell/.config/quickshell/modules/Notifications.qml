@@ -104,7 +104,6 @@ Singleton {
         // wear the mail icon.
         if ((appIcon || "") === "x-office-calendar") return Qt.resolvedUrl("../assets/calendar.svg")
         const a = (appName || "").toLowerCase()
-        if (root.isPhoneNotif(appName)) return Qt.resolvedUrl("../assets/phone.svg")
         if (a === "slack" || a === "slqs") return Qt.resolvedUrl("../assets/slack.svg")
         if (a === "discord" || a === "dsqrd") return Qt.resolvedUrl("../assets/discord.svg")
         if (a === "mlqs") return Qt.resolvedUrl("../assets/mail.svg")
