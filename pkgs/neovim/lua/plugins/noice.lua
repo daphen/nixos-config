@@ -32,6 +32,17 @@ return {
 					},
 					opts = { skip = true },
 				},
+				{
+					-- autoread buffer-reload chatter — constant noise in the cockpit
+					-- (the agent rewrites open buffers via plan pulls / edits). Still
+					-- lands in :messages; just no popup. Matches our echomsg + nvim's
+					-- native "changed on disk" wording.
+					filter = {
+						event = "msg_show",
+						find = "changed on disk",
+					},
+					opts = { skip = true },
+				},
 			},
 		})
 
