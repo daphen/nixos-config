@@ -15,7 +15,13 @@ M.opts = {
 local state = {
 	running = false,
 	root = nil,
-	follow = true,
+	-- Auto-navigate (jump the editor to a changed file) is OFF by default: the
+	-- agent-rail's follow_edit is the canonical live-follow (rail-aware, no focus
+	-- steal, targets the hunk line), and two followers racing the same window was
+	-- a real bug. The watcher's OTHER jobs — reload changed buffers (checktime) and
+	-- emit User FileWatcherChanged for hunk-nvim signs — still run unconditionally.
+	-- :lua require('file-watcher').toggle_follow() re-enables the jump standalone.
+	follow = false,
 	handles = {},
 	dir_count = 0,
 	last_user_move = 0,
