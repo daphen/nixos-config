@@ -80,7 +80,9 @@ let
 
     NSRC=22eac6e9-24d6-4bb5-be44-b36ace7c7bfb   # ANCS notification source
     STAMP=/run/ancs4linux-watchdog.last
+    FAILS=/run/ancs4linux-watchdog.fails
     COOLDOWN=120
+    MAXFAILS=3
 
     # Advertising lapses on its own; without it a phone that wandered off has
     # nothing to reconnect to.
@@ -125,7 +127,10 @@ let
     # No CONNECTED device exposing ANCS: the phone is away. Nothing to heal, and
     # advertising was already re-asserted above so it can come back.
     [ -n "$devpath" ] || exit 0
-    [ "$notifying" = "true" ] && exit 0
+    if [ "$notifying" = "true" ]; then
+      rm -f "$FAILS"
+      exit 0
+    fi
 
     now=$(date +%s)
     if [ -f "$STAMP" ]; then
@@ -134,7 +139,21 @@ let
     fi
     printf '%s' "$now" > "$STAMP"
 
-    echo "ANCS subscription dead while phone is connected; restarting observer"
+    # Restarting the observer only helps when the observer is the problem. When
+    # the PHONE is refusing the subscription — it accepts StartNotify and then
+    # never sets the CCCD, which so far has only cleared by re-pairing — retrying
+    # forever just churns the daemon every couple of minutes and buries the real
+    # signal. Give up after a few tries and say so once.
+    n=$(cat "$FAILS" 2>/dev/null || echo 0)
+    n=$((n + 1))
+    printf '%s' "$n" > "$FAILS"
+    if [ "$n" -gt "$MAXFAILS" ]; then
+      [ "$n" = "$((MAXFAILS + 1))" ] && echo \
+        "ANCS subscription still dead after $MAXFAILS restarts; the phone is refusing it — re-pair needed. Not retrying."
+      exit 0
+    fi
+
+    echo "ANCS subscription dead while phone is connected; restarting observer (attempt $n/$MAXFAILS)"
     systemctl restart ancs4linux-observer || true
   '';
 in
