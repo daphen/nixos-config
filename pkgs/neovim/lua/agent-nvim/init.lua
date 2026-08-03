@@ -8,7 +8,7 @@
 -- get independent rails (e.g. lovable vs personal).
 --
 -- Rail keys — roster:  j/k move · <CR> open · ]a/[a next needing you · n new
---                      . cwd · x stop · a abort · z all · / filter · r refresh · ? help · q close
+--                      . cwd · x stop · a abort · z all · / filter · s search-all · r refresh · ? help · q close
 --          — chat:     ]m/[m next/prev message · <Tab> changes view · Y yank code
 --                      za fold msg · zM/zR fold/unfold all · yr reply · yc convo
 --                      i compose · <Esc> back to roster · (y/n answer approvals)
@@ -103,6 +103,7 @@ local S = {
   displayed = {},     -- the sessions actually shown in the roster (filtered), in order
   collapsed = false,  -- roster collapsed to a summary line
   chat_line_msg = {}, -- chat bufline(0-idx) -> msgIndex
+  scroll_to_msg = {}, -- id -> msgIndex: pending "jump to this message" (cross-session search)
   chat_blocks = {},   -- 1-indexed buflines that start a message block
   readbuf = "",
   spin = 0,
@@ -852,7 +853,21 @@ render_chat = function(scroll)
 
   if S.chatwin and api.nvim_win_is_valid(S.chatwin) then
     if S.view == "chat" then refresh_active_header() end
-    if scroll then pcall(api.nvim_win_set_cursor, S.chatwin, { #lines, 0 }) end
+    -- a pending cross-session-search jump wins over the bottom-scroll; land the
+    -- target message at the top. Only consume the flag once its message actually
+    -- renders (view_session may render before the transcript finishes loading).
+    local jump = S.selected and S.scroll_to_msg[S.selected]
+    local best
+    if jump then
+      for bl, mi in pairs(line_msg) do if mi == jump and (not best or bl < best) then best = bl end end
+    end
+    if best then
+      S.scroll_to_msg[S.selected] = nil
+      pcall(api.nvim_win_set_cursor, S.chatwin, { best + 1, 0 })
+      pcall(api.nvim_win_call, S.chatwin, function() vim.cmd("normal! zt") end)
+    elseif scroll and not jump then
+      pcall(api.nvim_win_set_cursor, S.chatwin, { #lines, 0 })
+    end
   end
   if sync_approval_keys then sync_approval_keys() end
 end
@@ -1932,6 +1947,38 @@ local function chat_yank_convo()
   vim.notify("agent-nvim: copied conversation (" .. #c.msgs .. " messages, " .. #md .. " chars)")
 end
 
+-- Cross-session search: grep every loaded transcript for a substring, pick a hit,
+-- jump straight to that session + message. Claude Code has no cross-session
+-- search — this is the orchestrator's "which agent mentioned X" move.
+local function chat_search()
+  local ok, q = pcall(vim.fn.input, { prompt = "search all sessions: " })
+  if not ok or not q or q == "" then return end
+  local ql, matches = q:lower(), {}
+  for _, a in ipairs(S.roster) do
+    local c = S.chat[a.id]
+    if c and c.msgs then
+      for mi, m in ipairs(c.msgs) do
+        for _, line in ipairs(vim.split(m.text or "", "\n", { plain = true })) do
+          if line:lower():find(ql, 1, true) then
+            local snip = vim.trim(line)
+            if #snip > 56 then snip = snip:sub(1, 53) .. "…" end
+            matches[#matches + 1] = { id = a.id, cwd = a.cwd, mi = mi,
+              label = short_name(a.name) .. "  ·  " .. (m.role == "user" and "you: " or "") .. snip }
+            break -- one hit per message
+          end
+        end
+      end
+    end
+  end
+  if #matches == 0 then vim.notify("agent-nvim: no matches for '" .. q .. "'"); return end
+  vim.ui.select(matches, { prompt = "matches (" .. #matches .. ")", format_item = function(it) return it.label end },
+    function(choice)
+      if not choice then return end
+      S.scroll_to_msg[choice.id] = choice.mi
+      if choice.id ~= S.selected then view_session(choice.id, choice.cwd) else render_chat(false) end
+    end)
+end
+
 --------------------------------------------------------------------------------
 -- changes view: plan (progress.json) first, git diff as fallback/overlay
 --------------------------------------------------------------------------------
@@ -2392,7 +2439,7 @@ end
 
 function M.help()
   float({
-    " roster   attention queue only · z show all (incl idle) · / filter by name",
+    " roster   attention queue · z show all · / filter by name · s search all transcripts",
     "          j/k move · <CR> open · ]a/[a next needing you · n new · . cwd",
     "          x stop · a abort · p peek · z show all",
     " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
@@ -2671,6 +2718,7 @@ ensure_buf = function()
   map("<Esc>", function()
     if S.roster_filter ~= "" then S.roster_filter = ""; S.focus = 1; render_roster() end
   end)
+  map("s", function() chat_search() end) -- grep every transcript → jump to the hit
   map("p", function() M.peek() end)
   -- ]a / [a — cycle to the next/prev session that needs YOU (pending approval or
   -- error), across the whole roster, and open it. Juggling many agents: jump
