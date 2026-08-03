@@ -355,7 +355,7 @@ local function tool_edits(c, cwd)
     if r.na > 0 and gb == 0 then gb = 1 elseif r.nd > 0 and gb == BARW then gb = BARW - 1 end
     lines[#lines + 1] = HUNK .. r.rng .. pad(r.rng, rw) .. "   " .. pad(r.add, aw) .. r.add
       .. "  " .. pad(r.del, dw) .. r.del .. "   " .. string.rep("█", BARW)
-    hunks[#hunks + 1] = { path = r.path, anchor = r.anchor, line = r.line, gb = gb }
+    hunks[#hunks + 1] = { path = r.path, anchor = r.anchor, line = r.line, gb = gb, na = r.na, nd = r.nd }
   end
   return table.concat(lines, "\n"), hunks
 end
@@ -1211,10 +1211,15 @@ handle = function(obj)
     local c = S.chat[obj.session] or { msgs = {} }
     c.msgs[#c.msgs + 1] = { role = "assistant", text = text, hunks = hunks }
     S.chat[obj.session] = c
-    -- remember which files the agent touched, to reload them at turn end
+    -- remember which files the agent touched (value = accumulated edit size, used
+    -- to settle the editor on the turn's biggest file at turn end).
     if hunks and #hunks > 0 then
       S.edited[obj.session] = S.edited[obj.session] or {}
-      for _, h in ipairs(hunks) do if h.path then S.edited[obj.session][h.path] = true end end
+      for _, h in ipairs(hunks) do
+        if h.path then
+          S.edited[obj.session][h.path] = (S.edited[obj.session][h.path] or 0) + (h.na or 0) + (h.nd or 0)
+        end
+      end
       -- live-follow: open the most-recently edited file in the editor window so it
       -- tracks the agent instead of sitting on the plan (focus stays in the rail).
       if obj.session == S.selected then
@@ -1326,6 +1331,14 @@ handle = function(obj)
       end
     end
     S.summary[obj.session] = { recap = recap, files = files }
+    -- Settle the editor on the turn's most-substantial file (by accumulated edit
+    -- size), so a final tiny write — e.g. an archived-stub pointer — doesn't leave
+    -- you parked on a near-empty file after live-follow tracked the last edit.
+    if obj.session == S.selected and ed then
+      local best, bestn = nil, -1
+      for p, n in pairs(ed) do if (n or 0) > bestn then best, bestn = p, (n or 0) end end
+      if best then follow_edit(session_cwd(obj.session), best, nil) end
+    end
     if obj.session == S.selected then render_chat(false) end
   elseif t == "extension_ui_request" then
     local m = obj.method
