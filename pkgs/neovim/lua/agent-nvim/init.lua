@@ -1873,6 +1873,30 @@ local function chat_open_ref()
   open_in_editor(nil, path or loc, l1)
 end
 
+-- extract an http(s) URL spanning the cursor column, trailing sentence
+-- punctuation stripped. col is 0-indexed byte.
+local function url_under_cursor(line, col)
+  local i = 1
+  while true do
+    local s, e, u = line:find("(https?://[%w%._~:/%?#%[%]@!$&'()*+,;=%%~-]+)", i)
+    if not s then return nil end
+    if col + 1 >= s and col + 1 <= e then return (u:gsub("[%.,%)%]}>\"']+$", "")) end
+    i = e + 1
+  end
+end
+
+-- gx in the chat: open the URL under the cursor (PR / preview / docs links the
+-- agent emits) via the system opener, in the work browser.
+local function chat_open_url()
+  if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
+  local pos = api.nvim_win_get_cursor(S.chatwin)
+  local line = api.nvim_buf_get_lines(S.chatbuf, pos[1] - 1, pos[1], false)[1] or ""
+  local u = url_under_cursor(line, pos[2])
+  if not u then vim.notify("agent-nvim: no URL at cursor", vim.log.levels.INFO); return end
+  if vim.ui.open then vim.ui.open(u) else fn.jobstart({ "xdg-open", u }, { detach = true }) end
+  vim.notify("agent-nvim: opening " .. u)
+end
+
 -- <CR>/gf in the chat: jump to the hunk under the cursor — open its file (kept
 -- current by the file-watcher) and land on the changed line — else fall back to
 -- a fenced-code file reference.
@@ -2460,7 +2484,7 @@ function M.help()
     "          j/k move · <CR> open · ]a/[a next needing you · n new · . cwd",
     "          x stop · a abort · p peek · z show all",
     " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
-    "          gf open ref (hunk · fence · inline path:line) · i compose · <Esc> roster",
+    "          gf open ref (hunk · fence · inline path:line) · gx open url · i compose",
     " changes  <CR> open file · ]f/[f next file · <Tab> back to chat · r refresh",
     " composer <CR> send · <C-s> send(insert) · <C-f> attach · <C-↑/↓> scroll chat",
     "          <C-x> drop attachments · q roster · / commands",
@@ -2538,6 +2562,7 @@ ensure_buf = function()
   cmap("yr", function() chat_yank_reply() end) -- yank (copy) the last agent reply
   cmap("yc", function() chat_yank_convo() end) -- yank the whole conversation as md
   cmap("gf", function() chat_open() end)
+  cmap("gx", function() chat_open_url() end) -- open the URL under the cursor
   cmap("<CR>", function() chat_open() end)
   cmap("<Esc>", function()
     -- a pending approval? Esc cancels it (real: sends {cancelled}; mock: just clears)
