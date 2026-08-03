@@ -696,7 +696,15 @@ render_chat = function(scroll)
   local has_any = chat and chat.msgs and #chat.msgs > 0
 
   if not has_any and not (S.selected and S.stream[S.selected]) then
-    decor[#decor + 1] = { line = push(S.selected and "  …no messages yet — compose below" or "  ↑ press <CR> on a session above to open it"), fg = "AgentMuted" }
+    local empty
+    if S.selected and S.reloading and S.reloading[S.selected] then
+      empty = "  ↻ restarting — reloading MCP config…"
+    elseif S.selected then
+      empty = "  …no messages yet — compose below"
+    else
+      empty = "  ↑ press <CR> on a session above to open it"
+    end
+    decor[#decor + 1] = { line = push(empty), fg = "AgentMuted" }
   else
     if chat and chat.msgs then
       for mi, m in ipairs(chat.msgs) do
@@ -1028,6 +1036,7 @@ handle = function(obj)
       end
     end
     S.chat[obj.session] = { msgs = msgs }
+    if S.reloading then S.reloading[obj.session] = nil end -- pi's back, restart done
     if obj.session == S.selected then render_chat(true) end
   elseif t == "rewound" and obj.session then
     -- true rewind landed: pi respawned on the truncated session. Reload the
@@ -1138,10 +1147,18 @@ handle = function(obj)
     if type(msg) == "table" then msg = msg.message or msg.text end
     local sid = obj.session or S.selected
     if sid then
-      S.errors = S.errors or {}
-      S.errors[sid] = tostring(msg or "unknown error")
-      S.stream[sid] = nil
-      if sid == S.selected then render_chat(true) end
+      -- During a /reload, the ~2s pi-boot gap yields an expected "pi not running"
+      -- / "no running session" — swallow ONLY those while reloading. Any other
+      -- error (or these outside a reload) still surfaces normally.
+      local ms = tostring(msg or "")
+      local transient = S.reloading and S.reloading[sid]
+        and (ms:match("pi not running") or ms:match("no running session"))
+      if not transient then
+        S.errors = S.errors or {}
+        S.errors[sid] = tostring(msg or "unknown error")
+        S.stream[sid] = nil
+        if sid == S.selected then render_chat(true) end
+      end
     else
       vim.notify("agent error: " .. tostring(msg or "unknown"), vim.log.levels.ERROR)
     end
@@ -1325,6 +1342,13 @@ local function reload_session(sid, cwd)
   if not (sid and cwd and cwd ~= "") then vim.notify("agent-nvim: open a session first"); return end
   send({ type = "stop", session = sid })
   S.stream[sid] = nil
+  -- mark reloading so the ~2s pi-boot gap shows "restarting…" instead of a
+  -- scary "pi not running" error; cleared when messages land (pi's back), with a
+  -- safety timeout so a genuinely-dead pi still surfaces its error eventually.
+  S.reloading = S.reloading or {}
+  S.reloading[sid] = true
+  vim.defer_fn(function() if S.reloading then S.reloading[sid] = nil end end, 12000)
+  if sid == S.selected then render_chat(false) end
   vim.notify("agent-nvim: restarting " .. short_name(sid) .. " — reloading MCP config…")
   vim.defer_fn(function()
     send({ type = "spawn", session = sid, cwd = cwd })
