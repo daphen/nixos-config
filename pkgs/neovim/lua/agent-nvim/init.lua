@@ -2772,14 +2772,17 @@ ensure_buf = function()
   })
 
   -- composer keymaps
-  -- <C-Up>/<C-Down> scroll the transcript (half-page) without leaving the
-  -- composer — read back through the conversation while you keep typing. Chosen
-  -- because they don't collide with insert-mode C-u (kill-line) or the C-j/k nav.
+  -- <C-u>/<C-d> (and <C-Up>/<C-Down>) scroll the TRANSCRIPT half-page without
+  -- leaving the composer — scroll_chat drives the chat window via win_call, so
+  -- the composer cursor never moves. Mapping C-u/C-d in insert mode trades away
+  -- readline kill-line / unindent there (fine for a short message input).
   local function scroll_chat(up)
     if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
     local keys = api.nvim_replace_termcodes(up and "<C-u>" or "<C-d>", true, false, true)
     pcall(api.nvim_win_call, S.chatwin, function() vim.cmd("normal! " .. keys) end)
   end
+  vim.keymap.set({ "n", "i" }, "<C-u>", function() scroll_chat(true) end, { buffer = S.composerbuf, nowait = true, silent = true })
+  vim.keymap.set({ "n", "i" }, "<C-d>", function() scroll_chat(false) end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set({ "n", "i" }, "<C-Up>", function() scroll_chat(true) end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set({ "n", "i" }, "<C-Down>", function() scroll_chat(false) end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("n", "<CR>", composer_send, { buffer = S.composerbuf, nowait = true, silent = true })

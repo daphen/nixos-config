@@ -7,6 +7,10 @@ set -e
 
 DIR=$(dirname "$0")
 
+# TEMP debug: record every invocation so we can see what Super+I passes for a
+# rail notification (remove once the agent-rail jump is confirmed).
+printf '%s  args=[%s]\n' "$(date +%T)" "$*" >> /tmp/notif-dispatch.log 2>/dev/null || true
+
 # Focus a window whose app_id matches $1 (substring, either direction).
 focus_app_window() {
     local la win
