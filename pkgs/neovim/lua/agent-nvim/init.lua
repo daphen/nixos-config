@@ -851,8 +851,13 @@ render_chat = function(scroll)
   S.chat_line_msg = line_msg
   S.chat_blocks = blocks
 
-  if S.chatwin and api.nvim_win_is_valid(S.chatwin) then
-    if S.view == "chat" then refresh_active_header() end
+  -- cursor/scroll ops only when the chat buffer is the one actually shown in the
+  -- window (changes view swaps in S.changesbuf) — else a background stream would
+  -- yank the changes-view cursor, and the search-jump would consume its flag
+  -- against the wrong buffer. The pending jump persists until chat is visible
+  -- again (toggle_view → render_chat), then fires.
+  if S.chatwin and api.nvim_win_is_valid(S.chatwin) and S.view == "chat" then
+    refresh_active_header()
     -- a pending cross-session-search jump wins over the bottom-scroll; land the
     -- target message at the top. Only consume the flag once its message actually
     -- renders (view_session may render before the transcript finishes loading).
