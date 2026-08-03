@@ -840,7 +840,13 @@ render_chat = function(scroll)
   api.nvim_buf_clear_namespace(S.chatbuf, S.ns, 0, -1)
   for _, d in ipairs(decor) do
     if d.bg then
-      pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0, { line_hl_group = d.bg, priority = 60 })
+      -- priority 190 puts our full-line fill ABOVE markview's code-block bg. On
+      -- nvim 0.12 line_hl_group fills every screen row of a wrapped line, but
+      -- markview's block padding (higher default priority) was winning on the
+      -- wrapped continuation rows and leaving them unfilled — the ragged tail on
+      -- long code lines. Winning the priority makes the rectangle uniform. bg-only,
+      -- so markview's syntax fg still layers on top.
+      pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0, { line_hl_group = d.bg, priority = 190 })
     end
     if d.fg then pcall(api.nvim_buf_add_highlight, S.chatbuf, S.ns, d.fg, d.line, d.cs or 0, d.ce or -1) end
     if d.caret then
