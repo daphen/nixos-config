@@ -2677,13 +2677,17 @@ reflect_context = function(cwd)
     api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(remembered)) end)
     return
   end
-  -- The dashboard/scratch is unnamed (name==""), so WITHOUT this it tripped the
-  -- name=="" keep-branch on the next switch and stuck the previous session's
-  -- (or a blank) buffer on the returning session. Always re-render it for the
-  -- new session. A user's own unnamed buffer (not our scratch) is still kept.
+  -- Render the dashboard when the editor is our scratch OR a blank/unmodified
+  -- [No Name] buffer — that's the default empty state, and it should default to
+  -- the dashboard, not sit empty. (Re-rendering the scratch also refreshes it for
+  -- the session you switch back to.) A user's own unnamed buffer WITH content, or
+  -- a real file, is left alone.
   local is_scratch = S.scratchbuf and curbuf == S.scratchbuf
-  if not is_scratch then
-    if name == "" or name:sub(1, #cwd + 1) == cwd .. "/" then return end -- empty or already here
+  local blank = name == "" and not vim.bo[curbuf].modified
+    and api.nvim_buf_line_count(curbuf) <= 1
+    and (api.nvim_buf_get_lines(curbuf, 0, 1, false)[1] or "") == ""
+  if not (is_scratch or blank) then
+    if name == "" or name:sub(1, #cwd + 1) == cwd .. "/" then return end -- your scratch, or a file already here
     local stale = false
     for _, a in ipairs(S.roster) do
       if a.cwd and a.cwd ~= "" and a.cwd ~= cwd and name:sub(1, #a.cwd + 1) == a.cwd .. "/" then stale = true; break end
