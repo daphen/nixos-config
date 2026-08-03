@@ -1504,23 +1504,17 @@ local RAIL_CMDS = {
   { "help", "rail cheatsheet" },
 }
 
--- pi's own built-in slash commands — the rail forwards these straight to pi (they
--- are NOT intercepted by run_slash), so listing them here just makes them
--- discoverable in the composer's slash menu. Curated to the useful, non-conflicting
--- set (rail already owns clear/model/help/etc). Names must match pi's registry.
+-- pi commands the rail forwards straight to pi as a prompt (NOT intercepted by
+-- run_slash). Only pi's PROMPT-INVOCABLE commands work this way — i.e. its
+-- extension/prompt/skill commands (RpcSlashCommand.source). pi's built-in TUI
+-- commands (/reload, /compact, /copy, /context, …) do NOT execute in --mode rpc;
+-- they arrive as ordinary text, so they must NOT be listed here or they mislead.
+-- These two are pi-mcp-adapter EXTENSION commands and do execute via the rail.
+-- (A dynamic feed from pi's get_commands RPC would list the full accurate set —
+-- see agent-rail.md follow-ups.)
 local PI_CMDS = {
   { "mcp-auth", "authenticate an MCP server <name>" },
   { "mcp", "MCP server status" },
-  { "reload", "reload config · extensions · skills · prompts" },
-  { "compact", "compact the session context" },
-  { "copy", "copy last agent message" },
-  { "context", "show context-window usage" },
-  { "cost", "session cost + token usage" },
-  { "tools", "list available tools" },
-  { "session", "session info + stats" },
-  { "settings", "open pi settings" },
-  { "hotkeys", "pi keyboard shortcuts" },
-  { "export", "export session (HTML/JSONL)" },
 }
 
 local function slash_items()
@@ -2541,7 +2535,7 @@ function M.help()
     "          <leader>as (visual) send selection · :AgentSend / File / Diff / Diagnostics",
     "",
     " slash    rail: /abort /steer /clear /diff /plan /retry /model /think /help",
-    "          pi:   /mcp-auth /mcp /reload /compact /copy /context /cost /tools …",
+    "          pi:   /mcp-auth /mcp · skills/templates · (TUI cmds like /reload don't run via rpc)",
   }, "agent rail — keys")
 end
 
