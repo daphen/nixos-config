@@ -660,7 +660,12 @@ render_roster = function()
       -- (caps, model, cost) inherit the card bg instead of punching Normal-bg
       -- holes through it (the overlay-virt-text bug). Active states wear a filled
       -- pill; the resting idle state is plain fg-only text (see session_state).
-      local segs = sstate.plain and {
+      -- On the FOCUSED (carded) row, use plain coloured text, not the filled pill:
+      -- the pill's rounded end-caps have a transparent bg, so on the card they pick
+      -- up the card grey instead of the dark Normal bg and the whole pill reads
+      -- muddy/black. Coloured text (green/red/amber fg) pops cleanly on the card.
+      -- The pill stays for unfocused rows, where it sits on the dark bg and pops.
+      local segs = (sstate.plain or focused) and {
         -- align label under the name (name sits at col 4: 2 pad + glyph + space)
         { t = "    " .. sstate.label, hl = sstate.name },
       } or {
