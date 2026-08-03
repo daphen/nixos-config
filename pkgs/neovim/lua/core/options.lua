@@ -98,7 +98,10 @@ vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHo
 })
 vim.api.nvim_create_autocmd("FileChangedShellPost", {
 	pattern = "*",
-	command = "echohl WarningMsg | echo 'File changed on disk. Buffer reloaded.' | echohl None",
+	-- echomsg (kept in :messages) without WarningMsg, so it no longer promotes to
+	-- a desktop toast — the agent constantly rewrites open buffers (plan pulls,
+	-- edits) in the cockpit, which made the warning pure noise.
+	command = "echomsg 'File changed on disk. Buffer reloaded.'",
 })
 
 -- Fix AltGr (Right Alt) behavior for Swedish characters
