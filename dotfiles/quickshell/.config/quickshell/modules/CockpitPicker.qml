@@ -10,10 +10,20 @@ Picker {
     open: CockpitState.open
     onCloseRequested: CockpitState.open = false
 
-    placeholder: "contexts…  ·  name → create · ticket id (EVERY-1234) → plan-ticket"
+    placeholder: "contexts…"
     enterLabel: "switch"
     altLabel: "Ctrl+Enter: open app · Ctrl+P: open plan · Ctrl+W: close context"
-    emptyText: "no contexts — type a name + enter to create one"
+    // Say what Enter will do with what is actually typed, instead of teaching
+    // all three behaviours up front in the placeholder. Mirrors the predicates
+    // in onEmptyEnter below — keep the two in step.
+    emptyText: {
+        const t = root.query.trim()
+        if (t.length === 0) return "type a name + enter to create a context"
+        if (/^[a-zA-Z]{2,}-\d+$/.test(t)) return "enter → plan " + t.toUpperCase()
+        if (/^\d+$/.test(t)) return "enter → plan EVERY-" + t
+        const name = t.replace(/[^a-zA-Z0-9-]/g, "")
+        return name.length ? "enter → create context “" + name + "”" : "type a name + enter to create a context"
+    }
     trailingField: "trailing"
     trailingColorField: "trailingColor"
     ctrlEnterAlt: true
