@@ -2510,9 +2510,13 @@ end
 -- swap it for the new session's plan (if any) or a clean scratch. A file not
 -- under any session's worktree (e.g. ~/nixos) is your own work — left untouched.
 -- Runs via win_call so it never steals focus from the rail.
--- Placeholder shown in the editor when a session has no plan and no open file —
--- instead of a bare empty buffer. Left unnamed (like enew) so lualine shows no
--- filename and reflect_context treats it as replaceable. Reused across sessions.
+-- Session dashboard shown in the editor when a session has no plan open and no
+-- edited file yet — instead of a bare empty buffer. Shows plan status + flow,
+-- the worktree's changed files, and a bottom-right action box (open plan / app /
+-- devenv / Linear ticket). Left unnamed (like enew) so lualine shows no filename
+-- and reflect_context treats it as replaceable. Reused across sessions; the
+-- editor follows the agent's edits away from it during a turn.
+local dash_keys
 local function show_scratch(win, cwd)
   if not (S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf)) then
     S.scratchbuf = api.nvim_create_buf(false, true)
@@ -2520,30 +2524,116 @@ local function show_scratch(win, cwd)
     vim.bo[S.scratchbuf].bufhidden = "hide"
     vim.bo[S.scratchbuf].swapfile = false
   end
+  local buf = S.scratchbuf
+  local W = math.max(48, api.nvim_win_get_width(win))
+  local H = math.max(12, api.nvim_win_get_height(win))
+  local lines, decor = {}, {}
+  local function push(l) lines[#lines + 1] = l or ""; return #lines - 1 end
+  local function hl(ln, grp, cs, ce) decor[#decor + 1] = { ln = ln, grp = grp, cs = cs or 0, ce = ce or -1 } end
+
   local nm = short_name(S.selected) or fn.fnamemodify(cwd, ":t")
-  local lines = {
-    "",
-    "",
-    "    ▸ " .. nm,
-    "    " .. fn.fnamemodify(cwd, ":~"),
-    "",
-    "    Nothing open here yet — the editor follows the agent's edits as it works.",
-    "",
-    "    ⏎  open a file from a chat hunk      ·      :AgentEdit  open any file",
-  }
-  vim.bo[S.scratchbuf].modifiable = true
-  api.nvim_buf_set_lines(S.scratchbuf, 0, -1, false, lines)
-  vim.bo[S.scratchbuf].modifiable = false
-  api.nvim_buf_clear_namespace(S.scratchbuf, S.ns, 0, -1)
-  local function hl(ln, grp, cs, ce) pcall(api.nvim_buf_add_highlight, S.scratchbuf, S.ns, grp, ln, cs or 0, ce or -1) end
-  hl(2, "AgentAccent")  -- ▸ session name
-  hl(3, "AgentMuted")   -- worktree path
-  hl(5, "AgentIdle")    -- headline
-  hl(7, "AgentMuted")   -- hint row
-  hl(7, "AgentAccent", 4, 7)   -- ⏎
-  local es = lines[8]:find(":AgentEdit")
-  if es then hl(7, "AgentAccent", es - 1, es + 9) end
-  pcall(api.nvim_win_set_buf, win, S.scratchbuf)
+  local tik = (S.selected or ""):match("%a+%-%d+")
+  push("")
+  hl(push("    ▸ " .. nm), "AgentAccent")
+  hl(push(file_row(W - 2, "    ", fn.fnamemodify(cwd, ":~"))), "AgentMuted")
+  push("")
+
+  -- plan status + flow steps
+  local pl = load_plan(cwd)
+  if pl and pl.progress then
+    local pg = pl.progress
+    local done, total = 0, 0
+    for _, s in ipairs(pg.flow or {}) do total = total + 1; if s.status == "done" then done = done + 1 end end
+    hl(push("    plan · " .. pl.key .. " · " .. (pg.phase or "?")
+      .. (total > 0 and ("   ◆ " .. done .. "/" .. total) or "")), "AgentMuted")
+    local savail = math.max(12, (W - 2) - 8) -- indent "      ● " = 8 display cols
+    for _, s in ipairs(pg.flow or {}) do
+      local g = s.status == "done" and "●" or (s.status == "active" and "◐" or "○")
+      local grp = s.status == "done" and "AgentStream" or (s.status == "active" and "AgentAccent" or "AgentIdle")
+      local step = s.step or ""
+      if #step > savail then step = step:sub(1, savail - 1) .. "…" end -- tail-cut: keep the start
+      local ln = push("      " .. g .. " " .. step)
+      hl(ln, "AgentFile")
+      hl(ln, grp, 6, 6 + #g)
+    end
+    push("")
+  end
+
+  -- changed files (worktree diff vs base) — right-aligned +adds −dels, path
+  -- head-truncated to fit; capped so the action box still lands at the bottom.
+  local ch = git_changes(cwd)
+  if #ch > 0 then
+    local ta, td = 0, 0
+    for _, c in ipairs(ch) do ta = ta + c.add; td = td + c.del end
+    hl(push("    changes · " .. #ch .. (#ch == 1 and " file · +" or " files · +") .. ta .. " -" .. td), "AgentMuted")
+    local aw, dw = 0, 0
+    for _, c in ipairs(ch) do aw = math.max(aw, #("+" .. c.add)); dw = math.max(dw, #("-" .. c.del)) end
+    local cap = math.min(#ch, math.max(4, H - 14))
+    for i = 1, cap do
+      local c = ch[i]
+      local acol = string.rep(" ", aw - #("+" .. c.add)) .. "+" .. c.add
+      local dcol = string.rep(" ", dw - #("-" .. c.del)) .. "-" .. c.del
+      local line = file_row(W - 2, "      • ", c.path, acol, dcol)
+      local ln = push(line)
+      hl(ln, "AgentFile")
+      hl(ln, "AgentMuted", 6, 9) -- the • bullet
+      local ps, pe = line:find("%+%d+"); if ps then hl(ln, "AgentStream", ps - 1, pe) end
+      local ms, me = line:find("%-%d+", (pe or 0) + 1); if ms then hl(ln, "AgentErr", ms - 1, me) end
+    end
+    if #ch > cap then hl(push("      … and " .. (#ch - cap) .. " more"), "AgentMuted") end
+  end
+
+  -- bottom-right action box (keys are buffer-local maps, set below)
+  local rows = { { "p", "plan" }, { "a", "app" }, { "d", "devenv" } }
+  if tik then rows[#rows + 1] = { "l", "ticket · " .. tik:upper() } end
+  rows[#rows + 1] = { "c", "changes" }
+  rows[#rows + 1] = { "r", "refresh" }
+  local labels = {}
+  local inner = 0
+  for _, r in ipairs(rows) do
+    local s = "  " .. r[1] .. "   " .. r[2] .. "  "
+    labels[#labels + 1] = s; inner = math.max(inner, #s)
+  end
+  local box = { "┌" .. string.rep("─", inner) .. "┐" }
+  for _, s in ipairs(labels) do box[#box + 1] = "│" .. s .. string.rep(" ", inner - #s) .. "│" end
+  box[#box + 1] = "└" .. string.rep("─", inner) .. "┘"
+  local leftpad = math.max(1, W - (inner + 2) - 2)
+  local target = math.max(#lines + 1, H - #box - 1)
+  while #lines < target do push("") end
+  for bi, bl in ipairs(box) do
+    local ln = push(string.rep(" ", leftpad) .. bl)
+    hl(ln, "AgentMuted")
+    if bi > 1 and bi <= #labels + 1 then
+      -- accent the key char: leftpad + │(3 bytes) + 2 spaces
+      hl(ln, "AgentAccent", leftpad + 5, leftpad + 6)
+    end
+  end
+
+  vim.bo[buf].modifiable = true
+  api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+  api.nvim_buf_clear_namespace(buf, S.ns, 0, -1)
+  for _, d in ipairs(decor) do pcall(api.nvim_buf_add_highlight, buf, S.ns, d.grp, d.ln, d.cs, d.ce) end
+  dash_keys(buf, win, cwd, pl and pl.key, tik)
+  pcall(api.nvim_win_set_buf, win, buf)
+end
+
+-- Buffer-local actions for the dashboard. Re-bound each render so they carry the
+-- current session's cwd / plan key / ticket.
+dash_keys = function(buf, win, cwd, key, tik)
+  local function map(lhs, fn_) vim.keymap.set("n", lhs, fn_, { buffer = buf, nowait = true, silent = true }) end
+  map("p", function() pcall(function() require("plan-nvim").open(key) end) end)
+  map("a", function() fn.jobstart({ os.getenv("HOME") .. "/.config/niri/scripts/browser-work" }, { detach = true }) end)
+  map("d", function() fn.jobstart({ os.getenv("HOME") .. "/.config/niri/scripts/cockpit-focus", "devenv" }, { detach = true }) end)
+  map("c", function() S.view = "changes"; if render_changes then render_changes() end
+    if S.chatwin and api.nvim_win_is_valid(S.chatwin) then pcall(api.nvim_set_current_win, S.chatwin) end end)
+  map("r", function() show_scratch(win, cwd) end)
+  if tik then
+    map("l", function()
+      local u = "https://linear.app/lovable/issue/" .. tik:upper()
+      if vim.ui.open then vim.ui.open(u) else fn.jobstart({ "xdg-open", u }, { detach = true }) end
+    end)
+  end
 end
 
 reflect_context = function(cwd)
