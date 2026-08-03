@@ -2643,7 +2643,8 @@ reflect_context = function(cwd)
     if not api.nvim_buf_get_name(api.nvim_win_get_buf(w)):match("agent%-") then ed = w; break end
   end
   if not ed then return end
-  local name = api.nvim_buf_get_name(api.nvim_win_get_buf(ed))
+  local curbuf = api.nvim_win_get_buf(ed)
+  local name = api.nvim_buf_get_name(curbuf)
   -- Restore the file you had open in this session last time (per-session memory).
   local remembered = S.last_file and S.selected and S.last_file[S.selected]
   if remembered and remembered ~= name and remembered:sub(1, #cwd + 1) == cwd .. "/"
@@ -2651,12 +2652,19 @@ reflect_context = function(cwd)
     api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(remembered)) end)
     return
   end
-  if name == "" or name:sub(1, #cwd + 1) == cwd .. "/" then return end -- empty or already here
-  local stale = false
-  for _, a in ipairs(S.roster) do
-    if a.cwd and a.cwd ~= "" and a.cwd ~= cwd and name:sub(1, #a.cwd + 1) == a.cwd .. "/" then stale = true; break end
+  -- The dashboard/scratch is unnamed (name==""), so WITHOUT this it tripped the
+  -- name=="" keep-branch on the next switch and stuck the previous session's
+  -- (or a blank) buffer on the returning session. Always re-render it for the
+  -- new session. A user's own unnamed buffer (not our scratch) is still kept.
+  local is_scratch = S.scratchbuf and curbuf == S.scratchbuf
+  if not is_scratch then
+    if name == "" or name:sub(1, #cwd + 1) == cwd .. "/" then return end -- empty or already here
+    local stale = false
+    for _, a in ipairs(S.roster) do
+      if a.cwd and a.cwd ~= "" and a.cwd ~= cwd and name:sub(1, #a.cwd + 1) == a.cwd .. "/" then stale = true; break end
+    end
+    if not stale then return end -- your own file elsewhere → keep it
   end
-  if not stale then return end -- your own file elsewhere → keep it
   local pl = load_plan(cwd)
   local pdir = plandir(cwd)
   local plan_md = pl and pl.key and pdir and (pdir .. "/" .. pl.key .. ".md")
