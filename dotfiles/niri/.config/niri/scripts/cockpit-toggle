@@ -31,4 +31,9 @@ done < "$COCKPIT_STATE_DIR/recent" 2>/dev/null
 
 [ -n "${COCKPIT_WORKSPACE:-}" ] \
     && niri msg action focus-workspace "$COCKPIT_WORKSPACE" >/dev/null 2>&1 || true
-exec "$(dirname "$(readlink -f "$0")")/cockpit-switch" "$target"
+# Switch the devenv (+ agent) tab and the active marker, but NOT the nvim window
+# — the rail is one control surface and follows the active context on its own
+# (matches CockpitState.switchTo / Super+T). Switching nvim would yank you to a
+# per-context nvim, which is the "toggles neovim windows" bug.
+exec env COCKPIT_SWITCH_WINDOWS='devenv agent' \
+    "$(dirname "$(readlink -f "$0")")/cockpit-switch" "$target"
