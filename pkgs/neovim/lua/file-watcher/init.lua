@@ -266,11 +266,24 @@ watch_dir = function(dir)
 	end
 end
 
+-- Tear down every watch (used to re-root onto a new worktree on session switch).
+function M.stop()
+	for _, h in pairs(state.handles) do pcall(function() h:close() end) end
+	state.handles = {}
+	state.dir_count = 0
+	state.running = false
+	state.content_sig = {} -- root-scoped caches; drop so the new root re-derives clean
+	state.ignored_dirs = {}
+	state.pending_nav = nil
+end
+
 function M.start()
-	if state.running then
-		return
-	end
 	local root = vim.fn.getcwd()
+	-- Re-root on cwd change: a roster/session switch tcd's to that session's
+	-- worktree, so follow must move with it. No-op if the root is unchanged; else
+	-- tear down and rebuild on the new root (was pinned to nvim's first cwd forever).
+	if state.running and state.root == root then return end
+	if state.running then M.stop() end
 	local t0 = vim.uv.hrtime()
 	local files = vim.fn.systemlist({
 		"git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard",
