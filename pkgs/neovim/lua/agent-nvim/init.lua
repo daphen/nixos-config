@@ -1247,6 +1247,7 @@ handle = function(obj)
     -- the ENTIRE turn is complete (fires once, after every round).
     S.stream[obj.session] = nil
     if S.turn_active then S.turn_active[obj.session] = nil end
+    local flushed_queue = false
     if S.queued and S.queued[obj.session] then
       -- a message queued mid-turn becomes the next turn now (only at true end,
       -- so it isn't injected between the agent's own tool rounds)
@@ -1255,6 +1256,7 @@ handle = function(obj)
       cq.msgs[#cq.msgs + 1] = { role = "user", text = q }
       S.chat[obj.session] = cq
       send({ type = "prompt", session = obj.session, message = q })
+      flushed_queue = true
     elseif not S.pending[obj.session] and obj.session ~= S.selected then
       -- a background agent finished and isn't blocked on you → one notify
       desktop_notify(obj.session, "finished — ready for you", "normal")
@@ -1262,8 +1264,11 @@ handle = function(obj)
     -- If the turn produced NO assistant reply (last message is still the user's
     -- prompt), the answer was dropped — almost always mid-turn context
     -- compaction on a near-full session. Say so instead of rendering silence.
+    -- Skip when we just appended a queued prompt (its answer is still coming), and
+    -- guard S.errors (lazily created — nil on a session's first clean turn).
     local c = S.chat[obj.session]
-    if c and c.msgs and #c.msgs > 0 and c.msgs[#c.msgs].role == "user" and not S.errors[obj.session] then
+    if not flushed_queue and c and c.msgs and #c.msgs > 0 and c.msgs[#c.msgs].role == "user"
+      and not (S.errors and S.errors[obj.session]) then
       c.msgs[#c.msgs + 1] = { role = "assistant",
         text = THINK .. "no reply — the turn ended without an answer (likely context compaction). Re-ask, or start a fresh session for research-heavy tasks." }
     end
