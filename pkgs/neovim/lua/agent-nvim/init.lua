@@ -2298,6 +2298,9 @@ follow_edit = function(cwd, path, line)
     end
     if line then pcall(api.nvim_win_set_cursor, target, { tonumber(line), 0 }); vim.cmd("normal! zz") end
   end)
+  -- tag the followed buffer with the owning session so reflect_context swaps it
+  -- out when you switch to a different session (even for out-of-worktree files).
+  S.editor_owner = { buf = api.nvim_win_get_buf(target), session = S.selected }
 end
 
 -- reverse bridge: open the file referenced in the nearest fenced-code header
@@ -2670,12 +2673,13 @@ reflect_context = function(cwd)
   if not ed then return end
   local curbuf = api.nvim_win_get_buf(ed)
   local name = api.nvim_buf_get_name(curbuf)
+  local function own() S.editor_owner = { buf = api.nvim_win_get_buf(ed), session = S.selected } end
   -- Restore the file you had open in this session last time (per-session memory).
   local remembered = S.last_file and S.selected and S.last_file[S.selected]
   if remembered and remembered ~= name and remembered:sub(1, #cwd + 1) == cwd .. "/"
     and fn.filereadable(remembered) == 1 then
     api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(remembered)) end)
-    return
+    own(); return
   end
   -- Render the dashboard when the editor is our scratch OR a blank/unmodified
   -- [No Name] buffer — that's the default empty state, and it should default to
@@ -2688,7 +2692,12 @@ reflect_context = function(cwd)
   local blank = greeter or (name == "" and not vim.bo[curbuf].modified
     and api.nvim_buf_line_count(curbuf) <= 1
     and (api.nvim_buf_get_lines(curbuf, 0, 1, false)[1] or "") == "")
-  if not (is_scratch or blank) then
+  -- A buffer the RAIL opened for ANOTHER session (e.g. the orchestrator following
+  -- a vault note, which isn't under any worktree so the stale check misses it) is
+  -- that session's context — swap it for this session's, don't treat it as your
+  -- own file. Files YOU opened aren't owned, so they're still kept below.
+  local owned_other = S.editor_owner and S.editor_owner.buf == curbuf and S.editor_owner.session ~= S.selected
+  if not (is_scratch or blank or owned_other) then
     if name == "" or name:sub(1, #cwd + 1) == cwd .. "/" then return end -- your scratch, or a file already here
     local stale = false
     for _, a in ipairs(S.roster) do
@@ -2704,6 +2713,7 @@ reflect_context = function(cwd)
   else
     show_scratch(ed, cwd)
   end
+  own()
 end
 
 -- Map a session cwd to its cockpit context name (~/work/lovable → "main";
