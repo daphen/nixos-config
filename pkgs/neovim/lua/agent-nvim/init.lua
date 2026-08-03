@@ -8,7 +8,7 @@
 -- get independent rails (e.g. lovable vs personal).
 --
 -- Rail keys — roster:  j/k move · <CR> open · ]a/[a next needing you · n new
---                      . cwd · x stop · a abort · z all · / filter · s search-all · r refresh · ? help · q close
+--                      . cwd · x stop · a abort · <C-r> restart pi · z all · / filter · s search · r refresh · ? help · q close
 --          — chat:     ]m/[m next/prev message · <Tab> changes view · Y yank code
 --                      za fold msg · zM/zR fold/unfold all · yr reply · yc convo
 --                      i compose · <Esc> back to roster · (y/n answer approvals)
@@ -1316,6 +1316,22 @@ local function reload_messages(sid)
   end
 end
 
+-- Cleanly restart a session's pi: stop it, then respawn. pi --continue resumes
+-- the conversation (cwd-keyed session file) AND re-reads mcp.json, so a newly
+-- added MCP server loads — the one-gesture replacement for the x+. dance and the
+-- external pkill. The short delay lets the stop tear down before spawn re-adds
+-- (spawn is idempotent-by-name, so it'd no-op against a not-yet-removed entry).
+local function reload_session(sid, cwd)
+  if not (sid and cwd and cwd ~= "") then vim.notify("agent-nvim: open a session first"); return end
+  send({ type = "stop", session = sid })
+  S.stream[sid] = nil
+  vim.notify("agent-nvim: restarting " .. short_name(sid) .. " — reloading MCP config…")
+  vim.defer_fn(function()
+    send({ type = "spawn", session = sid, cwd = cwd })
+    reload_messages(sid)
+  end, 400)
+end
+
 start_session = function(name, cwd)
   -- if a session with this name already runs, OPEN it (don't re-spawn — that
   -- restarts pi and wipes its history); only spawn a genuinely new one
@@ -1549,6 +1565,10 @@ local function run_slash(text)
     send({ type = "cycle_model", session = S.selected }) -- next model; response shows it
   elseif cmd == "think" then
     send({ type = "cycle_thinking_level", session = S.selected }) -- next reasoning level
+  elseif cmd == "reload" then
+    -- restart this session's pi so it re-reads mcp.json (new MCP servers, config
+    -- edits). Rail-side stop+spawn — no x+. dance, no external pkill.
+    reload_session(S.selected, S.selected and session_cwd(S.selected))
   elseif cmd == "help" then
     M.help()
   else
@@ -1568,6 +1588,7 @@ local RAIL_CMDS = {
   { "clear", "clear the chat" }, { "diff", "open a git diff tab" },
   { "plan", "open the plan view" }, { "retry", "retry the previous step" },
   { "model", "switch the model (cycle)" }, { "think", "cycle reasoning level" },
+  { "reload", "restart pi · reload MCP config" },
   { "help", "rail cheatsheet" },
 }
 
@@ -2591,7 +2612,7 @@ function M.help()
   float({
     " roster   attention queue · z show all · / filter by name · s search all transcripts",
     "          j/k move · <CR> open · ]a/[a next needing you · n new · . cwd",
-    "          x stop · a abort · p peek · <Esc> clear filter",
+    "          x stop · a abort · <C-r> restart pi (reload MCP) · p peek · <Esc> clear filter",
     " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
     "          gf open ref (hunk · fence · inline path:line) · gx open url · i compose",
     " changes  <CR> open file · ]f/[f next file · <Tab> back to chat · r refresh",
@@ -2601,7 +2622,7 @@ function M.help()
     " anywhere R focus roster · <leader>a toggle · <leader>A quick-message active session",
     "          <leader>as (visual) send selection · :AgentSend / File / Diff / Diagnostics",
     "",
-    " slash    rail: /abort /steer /clear /diff /plan /retry /model /think /help",
+    " slash    rail: /abort /steer /clear /diff /plan /retry /model /think /reload /help",
     "          pi:   /mcp-auth /mcp · skills/templates · (TUI cmds like /reload don't run via rpc)",
   }, "agent rail — keys")
 end
@@ -2890,6 +2911,13 @@ ensure_buf = function()
   map("]a", function() attention_jump(1) end)
   map("[a", function() attention_jump(-1) end)
   map("r", function() if S.selected then send({ type = "get_messages", session = S.selected }) end end)
+  -- <C-r>: restart the focused session's pi (reload mcp.json / new MCP servers) —
+  -- the clean one-key replacement for the x+. dance.
+  map("<C-r>", function()
+    local a = S.displayed[S.focus]
+    local sid = (a and a.id) or S.selected
+    reload_session(sid, sid and session_cwd(sid))
+  end)
   map("?", function() M.help() end)
   map("q", function() M.close() end)
 

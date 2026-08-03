@@ -64,6 +64,61 @@ let
     ancs4linux-ctl disable-pairing || true
     systemctl restart ancs4linux-observer || true
   '';
+
+  # Everything about this stack fails SILENTLY: the observer logs "Asking for
+  # notifications: success" whether or not the phone honours the subscription, so
+  # the only trustworthy signal is Notifying on the ANCS notification-source
+  # characteristic. The readvertise hook covers boot and resume, but a plain walk
+  # out of Bluetooth range — lid open, no suspend — hits neither, and the
+  # observer then retries stale GATT paths and goes deaf with no symptom.
+  #
+  # So poll the one honest signal and self-heal. Restarting is a blunt fix for
+  # the stale-path bug, but it covers causes we have not diagnosed too.
+  watchdog = pkgs.writeShellScript "ancs4linux-watchdog" ''
+    set -u
+    PATH=${pkgs.lib.makeBinPath [ ancs4linux pkgs.jq pkgs.systemd pkgs.coreutils pkgs.gnugrep pkgs.gawk ]}:$PATH
+
+    NSRC=22eac6e9-24d6-4bb5-be44-b36ace7c7bfb   # ANCS notification source
+    STAMP=/run/ancs4linux-watchdog.last
+    COOLDOWN=120
+
+    # Advertising lapses on its own; without it a phone that wandered off has
+    # nothing to reconnect to.
+    hci=$(ancs4linux-ctl get-all-hci 2>/dev/null | jq -r '.[0] // empty') || true
+    if [ -n "$hci" ]; then
+      disc=$(busctl --system get-property org.bluez /org/bluez/hci0 \
+               org.bluez.Adapter1 Discoverable 2>/dev/null | awk '{print $2}')
+      if [ "$disc" != "true" ]; then
+        ancs4linux-ctl enable-advertising --hci-address "$hci" --name proart >/dev/null 2>&1 || true
+        ancs4linux-ctl disable-pairing >/dev/null 2>&1 || true
+      fi
+    fi
+
+    notifying=""
+    for c in $(busctl --system tree org.bluez 2>/dev/null \
+                 | grep -oE '/org/bluez/hci[0-9]+/dev_[0-9A-F_]+/service[0-9a-f]+/char[0-9a-f]+'); do
+      u=$(busctl --system get-property org.bluez "$c" \
+            org.bluez.GattCharacteristic1 UUID 2>/dev/null | tr -d 's "')
+      [ "$u" = "$NSRC" ] || continue
+      notifying=$(busctl --system get-property org.bluez "$c" \
+                    org.bluez.GattCharacteristic1 Notifying 2>/dev/null | tr -d 'b ')
+      break
+    done
+
+    # No ANCS characteristic anywhere: the phone is simply away. Nothing to heal.
+    [ -n "$notifying" ] || exit 0
+    [ "$notifying" = "true" ] && exit 0
+
+    now=$(date +%s)
+    if [ -f "$STAMP" ]; then
+      last=$(cat "$STAMP" 2>/dev/null || echo 0)
+      [ $((now - last)) -lt $COOLDOWN ] && exit 0
+    fi
+    printf '%s' "$now" > "$STAMP"
+
+    echo "ANCS subscription dead while phone is connected; restarting observer"
+    systemctl restart ancs4linux-observer || true
+  '';
 in
 {
   environment.systemPackages = [ ancs4linux ];
@@ -123,6 +178,30 @@ in
       Type = "oneshot";
       ExecStart = "${readvertise}";
       TimeoutStartSec = "120s";
+    };
+  };
+
+  # Polls the one honest health signal and self-heals. Ordered after the
+  # readvertise hook so a boot does not race it.
+  systemd.services.ancs4linux-watchdog = {
+    description = "Heal the ANCS subscription if it has silently died";
+    after = [ "bluetooth.service" "ancs4linux-readvertise.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${watchdog}";
+      TimeoutStartSec = "90s";
+    };
+  };
+
+  systemd.timers.ancs4linux-watchdog = {
+    description = "Periodic ANCS subscription health check";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "3min";
+      OnUnitActiveSec = "2min";
+      # A missed call is the failure this exists to prevent, so catch up rather
+      # than skip if the machine was asleep.
+      Persistent = true;
     };
   };
 
