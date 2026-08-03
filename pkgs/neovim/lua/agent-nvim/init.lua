@@ -862,6 +862,12 @@ render_chat = function(scroll)
     -- target message at the top. Only consume the flag once its message actually
     -- renders (view_session may render before the transcript finishes loading).
     local jump = S.selected and S.scroll_to_msg[S.selected]
+    -- drop a stale target (transcript shrank past it, e.g. after a rewind) so it
+    -- can't block auto-scroll-to-bottom forever. Search only sets it on a loaded
+    -- session, so nmsgs>0 here on the first render — this only trips if it shrank.
+    if jump and jump > ((chat and chat.msgs) and #chat.msgs or 0) then
+      S.scroll_to_msg[S.selected] = nil; jump = nil
+    end
     local best
     if jump then
       for bl, mi in pairs(line_msg) do if mi == jump and (not best or bl < best) then best = bl end end
