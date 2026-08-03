@@ -1181,6 +1181,15 @@ try_connect = function(cb, tries)
       S.connected = true
       S.ever_connected = true
       p:read_start(vim.schedule_wrap(on_read))
+      -- flush anything queued while we were down so a daemon restart / socket
+      -- drop is transparent: messages you sent mid-outage get delivered now,
+      -- in order, instead of being silently lost.
+      if S.outbox and #S.outbox > 0 then
+        local pending = S.outbox; S.outbox = {}
+        for _, m in ipairs(pending) do
+          pcall(function() p:write(vim.json.encode(m) .. "\n") end)
+        end
+      end
       vim.schedule(function() render_roster() end)
       if cb then vim.schedule(cb) end
       return
@@ -1209,9 +1218,40 @@ connect = function(cb)
   try_connect(cb, 0)
 end
 
+-- queue a message for delivery after (re)connect. Skip list_sources — the
+-- reconnect callback re-requests it anyway — and cap so a long outage can't grow
+-- the queue unbounded.
+local function enqueue(obj)
+  if not obj or obj.type == "list_sources" then return end
+  S.outbox = S.outbox or {}
+  if #S.outbox < 50 then S.outbox[#S.outbox + 1] = obj end
+end
+
+-- drop the (now-known-dead) pipe and kick a reconnect that re-requests state.
+local function drop_and_reconnect()
+  if S.connected then
+    S.connected = false
+    pcall(function() if S.pipe then S.pipe:close() end end)
+    S.pipe = nil; S.readbuf = ""
+  end
+  render_roster()
+  connect(function() send({ type = "list_sources" }) end)
+end
+
 send = function(obj)
-  if not (S.connected and S.pipe) then return end
-  S.pipe:write(vim.json.encode(obj) .. "\n")
+  if not (S.connected and S.pipe) then
+    -- not connected: DON'T silently drop it (the old bug) — queue it and kick a
+    -- reconnect so it's delivered once the socket is back.
+    enqueue(obj)
+    connect(function() send({ type = "list_sources" }) end)
+    return
+  end
+  -- write with an error callback: a failed write means the peer died without a
+  -- read-side EOF (exactly the daemon-restart case) — self-heal instead of
+  -- losing the message to a dead pipe forever.
+  S.pipe:write(vim.json.encode(obj) .. "\n", function(werr)
+    if werr then vim.schedule(function() enqueue(obj); drop_and_reconnect() end) end
+  end)
 end
 
 --------------------------------------------------------------------------------
