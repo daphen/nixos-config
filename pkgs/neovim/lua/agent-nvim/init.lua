@@ -903,7 +903,7 @@ render_chat = function(scroll)
     -- No wrapping ───── rules around the label: a long ⟢ recap + the surrounding
     -- rules blew past the rail width and spilled a lone "─────" onto the next row.
     -- The ⟢/✓ marker + the blank line above already read as the done divider.
-    decor[#decor + 1] = { line = push("  " .. label), fg = "AgentIdle" }
+    decor[#decor + 1] = { line = push(label), fg = "AgentIdle" }
     -- touched files this turn, path + colour-coded +adds −dels (no bar; same look
     -- as the changes view). Only when the agent actually edited something.
     if sum and sum.files and #sum.files > 0 then
@@ -915,7 +915,7 @@ render_chat = function(scroll)
         local as, ds = "+" .. f.add, "-" .. f.del
         local acol = string.rep(" ", aw - #as) .. as
         local dcol = string.rep(" ", dw - #ds) .. ds
-        local line = file_row(W, "    ", f.path, acol, dcol)
+        local line = file_row(W, "  ", f.path, acol, dcol)
         local bl = push(line)
         decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
         local ps, pe = line:find("%+%d+")
@@ -1277,16 +1277,16 @@ handle = function(obj)
     end
     local files = {}
     if ed then
+      -- The edited files are ground truth for which worktree this turn touched, so
+      -- derive the root from one of them (git rev-parse) and let it WIN over
+      -- session_cwd — a stale/wrong roster cwd otherwise left git_changes empty
+      -- (+0/-0) and skipped the worktree-relative strip (full ~-paths). session_cwd
+      -- is only the fallback for a turn with no edited files.
       local cwd = session_cwd(obj.session)
-      if not cwd or cwd == "" then
-        -- roster lookup can miss at agent_end (session id not in S.roster yet) →
-        -- nil cwd made git_changes empty (+0/-0) and skipped the worktree-relative
-        -- strip (full ~-paths). Derive the worktree from an edited file instead.
-        local p1 = next(ed)
-        if p1 then
-          local root = fn.systemlist({ "git", "-C", fn.fnamemodify(p1, ":h"), "rev-parse", "--show-toplevel" })[1]
-          if root and root ~= "" then cwd = root end
-        end
+      local p1 = next(ed)
+      if p1 then
+        local root = fn.systemlist({ "git", "-C", fn.fnamemodify(p1, ":h"), "rev-parse", "--show-toplevel" })[1]
+        if root and root ~= "" then cwd = root end
       end
       local by = {}
       for _, x in ipairs(git_changes(cwd)) do by[x.path] = x end -- keys are worktree-relative
