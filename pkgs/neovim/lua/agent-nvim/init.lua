@@ -111,7 +111,7 @@ local S = {
   saved_gcr = nil,
 }
 
-local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send
+local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send, git_changes
 local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, sync_approval_keys
 local session_cwd, load_plan, answer, apply_prompt_mode
 local on_cockpit_active -- reconciles the rail's selection with the cockpit active context
@@ -2484,7 +2484,7 @@ local function start_cockpit_watch()
 end
 
 -- files changed on the branch (committed + uncommitted) vs where it forked
-local function git_changes(cwd)
+git_changes = function(cwd)
   if not cwd or fn.isdirectory(cwd) ~= 1 then return {} end
   if not fn.system({ "git", "-C", cwd, "rev-parse", "--is-inside-work-tree" }):match("true") then return {} end
   local base = fn.system({ "git", "-C", cwd, "merge-base", "HEAD", "origin/main" }):gsub("%s+$", "")
