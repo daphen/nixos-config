@@ -101,7 +101,6 @@ local S = {
   show_all = false,   -- roster: false = attention queue only, true = every session
   roster_filter = "", -- roster: live name substring filter ("/" to set, esc clears)
   displayed = {},     -- the sessions actually shown in the roster (filtered), in order
-  collapsed = false,  -- roster collapsed to a summary line
   chat_line_msg = {}, -- chat bufline(0-idx) -> msgIndex
   scroll_to_msg = {}, -- id -> msgIndex: pending "jump to this message" (cross-session search)
   chat_blocks = {},   -- 1-indexed buflines that start a message block
@@ -778,7 +777,7 @@ render_chat = function(scroll)
         blocks[#blocks + 1] = #lines + 1 -- 1-indexed bufline of this header
         decor[#decor + 1] = { line = push(hdr, mi), fg = isUser and "AgentAccent" or "AgentStream" }
         if folded then
-          local n = select(2, m.text:gsub("\n", "\n")) + 1
+          local n = select(2, (m.text or ""):gsub("\n", "\n")) + 1
           decor[#decor + 1] = { line = push("  ⋯ " .. n .. " lines", mi), fg = "AgentMuted" }
         else
           local hq, hi = m.hunks or {}, 0
@@ -2513,6 +2512,7 @@ end
 
 -- find the plan whose progress.json branch matches the session's branch
 load_plan = function(cwd)
+  if not cwd or cwd == "" then return nil end -- nil cwd → malformed `git -C` call
   local dir = plandir(cwd)
   if not dir then return nil end
   local branch = fn.system({ "git", "-C", cwd, "branch", "--show-current" }):gsub("%s+$", "")
@@ -3537,7 +3537,6 @@ end
 -- Dividers between the stacked rail panes are neovim's own window separators
 -- (WinSeparator, styled via winhighlight below) — no custom winbar rule, which
 -- would double up with the separator.
-local function refresh_rules() end
 
 --------------------------------------------------------------------------------
 -- open / close
@@ -3611,10 +3610,6 @@ function M.open()
   vim.o.guicursor = "a:AgentCursorRoster"
   start_spin()
   start_cockpit_watch() -- Super+T context switches → select the matching session
-
-  -- responsive: redraw the divider when the rail is resized
-  local grp = api.nvim_create_augroup("AgentRailResize", { clear = true })
-  api.nvim_create_autocmd({ "WinResized", "VimResized" }, { group = grp, callback = refresh_rules })
 
   -- Track terminal focus so desktop_notify stays silent while you're in nvim (the
   -- roster already shows the change) and only toasts once you've tabbed away.
