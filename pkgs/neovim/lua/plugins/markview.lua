@@ -40,6 +40,15 @@ return {
 				vim.api.nvim_set_hl(0, "MarkviewHeading" .. i, { fg = h.fg, bg = hbg.bg })
 				vim.api.nvim_set_hl(0, "MarkviewHeading" .. i .. "Sign", { fg = h.fg })
 			end
+			-- YAML frontmatter property icons (MarkviewIcon0-6) inherit MarkviewCode's
+			-- bg as it was BEFORE the override above, so they keep markview's stale grey
+			-- block behind each icon. Re-tint their bg to the frontmatter fill (keeping
+			-- the palette fg) so the icon blends into the block instead of sitting on a
+			-- mismatched grey square.
+			for i = 0, 6 do
+				local ic = get("MarkviewIcon" .. i)
+				vim.api.nvim_set_hl(0, "MarkviewIcon" .. i, { fg = ic.fg, bg = code.bg })
+			end
 		end
 		sync_markview_hl()
 		vim.api.nvim_create_autocmd("ColorScheme", {

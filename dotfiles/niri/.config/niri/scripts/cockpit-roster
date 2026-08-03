@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Super+T: focus the cockpit nvim window, then focus the agent-rail roster.
+# cockpit-focus is a no-op when the cockpit nvim is already focused, so from
+# inside it this just focuses the roster. We send <C-\><C-n>R to the active
+# tab's nvim over its kitty control socket: <C-\><C-n> forces normal mode from
+# any mode WITHOUT firing the composer's <Esc> map (which could rewind), then R
+# is the rail's global focus-roster map.
+set -euo pipefail
+
+"$HOME/.config/niri/scripts/cockpit-focus" nvim
+
+sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kitty-cockpit-nvim"
+[ -S "$sock" ] && kitty @ --to "unix:$sock" send-text $'\x1c\x0eR' || true

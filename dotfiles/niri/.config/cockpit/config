@@ -260,77 +260,11 @@ cockpit_context_states() {
     done < <(kitty @ --to "unix:$sock" ls 2>/dev/null | jq -r '.[].tabs[].title')
 }
 
-# Activate an existing plan-view browser tab via the palette daemon (the
-# raise is WANTED here — you asked to look at the plan). Exit 1 = no tab.
-_plan_view_tab_activate() {
-    python3 - "$1" <<'PY'
-import json, os, socket, sys
-needle = f"127.0.0.1:8746/plan/{sys.argv[1]}"
-rt = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-try:
-    s = socket.socket(socket.AF_UNIX); s.settimeout(1.5)
-    s.connect(os.path.join(rt, "palette-ui.sock"))
-except OSError:
-    sys.exit(1)
-f = s.makefile("rw")
-state = None
-for _ in range(5):
-    line = f.readline()
-    if not line:
-        break
-    try:
-        m = json.loads(line)
-    except ValueError:
-        continue
-    if m.get("type") == "state":
-        state = m
-        break
-if not state:
-    sys.exit(1)
-hit = next((t for t in (state.get("tabs") or []) if needle in (t.get("url") or "")), None)
-if not hit:
-    sys.exit(1)
-f.write(json.dumps({"cmd": "activate-tab", "tabId": hit["id"], "windowId": hit["windowId"]}) + "\n")
-f.flush()
-PY
-}
-
-# Close <name>'s plan-view browser tab (if open) via the palette daemon —
-# called on context close so a finalized plan's tab doesn't outlive it.
-cockpit_close_plan_tab() {
-    local name=$1 tick key=""
-    tick=$(printf '%s' "$name" | grep -oE '^[A-Za-z]+-[0-9]+' | tr '[:lower:]' '[:upper:]')
-    [ -n "$tick" ] && key=$tick || key=$name
-    COCKPIT_PLAN_KEY=$key python3 - <<'PY'
-import json, os, socket, sys
-key = os.environ["COCKPIT_PLAN_KEY"]
-needle = f"127.0.0.1:8746/plan/{key}"
-rt = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-try:
-    s = socket.socket(socket.AF_UNIX); s.settimeout(1.5)
-    s.connect(os.path.join(rt, "palette-ui.sock"))
-except OSError:
-    sys.exit(0)
-f = s.makefile("rw")
-state = None
-for _ in range(5):
-    line = f.readline()
-    if not line: break
-    try: m = json.loads(line)
-    except ValueError: continue
-    if m.get("type") == "state": state = m; break
-for t in (state or {}).get("tabs") or []:
-    if needle in (t.get("url") or ""):
-        f.write(json.dumps({"cmd": "close-tab", "tabId": t["id"]}) + "\n"); f.flush()
-PY
-}
-
-# Open <name>'s plan: a FINALIZED plan (diagram artifact exists) opens the
-# live view in the browser and focuses it — existing tab reused, else a new
-# one. Anything earlier opens the markdown in the context's nvim tab for
-# review (ESC first so the :e lands in normal mode).
+# Open <name>'s plan markdown in the context's nvim tab for review (ESC first so
+# the :e lands in normal mode). Plans live entirely in nvim now — the plan-nvim
+# plugin renders the .md + overlays step/file status; there's no browser/HTML view.
 cockpit_open_plan() {
-    local name=$1 tick key="" path="" sock url bid
+    local name=$1 tick key="" path="" sock
     local plans="$HOME/personal/notes/storage/plans"
     tick=$(printf '%s' "$name" | grep -oE '^[A-Za-z]+-[0-9]+' | tr '[:lower:]' '[:upper:]')
     if [ -n "$tick" ] && [ -f "$plans/$tick.md" ]; then
@@ -340,21 +274,6 @@ cockpit_open_plan() {
     fi
     [ -n "$key" ] || return 0
     path="$plans/$key.md"
-
-    if [ -f "$plans/$key.diagram.html" ]; then
-        # Ensure the plan-view server is up (idempotent), then tab-dedupe.
-        python3 "$HOME/.claude/skills/plan-ticket/plan-view.py" "$key" >/dev/null 2>&1 || true
-        if ! _plan_view_tab_activate "$key"; then
-            url="http://127.0.0.1:8746/plan/$key"
-            "$HOME/.config/niri/scripts/browser-dispatch" --profile=work "$url" \
-                >/dev/null 2>&1 || true
-            bid=$(niri msg --json windows 2>/dev/null \
-                | jq -r '[.[]|select(.app_id=="browser-work")][0].id // empty')
-            [ -n "$bid" ] && niri msg action focus-window --id "$bid" >/dev/null 2>&1
-        fi
-        return 0
-    fi
-
     sock="${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-nvim"
     [ -S "$sock" ] || return 0
     kitty @ --to "unix:$sock" send-text --match-tab "title:^${name}\$" \

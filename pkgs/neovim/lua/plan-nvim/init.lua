@@ -295,11 +295,35 @@ local function want_auto_open()
 	return _auto_open
 end
 
+-- The worktree bound to this plan, resolved from its `worktree: <branch>` header —
+-- NOT the nvim cwd (plans live in the vault, so cwd is usually not a worktree, and
+-- git_root() would bind the wrong repo → --go chdir's wrong and follow never fires).
+-- The value wraps onto its own line, so scan from the "worktree:" line for the first
+-- backtick-wrapped daphen/<branch>; map it to the cockpit worktree path. nil when
+-- absent or the dir is missing (caller falls back to git_root()).
+local function plan_worktree_root()
+	if not state.plan_path then return nil end
+	local ok, lines = pcall(vim.fn.readfile, state.plan_path, "", 40)
+	if not ok then return nil end
+	local hit = false
+	for _, l in ipairs(lines) do
+		if l:match("worktree:") then hit = true end
+		if hit then
+			local name = l:match("`daphen/([^`]+)`")
+			if name then
+				local path = vim.fn.expand("~/work/lovable.daphen-" .. name)
+				return vim.fn.isdirectory(path) == 1 and path or nil
+			end
+		end
+	end
+	return nil
+end
+
 -- keep_focus: open the plan in the editor window WITHOUT moving focus there (used
 -- by autostart so the agent rail stays active by default); otherwise switch to it.
 local function open_path(path, keep_focus)
-	state.root = git_root()
 	state.plan_path = path
+	state.root = plan_worktree_root() or git_root()
 	-- Open in a real editor window — never the agent rail, a float, or a special
 	-- buffer. In the cockpit the rail is often focused when a plan opens, and a bare
 	-- :edit there would clobber the rail's buffer.
@@ -539,8 +563,6 @@ local function insert_after(row, lines)
 	vim.cmd("silent write")
 end
 
--- The worktree bound to this plan, read from its `worktree: <branch>` header — NOT
--- the nvim cwd (plans live in the vault, so cwd is usually not a worktree). Strips
 -- Send a /plan-ticket prompt to the agent driving the plan's repo
 -- (state.root) — repo-targeted via `wt-send --cwd`, which routes to the pi rail session
 -- kicked the plan off in, worktree or not. Prompt goes on stdin to avoid arg-quoting.
@@ -864,6 +886,9 @@ function M.go()
 		return
 	end
 	local ticket = vim.fn.fnamemodify(state.plan_path, ":t:r")
+	-- Re-resolve here too: the plan may have been opened before its worktree existed,
+	-- or state.root drifted to the vault. The header is authoritative.
+	state.root = plan_worktree_root() or state.root or git_root()
 	if state.root then vim.fn.chdir(state.root) end
 	vim.o.autoread = true
 	read_progress()
@@ -957,7 +982,7 @@ function M.menu()
 			end,
 		},
 		{
-			label = "Finalize — bake decisions, author diagram",
+			label = "Finalize — bake decisions",
 			done = finalized,
 			next_ = not finalized and unres == 0,
 			lock = unres > 0 and ("resolve " .. unres .. " decision(s) first") or nil,

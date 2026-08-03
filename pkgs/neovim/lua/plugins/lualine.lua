@@ -19,45 +19,43 @@ return {
 		local function refresh_git()
 			if refreshing then return end
 			refreshing = true
-			-- Run git ASYNC (vim.system, off the main loop) and let git summarize the
-			-- diff with --numstat (one line per file) instead of parsing every
-			-- --unified=0 hunk line in Lua. A huge diff on a big repo (e.g. the
-			-- lovable monorepo, thousands of commits ahead of base) otherwise blocked
-			-- the main loop ~800ms on EVERY BufEnter — including each rail-panel switch.
-			-- On main/master, diff the working tree (HEAD) rather than the branch base,
-			-- so the main checkout shows uncommitted changes, not commits-ahead noise.
+			-- root + base are resolved SYNCHRONOUSLY here: refresh_git runs from autocmds
+			-- (a normal context), and base_for → git_exec uses vim.fn.systemlist, which
+			-- is illegal in the fast context of a vim.system callback (E5560). These
+			-- calls are cheap (base_for caches per-root). Only the potentially-huge diff
+			-- goes async so it never blocks the main loop ~800ms on BufEnter. On
+			-- main/master we diff HEAD (uncommitted changes), not the branch base.
 			local cwd = vim.fn.getcwd()
 			local file = vim.fn.expand("%:p")
 			local editable = vim.bo.buftype == ""
-			local branch = ""
+			local root = vim.trim((vim.fn.systemlist({ "git", "-C", cwd, "rev-parse", "--show-toplevel" })[1]) or "")
+			if root == "" then refreshing = false; return end
+			local branch = vim.trim((vim.fn.systemlist({ "git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD" })[1]) or "")
+			-- Base for THIS worktree (root), NOT the focused buffer's repo — base_for
+			-- caches per-root + is trunk-move-aware, so the diff always matches getcwd
+			-- even when the focused buffer is a rail pane (agent-composer).
 			local base = "HEAD"
-			local ok, signs = pcall(require, "hunk-nvim.signs")
-			if ok and signs.current_base then
-				local b = signs.current_base()
-				if b and b ~= "" then base = b end
+			if branch ~= "main" and branch ~= "master" then
+				local ok, signs = pcall(require, "hunk-nvim.signs")
+				if ok and signs.base_for then
+					local b = signs.base_for(root)
+					if b and b ~= "" then base = b end
+				end
 			end
-			vim.system({ "git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD" }, { text = true }, function(rb)
-				branch = vim.trim(rb.stdout or "")
-				if branch == "main" or branch == "master" then base = "HEAD" end
-				vim.system({ "git", "-C", cwd, "rev-parse", "--show-toplevel" }, { text = true }, function(r1)
-					local root = vim.trim(r1.stdout or "")
-					if root == "" then refreshing = false; return end
-					local in_worktree = editable and file ~= "" and file:sub(1, #root + 1) == root .. "/"
-					local args = { "git", "-C", root, "diff", "--numstat", "--no-color", base }
-					if in_worktree then args[#args + 1] = "--"; args[#args + 1] = file end
-					vim.system(args, { text = true }, function(r2)
-						local added, removed = 0, 0
-						if r2.code == 0 then
-							for _, l in ipairs(vim.split(r2.stdout or "", "\n", { plain = true })) do
-								local a, d = l:match("^(%d+)%s+(%d+)")
-								if a then added = added + tonumber(a); removed = removed + tonumber(d) end
-							end
-						end
-						git_cache.diff = { added = added, modified = 0, removed = removed }
-						refreshing = false
-						vim.schedule(function() pcall(function() require("lualine").refresh() end) end)
-					end)
-				end)
+			local in_worktree = editable and file ~= "" and file:sub(1, #root + 1) == root .. "/"
+			local args = { "git", "-C", root, "diff", "--numstat", "--no-color", base }
+			if in_worktree then args[#args + 1] = "--"; args[#args + 1] = file end
+			vim.system(args, { text = true }, function(r2)
+				local added, removed = 0, 0
+				if r2.code == 0 then
+					for _, l in ipairs(vim.split(r2.stdout or "", "\n", { plain = true })) do
+						local a, d = l:match("^(%d+)%s+(%d+)")
+						if a then added = added + tonumber(a); removed = removed + tonumber(d) end
+					end
+				end
+				git_cache.diff = { added = added, modified = 0, removed = removed }
+				refreshing = false
+				vim.schedule(function() pcall(function() require("lualine").refresh() end) end)
 			end)
 		end
 		-- scope depends on the focused buffer, so also refresh on BufEnter; guarded so
@@ -116,9 +114,11 @@ return {
 			if root_dir then
 				-- Extract just the folder name from the full path
 				local folder_name = root_dir:match("([^/]+)$")
-				-- Lovable ticket worktrees (lovable.daphen-<ticket>-…) → show just the
-				-- ticket id (every-2585) instead of the long branch-derived folder name.
+				-- Lovable worktrees → short id instead of the long branch-derived folder:
+				--   work:   lovable.daphen-every-2585-…      → every-2585
+				--   review: lovable.review-76010-feat-…      → review-76010
 				local ticket = folder_name:match("^lovable%.daphen%-(%a+%-%d+)")
+					or folder_name:match("^lovable%.(review%-%d+)")
 				return " " .. (ticket or folder_name) .. " "
 			else
 				return ""

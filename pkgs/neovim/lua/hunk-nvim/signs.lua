@@ -58,6 +58,10 @@ function M.resolve_base(repo_root)
 		repo_root = out[1]
 	end
 
+	-- Reset the tracked trunk; only the merge-base path (3) sets it, so the
+	-- other bases (override / LoL root / HEAD) don't get a stale trunk-move check.
+	state.trunk = nil
+
 	-- 1. Explicit override
 	local override = vim.g.hunk_signs_base
 	if override and override ~= "" then return override end
@@ -95,6 +99,7 @@ function M.resolve_base(repo_root)
 		end
 	end
 	if trunk then
+		state.trunk = trunk -- remember it so current_base can watch it move
 		local mb = git_exec({ "git", "-C", repo_root, "merge-base", "HEAD", trunk })
 		if mb and #mb > 0 then return mb[1] end
 	end
@@ -111,13 +116,60 @@ function M.current_base()
 	if not state.repo_root then return M.resolve_base() end
 	local head = git_exec({ "git", "-C", state.repo_root, "rev-parse", "HEAD" })
 	head = head and head[1]
-	if head and head ~= state.head_sha then
-		state.head_sha = head
+	-- Cheap trunk-move check (one rev-parse, like HEAD): re-resolve when the trunk
+	-- advances too — e.g. a mid-session `git fetch origin main`. Without it the base
+	-- stays pinned to the trunk sha from when the buffer first opened, so the diff
+	-- balloons to every commit merged into trunk since (the review "128 files" bug).
+	local trunk_now
+	if state.trunk then
+		local t = git_exec({ "git", "-C", state.repo_root, "rev-parse", state.trunk })
+		trunk_now = t and t[1]
+	end
+	local head_moved = head and head ~= state.head_sha
+	local trunk_moved = state.trunk and trunk_now and trunk_now ~= state.trunk_sha
+	if head_moved or trunk_moved or not state.base_sha then
+		if head then state.head_sha = head end
 		state.base_sha = M.resolve_base(state.repo_root)
-	elseif not state.base_sha then
-		state.base_sha = M.resolve_base(state.repo_root)
+		-- resolve_base re-picks the trunk; capture its sha for the next comparison.
+		if state.trunk then
+			local t = git_exec({ "git", "-C", state.repo_root, "rev-parse", state.trunk })
+			state.trunk_sha = t and t[1]
+		else
+			state.trunk_sha = nil
+		end
 	end
 	return state.base_sha
+end
+
+-- Base for an ARBITRARY worktree root, cached per-root. current_base() is keyed to
+-- one global repo (the focused buffer's) — wrong for the statusline, which diffs
+-- getcwd's worktree while the focused buffer may be a rail pane (agent-composer) or
+-- a file in another repo, yielding a base from the wrong repo. This resolves + caches
+-- per root, with the same cheap head/trunk-move re-resolution as current_base.
+function M.base_for(repo_root)
+	if not repo_root or repo_root == "" then return "HEAD" end
+	state.bases = state.bases or {}
+	local c = state.bases[repo_root]
+	if not c then c = {}; state.bases[repo_root] = c end
+	local head = git_exec({ "git", "-C", repo_root, "rev-parse", "HEAD" })
+	head = head and head[1]
+	local trunk_now
+	if c.trunk then
+		local t = git_exec({ "git", "-C", repo_root, "rev-parse", c.trunk })
+		trunk_now = t and t[1]
+	end
+	if (head and head ~= c.head_sha) or (c.trunk and trunk_now and trunk_now ~= c.trunk_sha) or not c.base then
+		if head then c.head_sha = head end
+		c.base = M.resolve_base(repo_root)
+		c.trunk = state.trunk -- resolve_base records which trunk it used
+		if c.trunk then
+			local t = git_exec({ "git", "-C", repo_root, "rev-parse", c.trunk })
+			c.trunk_sha = t and t[1]
+		else
+			c.trunk_sha = nil
+		end
+	end
+	return c.base
 end
 
 local function fetch_diff(relpath)

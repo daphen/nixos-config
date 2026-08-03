@@ -506,6 +506,10 @@ local function active_winbar()
   -- you always see WHAT it's on, not just "working". (Claude-Code style.)
   local stream = S.stream[S.selected]
   if stream and stream ~= "" then
+    -- Only the current action matters, and it's always near the end — scan just
+    -- the tail. Scanning the whole stream ran every 60ms spin frame, so a long
+    -- tool-heavy turn made each frame O(stream length) and froze the spinner.
+    if #stream > 4096 then stream = stream:sub(-4096) end
     local doing
     for line in stream:gmatch("[^\n]+") do
       if line:match("^✻ ") or line:match("^⚙ ") then doing = line end
@@ -516,6 +520,13 @@ local function active_winbar()
       doing = doing:gsub("%%", "%%%%") -- escape for the winbar (tool args have %H%M etc.)
       parts[#parts + 1] = "%#AgentMuted#  · " .. doing
     end
+  end
+  -- queued messages (held until the turn ends): always-visible count in the
+  -- header so it's obvious something is queued, not just a line buried in the chat.
+  local q = S.queued and S.queued[S.selected]
+  if q and q ~= "" then
+    local n = select(2, q:gsub("\n\n", "")) + 1
+    parts[#parts + 1] = "%#AgentAttn#  " .. GLYPH.queued .. " " .. n .. " queued"
   end
   -- plan progress (◆ N/N) now lives in the lualine (M.plan_chip); this header
   -- stays focused on the live working state + spinner.
@@ -854,18 +865,42 @@ render_chat = function(scroll)
     or (S.turn_active and S.turn_active[S.selected]))
   if has_any and not working and not ap and not errmsg then
     local el = S.selected and fmt_el(S.lastdur[S.selected])
-    local label = el and ("✓ done in " .. el) or "✓ done"
+    local sum = S.summary and S.summary[S.selected]
     local pl = S.selected and S.plan[S.selected]
+    -- prefer the agent's own one-line recap (⟢), else the plain done+elapsed.
+    local label = (sum and sum.recap) and ("⟢ " .. sum.recap) or (el and ("✓ done in " .. el) or "✓ done")
     if pl and pl.total and pl.total > 0 then label = label .. " · ◆ " .. pl.done .. "/" .. pl.total .. " steps" end
+    if sum and sum.recap and el then label = label .. " · " .. el end
     push(""); push("")
     decor[#decor + 1] = { line = push("  ─────  " .. label .. "  ─────"), fg = "AgentIdle" }
+    -- touched files this turn, path + colour-coded +adds −dels (no bar; same look
+    -- as the changes view). Only when the agent actually edited something.
+    if sum and sum.files and #sum.files > 0 then
+      local mw, aw, dw = 0, 0, 0
+      for _, f in ipairs(sum.files) do
+        mw = math.max(mw, #f.path)
+        aw = math.max(aw, #("+" .. f.add)); dw = math.max(dw, #("-" .. f.del))
+      end
+      for _, f in ipairs(sum.files) do
+        local as, ds = "+" .. f.add, "-" .. f.del
+        local acol = string.rep(" ", aw - #as) .. as
+        local dcol = string.rep(" ", dw - #ds) .. ds
+        local line = "    " .. f.path .. string.rep(" ", mw - #f.path) .. "   " .. acol .. "  " .. dcol
+        local bl = push(line)
+        decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
+        local ps, pe = line:find("%+%d+")
+        if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
+        local ms, me = line:find("%-%d+", (pe or 0) + 1)
+        if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
+      end
+    end
   end
 
   -- queued message (held until the turn ends) — dim, with the esc hint to edit it
   local q = S.selected and S.queued and S.queued[S.selected]
   if q and q ~= "" then
     push("")
-    decor[#decor + 1] = { line = push("  ⏳ queued  ·  sends after this turn · esc = interrupt + send now"), fg = "AgentAttn" }
+    decor[#decor + 1] = { line = push("  " .. GLYPH.queued .. " queued  ·  sends after this turn · esc = interrupt + send now"), fg = "AgentAttn" }
     for _, para in ipairs(vim.split(q, "\n", { plain = true })) do
       decor[#decor + 1] = { line = push("  " .. para), fg = "AgentMuted" }
     end
@@ -951,6 +986,10 @@ end
 -- rail. The active session is skipped — you're already looking at it.
 local function desktop_notify(session, body, urgency)
   if not session or session == S.selected then return end
+  -- While nvim itself is focused the rail (roster + status dots) is right there,
+  -- so a desktop toast is pure noise — suppress it. Toasts only fire when you've
+  -- tabbed away (browser, slack), which is exactly when you'd want to be pinged.
+  if S.nvim_focused then return end
   local name = session
   for _, a in ipairs(S.roster) do
     if a.id == session then name = short_name(a.name or session); break end
@@ -1018,6 +1057,9 @@ local function sync_edited(cwd, paths)
 end
 
 handle = function(obj)
+  -- Any event carrying a session id (except a get_entries response, which is a
+  -- reply to us, not pi working) means that pi is alive → disarm its wedge watchdog.
+  if obj.session and obj.type ~= "response" and S.awaiting then S.awaiting[obj.session] = nil end
   local t = obj.type
   if t == "roster" then
     S.roster = obj.sessions or {}
@@ -1048,24 +1090,42 @@ handle = function(obj)
     vim.notify("agent: model → " .. tostring(name) .. (lvl and ("  ·  " .. tostring(lvl)) or ""))
   elseif t == "response" and obj.command == "cycle_thinking_level" then
     vim.notify("agent: reasoning → " .. tostring(obj.data and obj.data.level or "?"))
-  elseif t == "response" and obj.command == "get_messages" and obj.data and obj.data.messages then
-    local msgs = {}
+  elseif t == "response" and obj.command == "get_entries" and obj.data and obj.data.entries then
+    -- We load history via get_entries (not get_messages): get_messages returns only
+    -- the post-compaction window, so a compacted session's chat starts mid-turn and
+    -- can't scroll back to the prompt. get_entries carries the whole append-only tree
+    -- incl. pre-compaction history. Reconstruct the ACTIVE branch by walking parentId
+    -- from leafId to the root — that keeps the full linear history and drops abandoned
+    -- branches (rewinds / alternate takes).
     local cwd = session_cwd(obj.session)
-    for _, msg in ipairs(obj.data.messages) do
-      local text, hunks = msg_text(msg, cwd)
-      if (msg.role == "user" or msg.role == "assistant") and text:gsub("%s", "") ~= "" then
-        msgs[#msgs + 1] = { role = msg.role, text = text, hunks = hunks }
+    local byid = {}
+    for _, e in ipairs(obj.data.entries) do if e.id then byid[e.id] = e end end
+    local chain, seen, cur = {}, {}, obj.data.leafId
+    while cur and byid[cur] and not seen[cur] do
+      seen[cur] = true
+      chain[#chain + 1] = byid[cur]
+      cur = byid[cur].parentId
+    end
+    local msgs = {}
+    for i = #chain, 1, -1 do -- chain is leaf→root; render root→leaf
+      local m = chain[i].type == "message" and chain[i].message
+      if m and (m.role == "user" or m.role == "assistant") then
+        local text, hunks = msg_text(m, cwd)
+        if text:gsub("%s", "") ~= "" then
+          msgs[#msgs + 1] = { role = m.role, text = text, hunks = hunks }
+        end
       end
     end
-    S.chat[obj.session] = { msgs = msgs }
+    -- Never blank a populated chat if reconstruction came back empty (broken leaf).
+    if #msgs > 0 or not S.chat[obj.session] then S.chat[obj.session] = { msgs = msgs } end
     if S.reloading then S.reloading[obj.session] = nil end -- pi's back, restart done
     if obj.session == S.selected then render_chat(true) end
   elseif t == "rewound" and obj.session then
     -- true rewind landed: pi respawned on the truncated session. Reload the
     -- (now shorter) history and drop the removed message back into the composer
-    -- to edit and resend. get_messages waits for the respawned pi's stdin.
+    -- to edit and resend. get_entries waits for the respawned pi's stdin.
     S.stream[obj.session] = nil
-    send({ type = "get_messages", session = obj.session })
+    send({ type = "get_entries", session = obj.session })
     if obj.session == S.selected and S.composerbuf and api.nvim_buf_is_valid(S.composerbuf) then
       local msg = obj.message or ""
       api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, vim.split(msg, "\n", { plain = true }))
@@ -1133,6 +1193,7 @@ handle = function(obj)
     -- footer stays hidden through the between-round idle gaps until agent_end.
     S.turn_active = S.turn_active or {}
     S.turn_active[obj.session] = true
+    if S.summary then S.summary[obj.session] = nil end -- last turn's recap is stale now
     if obj.session == S.selected then render_chat(false) end
   elseif t == "turn_end" and obj.session then
     -- pi fires turn_end PER TOOL ROUND (verified), not once per prompt — so just
@@ -1167,6 +1228,36 @@ handle = function(obj)
     -- writes settled → reload the exact files the agent edited (see sync_edited)
     local ed = S.edited[obj.session]
     if ed then S.edited[obj.session] = nil; vim.schedule(function() sync_edited(session_cwd(obj.session), ed) end) end
+    -- Turn recap for the done divider: pull the agent's ⟢ one-liner out of the final
+    -- assistant message (stripping the marker line so it isn't shown twice), and pair
+    -- it with the +adds/−dels of the files it touched this turn.
+    S.summary = S.summary or {}
+    local recap
+    local last = c and c.msgs and c.msgs[#c.msgs]
+    if last and last.role == "assistant" and type(last.text) == "string" then
+      local kept = {}
+      for _, ln in ipairs(vim.split(last.text, "\n", { plain = true })) do
+        local m = ln:match("^%s*⟢%s*(.+)")
+        if m then recap = m else kept[#kept + 1] = ln end
+      end
+      if recap then
+        local body = (table.concat(kept, "\n")):gsub("%s+$", "")
+        if body == "" then table.remove(c.msgs) else last.text = body end
+      end
+    end
+    local files = {}
+    if ed then
+      local by = {}
+      for _, x in ipairs(git_changes(session_cwd(obj.session))) do by[x.path] = x end
+      local names = {}
+      for p in pairs(ed) do names[#names + 1] = p end
+      table.sort(names)
+      for _, p in ipairs(names) do
+        local x = by[p]
+        files[#files + 1] = { path = p, add = x and x.add or 0, del = x and x.del or 0 }
+      end
+    end
+    S.summary[obj.session] = { recap = recap, files = files }
     if obj.session == S.selected then render_chat(false) end
   elseif t == "extension_ui_request" then
     local m = obj.method
@@ -1323,6 +1414,14 @@ send = function(obj)
     connect(function() send({ type = "list_sources" }) end)
     return
   end
+  -- Wedge watchdog: stamp when a prompt goes out. A live pi acks with agent_start
+  -- in a second or two; if NOTHING comes back for WEDGE_SECS the pi is stuck, and
+  -- the spin timer auto-reloads + reseeds it (see start_spin). Cleared in handle()
+  -- the instant any event for the session arrives.
+  if obj.type == "prompt" and obj.session then
+    S.awaiting = S.awaiting or {}
+    S.awaiting[obj.session] = os.time()
+  end
   -- write with an error callback: a failed write means the peer died without a
   -- read-side EOF (exactly the daemon-restart case) — self-heal instead of
   -- losing the message to a dead pipe forever.
@@ -1371,12 +1470,12 @@ end
 -- when the first request lands, so the chat would show "no messages yet" until a
 -- manual 'r'. The gated retries load the restored history automatically.
 local function reload_messages(sid)
-  send({ type = "get_messages", session = sid })
+  send({ type = "get_entries", session = sid })
   for _, delay in ipairs({ 700, 1800 }) do
     vim.defer_fn(function()
       local c = S.chat[sid]
       if S.connected and (not c or not c.msgs or #c.msgs == 0) then
-        send({ type = "get_messages", session = sid })
+        send({ type = "get_entries", session = sid })
       end
     end, delay)
   end
@@ -1387,7 +1486,7 @@ end
 -- added MCP server loads — the one-gesture replacement for the x+. dance and the
 -- external pkill. The short delay lets the stop tear down before spawn re-adds
 -- (spawn is idempotent-by-name, so it'd no-op against a not-yet-removed entry).
-local function reload_session(sid, cwd)
+local function reload_session(sid, cwd, seed)
   if not (sid and cwd and cwd ~= "") then vim.notify("agent-nvim: open a session first"); return end
   send({ type = "stop", session = sid })
   S.stream[sid] = nil
@@ -1400,7 +1499,12 @@ local function reload_session(sid, cwd)
   if sid == S.selected then render_chat(false) end
   vim.notify("agent-nvim: restarting " .. short_name(sid) .. " — reloading MCP config…")
   vim.defer_fn(function()
-    send({ type = "spawn", session = sid, cwd = cwd })
+    -- carry the seed IN the spawn so the daemon delivers it the moment pi's stdin
+    -- is ready (event-driven) — used by the wedge watchdog to resend the prompt
+    -- that got no response, without racing the fresh pi's cold start.
+    local spawn = { type = "spawn", session = sid, cwd = cwd }
+    if seed and seed ~= "" then spawn.prompt = seed end
+    send(spawn)
     reload_messages(sid)
   end, 400)
 end
@@ -1491,6 +1595,29 @@ local function start_spin()
       elseif not S.connected and not S.connecting then
         connect(function() send({ type = "list_sources" }) end)
       end
+      -- Wedge watchdog: a prompt with NO response for ~12s means pi is stuck
+      -- (alive but not processing — the "goes stale, have to /reload" case). Auto
+      -- stop+respawn it and reseed the prompt via the spawn so nothing's lost. One
+      -- shot per wedge (the reseed doesn't re-arm awaiting) + a 90s cooldown, so it
+      -- can never reload-loop. A live pi acks in ~2s, so 12s is safe headroom.
+      if S.connected and S.awaiting then
+        local now = os.time()
+        for aid, t in pairs(S.awaiting) do
+          if now - t > 12 then
+            S.awaiting[aid] = nil
+            S.last_autoreload = S.last_autoreload or {}
+            if not S.last_autoreload[aid] or now - S.last_autoreload[aid] > 90 then
+              S.last_autoreload[aid] = now
+              local cwd
+              for _, a in ipairs(S.roster) do if a.id == aid then cwd = a.cwd; break end end
+              if cwd then
+                vim.notify("agent-nvim: " .. short_name(aid) .. " unresponsive — reloading + resending", vim.log.levels.WARN)
+                reload_session(aid, cwd, S.last_sent and S.last_sent[aid])
+              end
+            end
+          end
+        end
+      end
     end
     if streaming then
       S.spin = S.spin + 1
@@ -1533,6 +1660,10 @@ composer_resize = function()
   -- Height = total display rows, which includes the single blank pad virtual line
   -- above the input (see render_chips) plus wrapped content.
   local extra = #S.attach + #S.paste_images -- chip virt-lines above the input
+  -- True display height (wrapped content + the top/bottom pad + chip virt-lines).
+  -- The old "grew out of nowhere on niri navigation" was a transient from a focus
+  -- redraw; it's corrected by re-running this on FocusGained (see M.open), not by
+  -- second-guessing the height here — that dropped the pads and killed the margin.
   local ok, h = pcall(api.nvim_win_text_height, S.composerwin, {})
   local all = (ok and type(h) == "table" and h.all) or (api.nvim_buf_line_count(S.composerbuf) + extra)
   all = math.max(1, math.min(all, COMPOSER_MAX + extra))
@@ -1797,6 +1928,19 @@ local function sl_accept()
   return true
 end
 
+-- Re-enter insert in the composer AFTER the current mapping returns. <C-s>'s
+-- stopinsert only lands on mapping-return, so a synchronous startinsert! during
+-- the call gets overridden and you drop to normal — scheduling ours to run last
+-- wins, keeping you typing-ready after every send.
+local function stay_in_composer()
+  vim.schedule(function()
+    if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
+      pcall(api.nvim_set_current_win, S.composerwin)
+      vim.cmd("startinsert!")
+    end
+  end)
+end
+
 composer_send = function()
   if not S.selected then vim.notify("agent-nvim: open a session first (<CR>)", vim.log.levels.INFO); return end
   local text = table.concat(api.nvim_buf_get_lines(S.composerbuf, 0, -1, false), "\n"):gsub("%s+$", "")
@@ -1840,7 +1984,7 @@ composer_send = function()
     api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, { "" })
     render_chips(); composer_placeholder()
     render_chat(false) -- show the queued indicator
-    vim.cmd("startinsert!")
+    stay_in_composer()
     return
   end
 
@@ -1852,7 +1996,7 @@ composer_send = function()
   clear_attachments()
   api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, { "" })
   render_chips(); composer_placeholder()
-  vim.cmd("startinsert!")
+  stay_in_composer()
 end
 
 focus_composer = function()
@@ -2203,9 +2347,9 @@ local function chat_search()
     end
   end
   -- warm unopened transcripts so the NEXT search covers them: responses land in
-  -- S.chat without touching the current view (get_messages only renders the
+  -- S.chat without touching the current view (get_entries only renders the
   -- selected session). One round-trip per session, bounded by the roster size.
-  for _, id in ipairs(unloaded) do send({ type = "get_messages", session = id }) end
+  for _, id in ipairs(unloaded) do send({ type = "get_entries", session = id }) end
   local coverage = #unloaded > 0 and ("  ·  " .. #unloaded .. " now loading — search again to include") or ""
   if #matches == 0 then vim.notify("agent-nvim: no matches for '" .. q .. "'" .. coverage); return end
   vim.ui.select(matches, { prompt = "matches (" .. #matches .. ")" .. coverage, format_item = function(it) return it.label end },
@@ -2421,30 +2565,32 @@ render_changes = function()
     -- colour-coded stats (+green −red) plus a proportional add/del bar, matching
     -- the inline-diff hunks. rows: { dot, grp, path, add?, del? }.
     local function push_files(rows)
-      local mw = 0
-      for _, r in ipairs(rows) do mw = math.max(mw, #r.path) end
+      local mw, aw, dw = 0, 0, 0
+      for _, r in ipairs(rows) do
+        mw = math.max(mw, #r.path)
+        if r.add then
+          aw = math.max(aw, #("+" .. r.add))
+          dw = math.max(dw, #("-" .. r.del))
+        end
+      end
       for _, r in ipairs(rows) do
         local base = "  " .. r.dot .. " " .. r.path
         if not r.add then
           decor[#decor + 1] = { line = push(base, r.path), fg = r.grp }
         else
-          local a, d, total = r.add, r.del, r.add + r.del
-          local gb = total == 0 and 0 or math.floor(a / total * BARW + 0.5)
-          if a > 0 and gb == 0 then gb = 1 elseif d > 0 and gb == BARW then gb = BARW - 1 end
-          local bar = total > 0 and ("   " .. string.rep("█", BARW)) or ""
-          local line = base .. string.rep(" ", mw - #r.path) .. "   +" .. a .. "  -" .. d .. bar
+          -- path + right-aligned, colour-coded +adds (green) −dels (red), the two
+          -- number columns lined up. No proportional bar: long monorepo paths fill
+          -- the narrow rail, so the bar wrapped to its own row as a grey block.
+          local as, ds = "+" .. r.add, "-" .. r.del
+          local acol = string.rep(" ", aw - #as) .. as
+          local dcol = string.rep(" ", dw - #ds) .. ds
+          local line = base .. string.rep(" ", mw - #r.path) .. "   " .. acol .. "  " .. dcol
           local bl = push(line, r.path)
           decor[#decor + 1] = { line = bl, fg = r.grp }
           local ps, pe = line:find("%+%d+")
           if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
           local ms, me = line:find("%-%d+", (pe or 0) + 1)
           if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
-          local bs = total > 0 and line:find("█")
-          if bs then
-            local off = bs - 1
-            if gb > 0 then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = off, ce = off + gb * 3 } end
-            if gb < BARW then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = off + gb * 3, ce = -1 } end
-          end
         end
       end
     end
@@ -2528,7 +2674,10 @@ render_changes = function()
   vim.bo[S.changesbuf].modifiable = false
   api.nvim_buf_clear_namespace(S.changesbuf, S.ns, 0, -1)
   for _, d in ipairs(decor) do
-    if d.fg then pcall(api.nvim_buf_add_highlight, S.changesbuf, S.ns, d.fg, d.line, 0, -1) end
+    -- honour cs/ce so sub-range highlights land (the +adds green / −dels red columns
+    -- and the diffstat); without it every highlight painted the whole line, so the
+    -- last one won and the numbers rendered in the row's base colour instead.
+    if d.fg then pcall(api.nvim_buf_add_highlight, S.changesbuf, S.ns, d.fg, d.line, d.cs or 0, d.ce or -1) end
   end
   S.changes_open = openmap
   if S.chatwin and api.nvim_win_is_valid(S.chatwin) and S.view == "changes" then
@@ -2884,16 +3033,21 @@ ensure_buf = function()
     -- queued message — so BOTH your messages land in context (the interrupted
     -- turn + the queued follow-up), like Claude Code. Idle → rewind.
     if is_working() then
-      send({ type = "abort", session = S.selected })
-      S.stream[S.selected] = nil
-      local q = S.selected and S.queued and S.queued[S.selected]
+      local sid = S.selected
+      send({ type = "abort", session = sid })
+      S.stream[sid] = nil
+      if S.turn_active then S.turn_active[sid] = nil end
+      local q = sid and S.queued and S.queued[sid]
       if q and q ~= "" then
-        S.queued[S.selected] = nil
-        local c = S.chat[S.selected] or { msgs = {} }
+        S.queued[sid] = nil
+        local c = S.chat[sid] or { msgs = {} }
         c.msgs[#c.msgs + 1] = { role = "user", text = q }
-        S.chat[S.selected] = c
-        send({ type = "prompt", session = S.selected, message = q })
-        vim.notify("interrupted — sent your queued message")
+        S.chat[sid] = c
+        -- Send AFTER the abort settles: firing the prompt in the same tick races
+        -- pi's turn teardown and the prompt gets dropped (the bug — it interrupted
+        -- but never sent the queued item). A short defer lands it on a ready pi.
+        vim.defer_fn(function() send({ type = "prompt", session = sid, message = q }) end, 450)
+        vim.notify("interrupted — sending your queued message")
       else
         vim.notify("agent: interrupted")
       end
@@ -2922,10 +3076,9 @@ ensure_buf = function()
   end
   vim.keymap.set("i", "<Esc>", function()
     if sl_open() then sl_close(); return end
-    -- interrupt always; restore only when the input is empty (don't clobber text
-    -- you're actively typing — there, Esc just leaves insert).
-    local empty = table.concat(api.nvim_buf_get_lines(S.composerbuf, 0, -1, false), ""):gsub("%s", "") == ""
-    if is_working() or empty then vim.cmd("stopinsert"); esc_action(); return end
+    -- Esc from insert just returns to normal mode, like everywhere else in vim —
+    -- never interrupts. Interrupting the agent is a normal-mode action (n <Esc> →
+    -- esc_action below), so it can't fire while you're mid-sentence in the composer.
     passthru("<Esc>")
   end, { buffer = S.composerbuf, nowait = true })
   vim.keymap.set("n", "<Esc>", function()
@@ -2996,7 +3149,7 @@ ensure_buf = function()
   end
   map("]a", function() attention_jump(1) end)
   map("[a", function() attention_jump(-1) end)
-  map("r", function() if S.selected then send({ type = "get_messages", session = S.selected }) end end)
+  map("r", function() if S.selected then send({ type = "get_entries", session = S.selected }) end end)
   -- <C-r>: restart the focused session's pi (reload mcp.json / new MCP servers) —
   -- the clean one-key replacement for the x+. dance.
   map("<C-r>", function()
@@ -3133,6 +3286,18 @@ function M.open()
   local grp = api.nvim_create_augroup("AgentRailResize", { clear = true })
   api.nvim_create_autocmd({ "WinResized", "VimResized" }, { group = grp, callback = refresh_rules })
 
+  -- Track terminal focus so desktop_notify stays silent while you're in nvim (the
+  -- roster already shows the change) and only toasts once you've tabbed away.
+  S.nvim_focused = true
+  local fgrp = api.nvim_create_augroup("AgentRailFocus", { clear = true })
+  api.nvim_create_autocmd("FocusGained", { group = fgrp, callback = function()
+    S.nvim_focused = true
+    -- a focus redraw can leave the composer mis-sized (win_text_height transient);
+    -- recompute once the layout settles.
+    vim.defer_fn(function() pcall(composer_resize) end, 50)
+  end })
+  api.nvim_create_autocmd("FocusLost", { group = fgrp, callback = function() S.nvim_focused = false end })
+
   connect(function() send({ type = "list_sources" }); render() end)
   vim.defer_fn(function() if S.win and api.nvim_win_is_valid(S.win) then refresh_plans(); render_roster() end end, 300)
   render()
@@ -3236,6 +3401,12 @@ function M.setup(opts)
   api.nvim_create_user_command("AgentSendDiff", function() M.send_diff() end, {})
   api.nvim_create_user_command("AgentSendDiagnostics", function() M.send_diagnostics() end, {})
   api.nvim_create_user_command("AgentMsg", function() M.send_message() end, {})
+  -- Open a file in a real editor window, NEVER a rail buffer: open_in_editor skips
+  -- every agent-* window and makes a fresh vsplit if only the rail is up. The
+  -- review-pr skill calls this (`:AgentEdit <path>`) so the review .md can't land in
+  -- the composer/chat even when a rail pane is focused.
+  api.nvim_create_user_command("AgentEdit", function(o) open_in_editor(nil, o.args, nil) end,
+    { nargs = 1, complete = "file" })
   -- preview the approval card without a real agent: :AgentMockApproval [confirm|select|input]
   api.nvim_create_user_command("AgentMockApproval", function(o)
     M.open()

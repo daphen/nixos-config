@@ -722,13 +722,6 @@ window-rule {
     default-window-height { fixed 900; }
 }
 
-// plan-view / pr-review-open app windows (helium --app on localhost).
-// App mode derives the app-id from the URL, so one rule covers both.
-window-rule {
-    match app-id=r#"^chrome-127\.0\.0\.1"#
-    default-column-width { fixed 1100; }
-}
-
 // Dim inactive windows so the focused one stands out — idle windows are
 // more transparent (0.75) than the active one (0.85). Helium
 // (browser-personal/browser-work) is excluded — it stays full opacity
@@ -811,10 +804,11 @@ binds {
     // contexts). Idempotent — replaces the old ws-startmain bind.
     Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/cockpit-restore"; }
 
-    // Super+T — cockpit context picker (Enter switch, Ctrl+N new, Ctrl+W close).
-    // Super+T / Super+O drive the cockpit (the workspace-per-stack flow they
-    // used to trigger is retired; remaining ws-* teardown tracked separately).
-    Super+t hotkey-overlay-title="Cockpit contexts" { spawn "qs" "ipc" "call" "cockpit" "toggle"; }
+    // Super+T — jump to the cockpit nvim rail and focus the roster (focuses the
+    // roster in place when already there). Super+Ctrl+T opens the context picker
+    // (Enter switch, Ctrl+N new, Ctrl+W close); Super+O flips to the last context.
+    Super+t hotkey-overlay-title="Focus rail roster" { spawn-sh "$HOME/.config/niri/scripts/cockpit-roster"; }
+    Super+Ctrl+t hotkey-overlay-title="Cockpit contexts" { spawn "qs" "ipc" "call" "cockpit" "toggle"; }
     // Super+O: flip to the previously used cockpit context (vim ctrl-o style).
     Super+o hotkey-overlay-title="Previous context" { spawn-sh "$HOME/.config/niri/scripts/cockpit-toggle"; }
     Super+Ctrl+Shift+t { spawn "qs" "ipc" "call" "todos" "toggle"; }  // permanent quick-todo list

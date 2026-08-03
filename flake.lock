@@ -3,11 +3,11 @@
     "agentd": {
       "flake": false,
       "locked": {
-        "lastModified": 1785419176,
-        "narHash": "sha256-df27vUFmZgZ35Up5UzBy6mVZM4PaOwnt1oAf2WkHntA=",
+        "lastModified": 1785762988,
+        "narHash": "sha256-qGjWZrXXMkl0Ddm6A9ZJnIf3lFepx0LFw4Ke8YXak9w=",
         "ref": "refs/heads/main",
-        "rev": "effa359f3b4c89e8efef00ae0112b4d2fe71b8db",
-        "revCount": 4,
+        "rev": "cdbddc0b19fd15f7f36fcf9991ec0e638bbcde7d",
+        "revCount": 8,
         "type": "git",
         "url": "ssh://git@github.com/daphen/agentd"
       },

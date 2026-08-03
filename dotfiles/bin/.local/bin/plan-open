@@ -26,6 +26,11 @@ from pathlib import Path
 
 def nvim_running_in(repo: str) -> bool:
     for sock in glob.glob("/tmp/kitty-*") + glob.glob(os.environ.get("XDG_RUNTIME_DIR", "/nonexistent") + "/kitty-*"):
+        # The cockpit's single nvim serves every worktree context via tabs, so its
+        # process cwd won't match the ticket's worktree — but its plan-nvim plugin
+        # opens the plan itself. Match on the cockpit socket, not cwd, or plan-open
+        # spawns a redundant second nvim beside it (looks like a stray split).
+        is_cockpit_nvim = sock.endswith("kitty-cockpit-nvim")
         try:
             out = subprocess.run(
                 ["kitten", "@", "--to", f"unix:{sock}", "ls"],
@@ -44,7 +49,7 @@ def nvim_running_in(repo: str) -> bool:
                         if not cmd:
                             continue
                         if Path(cmd[0]).name in ("nvim", "vim") \
-                                and (fp.get("cwd", "") or "").startswith(repo):
+                                and (is_cockpit_nvim or (fp.get("cwd", "") or "").startswith(repo)):
                             return True
     return False
 
