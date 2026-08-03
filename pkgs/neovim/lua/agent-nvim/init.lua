@@ -2392,18 +2392,20 @@ local function chat_yank_line()
   if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
   local cur = api.nvim_win_get_cursor(S.chatwin)[1]
   local all = api.nvim_buf_get_lines(S.chatbuf, 0, -1, false)
-  local line = all[cur] or ""
-  if line:match("^```") then
-    local adj = all[cur + 1]
-    if not adj or adj:match("^```") then adj = all[cur - 1] end
-    line = adj or ""
+  local yl = cur -- the line actually yanked (may differ from the cursor at a fence)
+  if (all[cur] or ""):match("^```") then
+    if all[cur + 1] and not all[cur + 1]:match("^```") then yl = cur + 1
+    elseif all[cur - 1] and not all[cur - 1]:match("^```") then yl = cur - 1 end
   end
+  local line = all[yl] or ""
   fn.setreg("+", line); fn.setreg('"', line)
-  -- manual setreg doesn't fire TextYankPost, so flash the line ourselves to match
-  -- the normal yank feedback (in a dedicated ns so a re-render doesn't wipe it).
+  -- manual setreg doesn't fire TextYankPost, so flash the yanked line ourselves.
+  -- Flash the line that was YANKED (not the cursor's fence line), in a dedicated
+  -- ns, and at a priority ABOVE the chat's code-block bg (190) so it reads solid
+  -- like a normal-buffer yank instead of being washed out on code lines.
   S.flashns = S.flashns or api.nvim_create_namespace("agent-yank-flash")
   pcall(vim.hl.range, S.chatbuf, S.flashns, "IncSearch",
-    { cur - 1, 0 }, { cur - 1, 0 }, { regtype = "V", inclusive = true, timeout = 150 })
+    { yl - 1, 0 }, { yl - 1, 0 }, { regtype = "V", inclusive = true, timeout = 150, priority = 200 })
 end
 
 -- yank the fenced code block the cursor sits in (``` … ```), else the line
