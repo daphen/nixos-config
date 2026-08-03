@@ -2381,6 +2381,24 @@ local function chat_open()
   end
 end
 
+-- yank the single line under the cursor. markview conceals the ``` fence lines,
+-- so the cursor at the top/bottom of a block sits on a fence delimiter in the
+-- buffer even though you see code — redirect to the adjacent code line so yy
+-- copies what you see, not "```".
+local function chat_yank_line()
+  if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
+  local cur = api.nvim_win_get_cursor(S.chatwin)[1]
+  local all = api.nvim_buf_get_lines(S.chatbuf, 0, -1, false)
+  local line = all[cur] or ""
+  if line:match("^```") then
+    local adj = all[cur + 1]
+    if not adj or adj:match("^```") then adj = all[cur - 1] end
+    line = adj or ""
+  end
+  fn.setreg("+", line); fn.setreg('"', line)
+  vim.notify("agent-nvim: yanked line", vim.log.levels.INFO)
+end
+
 -- yank the fenced code block the cursor sits in (``` … ```), else the line
 local function chat_yank_code()
   if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
@@ -3185,6 +3203,7 @@ ensure_buf = function()
   cmap("zM", function() chat_fold_all(true) end)  -- collapse every message
   cmap("zR", function() chat_fold_all(false) end) -- expand every message
   cmap("Y", function() chat_yank_code() end)
+  cmap("yy", function() chat_yank_line() end)  -- yank the single line you see (skips ``` fences)
   cmap("yr", function() chat_yank_reply() end) -- yank (copy) the last agent reply
   cmap("yc", function() chat_yank_convo() end) -- yank the whole conversation as md
   cmap("gf", function() chat_open() end)
