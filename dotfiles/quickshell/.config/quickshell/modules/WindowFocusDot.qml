@@ -30,6 +30,19 @@ PanelWindow {
     property int pillW: 28
     property int pillH: 5
 
+    // One window follows the focused output, so on a monitor change the pill
+    // keeps x/y from the PREVIOUS screen's coordinate space and then animates
+    // diagonally to the new spot — entering from whatever corner the old
+    // position happened to map to. Warp instead: snap (animation suppressed) to
+    // parked, centred under the newly focused window, then slide up as usual.
+    readonly property string outName: {
+        const _ = NiriState.version
+        return NiriState.focusedOutput()
+    }
+    property bool warping: false
+    onOutNameChanged: { warping = true; warpEnd.restart() }
+    Timer { id: warpEnd; interval: 32; onTriggered: root.warping = false }
+
     readonly property var geom: NiriState.focusedWindowGeom()
 
     // A focused layer-shell surface (any of the quickshell pickers) leaves niri
@@ -79,11 +92,15 @@ PanelWindow {
         // Holds its x when geometry is momentarily absent, so a picker opening
         // never drags the pill sideways.
         x: root.posGeom ? root.viewOriginX + root.posGeom.x + root.posGeom.w / 2 - root.pillW / 2 : 0
-        y: root.parked || !root.posGeom
+        // Warping counts as parked, so a monitor change lands below the bottom
+        // edge — already centred on the new x, since x snaps with animation off.
+        y: root.warping || root.parked || !root.posGeom
             ? root.parkedY
             : (root.viewOriginY + root.posGeom.y + root.posGeom.h + parent.height) / 2 - root.pillH / 2
 
-        Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-        Behavior on y { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        // Suppressed during a warp so the reposition is instantaneous; the slide
+        // up then plays from the bottom edge once warping clears.
+        Behavior on x { enabled: !root.warping; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        Behavior on y { enabled: !root.warping; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
     }
 }
