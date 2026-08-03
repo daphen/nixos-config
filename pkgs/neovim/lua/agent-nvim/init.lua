@@ -366,7 +366,14 @@ local function msg_text(msg, cwd)
   local t, hunks = {}, {}
   for _, c in ipairs((msg and msg.content) or {}) do
     if c.type == "text" and c.text then
-      t[#t + 1] = c.text
+      -- Strip <system-reminder>…</system-reminder> blocks: pi injects these into
+      -- the turn as CONTEXT for the agent (worktree state, task nudges), not for
+      -- the human to read — raw in the chat they're just noise. A turn that was
+      -- ONLY a reminder collapses to empty and is dropped downstream (the
+      -- empty-text filter), so reminder-only turns vanish entirely.
+      local txt = c.text:gsub("%s*<system%-reminder>.-</system%-reminder>%s*", "\n")
+      txt = txt:gsub("^%s+", ""):gsub("%s+$", "")
+      if txt ~= "" then t[#t + 1] = txt end
     elseif c.type == "thinking" then
       local th = c.thinking or c.text or ""
       if type(th) == "string" and th:gsub("%s", "") ~= "" then
