@@ -444,6 +444,33 @@ local function short_name(n)
   return (n and n:match("%a+%-%d+")) or n or "?"
 end
 
+-- One file-stat row (path + right-aligned, colour-coded +adds −dels) sized to the
+-- rail width W. The path is head-truncated with … so a long monorepo path never
+-- soft-wraps and splits the number column onto a second, breakindented row (the
+-- old layout padded every path to the LONGEST path's column, which forced the
+-- numbers off-width). acol/dcol are pre-padded sign columns so several rows' signs
+-- line up; omit them for a plain (no-stats) row. Caller recolours via line:find.
+local function file_row(W, indent, path, acol, dcol)
+  local nums = acol and (acol .. "  " .. dcol) or nil
+  local nw = nums and fn.strdisplaywidth(nums) or 0
+  local budget = W - fn.strdisplaywidth(indent) - nw - (nums and 3 or 1)
+  if budget > 4 and fn.strdisplaywidth(path) > budget then
+    path = "…" .. path:sub(#path - budget + 2)
+  end
+  local left = indent .. path
+  if not nums then return left end
+  local gap = W - fn.strdisplaywidth(left) - nw - 1
+  return left .. string.rep(" ", math.max(2, gap)) .. nums
+end
+
+-- Usable width of the rail's middle pane, minus the widest gutter it can show
+-- (3-col relativenumber when focused) + a safety col, so rows fit whether or not
+-- the cursor is in the pane.
+local function rail_width()
+  local w = (S.chatwin and api.nvim_win_is_valid(S.chatwin)) and api.nvim_win_get_width(S.chatwin) or 60
+  return w - 4
+end
+
 --------------------------------------------------------------------------------
 -- prompt state machine — the SINGLE source of truth for the composer's mode while
 -- the agent is asking something. Three states, derived once from S.pending:
@@ -879,16 +906,15 @@ render_chat = function(scroll)
     -- touched files this turn, path + colour-coded +adds −dels (no bar; same look
     -- as the changes view). Only when the agent actually edited something.
     if sum and sum.files and #sum.files > 0 then
-      local mw, aw, dw = 0, 0, 0
+      local W, aw, dw = rail_width(), 0, 0
       for _, f in ipairs(sum.files) do
-        mw = math.max(mw, #f.path)
         aw = math.max(aw, #("+" .. f.add)); dw = math.max(dw, #("-" .. f.del))
       end
       for _, f in ipairs(sum.files) do
         local as, ds = "+" .. f.add, "-" .. f.del
         local acol = string.rep(" ", aw - #as) .. as
         local dcol = string.rep(" ", dw - #ds) .. ds
-        local line = "    " .. f.path .. string.rep(" ", mw - #f.path) .. "   " .. acol .. "  " .. dcol
+        local line = file_row(W, "    ", f.path, acol, dcol)
         local bl = push(line)
         decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
         local ps, pe = line:find("%+%d+")
@@ -1662,7 +1688,11 @@ local function start_spin()
       -- render both the winbar and the roster every frame: both are cheap (the
       -- roster is a handful of lines) and the real lag was the git diff (now
       -- async) + chat render (now throttled), not this. Every-frame = smooth spinner.
-      if S.view == "chat" then refresh_active_header() end
+      -- The spinner lives in the COMPOSER winbar, visible in both chat + changes
+      -- views — refresh it every frame regardless of view, else switching to the
+      -- changes view freezes it. (refresh_active_header guards the chat winbar on
+      -- view internally, so the "changes ·" winbar isn't clobbered.)
+      refresh_active_header()
       render_roster()
     elseif S.tick % 33 == 0 then
       render_roster() -- ~2s refresh so idle durations tick up
@@ -2607,26 +2637,25 @@ render_changes = function()
     -- colour-coded stats (+green −red) plus a proportional add/del bar, matching
     -- the inline-diff hunks. rows: { dot, grp, path, add?, del? }.
     local function push_files(rows)
-      local mw, aw, dw = 0, 0, 0
+      local W, aw, dw = rail_width(), 0, 0
       for _, r in ipairs(rows) do
-        mw = math.max(mw, #r.path)
         if r.add then
           aw = math.max(aw, #("+" .. r.add))
           dw = math.max(dw, #("-" .. r.del))
         end
       end
       for _, r in ipairs(rows) do
-        local base = "  " .. r.dot .. " " .. r.path
+        local indent = "  " .. r.dot .. " "
         if not r.add then
-          decor[#decor + 1] = { line = push(base, r.path), fg = r.grp }
+          decor[#decor + 1] = { line = push(file_row(W, indent, r.path), r.path), fg = r.grp }
         else
-          -- path + right-aligned, colour-coded +adds (green) −dels (red), the two
-          -- number columns lined up. No proportional bar: long monorepo paths fill
-          -- the narrow rail, so the bar wrapped to its own row as a grey block.
+          -- path + right-aligned, colour-coded +adds (green) −dels (red). Numbers
+          -- right-align to the rail width and the path head-truncates (…) so long
+          -- monorepo paths never wrap the number column onto a second grey row.
           local as, ds = "+" .. r.add, "-" .. r.del
           local acol = string.rep(" ", aw - #as) .. as
           local dcol = string.rep(" ", dw - #ds) .. ds
-          local line = base .. string.rep(" ", mw - #r.path) .. "   " .. acol .. "  " .. dcol
+          local line = file_row(W, indent, r.path, acol, dcol)
           local bl = push(line, r.path)
           decor[#decor + 1] = { line = bl, fg = r.grp }
           local ps, pe = line:find("%+%d+")
