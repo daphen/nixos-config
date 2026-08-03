@@ -84,11 +84,17 @@ let
 
     # Advertising lapses on its own; without it a phone that wandered off has
     # nothing to reconnect to.
+    #
+    # The signal is LEAdvertisingManager1.ActiveInstances, NOT Adapter1
+    # .Discoverable — Discoverable is classic-Bluetooth discoverability and stays
+    # true regardless, so keying off it made this branch dead code: observed
+    # ActiveInstances=1 alongside Discoverable=true, and equally a lapsed
+    # advertisement would have gone unnoticed.
     hci=$(ancs4linux-ctl get-all-hci 2>/dev/null | jq -r '.[0] // empty') || true
     if [ -n "$hci" ]; then
-      disc=$(busctl --system get-property org.bluez /org/bluez/hci0 \
-               org.bluez.Adapter1 Discoverable 2>/dev/null | awk '{print $2}')
-      if [ "$disc" != "true" ]; then
+      adv=$(busctl --system get-property org.bluez /org/bluez/hci0 \
+              org.bluez.LEAdvertisingManager1 ActiveInstances 2>/dev/null | awk '{print $2}')
+      if [ "''${adv:-0}" = "0" ]; then
         ancs4linux-ctl enable-advertising --hci-address "$hci" --name proart >/dev/null 2>&1 || true
         ancs4linux-ctl disable-pairing >/dev/null 2>&1 || true
       fi
