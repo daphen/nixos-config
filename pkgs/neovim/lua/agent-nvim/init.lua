@@ -1052,7 +1052,11 @@ handle = function(obj)
     if text:gsub("%s", "") ~= "" then
       local c = S.chat[obj.session] or { msgs = {} }
       local last = c.msgs[#c.msgs]
-      if not (last and last.role == "user" and last.text == text) then
+      -- the optimistic echo appends an image marker ("  🖼×N") the server echo
+      -- doesn't carry — strip it before comparing, else image messages dedup-miss
+      -- and render twice.
+      local lasttext = last and last.role == "user" and (last.text or ""):gsub("%s*🖼×%d+%s*$", "") or nil
+      if lasttext ~= text then
         c.msgs[#c.msgs + 1] = { role = "user", text = text }
         S.chat[obj.session] = c
         if obj.session == S.selected then render_chat(true) end
@@ -1482,8 +1486,8 @@ local function paste_clipboard()
     local b64 = fn.system({ "sh", "-c", "wl-paste --no-newline --type " .. img_type .. " | base64 -w0" }):gsub("%s+$", "")
     if b64 ~= "" then
       S.paste_images[#S.paste_images + 1] = { type = "image", data = b64, mimeType = img_type }
-      render_chips(); refresh_active_header() -- chip + always-visible winbar count
-      vim.notify("agent: image attached (" .. img_type .. ") — send to include it")
+      render_chips(); refresh_active_header() -- chip + always-visible winbar count are
+      -- the confirmation — no notification (the popup was redundant noise).
     end
   else
     local txt = fn.getreg("+")
