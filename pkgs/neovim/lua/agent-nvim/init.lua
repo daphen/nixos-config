@@ -2790,16 +2790,15 @@ end
 git_changes = function(cwd)
   if not cwd or fn.isdirectory(cwd) ~= 1 then return {} end
   if not fn.system({ "git", "-C", cwd, "rev-parse", "--is-inside-work-tree" }):match("true") then return {} end
-  -- On the main/master checkout (the orchestrator) there's no feature-branch diff:
-  -- comparing against the merge-base with origin/main surfaced the whole local↔remote
-  -- divergence as "changes". Diff HEAD instead → only uncommitted work (≈ empty).
+  -- Same base logic as the lualine diffstat + inline gutter signs, so every diff
+  -- view agrees: a feature branch uses hunk-nvim's canonical base_for(root) (per-root,
+  -- trunk-move- + LoL-init-aware); main/master has no feature diff, so HEAD → the
+  -- orchestrator shows only uncommitted work (≈ empty), not the local↔remote divergence.
   local branch = fn.system({ "git", "-C", cwd, "branch", "--show-current" }):gsub("%s+$", "")
-  local base
-  if branch == "main" or branch == "master" then
-    base = "HEAD"
-  else
-    base = fn.system({ "git", "-C", cwd, "merge-base", "HEAD", "origin/main" }):gsub("%s+$", "")
-    if base == "" then base = fn.system({ "git", "-C", cwd, "merge-base", "HEAD", "main" }):gsub("%s+$", "") end
+  local base = "HEAD"
+  if branch ~= "" and branch ~= "main" and branch ~= "master" then
+    local ok, signs = pcall(require, "hunk-nvim.signs")
+    base = (ok and signs.base_for and signs.base_for(cwd)) or "HEAD"
   end
   local cmd = { "git", "-C", cwd, "diff", "--numstat" }
   if base ~= "" then cmd[#cmd + 1] = base end
