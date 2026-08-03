@@ -1247,14 +1247,20 @@ handle = function(obj)
     end
     local files = {}
     if ed then
+      local cwd = session_cwd(obj.session)
       local by = {}
-      for _, x in ipairs(git_changes(session_cwd(obj.session))) do by[x.path] = x end
+      for _, x in ipairs(git_changes(cwd)) do by[x.path] = x end -- keys are worktree-relative
       local names = {}
       for p in pairs(ed) do names[#names + 1] = p end
       table.sort(names)
       for _, p in ipairs(names) do
-        local x = by[p]
-        files[#files + 1] = { path = p, add = x and x.add or 0, del = x and x.del or 0 }
+        -- edited paths are absolute → show them worktree-relative (matches git_changes'
+        -- keys so the +adds/−dels line up); out-of-worktree files (e.g. the vault plan)
+        -- fall back to ~-relative rather than the full /home/daphen/... path.
+        local rel = (cwd and p:sub(1, #cwd + 1) == cwd .. "/") and p:sub(#cwd + 2)
+          or fn.fnamemodify(p, ":~")
+        local x = by[rel]
+        files[#files + 1] = { path = rel, add = x and x.add or 0, del = x and x.del or 0 }
       end
     end
     S.summary[obj.session] = { recap = recap, files = files }
