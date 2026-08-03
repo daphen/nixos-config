@@ -3151,8 +3151,10 @@ local function float(lines, title)
   vim.wo[win].wrap = true
   vim.keymap.set("n", "q", "<cmd>close<CR>", { buffer = b, nowait = true })
   vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", { buffer = b, nowait = true })
-  -- floats are read-only navigation surfaces — hide the cursor here too
-  local grp = api.nvim_create_augroup("AgentFloatCursor" .. b, { clear = true })
+  -- floats are read-only navigation surfaces — hide the cursor here too. One fixed
+  -- group (cleared each open) — floats are modal, so per-buffer named groups just
+  -- leaked one augroup per float opened.
+  local grp = api.nvim_create_augroup("AgentFloatCursor", { clear = true })
   api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     group = grp, buffer = b,
     callback = function()
