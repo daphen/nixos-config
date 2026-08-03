@@ -167,6 +167,7 @@ local function set_hl()
   hl("AgentAccent", { fg = accent, bold = true })
   hl("AgentFocusName", { fg = p.fg or "#c7ccd1", bold = true }) -- focused-but-not-open row
   hl("AgentMuted", { fg = p.fg_muted or "#5c6773" })
+  hl("AgentFile", { fg = p.fg or "#c7ccd1" }) -- neutral file-path text (status lives on the dot)
   hl("AgentHunkRange", { fg = p.blue or p.cyan or "#5aa9e6" }) -- hunk line-range in the chat
   -- approval-card key caps (a subtle elevated pill behind the key char)
   hl("AgentKeyOk", { fg = p.green or "#5fca8b", bg = cardbg, bold = true })
@@ -2633,9 +2634,11 @@ render_changes = function()
     local bypath = {}
     for _, c in ipairs(changes) do bypath[c.path] = c end
 
-    -- render a file list with the path in its status colour and aligned,
-    -- colour-coded stats (+green −red) plus a proportional add/del bar, matching
-    -- the inline-diff hunks. rows: { dot, grp, path, add?, del? }.
+    -- render a file list: the STATUS colour lives on the leading dot only (done
+    -- green ● / touched amber ◐ / pending grey ○), the path stays a neutral fg,
+    -- and the stats are colour-coded (+green −red). Painting the whole path in the
+    -- status colour made a fully-done plan a wall of green. rows: { dot, grp, path,
+    -- add?, del? }.
     local function push_files(rows)
       local W, aw, dw = rail_width(), 0, 0
       for _, r in ipairs(rows) do
@@ -2644,10 +2647,16 @@ render_changes = function()
           dw = math.max(dw, #("-" .. r.del))
         end
       end
+      -- colour just the dot glyph its status colour; "  " indent precedes it.
+      local function dot_hl(bl, dot, grp)
+        decor[#decor + 1] = { line = bl, fg = grp, cs = 2, ce = 2 + #dot }
+      end
       for _, r in ipairs(rows) do
         local indent = "  " .. r.dot .. " "
         if not r.add then
-          decor[#decor + 1] = { line = push(file_row(W, indent, r.path), r.path), fg = r.grp }
+          local bl = push(file_row(W, indent, r.path), r.path)
+          decor[#decor + 1] = { line = bl, fg = "AgentFile" }
+          dot_hl(bl, r.dot, r.grp)
         else
           -- path + right-aligned, colour-coded +adds (green) −dels (red). Numbers
           -- right-align to the rail width and the path head-truncates (…) so long
@@ -2657,7 +2666,8 @@ render_changes = function()
           local dcol = string.rep(" ", dw - #ds) .. ds
           local line = file_row(W, indent, r.path, acol, dcol)
           local bl = push(line, r.path)
-          decor[#decor + 1] = { line = bl, fg = r.grp }
+          decor[#decor + 1] = { line = bl, fg = "AgentFile" }
+          dot_hl(bl, r.dot, r.grp)
           local ps, pe = line:find("%+%d+")
           if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
           local ms, me = line:find("%-%d+", (pe or 0) + 1)
