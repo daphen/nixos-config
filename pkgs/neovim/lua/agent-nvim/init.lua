@@ -248,13 +248,23 @@ end
 local function tool_hint(c)
   local a = c.arguments or c.input or c.args or {}
   local name = c.name or c.tool or "tool"
+  local function clip(s) s = (s or ""):gsub("%s+", " "); if #s > 64 then s = s:sub(1, 61) .. "…" end; return s end
   if name == "read" or name == "write" or name == "edit" or name == "apply_patch" then
     local p = a.path or a.file_path or a.filePath or ""
     return "⚙ " .. name .. (p ~= "" and (" " .. vim.fn.fnamemodify(p, ":.")) or "")
   elseif name == "bash" or name == "shell" then
-    local cmd = (a.command or a.cmd or ""):gsub("%s+", " ")
-    if #cmd > 64 then cmd = cmd:sub(1, 61) .. "…" end
-    return "⚙ bash " .. cmd
+    return "⚙ bash " .. clip(a.command or a.cmd)
+  elseif name == "grep" or name == "ripgrep" or name == "search_files" then
+    return "⚙ grep " .. clip(a.pattern or a.query or a.regex)
+  elseif name == "glob" or name == "find" then
+    return "⚙ glob " .. clip(a.pattern or a.glob or a.query)
+  elseif name == "list" or name == "ls" then
+    local p = a.path or a.dir or a.directory or ""
+    return "⚙ ls " .. (p ~= "" and vim.fn.fnamemodify(p, ":.") or "")
+  elseif name == "webfetch" or name == "web_fetch" or name == "fetch" then
+    return "⚙ fetch " .. clip(a.url or a.uri)
+  elseif name == "websearch" or name == "web_search" then
+    return "⚙ web " .. clip(a.query or a.q)
   elseif name == "mcp" then
     local bits = {}
     if a.server then bits[#bits + 1] = a.server end
