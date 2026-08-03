@@ -829,7 +829,13 @@ render_chat = function(scroll)
   -- working, and showing "done" there is wrong.
   local sstatus
   for _, a in ipairs(S.roster) do if a.id == S.selected then sstatus = a.status break end end
-  local working = S.selected and ((S.stream[S.selected] and S.stream[S.selected] ~= "") or sstatus == "streaming")
+  -- "working" spans the WHOLE turn (agent_start→agent_end), not per-round: agentd
+  -- flips status idle↔streaming per tool round, so between rounds stream is empty
+  -- and status briefly idle — without turn_active the "done" separator flashes
+  -- mid-turn. turn_active is cleared on agent_end / error / abort.
+  local working = S.selected and ((S.stream[S.selected] and S.stream[S.selected] ~= "")
+    or sstatus == "streaming"
+    or (S.turn_active and S.turn_active[S.selected]))
   if has_any and not working and not ap and not errmsg then
     local el = S.selected and fmt_el(S.lastdur[S.selected])
     local label = el and ("✓ done in " .. el) or "✓ done"
@@ -1106,6 +1112,12 @@ handle = function(obj)
       S.stream[obj.session] = (S.stream[obj.session] or "") .. chunk
       if obj.session == S.selected then render_stream() end
     end
+  elseif t == "agent_start" and obj.session then
+    -- whole turn begins (once, before all rounds) → mark active so the "done"
+    -- footer stays hidden through the between-round idle gaps until agent_end.
+    S.turn_active = S.turn_active or {}
+    S.turn_active[obj.session] = true
+    if obj.session == S.selected then render_chat(false) end
   elseif t == "turn_end" and obj.session then
     -- pi fires turn_end PER TOOL ROUND (verified), not once per prompt — so just
     -- finalize this round's stream. The true whole-turn-done is agent_end below;
@@ -1115,6 +1127,7 @@ handle = function(obj)
   elseif t == "agent_end" and obj.session then
     -- the ENTIRE turn is complete (fires once, after every round).
     S.stream[obj.session] = nil
+    if S.turn_active then S.turn_active[obj.session] = nil end
     if S.queued and S.queued[obj.session] then
       -- a message queued mid-turn becomes the next turn now (only at true end,
       -- so it isn't injected between the agent's own tool rounds)
@@ -1155,6 +1168,7 @@ handle = function(obj)
     if type(msg) == "table" then msg = msg.message or msg.text end
     local sid = obj.session or S.selected
     if sid then
+      if S.turn_active then S.turn_active[sid] = nil end -- turn ended (in error) → clear active
       -- During a /reload, the ~2s pi-boot gap yields an expected "pi not running"
       -- / "no running session" — swallow ONLY those while reloading. Any other
       -- error (or these outside a reload) still surfaces normally.
@@ -1272,6 +1286,7 @@ local function drop_and_reconnect()
     pcall(function() if S.pipe then S.pipe:close() end end)
     S.pipe = nil; S.readbuf = ""
   end
+  S.turn_active = {} -- connection reset → lost turn tracking; don't leave "working" stuck
   render_roster()
   connect(function() send({ type = "list_sources" }) end)
 end
@@ -1589,7 +1604,9 @@ local function run_slash(text)
   if not cmd then return false end
   if cmd == "abort" then
     send({ type = "abort", session = S.selected })
-    S.stream[S.selected] = nil; render_chat(false)
+    S.stream[S.selected] = nil
+    if S.turn_active and S.selected then S.turn_active[S.selected] = nil end
+    render_chat(false)
   elseif cmd == "steer" then
     send({ type = "steer", session = S.selected, message = rest })
   elseif cmd == "clear" then
