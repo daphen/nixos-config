@@ -94,19 +94,31 @@ let
       fi
     fi
 
+    # BlueZ keeps the whole GATT tree cached for a BONDED device after it
+    # disconnects — including a stale Notifying=true. Reading the characteristic
+    # alone therefore says "healthy" for a phone that is nowhere near. Gate on
+    # the parent device's Connected instead, so "subscribed" only counts when
+    # there is a live link to be subscribed over.
     notifying=""
+    devpath=""
     for c in $(busctl --system tree org.bluez 2>/dev/null \
                  | grep -oE '/org/bluez/hci[0-9]+/dev_[0-9A-F_]+/service[0-9a-f]+/char[0-9a-f]+'); do
       u=$(busctl --system get-property org.bluez "$c" \
             org.bluez.GattCharacteristic1 UUID 2>/dev/null | tr -d 's "')
       [ "$u" = "$NSRC" ] || continue
+      d=$(printf '%s' "$c" | grep -oE '^/org/bluez/hci[0-9]+/dev_[0-9A-F_]+')
+      conn=$(busctl --system get-property org.bluez "$d" \
+               org.bluez.Device1 Connected 2>/dev/null | awk '{print $2}')
+      [ "$conn" = "true" ] || continue
+      devpath="$d"
       notifying=$(busctl --system get-property org.bluez "$c" \
                     org.bluez.GattCharacteristic1 Notifying 2>/dev/null | tr -d 'b ')
       break
     done
 
-    # No ANCS characteristic anywhere: the phone is simply away. Nothing to heal.
-    [ -n "$notifying" ] || exit 0
+    # No CONNECTED device exposing ANCS: the phone is away. Nothing to heal, and
+    # advertising was already re-asserted above so it can come back.
+    [ -n "$devpath" ] || exit 0
     [ "$notifying" = "true" ] && exit 0
 
     now=$(date +%s)

@@ -1193,6 +1193,7 @@ on_read = function(err, chunk)
     end
     return
   end
+  S.last_recv = os.time() -- heartbeat: agentd pings every 3s; absence = dead pipe
   S.readbuf = S.readbuf .. chunk
   while true do
     local nl = S.readbuf:find("\n", 1, true)
@@ -1215,6 +1216,7 @@ try_connect = function(cb, tries)
       S.connecting = false
       S.pipe = p
       S.connected = true
+      S.last_recv = os.time() -- fresh connection: don't flag it stale immediately
       S.ever_connected = true
       p:read_start(vim.schedule_wrap(on_read))
       -- flush anything queued while we were down so a daemon restart / socket
@@ -1440,8 +1442,16 @@ local function start_spin()
     -- ever find ourselves disconnected (and no retry loop is already spinning),
     -- kick a reconnect. This is why the rail stays alive on its own — no manual
     -- :AgentReconnect needed.
-    if S.tick % 33 == 0 and not S.connected and not S.connecting then
-      connect(function() send({ type = "list_sources" }) end)
+    if S.tick % 33 == 0 then
+      if S.connected and S.pipe and S.last_recv and (os.time() - S.last_recv > 10) then
+        -- Heartbeat: agentd broadcasts a ping every 3s. >10s of silence means the
+        -- pipe is dead even though we still think we're connected (writes to it
+        -- don't error) — exactly the "stopped responding" wedge. Force a
+        -- reconnect (drops the pipe, re-dials, flushes the outbox).
+        drop_and_reconnect()
+      elseif not S.connected and not S.connecting then
+        connect(function() send({ type = "list_sources" }) end)
+      end
     end
     if streaming then
       S.spin = S.spin + 1
