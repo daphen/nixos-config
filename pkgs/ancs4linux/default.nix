@@ -36,6 +36,24 @@ let
   # setup: forget a device only when the device object itself disappears.
   removeAnchor = "        if path in self.property_observers:";
   removeFixed = "        if BluezDeviceAPI.interface in services and path in self.property_observers:";
+
+  # The advertisement carried no Service Solicitation, so iOS saw a generic
+  # connectable peripheral with no stated interest in ANCS and never initiated a
+  # reconnect — it knew it was disconnected (tapping the row showed a connect
+  # spinner) but had no reason to come back. Soliciting the ANCS service is how a
+  # smartwatch gets iOS to connect to IT; without it the link only ever comes up
+  # by tapping the device in Settings.
+  solicitAnchor = "    @property\n    def IncludeTxPower(self) -> Bool:";
+  solicit =
+    "    @property\n"
+    + "    def SolicitUUIDs(self) -> List[Str]:\n"
+    + "        return [\"7905F431-B5CE-4E99-A40F-4B1E122D00D0\"]  # ANCS\n"
+    + "\n"
+    + "    @SolicitUUIDs.setter\n"
+    + "    def SolicitUUIDs(self, value: List[Str]) -> None:\n"
+    + "        pass\n"
+    + "\n"
+    + solicitAnchor;
 in
 pkgs.python3Packages.buildPythonApplication rec {
   pname = "ancs4linux";
@@ -71,8 +89,10 @@ pkgs.python3Packages.buildPythonApplication rec {
       --replace-fail ${pkgs.lib.escapeShellArg guardAnchor} ${pkgs.lib.escapeShellArg guard}
     substituteInPlace ancs4linux/observer/scanner.py \
       --replace-fail ${pkgs.lib.escapeShellArg removeAnchor} ${pkgs.lib.escapeShellArg removeFixed}
+    substituteInPlace ancs4linux/advertising/advertisement.py \
+      --replace-fail ${pkgs.lib.escapeShellArg solicitAnchor} ${pkgs.lib.escapeShellArg solicit}
     ${pkgs.python3}/bin/python3 -m compileall -q \
-      ancs4linux/desktop_integration/main.py ancs4linux/observer/scanner.py
+      ancs4linux/desktop_integration/main.py ancs4linux/observer/scanner.py ancs4linux/advertising/advertisement.py
   '';
 
   # Upstream ships these as install.sh copies into /etc; expose them where
@@ -94,6 +114,7 @@ pkgs.python3Packages.buildPythonApplication rec {
     "ancs4linux"
     "ancs4linux.desktop_integration.main"
     "ancs4linux.observer.scanner"
+    "ancs4linux.advertising.advertisement"
   ];
 
   meta = {
