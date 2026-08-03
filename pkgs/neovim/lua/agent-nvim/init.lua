@@ -117,6 +117,7 @@ local session_cwd, load_plan, answer, apply_prompt_mode
 local on_cockpit_active -- reconciles the rail's selection with the cockpit active context
 local reflect_context, cockpit_context, cockpit_sync -- view_session side-effects (defined later)
 local follow_edit -- live-follow the agent's edits into the editor window (defined later)
+local target_editor_win, capture_editor -- editor-director helpers (defined later)
 local composer_send, composer_resize, composer_placeholder, render_chips
 local add_attachment, session_state
 
@@ -1600,26 +1601,13 @@ end
 
 view_session = function(name, cwd)
   save_draft()
-  -- Remember the file you were viewing in the OUTGOING session's worktree so
-  -- returning to it restores that file instead of falling back to the plan.
-  local prev = S.selected
-  if prev and prev ~= name then
-    local pcwd = session_cwd(prev)
-    if pcwd and pcwd ~= "" then
-      for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
-        local n = api.nvim_buf_get_name(api.nvim_win_get_buf(w))
-        if n ~= "" and not n:match("agent%-") and n:sub(1, #pcwd + 1) == pcwd .. "/" then
-          S.last_file = S.last_file or {}
-          S.last_file[prev] = n
-          break
-        end
-      end
-    end
-  end
+  -- Remember what the OUTGOING session had in the editor so returning restores it
+  -- (per-session, so one session's file can never bleed into another's).
+  if S.selected and S.selected ~= name then capture_editor(S.selected) end
   S.selected = name
   reload_messages(name)
   reroot(cwd)
-  reflect_context(cwd) -- restore this session's last file, else swap a stale other-worktree file for its plan/scratch
+  reflect_context(cwd) -- restore this session's editor (S.editor[name]) or show the dashboard
   cockpit_sync(cwd)    -- drive the cockpit devenv tab + Super+T active marker to match
   load_draft(name)
   refresh_plans()
@@ -2244,14 +2232,24 @@ end
 
 -- open a file in the main editor window (not a rail pane), at an optional line.
 -- Relative paths resolve against the session's worktree.
+-- The one editor window: the first non-float, non-rail (agent-*) window in the
+-- tab — the pane files/plan/dashboard live in. Nil if only the rail is up. This
+-- was copy-pasted at every open site; one helper keeps them consistent.
+target_editor_win = function()
+  for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
+    local cfg = api.nvim_win_get_config(w)
+    if not (cfg and cfg.relative and cfg.relative ~= "") then -- skip floats
+      if not api.nvim_buf_get_name(api.nvim_win_get_buf(w)):match("agent%-") then return w end
+    end
+  end
+  return nil
+end
+
 local function open_in_editor(cwd, path, line)
   local file = path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)
   file = fn.expand(file)
   if fn.filereadable(file) == 0 then vim.notify("agent-nvim: not readable — " .. path, vim.log.levels.WARN); return end
-  local target
-  for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
-    if not api.nvim_buf_get_name(api.nvim_win_get_buf(w)):match("agent%-") then target = w; break end
-  end
+  local target = target_editor_win()
   if target then api.nvim_set_current_win(target) else vim.cmd("botright vsplit") end
   pcall(vim.cmd, "edit " .. fn.fnameescape(file))
   if line then pcall(api.nvim_win_set_cursor, 0, { tonumber(line), 0 }) end
@@ -2289,10 +2287,7 @@ follow_edit = function(cwd, path, line)
   if not api.nvim_buf_get_name(api.nvim_win_get_buf(cur)):match("agent%-") then return end -- you're in the code
   local file = fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
   if fn.filereadable(file) ~= 1 then return end
-  local target
-  for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
-    if not api.nvim_buf_get_name(api.nvim_win_get_buf(w)):match("agent%-") then target = w; break end
-  end
+  local target = target_editor_win()
   if not target or vim.bo[api.nvim_win_get_buf(target)].modified then return end
   local key = file .. ":" .. tostring(line or 0)
   if S._follow == key then return end
@@ -2303,9 +2298,6 @@ follow_edit = function(cwd, path, line)
     end
     if line then pcall(api.nvim_win_set_cursor, target, { tonumber(line), 0 }); vim.cmd("normal! zz") end
   end)
-  -- tag the followed buffer with the owning session so reflect_context swaps it
-  -- out when you switch to a different session (even for out-of-worktree files).
-  S.editor_owner = { buf = api.nvim_win_get_buf(target), session = S.selected }
 end
 
 -- reverse bridge: open the file referenced in the nearest fenced-code header
@@ -2671,56 +2663,39 @@ dash_keys = function(buf, win, cwd, key, tik)
   end
 end
 
+-- Capture what the editor pane is showing for a session, so switching back
+-- restores it. A real file → its abs path; the dashboard/scratch or an empty
+-- buffer → nil (no file → the dashboard is this session's resting view).
+capture_editor = function(session)
+  if not session then return end
+  local ed = target_editor_win()
+  if not ed then return end
+  S.editor = S.editor or {}
+  local b = api.nvim_win_get_buf(ed)
+  if S.scratchbuf and b == S.scratchbuf then
+    S.editor[session] = nil
+  else
+    local n = api.nvim_buf_get_name(b)
+    S.editor[session] = (n ~= "" and vim.bo[b].buftype == "") and fn.fnamemodify(n, ":p") or nil
+  end
+end
+
+-- The editor director — the SINGLE decision of what the editor shows for the
+-- active session: restore the file it had open (captured on switch-away), else
+-- the dashboard. Per-session storage means one session's file can never bleed
+-- into another's, so there are no stale/owner/blank/greeter heuristics.
 reflect_context = function(cwd)
   if not cwd or cwd == "" then return end
-  local ed
-  for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
-    if not api.nvim_buf_get_name(api.nvim_win_get_buf(w)):match("agent%-") then ed = w; break end
-  end
+  local ed = target_editor_win()
   if not ed then return end
-  local curbuf = api.nvim_win_get_buf(ed)
-  local name = api.nvim_buf_get_name(curbuf)
-  local function own() S.editor_owner = { buf = api.nvim_win_get_buf(ed), session = S.selected } end
-  -- Restore the file you had open in this session last time (per-session memory).
-  local remembered = S.last_file and S.selected and S.last_file[S.selected]
-  if remembered and remembered ~= name and remembered:sub(1, #cwd + 1) == cwd .. "/"
-    and fn.filereadable(remembered) == 1 then
-    api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(remembered)) end)
-    own(); return
-  end
-  -- Render the dashboard when the editor is our scratch OR a blank/unmodified
-  -- [No Name] buffer — that's the default empty state, and it should default to
-  -- the dashboard, not sit empty. (Re-rendering the scratch also refreshes it for
-  -- the session you switch back to.) A user's own unnamed buffer WITH content, or
-  -- a real file, is left alone.
-  local is_scratch = S.scratchbuf and curbuf == S.scratchbuf
-  local ft = vim.bo[curbuf].filetype
-  local greeter = ft == "snacks_dashboard" or ft == "dashboard" or ft == "alpha" or ft == "starter" or ft == "ministarter"
-  local blank = greeter or (name == "" and not vim.bo[curbuf].modified
-    and api.nvim_buf_line_count(curbuf) <= 1
-    and (api.nvim_buf_get_lines(curbuf, 0, 1, false)[1] or "") == "")
-  -- A buffer the RAIL opened for ANOTHER session (e.g. the orchestrator following
-  -- a vault note, which isn't under any worktree so the stale check misses it) is
-  -- that session's context — swap it for this session's, don't treat it as your
-  -- own file. Files YOU opened aren't owned, so they're still kept below.
-  local owned_other = S.editor_owner and S.editor_owner.buf == curbuf and S.editor_owner.session ~= S.selected
-  if not (is_scratch or blank or owned_other) then
-    if name == "" or name:sub(1, #cwd + 1) == cwd .. "/" then return end -- your scratch, or a file already here
-    local stale = false
-    for _, a in ipairs(S.roster) do
-      if a.cwd and a.cwd ~= "" and a.cwd ~= cwd and name:sub(1, #a.cwd + 1) == a.cwd .. "/" then stale = true; break end
+  local want = S.editor and S.selected and S.editor[S.selected]
+  if want and fn.filereadable(want) == 1 then
+    if fn.fnamemodify(api.nvim_buf_get_name(api.nvim_win_get_buf(ed)), ":p") ~= fn.fnamemodify(want, ":p") then
+      api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(want)) end)
     end
-    if not stale then return end -- your own file elsewhere → keep it
-  end
-  local pl = load_plan(cwd)
-  local pdir = plandir(cwd)
-  local plan_md = pl and pl.key and pdir and (pdir .. "/" .. pl.key .. ".md")
-  if plan_md and fn.filereadable(plan_md) == 1 then
-    api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(plan_md)) end)
   else
     show_scratch(ed, cwd)
   end
-  own()
 end
 
 -- Map a session cwd to its cockpit context name (~/work/lovable → "main";
