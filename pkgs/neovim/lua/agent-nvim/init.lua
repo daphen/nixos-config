@@ -1498,9 +1498,31 @@ local RAIL_CMDS = {
   { "help", "rail cheatsheet" },
 }
 
+-- pi's own built-in slash commands — the rail forwards these straight to pi (they
+-- are NOT intercepted by run_slash), so listing them here just makes them
+-- discoverable in the composer's slash menu. Curated to the useful, non-conflicting
+-- set (rail already owns clear/model/help/etc). Names must match pi's registry.
+local PI_CMDS = {
+  { "mcp-auth", "authenticate an MCP server <name>" },
+  { "mcp", "MCP server status" },
+  { "reload", "reload config · extensions · skills · prompts" },
+  { "compact", "compact the session context" },
+  { "copy", "copy last agent message" },
+  { "context", "show context-window usage" },
+  { "cost", "session cost + token usage" },
+  { "tools", "list available tools" },
+  { "session", "session info + stats" },
+  { "settings", "open pi settings" },
+  { "hotkeys", "pi keyboard shortcuts" },
+  { "export", "export session (HTML/JSONL)" },
+}
+
 local function slash_items()
   local items = {}
   for _, c in ipairs(RAIL_CMDS) do
+    items[#items + 1] = { insert = "/" .. c[1] .. " ", label = "/" .. c[1], hint = c[2] }
+  end
+  for _, c in ipairs(PI_CMDS) do
     items[#items + 1] = { insert = "/" .. c[1] .. " ", label = "/" .. c[1], hint = c[2] }
   end
   -- plan-ticket lifecycle: offer each phase and mark the one that's next given the
@@ -2512,7 +2534,8 @@ function M.help()
     " anywhere R focus roster · <leader>a toggle · <leader>A quick-message active session",
     "          <leader>as (visual) send selection · :AgentSend / File / Diff / Diagnostics",
     "",
-    " slash    /abort  /steer <m>  /clear  /diff  /plan  /retry  /help",
+    " slash    rail: /abort /steer /clear /diff /plan /retry /model /think /help",
+    "          pi:   /mcp-auth /mcp /reload /compact /copy /context /cost /tools …",
   }, "agent rail — keys")
 end
 
