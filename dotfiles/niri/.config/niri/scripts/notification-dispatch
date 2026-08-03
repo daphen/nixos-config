@@ -7,10 +7,6 @@ set -e
 
 DIR=$(dirname "$0")
 
-# TEMP debug: record every invocation so we can see what Super+I passes for a
-# rail notification (remove once the agent-rail jump is confirmed).
-printf '%s  args=[%s]\n' "$(date +%T)" "$*" >> /tmp/notif-dispatch.log 2>/dev/null || true
-
 # Focus a window whose app_id matches $1 (substring, either direction).
 focus_app_window() {
     local la win
@@ -22,11 +18,11 @@ focus_app_window() {
     [ -n "$win" ] && niri msg action focus-window --id "$win" >/dev/null 2>&1 || true
 }
 
-# Cockpit path: if the summary names a context with a live cockpit tab,
-# switch the whole cockpit to it and focus the agent window. Returns 1 when
-# the summary isn't a cockpit context (callers fall through to old paths).
+# Cockpit path: if the summary names a context with a live cockpit tab, switch
+# the whole cockpit to it and focus the NVIM window (you land in that session's
+# rail). Returns 1 when the summary isn't a cockpit context (callers fall through).
 focus_cockpit_context() {
-    local ctx awin
+    local ctx
     # "Claude · <label>" — label is the context name (strip the old
     # lovable.daphen- prefix if present). The tab check validates the guess.
     ctx=$(printf '%s' "$1" | sed -n 's/^Claude · //p' | sed 's|^lovable\.daphen-||')
@@ -34,9 +30,7 @@ focus_cockpit_context() {
     kitty @ --to unix:${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-agent ls 2>/dev/null \
         | jq -e --arg t "$ctx" 'any(.[].tabs[]; .title == $t)' >/dev/null || return 1
     "$DIR/cockpit-switch" "$ctx" >/dev/null 2>&1 || true
-    awin=$(niri msg --json windows 2>/dev/null \
-        | jq -r '[.[]|select(.app_id=="cockpit-agent")][0].id // empty')
-    [ -n "$awin" ] && niri msg action focus-window --id "$awin" >/dev/null 2>&1 || true
+    "$DIR/cockpit-focus" nvim >/dev/null 2>&1 || true
 }
 
 # Focus a worktree's claude window from a "lovable.daphen-<name>" summary.
