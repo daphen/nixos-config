@@ -1140,6 +1140,14 @@ handle = function(obj)
       -- a background agent finished and isn't blocked on you → one notify
       desktop_notify(obj.session, "finished — ready for you", "normal")
     end
+    -- If the turn produced NO assistant reply (last message is still the user's
+    -- prompt), the answer was dropped — almost always mid-turn context
+    -- compaction on a near-full session. Say so instead of rendering silence.
+    local c = S.chat[obj.session]
+    if c and c.msgs and #c.msgs > 0 and c.msgs[#c.msgs].role == "user" and not S.errors[obj.session] then
+      c.msgs[#c.msgs + 1] = { role = "assistant",
+        text = THINK .. "no reply — the turn ended without an answer (likely context compaction). Re-ask, or start a fresh session for research-heavy tasks." }
+    end
     -- writes settled → reload the exact files the agent edited (see sync_edited)
     local ed = S.edited[obj.session]
     if ed then S.edited[obj.session] = nil; vim.schedule(function() sync_edited(session_cwd(obj.session), ed) end) end
