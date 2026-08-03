@@ -22,13 +22,16 @@ focus_app_window() {
 # the whole cockpit to it and focus the NVIM window (you land in that session's
 # rail). Returns 1 when the summary isn't a cockpit context (callers fall through).
 focus_cockpit_context() {
-    local ctx
+    local ctx sock
     # "Claude · <label>" — label is the context name (strip the old
-    # lovable.daphen- prefix if present). The tab check validates the guess.
+    # lovable.daphen- prefix if present). Validate against the NVIM cockpit's tabs
+    # (the agent CLI window is retired — everything's the rail now), match exact or
+    # prefix, switch the cockpit to it, and focus nvim so you land in its rail.
     ctx=$(printf '%s' "$1" | sed -n 's/^Claude · //p' | sed 's|^lovable\.daphen-||')
-    [ -n "$ctx" ] && [ -S ${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-agent ] || return 1
-    kitty @ --to unix:${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-agent ls 2>/dev/null \
-        | jq -e --arg t "$ctx" 'any(.[].tabs[]; .title == $t)' >/dev/null || return 1
+    sock=${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-nvim
+    [ -n "$ctx" ] && [ -S "$sock" ] || return 1
+    kitty @ --to "unix:$sock" ls 2>/dev/null \
+        | jq -e --arg t "$ctx" 'any(.[].tabs[]; .title == $t or (.title | startswith($t + "-")))' >/dev/null || return 1
     "$DIR/cockpit-switch" "$ctx" >/dev/null 2>&1 || true
     "$DIR/cockpit-focus" nvim >/dev/null 2>&1 || true
 }
