@@ -116,6 +116,7 @@ local start_session, view_session, open_picker, ensure_buf, focus_composer, refr
 local session_cwd, load_plan, answer, apply_prompt_mode
 local on_cockpit_active -- reconciles the rail's selection with the cockpit active context
 local reflect_context, cockpit_context, cockpit_sync -- view_session side-effects (defined later)
+local follow_edit -- live-follow the agent's edits into the editor window (defined later)
 local composer_send, composer_resize, composer_placeholder, render_chips
 local add_attachment, session_state
 
@@ -1209,6 +1210,12 @@ handle = function(obj)
     if hunks and #hunks > 0 then
       S.edited[obj.session] = S.edited[obj.session] or {}
       for _, h in ipairs(hunks) do if h.path then S.edited[obj.session][h.path] = true end end
+      -- live-follow: open the most-recently edited file in the editor window so it
+      -- tracks the agent instead of sitting on the plan (focus stays in the rail).
+      if obj.session == S.selected then
+        local last = hunks[#hunks]
+        if last and last.path then follow_edit(session_cwd(obj.session), last.path, last.line) end
+      end
     end
     if obj.session == S.selected then render_chat(true) end
   elseif (t == "text_delta" or t == "content_block_delta" or t == "message_delta" or t == "text") and obj.session then
@@ -2247,6 +2254,34 @@ local function reveal_file(cwd, path, line)
   api.nvim_win_call(target, function()
     pcall(api.nvim_win_set_cursor, target, { tonumber(line), 0 })
     vim.cmd("normal! zz")
+  end)
+end
+
+-- Live-follow: as the agent edits files this turn, OPEN the edited file in the
+-- editor window and land on the changed line — without stealing focus. Unlike
+-- reveal_file, it opens files not yet shown (that's why the editor stayed on the
+-- plan while other files were edited). Only fires when focus is in the rail (an
+-- agent-* window): if you've clicked into the code to read/edit, it leaves you
+-- alone. Skips when the target buffer has unsaved changes. Toggle: S.follow_edits.
+follow_edit = function(cwd, path, line)
+  if not path or S.follow_edits == false then return end
+  local cur = api.nvim_get_current_win()
+  if not api.nvim_buf_get_name(api.nvim_win_get_buf(cur)):match("agent%-") then return end -- you're in the code
+  local file = fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
+  if fn.filereadable(file) ~= 1 then return end
+  local target
+  for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
+    if not api.nvim_buf_get_name(api.nvim_win_get_buf(w)):match("agent%-") then target = w; break end
+  end
+  if not target or vim.bo[api.nvim_win_get_buf(target)].modified then return end
+  local key = file .. ":" .. tostring(line or 0)
+  if S._follow == key then return end
+  S._follow = key
+  api.nvim_win_call(target, function()
+    if fn.fnamemodify(api.nvim_buf_get_name(0), ":p") ~= file then
+      pcall(vim.cmd, "edit " .. fn.fnameescape(file))
+    end
+    if line then pcall(api.nvim_win_set_cursor, target, { tonumber(line), 0 }); vim.cmd("normal! zz") end
   end)
 end
 
@@ -3477,6 +3512,10 @@ function M.setup(opts)
     connect(function() send({ type = "list_sources" }) end)
   end, {})
   api.nvim_create_user_command("AgentReroot", function(o) reroot(o.args) end, { nargs = 1 })
+  api.nvim_create_user_command("AgentFollow", function()
+    S.follow_edits = not (S.follow_edits ~= false)
+    vim.notify("agent-nvim: live-follow edits " .. (S.follow_edits and "on" or "off"))
+  end, {})
   api.nvim_create_user_command("AgentSend", function() M.send_range() end, { range = true })
   api.nvim_create_user_command("AgentSendFile", function() M.send_file() end, {})
   api.nvim_create_user_command("AgentSendDiff", function() M.send_diff() end, {})
