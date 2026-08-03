@@ -2510,6 +2510,42 @@ end
 -- swap it for the new session's plan (if any) or a clean scratch. A file not
 -- under any session's worktree (e.g. ~/nixos) is your own work — left untouched.
 -- Runs via win_call so it never steals focus from the rail.
+-- Placeholder shown in the editor when a session has no plan and no open file —
+-- instead of a bare empty buffer. Left unnamed (like enew) so lualine shows no
+-- filename and reflect_context treats it as replaceable. Reused across sessions.
+local function show_scratch(win, cwd)
+  if not (S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf)) then
+    S.scratchbuf = api.nvim_create_buf(false, true)
+    vim.bo[S.scratchbuf].buftype = "nofile"
+    vim.bo[S.scratchbuf].bufhidden = "hide"
+    vim.bo[S.scratchbuf].swapfile = false
+  end
+  local nm = short_name(S.selected) or fn.fnamemodify(cwd, ":t")
+  local lines = {
+    "",
+    "",
+    "    ▸ " .. nm,
+    "    " .. fn.fnamemodify(cwd, ":~"),
+    "",
+    "    Nothing open here yet — the editor follows the agent's edits as it works.",
+    "",
+    "    ⏎  open a file from a chat hunk      ·      :AgentEdit  open any file",
+  }
+  vim.bo[S.scratchbuf].modifiable = true
+  api.nvim_buf_set_lines(S.scratchbuf, 0, -1, false, lines)
+  vim.bo[S.scratchbuf].modifiable = false
+  api.nvim_buf_clear_namespace(S.scratchbuf, S.ns, 0, -1)
+  local function hl(ln, grp, cs, ce) pcall(api.nvim_buf_add_highlight, S.scratchbuf, S.ns, grp, ln, cs or 0, ce or -1) end
+  hl(2, "AgentAccent")  -- ▸ session name
+  hl(3, "AgentMuted")   -- worktree path
+  hl(5, "AgentIdle")    -- headline
+  hl(7, "AgentMuted")   -- hint row
+  hl(7, "AgentAccent", 4, 7)   -- ⏎
+  local es = lines[8]:find(":AgentEdit")
+  if es then hl(7, "AgentAccent", es - 1, es + 9) end
+  pcall(api.nvim_win_set_buf, win, S.scratchbuf)
+end
+
 reflect_context = function(cwd)
   if not cwd or cwd == "" then return end
   local ed
@@ -2534,13 +2570,11 @@ reflect_context = function(cwd)
   local pl = load_plan(cwd)
   local pdir = plandir(cwd)
   local plan_md = pl and pl.key and pdir and (pdir .. "/" .. pl.key .. ".md")
-  api.nvim_win_call(ed, function()
-    if plan_md and fn.filereadable(plan_md) == 1 then
-      pcall(vim.cmd, "edit " .. fn.fnameescape(plan_md))
-    else
-      pcall(vim.cmd, "enew")
-    end
-  end)
+  if plan_md and fn.filereadable(plan_md) == 1 then
+    api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(plan_md)) end)
+  else
+    show_scratch(ed, cwd)
+  end
 end
 
 -- Map a session cwd to its cockpit context name (~/work/lovable → "main";
