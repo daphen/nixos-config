@@ -501,6 +501,22 @@ local function active_winbar()
   -- here — the lualine's project component shows it.
   local ss = session_state(a)
   local parts = { "%#" .. ss.name .. "#  " .. ss.glyph .. " " .. ss.label }
+  -- live "doing" line: the agent's current action (latest thinking summary or
+  -- tool call in the in-flight stream) so a long tool-heavy turn isn't opaque —
+  -- you always see WHAT it's on, not just "working". (Claude-Code style.)
+  local stream = S.stream[S.selected]
+  if stream and stream ~= "" then
+    local doing
+    for line in stream:gmatch("[^\n]+") do
+      if line:match("^✻ ") or line:match("^⚙ ") then doing = line end
+    end
+    if doing then
+      doing = doing:gsub("^✻ ", ""):gsub("^⚙ ", ""):gsub("%s+", " ")
+      if #doing > 56 then doing = doing:sub(1, 55) .. "…" end
+      doing = doing:gsub("%%", "%%%%") -- escape for the winbar (tool args have %H%M etc.)
+      parts[#parts + 1] = "%#AgentMuted#  · " .. doing
+    end
+  end
   -- plan progress (◆ N/N) now lives in the lualine (M.plan_chip); this header
   -- stays focused on the live working state + spinner.
   if #S.paste_images > 0 then
