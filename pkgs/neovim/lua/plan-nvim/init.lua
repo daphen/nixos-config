@@ -701,20 +701,22 @@ end
 -- touching (or just finished) in the follow window — so nvim tracks the agent even for
 -- files you never opened (checktime only reloads already-open buffers; this opens them).
 -- Opened via win_call so it never steals focus from where you're working.
+-- A REAL editor window — never the agent rail (agent-* buffers), a float, or a
+-- special buffer. Editing a file into the rail's composer/chat clobbers it (files
+-- bleeding into the chat input).
+local function is_editor_win(w)
+	if not (w and vim.api.nvim_win_is_valid(w)) then return false end
+	local b = vim.api.nvim_win_get_buf(w)
+	return vim.api.nvim_win_get_config(w).relative == ""
+		and vim.bo[b].buftype == ""
+		and not vim.api.nvim_buf_get_name(b):match("agent%-")
+end
+
 local function pick_follow_win()
-	-- Only ever a REAL editor window — never the agent rail (agent-* buffers), a
-	-- float/notification, or a special buffer. Editing a file into the rail's
-	-- composer/chat window clobbers it (files bleeding into the chat input).
-	local function ok(w)
-		local b = vim.api.nvim_win_get_buf(w)
-		return vim.api.nvim_win_get_config(w).relative == ""
-			and vim.bo[b].buftype == ""
-			and not vim.api.nvim_buf_get_name(b):match("agent%-")
-	end
 	local cur = vim.api.nvim_get_current_win()
-	if ok(cur) then return cur end
+	if is_editor_win(cur) then return cur end
 	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-		if ok(w) then return w end
+		if is_editor_win(w) then return w end
 	end
 	return nil
 end
@@ -722,9 +724,10 @@ end
 follow_step = function()
 	if not state.following then return end
 	local win = state.follow_win
-	if not (win and vim.api.nvim_win_is_valid(win)) then
-		-- The bound window dies to ordinary navigation (pickers, layout churn);
-		-- re-acquire instead of silently disarming mid-implement.
+	-- Re-acquire if the bound window is gone OR is a rail pane. state.follow_win is
+	-- whatever was focused when --go ran, so if that was the composer/chat, a
+	-- followed file :e would dump straight into the input. Only ever a real editor.
+	if not is_editor_win(win) then
 		win = pick_follow_win()
 		if not win then return end
 		state.follow_win = win

@@ -92,17 +92,22 @@ local function repo_of(path)
 end
 
 local function pick_target_window()
-	local function is_normal(w)
+	-- A REAL editor window: not a float, a normal buftype, and NOT an agent-rail
+	-- pane (agent-*). Without the agent- guard the fallback returned the focused
+	-- rail window, so a followed file :e'd straight into the composer/chat input.
+	local function is_editor(w)
 		local cfg = vim.api.nvim_win_get_config(w)
 		if cfg.relative ~= "" then return false end
-		return vim.bo[vim.api.nvim_win_get_buf(w)].buftype == ""
+		local b = vim.api.nvim_win_get_buf(w)
+		return vim.bo[b].buftype == ""
+			and not vim.api.nvim_buf_get_name(b):match("agent%-")
 	end
 	local cur = vim.api.nvim_get_current_win()
-	if is_normal(cur) then return cur end
+	if is_editor(cur) then return cur end
 	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-		if is_normal(w) then return w end
+		if is_editor(w) then return w end
 	end
-	return cur
+	return nil -- no editor window → caller skips rather than clobber a rail pane
 end
 
 local function git_first_changed_line(root, rel)
@@ -128,10 +133,13 @@ local function navigate_to_path(path)
 	end
 	local changed_repo = repo_of(path)
 	if not changed_repo then state.last_skip = "no repo for " .. path; return end
-	local cur_name = vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf())
-	local current_repo = repo_of(cur_name) or repo_of(vim.fn.getcwd() .. "/anything")
-	if changed_repo ~= current_repo then
-		state.last_skip = "repo mismatch"
+	-- Follow anything under the watched worktree (state.root). The old guard compared
+	-- the changed file's repo to the CURRENT BUFFER's repo, which broke follow in the
+	-- cockpit: you view the vault plan (a different repo) while the agent edits the
+	-- worktree, so every edit was skipped as "repo mismatch". The watcher only queues
+	-- paths under state.root, so that is the correct boundary.
+	if state.root and not (path == state.root or path:sub(1, #state.root + 1) == state.root .. "/") then
+		state.last_skip = "outside watched root"
 		return
 	end
 	if (vim.uv.now() - state.last_jump) < M.opts.jump_cooldown_ms then
@@ -163,6 +171,7 @@ local function navigate_to_path(path)
 	-- Line lookup shells out to git — only pay after every guard passed.
 	local line = git_first_changed_line(state.root, rel)
 	local target = pick_target_window()
+	if not target then state.last_skip = "no editor window"; return end -- never open into a rail pane
 	pcall(vim.api.nvim_set_current_win, target)
 	pcall(vim.cmd, "edit " .. vim.fn.fnameescape(path))
 	pcall(vim.api.nvim_win_set_cursor, 0, { line, 0 })
