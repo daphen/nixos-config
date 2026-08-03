@@ -1099,10 +1099,16 @@ handle = function(obj)
       for _, h in ipairs(hunks) do if h.path then S.edited[obj.session][h.path] = true end end
     end
     if obj.session == S.selected then render_chat(true) end
+  elseif t == "turn_start" and obj.session then
+    -- new turn → cancel any pending "finished" notify from a prior round
+    if S.notify_gen then S.notify_gen[obj.session] = (S.notify_gen[obj.session] or 0) + 1 end
   elseif (t == "text_delta" or t == "content_block_delta" or t == "message_delta" or t == "text") and obj.session then
     local chunk = delta_text(obj)
     if chunk and chunk ~= "" then
       if S.errors then S.errors[obj.session] = nil end -- new output → clear stale error
+      -- activity → invalidate a pending settle-notify so back-to-back rounds
+      -- don't fire one each (see turn_end).
+      if S.notify_gen then S.notify_gen[obj.session] = (S.notify_gen[obj.session] or 0) + 1 end
       S.stream[obj.session] = (S.stream[obj.session] or "") .. chunk
       if obj.session == S.selected then render_stream() end
     end
@@ -1115,9 +1121,21 @@ handle = function(obj)
       cq.msgs[#cq.msgs + 1] = { role = "user", text = q }
       S.chat[obj.session] = cq
       send({ type = "prompt", session = obj.session, message = q })
-    elseif not S.pending[obj.session] then
-      -- a background agent finished and isn't blocked on you → ready for you
-      desktop_notify(obj.session, "finished — ready for you", "normal")
+    else
+      -- a background agent may be done — but pi fires turn_end/agent_end per
+      -- tool-round, so notifying here directly spams once per message. Instead
+      -- notify only after it SETTLES: defer ~1.6s and cancel if new activity
+      -- (a fresh turn/stream bumps notify_gen). One notify per real done.
+      S.notify_gen = S.notify_gen or {}
+      local sid = obj.session
+      local gen = (S.notify_gen[sid] or 0) + 1
+      S.notify_gen[sid] = gen
+      vim.defer_fn(function()
+        if S.notify_gen[sid] == gen and not S.pending[sid] and sid ~= S.selected
+          and not (S.stream[sid] and S.stream[sid] ~= "") then
+          desktop_notify(sid, "finished — ready for you", "normal")
+        end
+      end, 1600)
     end
     -- writes are settled → reload the exact files the agent edited (see sync_edited)
     local ed = S.edited[obj.session]
