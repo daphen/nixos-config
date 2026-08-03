@@ -2683,9 +2683,11 @@ reflect_context = function(cwd)
   -- the session you switch back to.) A user's own unnamed buffer WITH content, or
   -- a real file, is left alone.
   local is_scratch = S.scratchbuf and curbuf == S.scratchbuf
-  local blank = name == "" and not vim.bo[curbuf].modified
+  local ft = vim.bo[curbuf].filetype
+  local greeter = ft == "snacks_dashboard" or ft == "dashboard" or ft == "alpha" or ft == "starter" or ft == "ministarter"
+  local blank = greeter or (name == "" and not vim.bo[curbuf].modified
     and api.nvim_buf_line_count(curbuf) <= 1
-    and (api.nvim_buf_get_lines(curbuf, 0, 1, false)[1] or "") == ""
+    and (api.nvim_buf_get_lines(curbuf, 0, 1, false)[1] or "") == "")
   if not (is_scratch or blank) then
     if name == "" or name:sub(1, #cwd + 1) == cwd .. "/" then return end -- your scratch, or a file already here
     local stale = false
@@ -2771,8 +2773,17 @@ end
 git_changes = function(cwd)
   if not cwd or fn.isdirectory(cwd) ~= 1 then return {} end
   if not fn.system({ "git", "-C", cwd, "rev-parse", "--is-inside-work-tree" }):match("true") then return {} end
-  local base = fn.system({ "git", "-C", cwd, "merge-base", "HEAD", "origin/main" }):gsub("%s+$", "")
-  if base == "" then base = fn.system({ "git", "-C", cwd, "merge-base", "HEAD", "main" }):gsub("%s+$", "") end
+  -- On the main/master checkout (the orchestrator) there's no feature-branch diff:
+  -- comparing against the merge-base with origin/main surfaced the whole local↔remote
+  -- divergence as "changes". Diff HEAD instead → only uncommitted work (≈ empty).
+  local branch = fn.system({ "git", "-C", cwd, "branch", "--show-current" }):gsub("%s+$", "")
+  local base
+  if branch == "main" or branch == "master" then
+    base = "HEAD"
+  else
+    base = fn.system({ "git", "-C", cwd, "merge-base", "HEAD", "origin/main" }):gsub("%s+$", "")
+    if base == "" then base = fn.system({ "git", "-C", cwd, "merge-base", "HEAD", "main" }):gsub("%s+$", "") end
+  end
   local cmd = { "git", "-C", cwd, "diff", "--numstat" }
   if base ~= "" then cmd[#cmd + 1] = base end
   local files = {}
