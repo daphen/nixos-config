@@ -2491,7 +2491,7 @@ function M.help()
   float({
     " roster   attention queue · z show all · / filter by name · s search all transcripts",
     "          j/k move · <CR> open · ]a/[a next needing you · n new · . cwd",
-    "          x stop · a abort · p peek · z show all",
+    "          x stop · a abort · p peek · <Esc> clear filter",
     " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
     "          gf open ref (hunk · fence · inline path:line) · gx open url · i compose",
     " changes  <CR> open file · ]f/[f next file · <Tab> back to chat · r refresh",
