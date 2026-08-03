@@ -732,7 +732,8 @@ follow_step = function()
 		if not win then return end
 		state.follow_win = win
 		state.follow_cur = nil
-		vim.notify("plan: follow window re-acquired")
+		-- silent: re-acquiring a real editor window (the bound one was a rail pane or
+		-- died to layout churn) is routine now, not worth a toast on every --go.
 	end
 	local p = state.progress
 	if not p then return end
