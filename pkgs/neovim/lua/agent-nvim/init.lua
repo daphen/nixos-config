@@ -2396,7 +2396,11 @@ local function chat_yank_line()
     line = adj or ""
   end
   fn.setreg("+", line); fn.setreg('"', line)
-  vim.notify("agent-nvim: yanked line", vim.log.levels.INFO)
+  -- manual setreg doesn't fire TextYankPost, so flash the line ourselves to match
+  -- the normal yank feedback (in a dedicated ns so a re-render doesn't wipe it).
+  S.flashns = S.flashns or api.nvim_create_namespace("agent-yank-flash")
+  pcall(vim.hl.range, S.chatbuf, S.flashns, "IncSearch",
+    { cur - 1, 0 }, { cur - 1, 0 }, { regtype = "V", inclusive = true, timeout = 150 })
 end
 
 -- yank the fenced code block the cursor sits in (``` … ```), else the line
@@ -2640,6 +2644,9 @@ end
 -- current session's cwd / plan key / ticket.
 dash_keys = function(buf, win, cwd, key, tik)
   local function map(lhs, fn_) vim.keymap.set("n", lhs, fn_, { buffer = buf, nowait = true, silent = true }) end
+  -- <CR> opens the plan (shadows the global treesitter incremental-select map,
+  -- which errors on this parser-less buffer).
+  map("<CR>", function() pcall(function() require("plan-nvim").open(key) end) end)
   map("p", function() pcall(function() require("plan-nvim").open(key) end) end)
   map("a", function() fn.jobstart({ os.getenv("HOME") .. "/.config/niri/scripts/browser-work" }, { detach = true }) end)
   map("d", function() fn.jobstart({ os.getenv("HOME") .. "/.config/niri/scripts/cockpit-focus", "devenv" }, { detach = true }) end)

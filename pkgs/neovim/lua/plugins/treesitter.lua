@@ -20,7 +20,7 @@ return {
     -- Incremental selection — uses the neovim built-in API available in 0.10+
     vim.keymap.set("n", "<CR>", function()
       vim.cmd("normal! v")
-      vim.treesitter.start()
+      pcall(vim.treesitter.start) -- parser-less buffers (scratch/dashboard) → no E5108 popup
     end, { desc = "Init incremental selection" })
 
     -- Placeholder for TS playground — module was removed from nvim-treesitter.main
