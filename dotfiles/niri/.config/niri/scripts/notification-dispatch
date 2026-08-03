@@ -64,6 +64,21 @@ if [ "$1" = "--past" ]; then
             exit 0 ;;
         Slack|slack|slk) exec "$DIR/niri-jump-or-exec" "title:slqs" "$DIR/launch-slack-client" ;;
         mlqs)        exec "$DIR/niri-jump-or-exec" "title:mlqs" "$DIR/launch-mail-client" ;;
+        agent-rail)
+            # In-nvim rail notification: summary is "agent · <name>" where <name>
+            # is the session short id (e.g. every-2585). Resolve it to the matching
+            # cockpit context (the tab title may be longer, e.g. every-2585-move-ds-…),
+            # switch the cockpit to it (the rail follows the active context on its
+            # own), and focus the nvim window so you land in that session's rail.
+            name=$(printf '%s' "$summary" | sed -n 's/^agent · //p')
+            sock=${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-nvim
+            if [ -n "$name" ] && [ -S "$sock" ]; then
+                ctx=$(kitty @ --to "unix:$sock" ls 2>/dev/null \
+                    | jq -r --arg n "$name" '[.[].tabs[].title | select(. == $n or startswith($n + "-"))][0] // empty')
+                [ -n "$ctx" ] && "$DIR/cockpit-switch" "$ctx" >/dev/null 2>&1 || true
+            fi
+            "$DIR/cockpit-focus" nvim >/dev/null 2>&1 || true
+            exit 0 ;;
         *)           focus_app_window "$app"; exit 0 ;;
     esac
 fi
