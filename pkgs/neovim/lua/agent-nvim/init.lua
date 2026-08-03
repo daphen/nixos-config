@@ -2212,9 +2212,25 @@ render_changes = function()
       end
     end
 
+    -- one-line total diffstat (files · +adds -dels) for a quick size glance,
+    -- coloured like the per-file rows. No-op when there are no changes.
+    local function push_diffstat()
+      local ta, td = 0, 0
+      for _, c in ipairs(changes) do ta = ta + (c.add or 0); td = td + (c.del or 0) end
+      if #changes == 0 then return end
+      local s = "  " .. #changes .. (#changes == 1 and " file   +" or " files   +") .. ta .. "  -" .. td
+      local bl = push(s)
+      decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
+      local ps, pe = s:find("%+%d+")
+      if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
+      local ms, me = s:find("%-%d+", (pe or 0) + 1)
+      if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
+    end
+
     if plan then
       local pg = plan.progress
       decor[#decor + 1] = { line = push("  plan · " .. plan.key .. " · " .. (pg.phase or "?")), fg = "AgentMuted" }
+      push_diffstat()
       push("")
       for _, step in ipairs(pg.flow or {}) do
         local g = step.status == "done" and "●" or (step.status == "active" and "◐" or "○")
@@ -2246,6 +2262,7 @@ render_changes = function()
       end
     else
       decor[#decor + 1] = { line = push("  changes · " .. base(cwd)), fg = "AgentMuted" }
+      push_diffstat()
       push("")
       if #changes == 0 then
         decor[#decor + 1] = { line = push("  no changes on this branch"), fg = "AgentMuted" }
