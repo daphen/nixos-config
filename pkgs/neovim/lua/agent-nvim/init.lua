@@ -1300,6 +1300,22 @@ local function render_active()
   if S.view == "changes" then render_changes() else render_chat(true) end
 end
 
+-- Request a session's history, then re-request (only while it's still empty) a
+-- couple times: on spawn/open, pi may still be resuming its session (--continue)
+-- when the first request lands, so the chat would show "no messages yet" until a
+-- manual 'r'. The gated retries load the restored history automatically.
+local function reload_messages(sid)
+  send({ type = "get_messages", session = sid })
+  for _, delay in ipairs({ 700, 1800 }) do
+    vim.defer_fn(function()
+      local c = S.chat[sid]
+      if S.connected and (not c or not c.msgs or #c.msgs == 0) then
+        send({ type = "get_messages", session = sid })
+      end
+    end, delay)
+  end
+end
+
 start_session = function(name, cwd)
   -- if a session with this name already runs, OPEN it (don't re-spawn — that
   -- restarts pi and wipes its history); only spawn a genuinely new one
@@ -1309,7 +1325,7 @@ start_session = function(name, cwd)
   save_draft()
   S.selected = name
   send({ type = "spawn", session = name, cwd = cwd })
-  send({ type = "get_messages", session = name })
+  reload_messages(name)
   reroot(cwd)
   load_draft(name)
   refresh_plans()
@@ -1319,7 +1335,7 @@ end
 view_session = function(name, cwd)
   save_draft()
   S.selected = name
-  send({ type = "get_messages", session = name })
+  reload_messages(name)
   reroot(cwd)
   reflect_context(cwd) -- swap a stale other-worktree file for this session's plan/scratch
   cockpit_sync(cwd)    -- drive the cockpit devenv tab + Super+T active marker to match
