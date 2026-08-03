@@ -1977,9 +1977,13 @@ end
 local function chat_search()
   local ok, q = pcall(vim.fn.input, { prompt = "search all sessions: " })
   if not ok or not q or q == "" then return end
-  local ql, matches = q:lower(), {}
+  local ql, matches, unloaded = q:lower(), {}, 0
   for _, a in ipairs(S.roster) do
     local c = S.chat[a.id]
+    if not (c and c.msgs and #c.msgs > 0) then
+      -- transcripts load lazily on open, so an unopened session can't be searched
+      unloaded = unloaded + 1
+    end
     if c and c.msgs then
       for mi, m in ipairs(c.msgs) do
         for _, line in ipairs(vim.split(m.text or "", "\n", { plain = true })) do
@@ -1994,8 +1998,9 @@ local function chat_search()
       end
     end
   end
-  if #matches == 0 then vim.notify("agent-nvim: no matches for '" .. q .. "'"); return end
-  vim.ui.select(matches, { prompt = "matches (" .. #matches .. ")", format_item = function(it) return it.label end },
+  local coverage = unloaded > 0 and ("  ·  " .. unloaded .. " unopened not searched") or ""
+  if #matches == 0 then vim.notify("agent-nvim: no matches for '" .. q .. "'" .. coverage); return end
+  vim.ui.select(matches, { prompt = "matches (" .. #matches .. ")" .. coverage, format_item = function(it) return it.label end },
     function(choice)
       if not choice then return end
       S.scroll_to_msg[choice.id] = choice.mi
