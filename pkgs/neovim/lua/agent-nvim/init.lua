@@ -1546,10 +1546,26 @@ end
 
 view_session = function(name, cwd)
   save_draft()
+  -- Remember the file you were viewing in the OUTGOING session's worktree so
+  -- returning to it restores that file instead of falling back to the plan.
+  local prev = S.selected
+  if prev and prev ~= name then
+    local pcwd = session_cwd(prev)
+    if pcwd and pcwd ~= "" then
+      for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
+        local n = api.nvim_buf_get_name(api.nvim_win_get_buf(w))
+        if n ~= "" and not n:match("agent%-") and n:sub(1, #pcwd + 1) == pcwd .. "/" then
+          S.last_file = S.last_file or {}
+          S.last_file[prev] = n
+          break
+        end
+      end
+    end
+  end
   S.selected = name
   reload_messages(name)
   reroot(cwd)
-  reflect_context(cwd) -- swap a stale other-worktree file for this session's plan/scratch
+  reflect_context(cwd) -- restore this session's last file, else swap a stale other-worktree file for its plan/scratch
   cockpit_sync(cwd)    -- drive the cockpit devenv tab + Super+T active marker to match
   load_draft(name)
   refresh_plans()
@@ -2421,6 +2437,13 @@ reflect_context = function(cwd)
   end
   if not ed then return end
   local name = api.nvim_buf_get_name(api.nvim_win_get_buf(ed))
+  -- Restore the file you had open in this session last time (per-session memory).
+  local remembered = S.last_file and S.selected and S.last_file[S.selected]
+  if remembered and remembered ~= name and remembered:sub(1, #cwd + 1) == cwd .. "/"
+    and fn.filereadable(remembered) == 1 then
+    api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(remembered)) end)
+    return
+  end
   if name == "" or name:sub(1, #cwd + 1) == cwd .. "/" then return end -- empty or already here
   local stale = false
   for _, a in ipairs(S.roster) do
