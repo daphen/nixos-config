@@ -8,7 +8,7 @@
 -- get independent rails (e.g. lovable vs personal).
 --
 -- Rail keys — roster:  j/k move · <CR> open · ]a/[a next needing you · n new
---                      . cwd · x stop · a abort · z collapse · r refresh · ? help · q close
+--                      . cwd · x stop · a abort · z all · / filter · r refresh · ? help · q close
 --          — chat:     ]m/[m next/prev message · <Tab> changes view · Y yank code
 --                      za fold msg · zM/zR fold/unfold all · yr reply · yc convo
 --                      i compose · <Esc> back to roster · (y/n answer approvals)
@@ -99,6 +99,7 @@ local S = {
   folds = {},         -- id -> { [msgIndex]=true }
   plan = {},          -- id -> { done, total, phase } | false  (cached, refreshed slowly)
   show_all = false,   -- roster: false = attention queue only, true = every session
+  roster_filter = "", -- roster: live name substring filter ("/" to set, esc clears)
   displayed = {},     -- the sessions actually shown in the roster (filtered), in order
   collapsed = false,  -- roster collapsed to a summary line
   chat_line_msg = {}, -- chat bufline(0-idx) -> msgIndex
@@ -537,11 +538,16 @@ render_roster = function()
   -- minus the active one (it lives in the chat header). show_all bypasses this so
   -- idle sessions can still be reopened — and with NO session open there's no chat
   -- header to hold the active one, so show everything to pick from.
-  local all = S.show_all or not S.selected
+  -- an active name filter searches EVERY session (scope-independent) for a match.
+  local filt = S.roster_filter ~= "" and S.roster_filter:lower() or nil
+  local all = S.show_all or not S.selected or filt ~= nil
   local displayed, hidden = {}, 0
   for _, a in ipairs(S.roster) do
     local needs = S.pending[a.id] or a.status == "error" or a.status == "streaming"
-    if all or (needs and a.id ~= S.selected) then
+    local hit = not filt or (a.name and a.name:lower():find(filt, 1, true))
+    if not hit then
+      -- filtered out by name; not counted as "idle hidden"
+    elseif all or (needs and a.id ~= S.selected) then
       displayed[#displayed + 1] = a
     elseif a.id ~= S.selected then
       hidden = hidden + 1
@@ -555,11 +561,12 @@ render_roster = function()
   local function push(l) lines[#lines + 1] = l; return #lines - 1 end
 
   local dot = S.connected and "" or (GLYPH.offline .. " ")
-  local head = "  " .. dot .. (all and "sessions · " or "attention · ") .. scope
-  decor[#decor + 1] = { line = push(head), fg = "AgentMuted" }
+  local head = "  " .. dot .. (filt and ("/" .. S.roster_filter .. " · ") or (all and "sessions · " or "attention · ")) .. scope
+  decor[#decor + 1] = { line = push(head), fg = filt and "AgentAccent" or "AgentMuted" }
 
   if #displayed == 0 then
-    local msg = (#S.roster == 0) and "  no sessions — n to start · . for cwd"
+    local msg = filt and ("  no session matches /" .. S.roster_filter .. " · esc clears")
+      or (#S.roster == 0) and "  no sessions — n to start · . for cwd"
       or ("  ✓ nothing needs attention" .. (hidden > 0 and ("   " .. hidden .. " idle · z for all") or ""))
     decor[#decor + 1] = { line = push(msg), fg = "AgentMuted" }
   else
@@ -2385,7 +2392,7 @@ end
 
 function M.help()
   float({
-    " roster   attention queue only · z show all (incl idle)",
+    " roster   attention queue only · z show all (incl idle) · / filter by name",
     "          j/k move · <CR> open · ]a/[a next needing you · n new · . cwd",
     "          x stop · a abort · p peek · z show all",
     " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
@@ -2656,6 +2663,14 @@ ensure_buf = function()
   end)
   map("a", function() local a = S.displayed[S.focus]; if a then send({ type = "abort", session = a.id }); S.stream[a.id] = nil; render_chat(false) end end)
   map("z", function() S.show_all = not S.show_all; S.focus = 1; render_roster() end)
+  -- / filters the roster by session name (searches every session); esc clears.
+  map("/", function()
+    local ok, q = pcall(vim.fn.input, { prompt = "filter sessions: ", default = S.roster_filter })
+    if ok then S.roster_filter = q or ""; S.focus = 1; render_roster() end
+  end)
+  map("<Esc>", function()
+    if S.roster_filter ~= "" then S.roster_filter = ""; S.focus = 1; render_roster() end
+  end)
   map("p", function() M.peek() end)
   -- ]a / [a — cycle to the next/prev session that needs YOU (pending approval or
   -- error), across the whole roster, and open it. Juggling many agents: jump
