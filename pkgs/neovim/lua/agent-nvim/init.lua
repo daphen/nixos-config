@@ -1284,29 +1284,39 @@ handle = function(obj)
     end
     local files = {}
     if ed then
-      -- The edited files are ground truth for which worktree this turn touched, so
-      -- derive the root from one of them (git rev-parse) and let it WIN over
-      -- session_cwd — a stale/wrong roster cwd otherwise left git_changes empty
-      -- (+0/-0) and skipped the worktree-relative strip (full ~-paths). session_cwd
-      -- is only the fallback for a turn with no edited files.
-      local cwd = session_cwd(obj.session)
-      local p1 = next(ed)
-      if p1 then
-        local root = fn.systemlist({ "git", "-C", fn.fnamemodify(p1, ":h"), "rev-parse", "--show-toplevel" })[1]
-        if root and root ~= "" then cwd = root end
+      -- A turn can edit files across REPOS (the code worktree + the vault plan .md),
+      -- so resolve each file's OWN git root and diff each root once. A single shared
+      -- cwd (session_cwd, or one arbitrary file's root) picked the wrong repo when
+      -- next(ed) landed on the vault plan → the code files matched nothing (+0/-0)
+      -- and weren't stripped (full ~-paths).
+      local roots, changes_by_root = {}, {}
+      local function root_of(p)
+        local dir = fn.fnamemodify(p, ":h")
+        if roots[dir] ~= nil then return roots[dir] end
+        local r = fn.systemlist({ "git", "-C", dir, "rev-parse", "--show-toplevel" })[1]
+        r = (r and r ~= "") and r or false
+        roots[dir] = r
+        if r and not changes_by_root[r] then
+          local by = {}
+          for _, x in ipairs(git_changes(r)) do by[x.path] = x end -- keys are repo-relative
+          changes_by_root[r] = by
+        end
+        return r
       end
-      local by = {}
-      for _, x in ipairs(git_changes(cwd)) do by[x.path] = x end -- keys are worktree-relative
       local names = {}
       for p in pairs(ed) do names[#names + 1] = p end
       table.sort(names)
       for _, p in ipairs(names) do
-        -- edited paths are absolute → show them worktree-relative (matches git_changes'
-        -- keys so the +adds/−dels line up); out-of-worktree files (e.g. the vault plan)
-        -- fall back to ~-relative rather than the full /home/daphen/... path.
-        local rel = (cwd and p:sub(1, #cwd + 1) == cwd .. "/") and p:sub(#cwd + 2)
-          or fn.fnamemodify(p, ":~")
-        local x = by[rel]
+        -- strip to repo-relative (matches git_changes' keys so the +adds/−dels line
+        -- up); files whose root we can't resolve fall back to ~-relative.
+        local root = root_of(p)
+        local rel, x
+        if root and p:sub(1, #root + 1) == root .. "/" then
+          rel = p:sub(#root + 2)
+          x = changes_by_root[root][rel]
+        else
+          rel = fn.fnamemodify(p, ":~")
+        end
         files[#files + 1] = { path = rel, add = x and x.add or 0, del = x and x.del or 0 }
       end
     end
