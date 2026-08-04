@@ -21,7 +21,11 @@ if vim.env.KITTY_SCROLLBACK_NVIM ~= "true" then
   vim.opt.sessionoptions:remove("buffers")
   local auto_session = require("auto-session")
   auto_session.setup({
-    auto_restore_enabled = true,
+    -- Off: the agent-rail owns the window layout and restores per-session editor
+    -- state itself (S.editor), so auto-restore-on-boot was redundant AND raced the
+    -- rail's boot — intermittently dumping the last file into the roster pane.
+    -- Manual restore is still available via <leader>wr.
+    auto_restore_enabled = false,
     auto_session_suppress_dirs = { "~/", "~/Dev/", "~/Downloads", "~/Documents", "~/Desktop/" },
     restore_error_handler = function(error_msg)
       if error_msg and error_msg:find("E216", 1, true) and error_msg:find("SessionLoadPre", 1, true) then
