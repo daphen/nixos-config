@@ -105,7 +105,10 @@ return {
 
 		require("snacks").setup({
 			bigfile = { enabled = true },
-			dashboard = { enabled = true },
+			-- off: the agent-rail renders its own session dashboard in the editor pane,
+			-- so the snacks greeter only flashed for a beat on boot before being
+			-- replaced. Let the rail own the start view.
+			dashboard = { enabled = false },
 			indent = { enabled = false },
 			input = {
 				enabled = true,

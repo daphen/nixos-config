@@ -2745,6 +2745,16 @@ reflect_context = function(cwd)
   end
 end
 
+-- Return the editor to the active session's dashboard (forget the open file so
+-- the director stops restoring it). The way back after opening a file.
+local function to_dashboard()
+  if not S.selected then return end
+  S.editor = S.editor or {}
+  S.editor[S.selected] = nil
+  local cwd = session_cwd(S.selected)
+  if cwd and cwd ~= "" then reflect_context(cwd) end
+end
+
 -- Map a session cwd to its cockpit context name (~/work/lovable → "main";
 -- ~/work/lovable.daphen-<ctx> → "<ctx>"). nil if it isn't a lovable worktree.
 cockpit_context = function(cwd)
@@ -3270,6 +3280,7 @@ ensure_buf = function()
   cmap("yc", function() chat_yank_convo() end) -- yank the whole conversation as md
   cmap("gf", function() chat_open() end)
   cmap("gx", function() chat_open_url() end) -- open the URL under the cursor
+  cmap("gd", function() to_dashboard() end)  -- editor back to this session's dashboard
   cmap("<CR>", function() chat_open() end)
   cmap("<Esc>", function()
     -- a pending approval? Esc cancels it (real: sends {cancelled}; mock: just clears)
@@ -3735,6 +3746,7 @@ function M.setup(opts)
     connect(function() send({ type = "list_sources" }) end)
   end, {})
   api.nvim_create_user_command("AgentReroot", function(o) reroot(o.args) end, { nargs = 1 })
+  api.nvim_create_user_command("AgentDash", to_dashboard, {}) -- editor back to the session dashboard
   api.nvim_create_user_command("AgentFollow", function()
     S.follow_edits = not (S.follow_edits ~= false)
     vim.notify("agent-nvim: live-follow edits " .. (S.follow_edits and "on" or "off"))
