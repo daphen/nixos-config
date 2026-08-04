@@ -65,6 +65,7 @@ echo "$resp" | jq '
         title: .title,
         priority: (.priority // 0),
         state: .state.name,
+        done: (((.state.type // "")) as $t | ($t == "completed" or $t == "canceled")),
         slug: ((.identifier | ascii_downcase) + "-"
                + (.title | ascii_downcase | gsub("[^a-z0-9]+"; "-")
                   | gsub("^-+"; "") | gsub("-+$"; "") | split("-")[0:6] | join("-")))

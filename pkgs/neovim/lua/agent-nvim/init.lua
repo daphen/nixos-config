@@ -2705,27 +2705,33 @@ local function show_scratch(win, cwd)
       local cprog = (cy.progress and cy.progress.total and cy.progress.total > 0)
         and ("   ◆ " .. (cy.progress.done or 0) .. "/" .. cy.progress.total) or ""
       section("CYCLE", (cy.name or "current") .. span .. cprog)
-      local tks = cyc.tickets or {}
-      table.sort(tks, function(x, y)
+      -- split OPEN (actionable) from DONE — a finished ticket isn't something you
+      -- kick off, so it goes in a dim group below, not mixed into the priority list.
+      local open, done = {}, {}
+      for _, t in ipairs(cyc.tickets or {}) do
+        if t.done then done[#done + 1] = t else open[#open + 1] = t end
+      end
+      table.sort(open, function(x, y)
         local px = (x.priority == 0 or x.priority == nil) and 99 or x.priority
         local py = (y.priority == 0 or y.priority == nil) and 99 or y.priority
-        return px < py
+        if px ~= py then return px < py end
+        return (x.id or "") < (y.id or "") -- stable tiebreak within a priority
       end)
       local have = {}
       for _, a in ipairs(S.roster) do
         local t = (a.name or ""):match("%a+%-%d+"); if t then have[t:upper()] = true end
       end
       local prigrp = { [1] = "AgentErr", [2] = "AgentAccent", [3] = "AgentFile", [4] = "AgentMuted" }
-      section("TICKETS", #tks .. " · ⏎ starts a session")
-      local fit = math.max(1, math.min(#tks, H - #lines - boxh - 3))
-      local cap = S.dash_expand and #tks or fit
       local idw = 0
-      for _, t in ipairs(tks) do idw = math.max(idw, #(t.id or "")) end
+      for _, t in ipairs(open) do idw = math.max(idw, #(t.id or "")) end
+      section("TICKETS", #open .. " open · ⏎ starts a session")
+      local fit = math.max(1, math.min(#open, H - #lines - boxh - (#done > 0 and 4 or 3)))
+      local cap = S.dash_expand and #open or fit
       for i = 1, cap do
-        local t = tks[i]
+        local t = open[i]
         local id = t.id or "?"
         local live = have[id:upper()]
-        local mark = live and "●" or "○"
+        local mark = live and "●" or "○" -- ● = a session already exists for it
         local avail = math.max(10, (W - 2) - (4 + idw + 3 + 8))
         local title = t.title or ""
         if #title > avail then title = title:sub(1, avail - 1) .. "…" end
@@ -2735,9 +2741,19 @@ local function show_scratch(win, cwd)
         hl(ln, "AgentFile")                                       -- id + title, neutral
         hl(ln, prigrp[t.priority] or "AgentMuted", 2, 2 + #mark)  -- priority-coloured marker
       end
-      if #tks > fit then
-        expand_ln = push("      " .. (S.dash_expand and "⏶ show less" or ("… " .. (#tks - fit) .. " more")) .. "   ⏎")
+      if #open > fit then
+        expand_ln = push("      " .. (S.dash_expand and "⏶ show less" or ("… " .. (#open - fit) .. " more")) .. "   ⏎")
         hl(expand_ln, "AgentMuted")
+      end
+      -- DONE — dim, non-actionable (not in ticketmap), a couple of lines max.
+      if #done > 0 then
+        push("")
+        section("DONE", tostring(#done))
+        for i = 1, math.min(#done, 4) do
+          local t = done[i]
+          hl(push("  ✓ " .. (t.id or "?") .. "  " .. (t.title or "")), "AgentMuted")
+        end
+        if #done > 4 then hl(push("      … " .. (#done - 4) .. " more"), "AgentMuted") end
       end
       push("")
     end
