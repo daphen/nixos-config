@@ -2641,8 +2641,15 @@ local function show_scratch(win, cwd)
     end)
   end
   act("c", "changes", function()
-    S.view = "changes"; if render_changes then render_changes() end
-    if S.chatwin and api.nvim_win_is_valid(S.chatwin) then pcall(api.nvim_set_current_win, S.chatwin) end
+    -- flip the rail's middle pane to the Changes view: the buffer must be SWAPPED
+    -- into the window (render_changes only fills changesbuf), then focus + top.
+    S.view = "changes"
+    if S.chatwin and api.nvim_win_is_valid(S.chatwin) and S.changesbuf then
+      api.nvim_win_set_buf(S.chatwin, S.changesbuf)
+      if render_changes then render_changes() end
+      pcall(api.nvim_set_current_win, S.chatwin)
+      pcall(api.nvim_win_set_cursor, S.chatwin, { 1, 0 })
+    end
   end)
   act("r", "refresh", function() show_scratch(win, cwd) end)
   local boxh = #acts + 2 -- ┌ … ┘ rows the box will occupy at the bottom
@@ -3280,7 +3287,6 @@ ensure_buf = function()
   cmap("yc", function() chat_yank_convo() end) -- yank the whole conversation as md
   cmap("gf", function() chat_open() end)
   cmap("gx", function() chat_open_url() end) -- open the URL under the cursor
-  cmap("gd", function() to_dashboard() end)  -- editor back to this session's dashboard
   cmap("<CR>", function() chat_open() end)
   cmap("<Esc>", function()
     -- a pending approval? Esc cancels it (real: sends {cancelled}; mock: just clears)
@@ -3748,8 +3754,9 @@ function M.setup(opts)
   api.nvim_create_user_command("AgentReroot", function(o) reroot(o.args) end, { nargs = 1 })
   api.nvim_create_user_command("AgentDash", to_dashboard, {}) -- editor back to the session dashboard
   -- global: jump the editor to the active session's dashboard from ANY buffer
-  -- (no-ops when there's no session, so it's a safe always-on binding).
-  vim.keymap.set("n", "<leader>gd", to_dashboard, { desc = "Agent: session dashboard" })
+  -- (no-ops when there's no session, so it's a safe always-on binding). <leader>D
+  -- rather than gd — bare gd is LSP go-to-definition.
+  vim.keymap.set("n", "<leader>D", to_dashboard, { desc = "Agent: session dashboard" })
   api.nvim_create_user_command("AgentFollow", function()
     S.follow_edits = not (S.follow_edits ~= false)
     vim.notify("agent-nvim: live-follow edits " .. (S.follow_edits and "on" or "off"))
