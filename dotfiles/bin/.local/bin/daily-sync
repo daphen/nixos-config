@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# daily-sync — run the /daily briefing headlessly and post it to the Synced
+# new-tab card, on a morning timer. Unlike cycle-sync, /daily needs an LLM (it
+# curates the standup + filters Slack) and agent MCPs (calendar via Company Brain,
+# Slack), so this drives `pi` rather than a plain API fetch.
+#
+# Runs pi off the LOVABLE OpenAI key (which has credits), mirroring how agentd
+# spawns the rail's pi: swap OPENAI_API_KEY for OPENAI_LOVABLE_KEY. Reads it from
+# ~/.config/fish/secrets.fish — a systemd user unit isn't a fish shell. `-p`
+# auto-runs tools (no interactive approval), `-a` trusts local files.
+set -euo pipefail
+
+# A user unit's PATH is minimal; pi needs git/curl/jq/bash/python3 for the skill.
+export PATH="/run/current-system/sw/bin:$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH"
+
+SECRETS="$HOME/.config/fish/secrets.fish"
+getsec() { # robust: `set -gx NAME 'v'` | "v" | v
+  grep -E "^set -[a-zA-Z]+ $1[[:space:]]" "$SECRETS" 2>/dev/null | head -1 \
+    | sed -E "s/^set -[a-zA-Z]+ $1[[:space:]]+//; s/^['\"]//; s/['\"][[:space:]]*\$//"
+}
+
+key=$(getsec OPENAI_LOVABLE_KEY)
+[ -n "$key" ] || { echo "daily-sync: no OPENAI_LOVABLE_KEY in $SECRETS" >&2; exit 1; }
+
+cd "$HOME"
+echo "daily-sync: running /daily via pi (lovable key)…"
+OPENAI_API_KEY="$key" exec pi -a -p "/daily"

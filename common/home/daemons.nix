@@ -160,4 +160,24 @@ in
     };
     Install.WantedBy = [ "timers.target" ];
   };
+
+  # Post the morning /daily briefing to the Synced new-tab card, headlessly. This
+  # one drives `pi` (needs LLM curation + Company Brain/Slack MCPs), off the
+  # Lovable OpenAI key. The script sets its own PATH; the unit just runs it.
+  systemd.user.services.daily-sync = {
+    Unit.Description = "Post the morning /daily briefing to the Synced card";
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.bash}/bin/bash %h/.local/bin/daily-sync";
+    };
+  };
+
+  systemd.user.timers.daily-sync = {
+    Unit.Description = "Morning /daily briefing";
+    Timer = {
+      OnCalendar = "*-*-* 07:00:00";
+      Persistent = true; # if the machine was asleep at 07:00, run at next wake
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
 }
