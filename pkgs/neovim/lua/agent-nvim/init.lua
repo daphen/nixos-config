@@ -2590,10 +2590,11 @@ local function show_scratch(win, cwd)
   local nm = short_name(S.selected) or fn.fnamemodify(cwd, ":t")
   local tik = (S.selected or ""):match("%a+%-%d+")
   local ctx = cockpit_ctx_registered(cwd)
+  local root = ctx == "main" -- the orchestrator (main checkout) → a fleet dashboard
 
   -- masthead: accent bar + session name, worktree path beneath
   push(""); push("")
-  hl(push("  ▍ " .. nm), "AgentAccent")
+  hl(push("  ▍ " .. nm .. (root and "  ·  orchestrator" or "")), "AgentAccent")
   hl(push(file_row(W - 2, "    ", fn.fnamemodify(cwd, ":~"))), "AgentMuted")
   push("")
 
@@ -2635,6 +2636,9 @@ local function show_scratch(win, cwd)
     end)
     act("a", "app", function() fn.jobstart({ home .. "/.config/niri/scripts/browser-work" }, { detach = true }) end)
   end
+  if root then
+    act("n", "session", function() if open_picker then open_picker() end end) -- start/pick a session
+  end
   if tik then
     act("l", tik:upper(), function()
       local u = "https://linear.app/lovable/issue/" .. tik:upper()
@@ -2655,10 +2659,32 @@ local function show_scratch(win, cwd)
   act("r", "refresh", function() show_scratch(win, cwd) end)
   local boxh = #acts + 2 -- ┌ … ┘ rows the box will occupy at the bottom
 
+  local openmap, expand_ln, sessmap = {}, nil, {} -- file rows / toggle line / session rows
+  if root then
+    -- ORCHESTRATOR fleet: the other sessions it coordinates, selectable (<CR>/o).
+    local others = {}
+    for _, a in ipairs(S.roster) do if a.id ~= S.selected then others[#others + 1] = a end end
+    section("SESSIONS", #others == 0 and "none active" or (#others .. " active"))
+    local nw = 0
+    for _, a in ipairs(others) do nw = math.max(nw, #short_name(a.name)) end
+    for _, a in ipairs(others) do
+      local ss = session_state(a)
+      local nm2 = short_name(a.name)
+      local pl2 = S.plan[a.id]
+      local prog = (pl2 and pl2.total and pl2.total > 0) and ("  ◆ " .. pl2.done .. "/" .. pl2.total) or ""
+      local line = "  " .. ss.glyph .. " " .. nm2 .. string.rep(" ", nw - #nm2) .. "   " .. ss.label .. prog
+      local ln = push(line)
+      sessmap[ln] = { id = a.id, cwd = a.cwd }
+      hl(ln, "AgentFile")                          -- name, neutral base
+      hl(ln, ss.name, 2, 2 + #ss.glyph)            -- status glyph, coloured
+      hl(ln, "AgentMuted", 6 + #ss.glyph + nw, -1) -- state + plan progress, muted
+    end
+    if #others == 0 then hl(push("      no other sessions · n starts one"), "AgentMuted") end
+    push("")
+  else
   -- CHANGES — the session worktree's diff (empty on main; "clean" for a known ctx).
   -- File rows are openable (<CR>/o); the list is capped to the rows left above the
   -- action box so the box stays on-screen, with a toggle line to expand/collapse.
-  local openmap, expand_ln = {}, nil -- bufline0 → repo-relative path; the toggle line
   local ch = git_changes(cwd)
   if #ch > 0 then
     local ta, td = 0, 0
@@ -2692,6 +2718,7 @@ local function show_scratch(win, cwd)
     section("CHANGES", "working tree clean")
     push("")
   end
+  end
 
   local labels, inner = {}, 0
   for _, a in ipairs(acts) do
@@ -2714,7 +2741,7 @@ local function show_scratch(win, cwd)
   vim.bo[buf].modifiable = false
   api.nvim_buf_clear_namespace(buf, S.ns, 0, -1)
   for _, d in ipairs(decor) do pcall(api.nvim_buf_add_highlight, buf, S.ns, d.grp, d.ln, d.cs, d.ce) end
-  S.dash = { open = openmap, expand_ln = expand_ln, cwd = cwd, win = win } -- <CR>/o targets
+  S.dash = { open = openmap, sessions = sessmap, expand_ln = expand_ln, cwd = cwd, win = win } -- <CR>/o targets
   dash_keys(buf, acts)
   pcall(api.nvim_win_set_buf, win, buf)
 end
@@ -2724,13 +2751,15 @@ end
 -- can't leave a stale keymap behind. <CR>/o are context-sensitive: open the file
 -- row under the cursor, toggle the …more/less line, else run the first action.
 dash_keys = function(buf, acts)
-  for _, k in ipairs({ "p", "d", "a", "l", "c", "r", "<CR>", "o" }) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
+  for _, k in ipairs({ "p", "d", "a", "l", "n", "c", "r", "<CR>", "o" }) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
   local function map(lhs, f) vim.keymap.set("n", lhs, f, { buffer = buf, nowait = true, silent = true }) end
   for _, a in ipairs(acts) do map(a.key, a.fn) end
   local function enter()
     local d = S.dash or {}
     local ln0 = api.nvim_win_get_cursor(0)[1] - 1
-    if d.open and d.open[ln0] then
+    if d.sessions and d.sessions[ln0] then
+      local s = d.sessions[ln0]; view_session(s.id, s.cwd) -- switch to the session under the cursor
+    elseif d.open and d.open[ln0] then
       open_in_editor(d.cwd, d.open[ln0], nil) -- open the changed file under the cursor
     elseif d.expand_ln and ln0 == d.expand_ln then
       S.dash_expand = not S.dash_expand
