@@ -1331,6 +1331,7 @@ handle = function(obj)
       end
     end
     S.summary[obj.session] = { recap = recap, files = files }
+    refresh_plans() -- capture final plan progress now the turn's done (the streaming sweep stopped)
     if obj.session == S.selected then render_chat(false) end
   elseif t == "extension_ui_request" then
     local m = obj.method
@@ -1656,7 +1657,11 @@ local function start_spin()
       if a.status == "streaming" then streaming = true; break end
     end
     S.tick = (S.tick or 0) + 1
-    if S.tick % 300 == 0 then refresh_plans() end -- ~18s: refresh plan progress
+    -- ~18s plan-progress refresh, but ONLY while a session is streaming: it spawns
+    -- a synchronous git per session, and plan progress can't change while idle —
+    -- running it on every idle tick was a periodic UI hitch all day. Switching
+    -- sessions (view_session) and finishing a turn (agent_end) refresh on demand.
+    if streaming and S.tick % 300 == 0 then refresh_plans() end
     -- Watchdog: guarantee liveness even if a socket EOF is somehow missed. If we
     -- ever find ourselves disconnected (and no retry loop is already spinning),
     -- kick a reconnect. This is why the rail stays alive on its own — no manual
