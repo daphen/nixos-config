@@ -1241,6 +1241,7 @@ handle = function(obj)
     -- footer stays hidden through the between-round idle gaps until agent_end.
     S.turn_active = S.turn_active or {}
     S.turn_active[obj.session] = true
+    if S.notified then S.notified[obj.session] = nil end -- re-arm the once-per-turn "finished" notify
     if S.summary then S.summary[obj.session] = nil end -- last turn's recap is stale now
     if obj.session == S.selected then render_chat(false) end
   elseif t == "turn_end" and obj.session then
@@ -1263,9 +1264,14 @@ handle = function(obj)
       S.chat[obj.session] = cq
       send({ type = "prompt", session = obj.session, message = q })
       flushed_queue = true
-    elseif not S.pending[obj.session] and obj.session ~= S.selected then
-      -- a background agent finished and isn't blocked on you → one notify
+    elseif not S.pending[obj.session] and obj.session ~= S.selected
+      and not (S.notified and S.notified[obj.session]) then
+      -- a background agent finished and isn't blocked on you → ONE notify per turn.
+      -- agent_end can fire more than once for a multi-round/subagent turn (a review),
+      -- so dedupe on S.notified (re-armed at agent_start) — else it spam-notifies.
       desktop_notify(obj.session, "finished — ready for you", "normal")
+      S.notified = S.notified or {}
+      S.notified[obj.session] = true
     end
     -- If the turn produced NO assistant reply (last message is still the user's
     -- prompt), the answer was dropped — almost always mid-turn context
