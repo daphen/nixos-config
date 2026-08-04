@@ -151,7 +151,12 @@ local MDNS = api.nvim_create_namespace("agent-md")
 local function set_hl()
   local p = palette()
   local nb = api.nvim_get_hl(0, { name = "Normal" })
-  local dark = (nb and nb.bg) or 0x12161b
+  -- "on-accent" text/glyph colour for filled pills, keycaps, cursors: the theme
+  -- BACKGROUND, so it contrasts with an accent-coloured fill in BOTH modes. Lead
+  -- with the palette's bg — Normal's bg isn't always captured in light mode, and
+  -- the old dark hex fallback then put dark text on the (dark) light-mode green
+  -- pill (dark-on-dark).
+  local dark = p.bg or (nb and nb.bg) or 0x12161b
   local surface = p.bg_surface or "#1a222a"
   local accent = p.orange or "#ff8a3d"
   local attn = p.yellow or "#e5c07b"
@@ -1699,6 +1704,25 @@ local function start_spin()
               end
             end
           end
+        end
+      end
+      -- Recover an empty chat for a live selected session: a background-spawned
+      -- session (e.g. an agent-review) can stream its first turn before we're
+      -- watching it, and reload_messages only retried get_entries for ~2s — far
+      -- less than a review's first round. If the selected session is streaming
+      -- (or reloading) yet we have neither finalized messages nor a live stream,
+      -- re-pull the history until it lands.
+      if S.connected and S.selected then
+        local live = S.reloading and S.reloading[S.selected]
+        if not live then
+          for _, a in ipairs(S.roster) do
+            if a.id == S.selected and a.status == "streaming" then live = true; break end
+          end
+        end
+        local c = S.chat[S.selected]
+        local streaming_now = S.stream[S.selected] and S.stream[S.selected] ~= ""
+        if live and not streaming_now and (not c or not c.msgs or #c.msgs == 0) then
+          send({ type = "get_entries", session = S.selected })
         end
       end
     end
