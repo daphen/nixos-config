@@ -3747,6 +3747,9 @@ function M.setup(opts)
   end, {})
   api.nvim_create_user_command("AgentReroot", function(o) reroot(o.args) end, { nargs = 1 })
   api.nvim_create_user_command("AgentDash", to_dashboard, {}) -- editor back to the session dashboard
+  -- global: jump the editor to the active session's dashboard from ANY buffer
+  -- (no-ops when there's no session, so it's a safe always-on binding).
+  vim.keymap.set("n", "<leader>gd", to_dashboard, { desc = "Agent: session dashboard" })
   api.nvim_create_user_command("AgentFollow", function()
     S.follow_edits = not (S.follow_edits ~= false)
     vim.notify("agent-nvim: live-follow edits " .. (S.follow_edits and "on" or "off"))
