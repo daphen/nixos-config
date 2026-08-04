@@ -115,6 +115,7 @@ local start_session, view_session, open_picker, ensure_buf, focus_composer, refr
 local session_cwd, load_plan, answer, apply_prompt_mode
 local on_cockpit_active -- reconciles the rail's selection with the cockpit active context
 local reflect_context, cockpit_context, cockpit_sync -- view_session side-effects (defined later)
+local teardown_session -- full teardown: stop pi + close context + wt remove (defined later)
 local follow_edit -- live-follow the agent's edits into the editor window (defined later)
 local target_editor_win, capture_editor -- editor-director helpers (defined later)
 local composer_send, composer_resize, composer_placeholder, render_chips
@@ -2672,7 +2673,7 @@ local function show_scratch(win, cwd)
   act("r", "refresh", function() show_scratch(win, cwd) end)
   local boxh = #acts + 2 -- ┌ … ┘ rows the box will occupy at the bottom
 
-  local openmap, expand_ln, sessmap, ticketmap = {}, nil, {}, {} -- file / toggle / session / ticket rows
+  local openmap, expand_ln, sessmap, ticketmap, teardownmap = {}, nil, {}, {}, {} -- file/toggle/session/ticket/teardown rows
   if root then
     -- ORCHESTRATOR fleet: the other sessions it coordinates, selectable (<CR>/o).
     local others = {}
@@ -2717,9 +2718,9 @@ local function show_scratch(win, cwd)
         if px ~= py then return px < py end
         return (x.id or "") < (y.id or "") -- stable tiebreak within a priority
       end)
-      local have = {}
+      local have = {} -- ticket id → its live roster session entry (for ●-marker + teardown)
       for _, a in ipairs(S.roster) do
-        local t = (a.name or ""):match("%a+%-%d+"); if t then have[t:upper()] = true end
+        local t = (a.name or ""):match("%a+%-%d+"); if t then have[t:upper()] = a end
       end
       local prigrp = { [1] = "AgentErr", [2] = "AgentAccent", [3] = "AgentFile", [4] = "AgentMuted" }
       local idw = 0
@@ -2745,15 +2746,30 @@ local function show_scratch(win, cwd)
         expand_ln = push("      " .. (S.dash_expand and "⏶ show less" or ("… " .. (#open - fit) .. " more")) .. "   ⏎")
         hl(expand_ln, "AgentMuted")
       end
-      -- DONE — dim, non-actionable (not in ticketmap), a couple of lines max.
+      -- DONE — dim. A done ticket that STILL has a session/worktree is offered for
+      -- teardown (⊘ + ⏎); the rest are just ✓. Teardown-able ones sort first.
       if #done > 0 then
+        table.sort(done, function(x, y)
+          local hx = have[(x.id or ""):upper()] and 0 or 1
+          local hy = have[(y.id or ""):upper()] and 0 or 1
+          if hx ~= hy then return hx < hy end
+          return (x.id or "") < (y.id or "")
+        end)
         push("")
         section("DONE", tostring(#done))
-        for i = 1, math.min(#done, 4) do
+        for i = 1, math.min(#done, 5) do
           local t = done[i]
-          hl(push("  ✓ " .. (t.id or "?") .. "  " .. (t.title or "")), "AgentMuted")
+          local sess = have[(t.id or ""):upper()]
+          local mark = sess and "⊘" or "✓"
+          local suffix = sess and "   ⏎ teardown" or ""
+          local ln = push("  " .. mark .. " " .. (t.id or "?") .. "  " .. (t.title or "") .. suffix)
+          hl(ln, "AgentMuted")
+          if sess then
+            hl(ln, "AgentErr", 2, 2 + #mark) -- ⊘ flags a lingering session to clean up
+            teardownmap[ln] = { id = sess.id, cwd = sess.cwd, ticket = t.id }
+          end
         end
-        if #done > 4 then hl(push("      … " .. (#done - 4) .. " more"), "AgentMuted") end
+        if #done > 5 then hl(push("      … " .. (#done - 5) .. " more"), "AgentMuted") end
       end
       push("")
     end
@@ -2817,7 +2833,7 @@ local function show_scratch(win, cwd)
   vim.bo[buf].modifiable = false
   api.nvim_buf_clear_namespace(buf, S.ns, 0, -1)
   for _, d in ipairs(decor) do pcall(api.nvim_buf_add_highlight, buf, S.ns, d.grp, d.ln, d.cs, d.ce) end
-  S.dash = { open = openmap, sessions = sessmap, tickets = ticketmap, expand_ln = expand_ln, cwd = cwd, win = win } -- <CR>/o targets
+  S.dash = { open = openmap, sessions = sessmap, tickets = ticketmap, teardown = teardownmap, expand_ln = expand_ln, cwd = cwd, win = win } -- <CR>/o targets
   dash_keys(buf, acts)
   pcall(api.nvim_win_set_buf, win, buf)
 end
@@ -2833,7 +2849,11 @@ dash_keys = function(buf, acts)
   local function enter()
     local d = S.dash or {}
     local ln0 = api.nvim_win_get_cursor(0)[1] - 1
-    if d.tickets and d.tickets[ln0] then
+    if d.teardown and d.teardown[ln0] then
+      local t = d.teardown[ln0]
+      teardown_session(t.id, t.cwd)
+      if d.win and api.nvim_win_is_valid(d.win) then vim.defer_fn(function() show_scratch(d.win, d.cwd) end, 500) end
+    elseif d.tickets and d.tickets[ln0] then
       local t = d.tickets[ln0]
       if t.live then
         vim.notify("agent: " .. t.id .. " already has a session")
@@ -2911,6 +2931,24 @@ cockpit_context = function(cwd)
   local home = os.getenv("HOME") or ""
   if cwd == home .. "/work/lovable" then return "main" end
   return fn.fnamemodify(cwd or "", ":t"):match("^lovable%.daphen%-(.+)$")
+end
+
+-- Full teardown of a session (vs the light `x` = stop only): stop the pi session,
+-- then tear down its cockpit context — close its tabs in every cockpit window,
+-- deregister it, and `wt remove` the worktree (cockpit-remove refuses on dirty/
+-- unmerged trees, so unshipped work is never lost). Confirms first; never main.
+teardown_session = function(id, cwd)
+  local ctx = cwd and cockpit_context(cwd)
+  local what = ctx or short_name(id)
+  local msg = "Tear down " .. what .. "?   stop session"
+    .. (ctx and ctx ~= "main" and ("  +  close context  +  wt remove daphen/" .. ctx) or "")
+  if vim.fn.confirm(msg, "&Yes\n&No", 2) ~= 1 then return end
+  if id then send({ type = "stop", session = id }); if S.selected == id then S.selected = nil end end
+  if ctx and ctx ~= "main" then
+    fn.jobstart({ (os.getenv("HOME") or "") .. "/.config/niri/scripts/cockpit-remove", ctx }, { detach = true })
+  end
+  vim.notify("agent-nvim: tearing down " .. what)
+  render_roster()
 end
 
 -- Sync the cockpit to the rail's active session: switch the devenv tab + the
@@ -3620,9 +3658,13 @@ ensure_buf = function()
   map("i", function() focus_composer() end)
   map("n", function() open_picker() end)
   map(".", function() local d = fn.getcwd(); start_session(fn.fnamemodify(d, ":t"), d) end)
-  map("x", function()
+  map("x", function() -- stop the session (light: keeps the worktree + devenv to resume)
     local a = S.displayed[S.focus]
     if a then send({ type = "stop", session = a.id }); if S.selected == a.id then S.selected = nil end end
+  end)
+  map("X", function() -- full teardown: stop + close context + wt remove (confirms)
+    local a = S.displayed[S.focus]
+    if a then teardown_session(a.id, a.cwd) end
   end)
   map("a", function() local a = S.displayed[S.focus]; if a then send({ type = "abort", session = a.id }); S.stream[a.id] = nil; render_chat(false) end end)
   map("z", function() S.show_all = not S.show_all; S.focus = 1; render_roster() end)
