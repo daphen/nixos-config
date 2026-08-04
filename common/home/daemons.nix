@@ -136,4 +136,28 @@ in
     };
     Install.WantedBy = [ "timers.target" ];
   };
+
+  # Refresh the agent-rail orchestrator dashboard's Linear cycle cache
+  # (~/.local/state/lovable/cycle.json) — deterministic API fetch, no LLM. Reads
+  # LINEAR_API_KEY from ~/.config/fish/secrets.fish. Explicit PATH: a user unit's
+  # PATH lacks curl/jq/sed. Exits cleanly (no cache clobber) when the token is the
+  # placeholder or there's no active cycle, so it's harmless until the key is set.
+  systemd.user.services.cycle-sync = {
+    Unit.Description = "Refresh the Linear cycle cache for the agent-rail dashboard";
+    Service = {
+      Type = "oneshot";
+      Environment = "PATH=${pkgs.lib.makeBinPath [ pkgs.bash pkgs.curl pkgs.jq pkgs.coreutils pkgs.gnused pkgs.gnugrep ]}";
+      ExecStart = "${pkgs.bash}/bin/bash %h/.local/bin/cycle-sync";
+    };
+  };
+
+  systemd.user.timers.cycle-sync = {
+    Unit.Description = "Periodic Linear cycle cache refresh";
+    Timer = {
+      OnBootSec = "1min";
+      OnUnitActiveSec = "15min";
+      Persistent = true;
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
 }

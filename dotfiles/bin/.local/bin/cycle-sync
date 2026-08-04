@@ -17,6 +17,10 @@ if [ -z "$key" ] && [ -r "$SECRETS" ]; then
   key=$(sed -nE "s/^set -[a-zA-Z]+ LINEAR_API_KEY +'?([^'\"]+)'?.*/\1/p" "$SECRETS" | head -1)
 fi
 [ -n "$key" ] || { echo "cycle-sync: no LINEAR_API_KEY (env or $SECRETS)" >&2; exit 1; }
+# placeholder → not configured yet; skip quietly so the timer doesn't fail-loop
+if [ "$key" = "lin_api_REPLACE_ME" ]; then
+  echo "cycle-sync: LINEAR_API_KEY is the placeholder — set your real key in $SECRETS"; exit 0
+fi
 
 read -r -d '' QUERY <<'GQL' || true
 query {
