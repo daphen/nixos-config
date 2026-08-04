@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# cockpit-spawn <name> [prompt...] — the FULL ticket kickoff, in one command, callable
+# by any agent (or the rail's Enter-on-ticket). It does the two halves that were
+# separate:
+#   1. cockpit-add --no-switch <name>  → the cockpit CONTEXT: creates the worktree,
+#      opens the devenv tab (runs `devenv wt`) + the nvim rail tab, registers the
+#      context (so Super+T / the picker see it), WITHOUT stealing your focus.
+#   2. wt-spawn <name> [prompt]         → a ROSTER AGENT seeded with the prompt, in
+#      that same worktree, so it shows up in the rail and starts working.
+#
+# Bare `wt-spawn` only does step 2 (agent, no devenv/tabs); `cockpit-add` only does
+# step 1 (context, no agent). This is both — what "spawn a full ticket" actually needs.
+#
+# <name> is the context/worktree short-name (keeps the ticket prefix, e.g.
+# every-1234-fix-thing). Pass --oneshot to make the agent ephemeral (run once, report,
+# exit); omit for a persistent session.
+set -euo pipefail
+
+oneshot=""
+args=()
+for a in "$@"; do
+  if [ "$a" = "--oneshot" ]; then oneshot="--oneshot"; else args+=("$a"); fi
+done
+set -- "${args[@]}"
+
+name=${1:?usage: cockpit-spawn <name> [prompt...] [--oneshot]}
+shift || true
+prompt="$*"
+
+DIR=$(dirname "$(readlink -f "$0")")
+SCRIPTS="$HOME/.config/niri/scripts"
+
+# 1) context (worktree + devenv + nvim tabs + registration), focus stays put.
+"$SCRIPTS/cockpit-add" --no-switch "$name"
+
+# 2) seeded roster agent in that worktree (cockpit-add already made it, so no --create;
+#    keep --create as a harmless safety net in case the context hook didn't).
+wt-spawn "$name" ${prompt:+"$prompt"} --create $oneshot
+
+echo "cockpit-spawn: $name — context + rail agent up"
