@@ -1604,6 +1604,7 @@ view_session = function(name, cwd)
   -- Remember what the OUTGOING session had in the editor so returning restores it
   -- (per-session, so one session's file can never bleed into another's).
   if S.selected and S.selected ~= name then capture_editor(S.selected) end
+  S.dash_expand = false -- each session's dashboard opens collapsed
   S.selected = name
   reload_messages(name)
   reroot(cwd)
@@ -2655,7 +2656,9 @@ local function show_scratch(win, cwd)
   local boxh = #acts + 2 -- ┌ … ┘ rows the box will occupy at the bottom
 
   -- CHANGES — the session worktree's diff (empty on main; "clean" for a known ctx).
-  -- Capped to the rows left above the action box so the box always stays on-screen.
+  -- File rows are openable (<CR>/o); the list is capped to the rows left above the
+  -- action box so the box stays on-screen, with a toggle line to expand/collapse.
+  local openmap, expand_ln = {}, nil -- bufline0 → repo-relative path; the toggle line
   local ch = git_changes(cwd)
   if #ch > 0 then
     local ta, td = 0, 0
@@ -2663,19 +2666,27 @@ local function show_scratch(win, cwd)
     section("CHANGES", #ch .. (#ch == 1 and " file · +" or " files · +") .. ta .. " -" .. td)
     local aw, dw = 0, 0
     for _, c in ipairs(ch) do aw = math.max(aw, #("+" .. c.add)); dw = math.max(dw, #("-" .. c.del)) end
-    local cap = math.max(0, math.min(#ch, H - #lines - boxh - 3)) -- reserve box + "…more" + gap
+    local fitcap = math.max(1, math.min(#ch, H - #lines - boxh - 3)) -- what fits above the box
+    local cap = S.dash_expand and #ch or fitcap
     for i = 1, cap do
       local c = ch[i]
       local acol = string.rep(" ", aw - #("+" .. c.add)) .. "+" .. c.add
       local dcol = string.rep(" ", dw - #("-" .. c.del)) .. "-" .. c.del
       local line = file_row(W - 2, "      • ", c.path, acol, dcol)
       local ln = push(line)
+      openmap[ln] = c.path -- <CR>/o opens it
       hl(ln, "AgentFile")
       hl(ln, "AgentMuted", 6, 9) -- the • bullet
       local ps, pe = line:find("%+%d+"); if ps then hl(ln, "AgentStream", ps - 1, pe) end
       local ms, me = line:find("%-%d+", (pe or 0) + 1); if ms then hl(ln, "AgentErr", ms - 1, me) end
     end
-    if #ch > cap then hl(push("      … and " .. (#ch - cap) .. " more"), "AgentMuted") end
+    if not S.dash_expand and #ch > fitcap then
+      expand_ln = push("      … " .. (#ch - fitcap) .. " more   ⏎")
+      hl(expand_ln, "AgentMuted")
+    elseif S.dash_expand and #ch > fitcap then
+      expand_ln = push("      ⏶ show less   ⏎")
+      hl(expand_ln, "AgentMuted")
+    end
     push("")
   elseif ctx then
     section("CHANGES", "working tree clean")
@@ -2703,18 +2714,33 @@ local function show_scratch(win, cwd)
   vim.bo[buf].modifiable = false
   api.nvim_buf_clear_namespace(buf, S.ns, 0, -1)
   for _, d in ipairs(decor) do pcall(api.nvim_buf_add_highlight, buf, S.ns, d.grp, d.ln, d.cs, d.ce) end
+  S.dash = { open = openmap, expand_ln = expand_ln, cwd = cwd, win = win } -- <CR>/o targets
   dash_keys(buf, acts)
   pcall(api.nvim_win_set_buf, win, buf)
 end
 
 -- Bind the dashboard's action keys buffer-locally. Clear the full known set first
 -- so a row that vanished (e.g. devenv when the session isn't a cockpit context)
--- can't leave a stale keymap behind. <CR> mirrors the first action.
+-- can't leave a stale keymap behind. <CR>/o are context-sensitive: open the file
+-- row under the cursor, toggle the …more/less line, else run the first action.
 dash_keys = function(buf, acts)
-  for _, k in ipairs({ "p", "d", "a", "l", "c", "r", "<CR>" }) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
+  for _, k in ipairs({ "p", "d", "a", "l", "c", "r", "<CR>", "o" }) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
   local function map(lhs, f) vim.keymap.set("n", lhs, f, { buffer = buf, nowait = true, silent = true }) end
   for _, a in ipairs(acts) do map(a.key, a.fn) end
-  map("<CR>", acts[1] and acts[1].fn or function() end) -- also shadows the global treesitter <CR>
+  local function enter()
+    local d = S.dash or {}
+    local ln0 = api.nvim_win_get_cursor(0)[1] - 1
+    if d.open and d.open[ln0] then
+      open_in_editor(d.cwd, d.open[ln0], nil) -- open the changed file under the cursor
+    elseif d.expand_ln and ln0 == d.expand_ln then
+      S.dash_expand = not S.dash_expand
+      if d.win and api.nvim_win_is_valid(d.win) then show_scratch(d.win, d.cwd) end
+    elseif acts[1] then
+      acts[1].fn()
+    end
+  end
+  map("<CR>", enter) -- also shadows the global treesitter <CR>
+  map("o", enter)
 end
 
 -- Capture what the editor pane is showing for a session, so switching back
