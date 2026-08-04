@@ -6,9 +6,11 @@ description: Generate David's morning daily briefing — today's meetings, the /
 # Daily
 
 Assemble today's briefing from REAL sources and POST it to Synced; the new-tab
-card (`Shift+T`) renders whatever is pushed. Run this in an interactive Claude
-Code session — it needs the claude.ai MCPs (Company Brain, Slack), which are
-NOT available in headless/cron runs. This is the manual "sit-down" command.
+card (`Shift+T`) renders whatever is pushed. Runs in EITHER agent that has the
+Company Brain + Slack MCPs connected — **pi** (the cockpit orchestrator) or
+Claude Code; both wire the same claude.ai MCPs, so tool names below are given
+plain (each agent resolves its own prefix). Needs those MCPs live, so it's a
+manual "sit-down" command in an authenticated session, not a headless/cron run.
 
 Sources and why (mail is deliberately absent — see step 4):
 - **Meetings** → Company Brain `search_calendar` (the direct Google Calendar
@@ -19,7 +21,7 @@ Sources and why (mail is deliberately absent — see step 4):
 
 ## Step 1 — meetings (Company Brain)
 
-`mcp__claude_ai_Company_Brain__search_calendar` with today's window in local tz
+Company Brain's `search_calendar` with today's window in local tz
 (Europe/Stockholm), `start`=`YYYY-MM-DDT00:00:00+02:00`, `end`=`...T23:59:59+02:00`.
 Map each event → `{ time: "HH:MM", title, duration, url?: conferenceUrl, calendar: "work" }`.
 Keep all of today's events, even ones already past (it's a full-day view).
@@ -30,8 +32,8 @@ Keep all of today's events, even ones already past (it's a full-day view).
 bash ~/.claude/skills/standup/gather.sh "yesterday 00:00"
 ```
 On Monday (covering Fri+weekend) pass `"last friday 00:00"`. Optionally
-cross-reference Linear issue state via
-`mcp__claude_ai_Company_Brain__search` (`sources: ["linear"]`).
+cross-reference Linear issue state via Company Brain's `search`
+(`sources: ["linear"]`), or the Linear MCP directly if the agent has it (pi does).
 
 Curate into `standup: { y: string[], t: string[] }` per the async-standup
 format ([[feedback_async_standup_format]]): terse lowercase bullets,
@@ -43,7 +45,7 @@ ceremony.
 
 ## Step 3 — missed (Slack overnight)
 
-`mcp__claude_ai_Slack__slack_search_public_and_private`, `query: "to:me after:<yesterday>"`
+Slack's `slack_search_public_and_private`, `query: "to:me after:<yesterday>"`
 (and/or mentions). Filter to what is GENUINELY worth surfacing — skip pure bot
 noise, but DO keep a real signal like an automated review flagging issues on
 David's own PR. Map → `{ source, from, summary, url? }`. If nothing real, use
