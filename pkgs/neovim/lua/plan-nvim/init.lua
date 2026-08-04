@@ -275,6 +275,11 @@ end
 -- workspace (same signal the rail uses). Cached — computed once per session.
 local _auto_open = nil
 local function want_auto_open()
+	-- The agent-rail owns the editor's default view (its per-session dashboard shows
+	-- plan status + a `p` shortcut), so it disables plan auto-open by setting this
+	-- global. Not cached: the rail sets it during setup, which may land either side
+	-- of the first call.
+	if vim.g.plan_nvim_no_autoopen then return false end
 	if _auto_open ~= nil then return _auto_open end
 	_auto_open = vim.env.PLAN_NVIM_OPEN == "1"
 		or (vim.env.AGENT_SCOPE ~= nil and vim.env.AGENT_SCOPE ~= "")
@@ -324,26 +329,34 @@ end
 local function open_path(path, keep_focus)
 	state.plan_path = path
 	state.root = plan_worktree_root() or git_root()
-	-- Open in a real editor window — never the agent rail, a float, or a special
-	-- buffer. In the cockpit the rail is often focused when a plan opens, and a bare
-	-- :edit there would clobber the rail's buffer.
+	-- Open in the editor window — never the agent rail, a float, or a special
+	-- buffer. The editor window is any non-float, non-agent-* pane; DON'T require
+	-- buftype=="" — the rail's dashboard is a `nofile` scratch, and excluding it
+	-- left target=nil so the fall-through `:edit` clobbered whatever was current
+	-- (the roster) with the plan. Match the pane regardless of its buftype.
 	local target
 	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
 		local b = vim.api.nvim_win_get_buf(w)
 		if vim.api.nvim_win_get_config(w).relative == ""
-			and vim.bo[b].buftype == ""
 			and not vim.api.nvim_buf_get_name(b):match("agent%-") then
 			target = w
 			break
 		end
 	end
 	local edit = "edit " .. vim.fn.fnameescape(path)
-	if target and keep_focus then
-		vim.api.nvim_win_call(target, function() vim.cmd(edit) end)
+	if target then
+		if keep_focus then
+			vim.api.nvim_win_call(target, function() vim.cmd(edit) end)
+		else
+			if target ~= vim.api.nvim_get_current_win() then pcall(vim.api.nvim_set_current_win, target) end
+			vim.cmd(edit)
+		end
 		return
 	end
-	if target and target ~= vim.api.nvim_get_current_win() then
-		pcall(vim.api.nvim_set_current_win, target)
+	-- No editor window at all (rail-only layout): make one rather than clobber a
+	-- rail pane with the plan.
+	if vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(0)):match("agent%-") then
+		vim.cmd("leftabove vsplit")
 	end
 	vim.cmd(edit)
 end

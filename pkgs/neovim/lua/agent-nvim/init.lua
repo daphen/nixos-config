@@ -3873,6 +3873,10 @@ function M.setup(opts)
   local autostart = opts.autostart
   if autostart == nil then autostart = vim.env.AGENT_RAIL_NOAUTOSTART == nil end
   if autostart then
+    -- The rail owns the editor's default view (per-session dashboard), so tell
+    -- plan-nvim not to auto-open the plan on boot (it raced boot and clobbered the
+    -- roster). The plan is still one keypress away — `p` on the dashboard.
+    vim.g.plan_nvim_no_autoopen = true
     local RAIL_BUFS = { ["agent-rail"] = 1, ["agent-chat"] = 1, ["agent-changes"] = 1, ["agent-composer"] = 1 }
     local function boot()
       -- A session / `-S` / kitty-session restore can leave the tab with stray
