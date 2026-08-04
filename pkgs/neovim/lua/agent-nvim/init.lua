@@ -2557,6 +2557,19 @@ local function cockpit_ctx_registered(cwd)
   return nil
 end
 
+-- The active Linear cycle + its tickets, as cached by the orchestrator agent
+-- (nvim can't reach Linear/MCP itself). Shape:
+--   { cycle = { name, starts, ends, progress = { done, total } },
+--     tickets = { { id, title, priority (0..4), state, slug }, ... } }
+-- `slug` is the cockpit-add name (keeps the ticket prefix, e.g. every-1234-…).
+local function read_cycle()
+  local p = (os.getenv("HOME") or "") .. "/.local/state/lovable/cycle.json"
+  if fn.filereadable(p) ~= 1 then return nil end
+  local ok, data = pcall(function() return vim.json.decode(table.concat(fn.readfile(p), "\n")) end)
+  if ok and type(data) == "table" then return data end
+  return nil
+end
+
 local dash_keys
 -- The session dashboard: the editor's resting view when a session has no file
 -- open. A session HUD — its plan status + flow, its worktree's changed files, and
@@ -2659,7 +2672,7 @@ local function show_scratch(win, cwd)
   act("r", "refresh", function() show_scratch(win, cwd) end)
   local boxh = #acts + 2 -- ┌ … ┘ rows the box will occupy at the bottom
 
-  local openmap, expand_ln, sessmap = {}, nil, {} -- file rows / toggle line / session rows
+  local openmap, expand_ln, sessmap, ticketmap = {}, nil, {}, {} -- file / toggle / session / ticket rows
   if root then
     -- ORCHESTRATOR fleet: the other sessions it coordinates, selectable (<CR>/o).
     local others = {}
@@ -2681,6 +2694,53 @@ local function show_scratch(win, cwd)
     end
     if #others == 0 then hl(push("      no other sessions · n starts one"), "AgentMuted") end
     push("")
+
+    -- CYCLE + TICKETS from the agent-cached cycle.json. Tickets in priority order;
+    -- <CR>/o on one confirms + cockpit-adds a session for it. Sessions already
+    -- running for a ticket are marked ●.
+    local cyc = read_cycle()
+    if cyc and cyc.cycle then
+      local cy = cyc.cycle
+      local span = (cy.starts and cy.ends) and (" · " .. cy.starts .. "–" .. cy.ends) or ""
+      local cprog = (cy.progress and cy.progress.total and cy.progress.total > 0)
+        and ("   ◆ " .. (cy.progress.done or 0) .. "/" .. cy.progress.total) or ""
+      section("CYCLE", (cy.name or "current") .. span .. cprog)
+      local tks = cyc.tickets or {}
+      table.sort(tks, function(x, y)
+        local px = (x.priority == 0 or x.priority == nil) and 99 or x.priority
+        local py = (y.priority == 0 or y.priority == nil) and 99 or y.priority
+        return px < py
+      end)
+      local have = {}
+      for _, a in ipairs(S.roster) do
+        local t = (a.name or ""):match("%a+%-%d+"); if t then have[t:upper()] = true end
+      end
+      local prigrp = { [1] = "AgentErr", [2] = "AgentAccent", [3] = "AgentFile", [4] = "AgentMuted" }
+      section("TICKETS", #tks .. " · ⏎ starts a session")
+      local fit = math.max(1, math.min(#tks, H - #lines - boxh - 3))
+      local cap = S.dash_expand and #tks or fit
+      local idw = 0
+      for _, t in ipairs(tks) do idw = math.max(idw, #(t.id or "")) end
+      for i = 1, cap do
+        local t = tks[i]
+        local id = t.id or "?"
+        local live = have[id:upper()]
+        local mark = live and "●" or "○"
+        local avail = math.max(10, (W - 2) - (4 + idw + 3 + 8))
+        local title = t.title or ""
+        if #title > avail then title = title:sub(1, avail - 1) .. "…" end
+        local line = "  " .. mark .. " " .. id .. string.rep(" ", idw - #id) .. "   " .. title
+        local ln = push(line)
+        ticketmap[ln] = { id = id, slug = t.slug, live = live }
+        hl(ln, "AgentFile")                                       -- id + title, neutral
+        hl(ln, prigrp[t.priority] or "AgentMuted", 2, 2 + #mark)  -- priority-coloured marker
+      end
+      if #tks > fit then
+        expand_ln = push("      " .. (S.dash_expand and "⏶ show less" or ("… " .. (#tks - fit) .. " more")) .. "   ⏎")
+        hl(expand_ln, "AgentMuted")
+      end
+      push("")
+    end
   else
   -- CHANGES — the session worktree's diff (empty on main; "clean" for a known ctx).
   -- File rows are openable (<CR>/o); the list is capped to the rows left above the
@@ -2741,7 +2801,7 @@ local function show_scratch(win, cwd)
   vim.bo[buf].modifiable = false
   api.nvim_buf_clear_namespace(buf, S.ns, 0, -1)
   for _, d in ipairs(decor) do pcall(api.nvim_buf_add_highlight, buf, S.ns, d.grp, d.ln, d.cs, d.ce) end
-  S.dash = { open = openmap, sessions = sessmap, expand_ln = expand_ln, cwd = cwd, win = win } -- <CR>/o targets
+  S.dash = { open = openmap, sessions = sessmap, tickets = ticketmap, expand_ln = expand_ln, cwd = cwd, win = win } -- <CR>/o targets
   dash_keys(buf, acts)
   pcall(api.nvim_win_set_buf, win, buf)
 end
@@ -2757,7 +2817,19 @@ dash_keys = function(buf, acts)
   local function enter()
     local d = S.dash or {}
     local ln0 = api.nvim_win_get_cursor(0)[1] - 1
-    if d.sessions and d.sessions[ln0] then
+    if d.tickets and d.tickets[ln0] then
+      local t = d.tickets[ln0]
+      if t.live then
+        vim.notify("agent: " .. t.id .. " already has a session")
+      elseif t.slug and t.slug ~= "" then
+        if vim.fn.confirm("Start a session for " .. t.id .. "?  (cockpit-add " .. t.slug .. ")", "&Yes\n&No", 2) == 1 then
+          fn.jobstart({ (os.getenv("HOME") or "") .. "/.config/niri/scripts/cockpit-add", t.slug }, { detach = true })
+          vim.notify("agent: starting session · " .. t.slug)
+        end
+      else
+        vim.notify("agent: " .. t.id .. " has no slug in cycle.json")
+      end
+    elseif d.sessions and d.sessions[ln0] then
       local s = d.sessions[ln0]; view_session(s.id, s.cwd) -- switch to the session under the cursor
     elseif d.open and d.open[ln0] then
       open_in_editor(d.cwd, d.open[ln0], nil) -- open the changed file under the cursor
