@@ -22,13 +22,37 @@ Local-only: it reads the vault at `~/personal/notes/storage/`. If that's absent
    that one. Capture its number and start/end dates.
 2. **Pull its issues** assigned to the user (`list_issues` filtered by cycle + the
    current user; `get_user`/"me" if you need the id). For each: identifier
-   (`EVERY-####`), title, and Linear workflow status.
+   (`EVERY-####`), title, Linear workflow status, and **priority** (0 none · 1
+   urgent · 2 high · 3 medium · 4 low).
 3. **Join the plan state.** For each issue, look for `~/personal/notes/storage/plans/<ID>.md`:
    - absent → `no plan`
    - present → read its `> Status:` line → `draft` | `planned` | `reconciled`
 4. **Write the record** to `~/personal/notes/storage/cycles/cycle-<number>.md`
    (`mkdir -p` the dir). The watcher syncs it up; notes-memory indexes it. Overwrite
    on regenerate — it's a live snapshot, not an append log.
+5. **Write the dashboard cache** to `~/.local/state/lovable/cycle.json` (`mkdir -p`
+   the dir; overwrite). This is the machine-readable feed the agent-rail's
+   orchestrator dashboard reads (nvim can't reach Linear itself) — it renders the
+   cycle header + a priority-ordered ticket list, and `<CR>` on a ticket runs
+   `cockpit-add <slug>`. Shape:
+   ```json
+   {
+     "cycle": { "name": "Cycle 26", "starts": "2026-08-03", "ends": "2026-08-09",
+                "progress": { "done": 4, "total": 7 } },
+     "updated_at": "<date -u +%Y-%m-%dT%H:%MZ>",
+     "tickets": [
+       { "id": "EVERY-1781", "title": "Restart dev-server on crash",
+         "priority": 2, "state": "Todo",
+         "slug": "every-1781-restart-dev-server-on-crash" }
+     ]
+   }
+   ```
+   `slug` is the cockpit-add name: the **lowercased full ticket id** + a short
+   kebab of the title (keep the team prefix so Linear auto-link works, ≤ ~6 title
+   words), e.g. `EVERY-1781 "Restart dev-server on crash"` →
+   `every-1781-restart-dev-server-on-crash`. `progress.done` = tickets in a
+   completed/done Linear state; `total` = ticket count. Include every ticket
+   (priority ordering is done by the dashboard).
 
 ## Output format
 
