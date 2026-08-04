@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# cycle-sync — write the agent-rail orchestrator dashboard's cycle cache from
+# Linear, deterministically (no LLM). Fetches the Everywhere team's active cycle
+# + its issues assigned to me, and writes ~/.local/state/lovable/cycle.json in the
+# shape the rail's dashboard reads. Run by a systemd user timer (and on demand).
+#
+# Token: LINEAR_API_KEY. Prefer the env (interactive fish sources it), else read
+# it straight out of ~/.config/fish/secrets.fish — the timer isn't a fish shell,
+# so it can't inherit the env. A Linear *personal* API key (lin_api_…).
+set -euo pipefail
+
+OUT="$HOME/.local/state/lovable/cycle.json"
+SECRETS="$HOME/.config/fish/secrets.fish"
+
+key="${LINEAR_API_KEY:-}"
+if [ -z "$key" ] && [ -r "$SECRETS" ]; then
+  key=$(sed -nE "s/^set -[a-zA-Z]+ LINEAR_API_KEY +'?([^'\"]+)'?.*/\1/p" "$SECRETS" | head -1)
+fi
+[ -n "$key" ] || { echo "cycle-sync: no LINEAR_API_KEY (env or $SECRETS)" >&2; exit 1; }
+
+read -r -d '' QUERY <<'GQL' || true
+query {
+  cycles(filter: { team: { key: { eq: "EVERY" } }, isActive: { eq: true } }, first: 1) {
+    nodes {
+      name number startsAt endsAt
+      issues(filter: { assignee: { isMe: { eq: true } } }, first: 100) {
+        nodes { identifier title priority state { name type } }
+      }
+    }
+  }
+}
+GQL
+
+body=$(jq -n --arg q "$QUERY" '{query:$q}')
+resp=$(curl -sS --max-time 20 -X POST "https://api.linear.app/graphql" \
+  -H "Authorization: $key" -H "Content-Type: application/json" --data "$body")
+
+if echo "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+  echo "cycle-sync: Linear API error: $(echo "$resp" | jq -c '.errors')" >&2; exit 1
+fi
+if [ "$(echo "$resp" | jq '.data.cycles.nodes | length')" = "0" ]; then
+  echo "cycle-sync: no active cycle for team EVERY — leaving the cache as-is" >&2; exit 0
+fi
+
+mkdir -p "$(dirname "$OUT")"
+echo "$resp" | jq '
+  .data.cycles.nodes[0] as $c
+  | {
+      cycle: {
+        name: ($c.name // ("Cycle " + ($c.number|tostring))),
+        starts: (($c.startsAt // "")[0:10]),
+        ends: (($c.endsAt // "")[0:10]),
+        progress: {
+          done: ([$c.issues.nodes[] | select(.state.type == "completed")] | length),
+          total: ($c.issues.nodes | length)
+        }
+      },
+      updated_at: (now | todate),
+      tickets: [ $c.issues.nodes[] | {
+        id: .identifier,
+        title: .title,
+        priority: (.priority // 0),
+        state: .state.name,
+        slug: ((.identifier | ascii_downcase) + "-"
+               + (.title | ascii_downcase | gsub("[^a-z0-9]+"; "-")
+                  | gsub("^-+"; "") | gsub("-+$"; "") | split("-")[0:6] | join("-")))
+      }]
+    }
+' >"$OUT"
+
+n=$(jq '.tickets | length' "$OUT")
+echo "cycle-sync: wrote $OUT — $(jq -r '.cycle.name' "$OUT") · $n tickets"
