@@ -2565,7 +2565,10 @@ local function show_scratch(win, cwd)
     vim.bo[S.scratchbuf].swapfile = false
   end
   local buf = S.scratchbuf
-  local W = math.max(48, api.nvim_win_get_width(win))
+  -- text width = window minus its gutter (number/sign/fold cols). Using the full
+  -- window width right-aligned the +/− columns past the text area, clipping −dels.
+  local wi = fn.getwininfo(win)[1]
+  local W = math.max(48, api.nvim_win_get_width(win) - ((wi and wi.textoff) or 0))
   local H = math.max(12, api.nvim_win_get_height(win))
   local lines, decor = {}, {}
   local function push(l) lines[#lines + 1] = l or ""; return #lines - 1 end
@@ -2607,35 +2610,10 @@ local function show_scratch(win, cwd)
     push("")
   end
 
-  -- CHANGES — the session worktree's diff (empty on main; "clean" for a known ctx)
-  local ch = git_changes(cwd)
-  if #ch > 0 then
-    local ta, td = 0, 0
-    for _, c in ipairs(ch) do ta = ta + c.add; td = td + c.del end
-    section("CHANGES", #ch .. (#ch == 1 and " file · +" or " files · +") .. ta .. " -" .. td)
-    local aw, dw = 0, 0
-    for _, c in ipairs(ch) do aw = math.max(aw, #("+" .. c.add)); dw = math.max(dw, #("-" .. c.del)) end
-    local cap = math.min(#ch, math.max(4, H - 16))
-    for i = 1, cap do
-      local c = ch[i]
-      local acol = string.rep(" ", aw - #("+" .. c.add)) .. "+" .. c.add
-      local dcol = string.rep(" ", dw - #("-" .. c.del)) .. "-" .. c.del
-      local line = file_row(W - 2, "      • ", c.path, acol, dcol)
-      local ln = push(line)
-      hl(ln, "AgentFile")
-      hl(ln, "AgentMuted", 6, 9) -- the • bullet
-      local ps, pe = line:find("%+%d+"); if ps then hl(ln, "AgentStream", ps - 1, pe) end
-      local ms, me = line:find("%-%d+", (pe or 0) + 1); if ms then hl(ln, "AgentErr", ms - 1, me) end
-    end
-    if #ch > cap then hl(push("      … and " .. (#ch - cap) .. " more"), "AgentMuted") end
-    push("")
-  elseif ctx then
-    section("CHANGES", "working tree clean")
-    push("")
-  end
-
-  -- ACTIONS — one source of truth for both the box and the keymaps; a row is
-  -- present only when its target exists.
+  -- ACTIONS — built BEFORE the changes list so the box height is known and the
+  -- list can be capped to leave room. (A long diff used to push the box off the
+  -- bottom of the window.) One source of truth drives both the box and the keymaps;
+  -- a row is present only when its target exists.
   local home = os.getenv("HOME") or ""
   local acts = {}
   local function act(k, l, f) acts[#acts + 1] = { key = k, label = l, fn = f } end
@@ -2662,6 +2640,35 @@ local function show_scratch(win, cwd)
     if S.chatwin and api.nvim_win_is_valid(S.chatwin) then pcall(api.nvim_set_current_win, S.chatwin) end
   end)
   act("r", "refresh", function() show_scratch(win, cwd) end)
+  local boxh = #acts + 2 -- ┌ … ┘ rows the box will occupy at the bottom
+
+  -- CHANGES — the session worktree's diff (empty on main; "clean" for a known ctx).
+  -- Capped to the rows left above the action box so the box always stays on-screen.
+  local ch = git_changes(cwd)
+  if #ch > 0 then
+    local ta, td = 0, 0
+    for _, c in ipairs(ch) do ta = ta + c.add; td = td + c.del end
+    section("CHANGES", #ch .. (#ch == 1 and " file · +" or " files · +") .. ta .. " -" .. td)
+    local aw, dw = 0, 0
+    for _, c in ipairs(ch) do aw = math.max(aw, #("+" .. c.add)); dw = math.max(dw, #("-" .. c.del)) end
+    local cap = math.max(0, math.min(#ch, H - #lines - boxh - 3)) -- reserve box + "…more" + gap
+    for i = 1, cap do
+      local c = ch[i]
+      local acol = string.rep(" ", aw - #("+" .. c.add)) .. "+" .. c.add
+      local dcol = string.rep(" ", dw - #("-" .. c.del)) .. "-" .. c.del
+      local line = file_row(W - 2, "      • ", c.path, acol, dcol)
+      local ln = push(line)
+      hl(ln, "AgentFile")
+      hl(ln, "AgentMuted", 6, 9) -- the • bullet
+      local ps, pe = line:find("%+%d+"); if ps then hl(ln, "AgentStream", ps - 1, pe) end
+      local ms, me = line:find("%-%d+", (pe or 0) + 1); if ms then hl(ln, "AgentErr", ms - 1, me) end
+    end
+    if #ch > cap then hl(push("      … and " .. (#ch - cap) .. " more"), "AgentMuted") end
+    push("")
+  elseif ctx then
+    section("CHANGES", "working tree clean")
+    push("")
+  end
 
   local labels, inner = {}, 0
   for _, a in ipairs(acts) do
