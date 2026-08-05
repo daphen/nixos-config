@@ -2898,6 +2898,15 @@ follow_edit = function(cwd, path, line)
   if not api.nvim_buf_get_name(api.nvim_win_get_buf(cur)):match("agent%-") then return end -- you're in the code
   local file = fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
   if fn.filereadable(file) ~= 1 then return end
+  -- Avante-style reveal: pi's edit tool carries NO line numbers, so resolve the
+  -- reveal line from the authoritative git diff instead — jump to the file's first
+  -- changed hunk so the change is on-screen (signs mark the rest), not the file top.
+  if not line and cwd then
+    local rel = file:sub(1, #cwd + 1) == cwd .. "/" and file:sub(#cwd + 2) or path
+    if not S.gitdiff[cwd] then git_changes(cwd) end
+    local change = S.gitdiff[cwd] and S.gitdiff[cwd].bypath[rel]
+    if change and change.hunks and change.hunks[1] then line = change.hunks[1].l1 end
+  end
   local target = target_editor_win()
   if not target or vim.bo[api.nvim_win_get_buf(target)].modified then return end
   local key = file .. ":" .. tostring(line or 0)
