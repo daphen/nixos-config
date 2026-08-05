@@ -125,26 +125,13 @@ return {
 			end
 		end
 
-		-- Statusline shows the file being edited in the MAIN editor window, even
-		-- when focus is in a rail pane (agent-*) — so it never reads "agent-chat".
 		local function editor_filename()
-			local cur = vim.api.nvim_get_current_buf()
-			local ebuf, name = cur, vim.api.nvim_buf_get_name(cur)
-			if name == "" or name:match("agent%-") then
-				-- focus is on a rail pane / the dashboard scratch — hunt for a REAL file
-				-- open in the tab; reset first so if none is found we show NOTHING (not
-				-- the composer's own agent-composer path, which resolves to the worktree).
-				ebuf, name = nil, ""
-				for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-					local b = vim.api.nvim_win_get_buf(w)
-					local n = vim.api.nvim_buf_get_name(b)
-					if vim.bo[b].buftype == "" and n ~= "" and not n:match("agent%-") then
-						ebuf, name = b, n
-						break
-					end
-				end
-			end
-			if not ebuf or name == "" then return "" end -- dashboard/rail, no file open → blank
+			local ok, rail = pcall(require, "agent-nvim")
+			local win = ok and rail.editor_win and rail.editor_win()
+			if not win or not vim.api.nvim_win_is_valid(win) then return "" end
+			local ebuf = vim.api.nvim_win_get_buf(win)
+			local name = vim.api.nvim_buf_get_name(ebuf)
+			if name == "" or vim.bo[ebuf].buftype ~= "" then return "" end
 			return vim.fn.fnamemodify(name, ":.") .. (vim.bo[ebuf].modified and " ●" or "")
 		end
 

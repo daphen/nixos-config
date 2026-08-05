@@ -98,9 +98,9 @@ local function repo_of(path)
 end
 
 local function pick_target_window()
-	-- A REAL editor window: not a float, a normal buftype, and NOT an agent-rail
-	-- pane (agent-*). Without the agent- guard the fallback returned the focused
-	-- rail window, so a followed file :e'd straight into the composer/chat input.
+	local ok, rail = pcall(require, "agent-nvim")
+	local shared = ok and rail.editor_win and rail.editor_win()
+	if shared then return shared end
 	local function is_editor(w)
 		local cfg = vim.api.nvim_win_get_config(w)
 		if cfg.relative ~= "" then return false end
@@ -210,7 +210,7 @@ local function queue_nav(fullpath)
 			-- Decoupled from the nav gates below: subscribers (hunk-nvim) want
 			-- the signal even when the cursor jump is suppressed.
 			pcall(vim.api.nvim_exec_autocmds, "User",
-				{ pattern = "FileWatcherChanged", data = { path = p } })
+				{ pattern = "FileWatcherChanged", data = { path = p, root = state.root } })
 			navigate_to_path(p)
 			trace((state.last_skip and ("skip: " .. state.last_skip) or "JUMP") .. " " .. p)
 		end

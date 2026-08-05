@@ -74,6 +74,7 @@ local ICON_NAMES = {
   dev_up = "plug-2",
   dev_down = "plug-2-outline",
   dev_broken = "triangle-warning",
+  swatch = "chip",
 }
 local ICON = vim.deepcopy(ICON_FALLBACK)
 local qsicons = {}
@@ -146,6 +147,10 @@ local S = {
   changesbuf = nil,                 -- changes view (middle pane, view = "changes")
   view = "chat",                    -- which buffer the middle pane shows
   changes_open = {},                -- changes bufline(0-idx) -> { path, l1 }
+  gitdiff = {},                     -- cwd -> { files, bypath }
+  diff_jobs = {},                   -- cwd -> active job id
+  diff_timers = {},                 -- cwd -> debounce timer
+  editor_win = nil,                 -- stable non-rail editor window
   composerbuf = nil, composerwin = nil,
   ns = nil, composer_ns = nil, chip_ns = nil,
   roster = {},        -- running sessions from the daemon
@@ -181,7 +186,7 @@ local S = {
   saved_gcr = nil,
 }
 
-local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send, git_changes
+local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send, git_changes, refresh_git_changes
 local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, refresh_plan_one, refresh_devenv, sync_approval_keys
 local session_cwd, load_plan, answer, apply_prompt_mode
 local on_cockpit_active -- reconciles the rail's selection with the cockpit active context
@@ -376,104 +381,13 @@ local function tool_hint(c)
   return "⚙ " .. name
 end
 
--- Inline diff for an edit/write tool call, as a ```diff fence so markview colors
--- it. Capped so a big write doesn't flood the chat (folds handle the rest).
--- Compact, navigable summary of an edit/write tool call: the file header (from
--- tool_hint) then one line per hunk — its file line-range and +/- size, no code.
--- pi's edit tool gives no line numbers, so the range is located by finding the
--- edit's text in the file (kept current by the file-watcher); unfound → range
--- omitted. Press <CR> on a hunk to jump there. Returns (text, hunks); hunks[i] =
--- {path, anchor, line} for the i-th hunk line, in render order.
-local HUNK = "  · "
 local THINK = "✻ " -- collapsed-thinking marker (a dim one-liner, not the answer)
-local BARW = 5 -- width of the per-hunk proportional add/del bar
-local function tool_edits(c, cwd)
+
+local function tool_edit(c)
   local a = c.arguments or c.input or c.args or {}
   local path = a.path or a.file_path or a.filePath
-  local edits = a.edits
-  if not edits and type(a.content) == "string" then edits = { { newText = a.content } } end
-  if not path or type(edits) ~= "table" or #edits == 0 then return nil, nil end
-  local function split(s) return vim.split(s or "", "\n", { plain = true }) end
-  local function nonempty(ls) local n = 0; for _, l in ipairs(ls) do if vim.trim(l) ~= "" then n = n + 1 end end; return n end
-  local function firstidx(ls) for i, l in ipairs(ls) do if vim.trim(l) ~= "" then return i, vim.trim(l) end end end
-
-  local file = path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)
-  file = fn.expand(file)
-  local flines = fn.filereadable(file) == 1 and fn.readfile(file) or nil
-  local function locate(newLines)
-    if not flines then return nil end
-    -- drop a trailing empty line (vim.split of "a\nb\n" yields a spurious "")
-    local nl = vim.deepcopy(newLines)
-    if #nl > 0 and nl[#nl] == "" then nl[#nl] = nil end
-    local ai, anchor = firstidx(nl)
-    if not ai then return nil end
-    -- exact: the newText block sits verbatim in the file — match it contiguously
-    if #nl > 0 then
-      for i = 1, #flines - #nl + 1 do
-        local ok = true
-        for j = 1, #nl do
-          if flines[i + j - 1] ~= nl[j] then ok = false; break end
-        end
-        if ok then return i, i + #nl - 1, anchor end
-      end
-    end
-    -- fallback: anchor on the MOST DISTINCTIVE (longest) line of the new text, via an
-    -- exact full-line match. The first line is often the one a sibling edit changed
-    -- (so a first-line anchor gives up → blank range forever); a long inner line that
-    -- survived verbatim is far more likely to still be present and unique. Only a
-    -- pure deletion (no new text at all) stays unlocatable — there's nothing to point at.
-    local bk, blen = nil, -1
-    for k = 1, #nl do
-      local w = #vim.trim(nl[k])
-      if w > blen then blen, bk = w, k end
-    end
-    if bk and blen > 0 then
-      for i, l in ipairs(flines) do
-        if l == nl[bk] then
-          local s = math.max(1, i - (bk - 1))
-          return s, math.min(#flines, s + #nl - 1), anchor
-        end
-      end
-    end
-    -- last resort: first-line substring anchor (drifted block)
-    for i, l in ipairs(flines) do
-      if l:find(anchor, 1, true) then
-        return math.max(1, i - (ai - 1)), math.max(1, i - (ai - 1)) + #nl - 1, anchor
-      end
-    end
-    return nil, nil, anchor
-  end
-
-  -- pass 1: collect each hunk's range + counts; pass 2: pad into aligned columns
-  local rows = {}
-  for _, e in ipairs(edits) do
-    local nl = split(e.newText)
-    local s, en, anchor = locate(nl)
-    if not anchor then anchor = select(2, firstidx(split(e.oldText))) end
-    rows[#rows + 1] = {
-      rng = s and (s == en and tostring(s) or (s .. "-" .. en)) or "",
-      na = nonempty(nl), nd = nonempty(split(e.oldText)),
-      path = path, anchor = anchor, line = s,
-    }
-  end
-  local rw, aw, dw = 0, 0, 0
-  for _, r in ipairs(rows) do
-    r.add, r.del = "+" .. r.na, "-" .. r.nd
-    rw = math.max(rw, #r.rng); aw = math.max(aw, #r.add); dw = math.max(dw, #r.del)
-  end
-  local pad = function(s, w) return string.rep(" ", w - #s) end
-  local lines, hunks = { tool_hint(c) }, {}
-  for _, r in ipairs(rows) do
-    -- proportional add/del bar: BARW blocks split green|red by ratio (both
-    -- colours always show when both sides are non-empty)
-    local total = r.na + r.nd
-    local gb = total == 0 and 0 or math.floor(r.na / total * BARW + 0.5)
-    if r.na > 0 and gb == 0 then gb = 1 elseif r.nd > 0 and gb == BARW then gb = BARW - 1 end
-    lines[#lines + 1] = HUNK .. r.rng .. pad(r.rng, rw) .. "   " .. pad(r.add, aw) .. r.add
-      .. "  " .. pad(r.del, dw) .. r.del .. "   " .. string.rep("█", BARW)
-    hunks[#hunks + 1] = { path = r.path, anchor = r.anchor, line = r.line, gb = gb, na = r.na, nd = r.nd }
-  end
-  return table.concat(lines, "\n"), hunks
+  if not path then return nil, nil end
+  return "⚙ edit " .. fn.fnamemodify(path, ":."), { { path = path } }
 end
 
 -- Flatten a message's content blocks into displayable text. Beyond the final
@@ -503,7 +417,7 @@ local function msg_text(msg, cwd)
       end
     elseif c.type == "toolCall" or c.type == "tool_use" then
       local txt, hs = nil, nil
-      if c.name == "edit" or c.name == "write" then txt, hs = tool_edits(c, cwd) end
+      if c.name == "edit" or c.name == "write" then txt, hs = tool_edit(c) end
       if txt then
         t[#t + 1] = txt
         for _, h in ipairs(hs) do hunks[#hunks + 1] = h end
@@ -623,7 +537,7 @@ end
 -- scopes read as distinct panels (not just outlined). `push(l[,path])` appends a line,
 -- returns its 0-based index; `decor` collects { line, fg?, bg?, cs, ce } (byte columns,
 -- later fg wins; bg is a low-priority line fill). `body(add)` builds content via
--- add(text, segs, path) where segs = {{cs,ce,grp},…} are byte columns RELATIVE to
+-- add(text, segs, path, l1) where segs = {{cs,ce,grp},…} are byte columns RELATIVE to
 -- `text`. The box insets content to W-4 cols, shifts segs past "│ ", tints the border
 -- muted + title accent, and fills every row with `surface` (default AgentBox).
 local BOX_L = "│  " -- left border + 2 spaces: 5 bytes (│ is 3, 2 spaces). Inner-left pad.
@@ -640,10 +554,10 @@ local function box(push, decor, W, icon, title, body, surface, title_above, pad,
     local head = (icon and (icon .. " ") or "") .. (title or "")
     local hln = push(head)
     decor[#decor + 1] = { line = hln, fg = "AgentTitle", cs = 0, ce = #head }
-    body(function(text, segs, path)
+    body(function(text, segs, path, l1)
       text = text or ""
       -- indent 3 to match a bordered box's content column ("│  " = │ + 2 spaces)
-      local bl = push("   " .. text, path)
+      local bl = push("   " .. text, path, l1)
       for _, s in ipairs(segs or {}) do
         decor[#decor + 1] = { line = bl, fg = s[3], cs = s[1] + 3, ce = s[2] + 3 }
       end
@@ -678,7 +592,7 @@ local function box(push, decor, W, icon, title, body, surface, title_above, pad,
     decor[#decor + 1] = { line = tl, fg = bord }
     decor[#decor + 1] = { line = tl, fg = "AgentTitle", cs = #"┌─ ", ce = #"┌─ " + #head }
   end
-  local function add(text, segs, path)
+  local function add(text, segs, path, l1)
     text = text or ""
     -- Clamp to the inner width so a long row (path + right-aligned stats) can NEVER
     -- overflow the box: an over-long row used to push its right │ + surface fill past
@@ -689,7 +603,7 @@ local function box(push, decor, W, icon, title, body, surface, title_above, pad,
     end
     local pad = math.max(0, inner - fn.strdisplaywidth(text))
     local l = BOX_L .. text .. string.rep(" ", pad) .. "  │"
-    local bl = push(l, path)
+    local bl = push(l, path, l1)
     decor[#decor + 1] = { line = bl, bg = surface }                        -- surface fill
     decor[#decor + 1] = { line = bl, fg = bord, cs = 0, ce = 3 }           -- left │
     decor[#decor + 1] = { line = bl, fg = bord, cs = #l - 3, ce = #l }     -- right │
@@ -1158,7 +1072,7 @@ end
 render_chat = function(scroll)
   if not (S.chatbuf and api.nvim_buf_is_valid(S.chatbuf)) then return end
   local lines, decor = {}, {}
-  S.hunknav = {} -- 1-indexed bufline -> {path, anchor} for navigable hunk lines
+  S.hunknav = {} -- 1-indexed bufline -> {path, line} for navigable edit rows
   local line_msg, blocks = {}, {}
   local function push(l, mi)
     lines[#lines + 1] = l
@@ -1261,45 +1175,42 @@ render_chat = function(scroll)
               end
               decor[#decor + 1] = { line = push("", mi), bg = "AgentSummaryBg" }
             else
-            local bl = push(para, mi)
-            if para:match("^%s*```") then
-              -- fence delimiter (markview conceals the ```): paint it so the block
-              -- gets clean top/bottom padding rows.
-              in_fence = not in_fence
-              decor[#decor + 1] = { line = bl, bg = "AgentCode" }
-            elseif in_fence then
-              decor[#decor + 1] = { line = bl, bg = "AgentCode" } -- uniform full-width block
-              decor[#decor + 1] = { line = bl, virt = "  " } -- left padding (inline, clean yank)
-            else
-            local mk = para:sub(1, #HUNK) == HUNK and HUNK or nil
-            if mk then
-              hi = hi + 1
-              if hq[hi] then S.hunknav[bl + 1] = hq[hi] end
-              -- marker grey · line-range blue · +adds green · -dels red
-              decor[#decor + 1] = { line = bl, fg = "AgentMuted", cs = 0, ce = #mk }
-              local ps, pe = para:find("%+%d+")
-              if ps and ps > #mk + 1 then decor[#decor + 1] = { line = bl, fg = "AgentHunkRange", cs = #mk, ce = ps - 1 } end
-              if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
-              local ms, me = para:find("%-%d+", (pe or #mk) + 1)
-              if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
-              -- proportional add/del bar: green for the adds' share, red for the rest
-              local bs = para:find("█")
-              if bs and hq[hi] then
-                local g, off = hq[hi].gb or 0, bs - 1
-                if g > 0 then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = off, ce = off + g * 3 } end
-                if g < BARW then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = off + g * 3, ce = -1 } end
-              end
-            elseif para:match("^⚙ ") then
-              decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
-              decor[#decor + 1] = { line = bl, fg = "AgentMuted", cs = 0, ce = 3 } -- ⚙ glyph (3 bytes)
+              local nav
               if para:match("^⚙ edit ") or para:match("^⚙ write ") then
-                local fs = para:find("%S+$") -- last token = the path
-                if fs then decor[#decor + 1] = { line = bl, fg = "AgentFocusName", cs = fs - 1, ce = -1 } end
+                hi = hi + 1
+                nav = hq[hi]
+                if nav then
+                  local cwd = S.selected and session_cwd(S.selected)
+                  local rel = nav.path
+                  if cwd and rel:sub(1, #cwd + 1) == cwd .. "/" then rel = rel:sub(#cwd + 2) end
+                  if cwd and not S.gitdiff[cwd] then git_changes(cwd) end
+                  local change = cwd and S.gitdiff[cwd] and S.gitdiff[cwd].bypath[rel]
+                  para = para .. string.format("  +%d -%d", change and change.add or 0, change and change.del or 0)
+                end
               end
-            elseif para:sub(1, #THINK) == THINK then
-              decor[#decor + 1] = { line = bl, fg = "AgentMuted" } -- thinking: dim, secondary
-            end
-            end
+              local bl = push(para, mi)
+              if nav then S.hunknav[bl + 1] = nav end
+              if para:match("^%s*```") then
+                in_fence = not in_fence
+                decor[#decor + 1] = { line = bl, bg = "AgentCode" }
+              elseif in_fence then
+                decor[#decor + 1] = { line = bl, bg = "AgentCode" }
+                decor[#decor + 1] = { line = bl, virt = "  " }
+              elseif para:match("^⚙ ") then
+                decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
+                decor[#decor + 1] = { line = bl, fg = "AgentMuted", cs = 0, ce = 3 }
+                if nav then
+                  local display = fn.fnamemodify(nav.path, ":.")
+                  local fs = para:find(display, 1, true)
+                  if fs then decor[#decor + 1] = { line = bl, fg = "AgentFocusName", cs = fs - 1, ce = fs - 1 + #display } end
+                  local ps, pe = para:find("%+%d+")
+                  if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
+                  local ms, me = para:find("%-%d+", (pe or 0) + 1)
+                  if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
+                end
+              elseif para:sub(1, #THINK) == THINK then
+                decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
+              end
             end
           end
         end
@@ -1792,40 +1703,14 @@ handle = function(obj)
     local c = S.chat[obj.session] or { msgs = {} }
     c.msgs[#c.msgs + 1] = { role = "assistant", text = text, hunks = hunks }
     S.chat[obj.session] = c
-    -- remember which files the agent touched, to reload them at turn end
     if hunks and #hunks > 0 then
       S.edited[obj.session] = S.edited[obj.session] or {}
-      -- Accumulate this turn's +adds/−dels FROM THE STREAM, keyed like S.edited.
-      -- git can't be the only source: the vault (where plans live) is entirely
-      -- gitignored, so git_changes returns nothing there and the summary showed
-      -- +0 −0. The stream is the sole truth for git-invisible files.
-      S.editstats = S.editstats or {}
-      S.editstats[obj.session] = S.editstats[obj.session] or {}
       for _, h in ipairs(hunks) do
-        if h.path then
-          S.edited[obj.session][h.path] = true
-          local st = S.editstats[obj.session][h.path] or { add = 0, del = 0 }
-          st.add = st.add + (h.na or 0); st.del = st.del + (h.nd or 0)
-          S.editstats[obj.session][h.path] = st
-        end
+        if h.path then S.edited[obj.session][h.path] = true end
       end
-      -- live-follow: open the most-recently edited file in the editor window so it
-      -- tracks the agent (focus stays in the rail). The PLAN artifact is NOT special-
-      -- cased here — /plan-ticket emits an explicit open event at the end (see the
-      -- open-file signal watcher), so the rail doesn't have to guess from hunks.
       if obj.session == S.selected then
         local last = hunks[#hunks]
-        if last and last.path then follow_edit(session_cwd(obj.session), last.path, last.line) end
-      end
-      -- If any hunk couldn't be located yet (the file on disk lagged this event),
-      -- its line-range renders blank. Schedule ONE re-render ~400ms later, by which
-      -- time the write has settled and the locator resolves it. Bounded: fires once
-      -- per message, only when a blank exists; truly-unlocatable hunks (pure
-      -- deletions) simply stay blank after the retry — no loop, no polling.
-      local unlocated = false
-      for _, h in ipairs(hunks) do if h.path and not h.line then unlocated = true; break end end
-      if unlocated and obj.session == S.selected then
-        vim.defer_fn(function() if obj.session == S.selected then render_chat(false) end end, 400)
+        if last and last.path then follow_edit(session_cwd(obj.session), last.path, nil) end
       end
     end
     if obj.session == S.selected then render_chat(true) end
@@ -1950,18 +1835,13 @@ handle = function(obj)
         else
           rel = fn.fnamemodify(p, ":~")
         end
-        -- git wins for files it can see (accurate net diff); fall back to the
-        -- streamed counts when git has no entry — gitignored (the whole vault) or
-        -- otherwise git-invisible — so it's never a false +0 −0.
-        local st = S.editstats and S.editstats[obj.session] and S.editstats[obj.session][p]
         files[#files + 1] = {
           path = rel,
-          add = (x and x.add) or (st and st.add) or 0,
-          del = (x and x.del) or (st and st.del) or 0,
+          add = (x and x.add) or 0,
+          del = (x and x.del) or 0,
         }
       end
     end
-    if S.editstats then S.editstats[obj.session] = nil end
     S.summary[obj.session] = { recap = recap, files = files }
     refresh_plans() -- capture final plan progress now the turn's done (the streaming sweep stopped)
     if obj.session == S.selected then render_chat(false) end
@@ -2928,25 +2808,44 @@ end
 
 -- open a file in the main editor window (not a rail pane), at an optional line.
 -- Relative paths resolve against the session's worktree.
--- The one editor window: the first non-float, non-rail (agent-*) window in the
--- tab — the pane files/plan/dashboard live in. Nil if only the rail is up. This
--- was copy-pasted at every open site; one helper keeps them consistent.
+local function is_editor_win(w, candidate)
+  if not w or not api.nvim_win_is_valid(w) then return false end
+  if api.nvim_win_get_tabpage(w) ~= api.nvim_get_current_tabpage() then return false end
+  if w == S.win or w == S.chatwin or w == S.composerwin then return false end
+  if api.nvim_win_get_config(w).relative ~= "" then return false end
+  if not candidate then return true end
+  local b = api.nvim_win_get_buf(w)
+  return vim.bo[b].buftype == "" and not api.nvim_buf_get_name(b):match("agent%-")
+end
+
 target_editor_win = function()
+  if is_editor_win(S.editor_win, false) then return S.editor_win end
+  S.editor_win = nil
   for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
-    local cfg = api.nvim_win_get_config(w)
-    if not (cfg and cfg.relative and cfg.relative ~= "") then -- skip floats
-      if not api.nvim_buf_get_name(api.nvim_win_get_buf(w)):match("agent%-") then return w end
+    if is_editor_win(w, true) then
+      S.editor_win = w
+      vim.g.agent_editor_win = w
+      return w
     end
   end
+  vim.g.agent_editor_win = nil
   return nil
 end
+
+M.editor_win = target_editor_win
 
 local function open_in_editor(cwd, path, line)
   local file = path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)
   file = fn.expand(file)
   if fn.filereadable(file) == 0 then vim.notify("agent-nvim: not readable — " .. path, vim.log.levels.WARN); return end
   local target = target_editor_win()
-  if target then api.nvim_set_current_win(target) else vim.cmd("botright vsplit") end
+  if not target then
+    vim.cmd("topleft vsplit")
+    S.editor_win = api.nvim_get_current_win()
+    vim.g.agent_editor_win = S.editor_win
+    target = S.editor_win
+  end
+  api.nvim_set_current_win(target)
   pcall(vim.cmd, "edit " .. fn.fnameescape(file))
   if line then pcall(api.nvim_win_set_cursor, 0, { tonumber(line), 0 }) end
 end
@@ -3063,24 +2962,13 @@ local function chat_open_url()
   vim.notify("agent-nvim: opening " .. u)
 end
 
--- <CR>/gf in the chat: jump to the hunk under the cursor — open its file (kept
--- current by the file-watcher) and land on the changed line — else fall back to
--- a fenced-code file reference.
+-- <CR>/gf on a chat edit row opens that file; exact hunk navigation lives in
+-- the changes view. Other rows fall back to fenced-code file references.
 local function chat_open()
   if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
   local nav = S.hunknav and S.hunknav[api.nvim_win_get_cursor(S.chatwin)[1]]
   if not nav then return chat_open_ref() end
-  open_in_editor(S.selected and session_cwd(S.selected), nav.path, nav.line)
-  -- if the located line drifted (later edits), re-find the anchor text
-  if not nav.line and nav.anchor and nav.anchor ~= "" then
-    for i, l in ipairs(api.nvim_buf_get_lines(0, 0, -1, false)) do
-      if l:find(nav.anchor, 1, true) then
-        pcall(api.nvim_win_set_cursor, 0, { i, 0 })
-        vim.cmd("normal! zz")
-        break
-      end
-    end
-  end
+  open_in_editor(S.selected and session_cwd(S.selected), nav.path, nil)
 end
 
 -- yank the single line under the cursor. markview conceals the ``` fence lines,
@@ -3755,41 +3643,93 @@ local function start_cockpit_watch()
   end)
 end
 
--- files changed on the branch (committed + uncommitted) vs where it forked
+local function parse_git_diff(lines)
+  local files, bypath, current, oldpath, hunk = {}, {}, nil, nil, nil
+  local function file(path)
+    if not bypath[path] then
+      bypath[path] = { path = path, add = 0, del = 0, hunks = {} }
+      files[#files + 1] = bypath[path]
+    end
+    return bypath[path]
+  end
+  for _, line in ipairs(lines or {}) do
+    if line:match("^diff %-%-git ") then
+      current, oldpath, hunk = nil, nil, nil
+    elseif line:match("^%-%-%- ") then
+      oldpath = line:sub(5):gsub("^a/", "")
+    elseif line:match("^%+%+%+ ") then
+      local path = line:sub(5):gsub("^b/", "")
+      if path == "/dev/null" then path = oldpath end
+      current = path and file(path) or nil
+      hunk = nil
+    elseif current and line:match("^@@ ") then
+      local os, oc, ns, nc = line:match("^@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@")
+      oc, nc = tonumber(oc ~= "" and oc or 1), tonumber(nc ~= "" and nc or 1)
+      ns, os = tonumber(ns), tonumber(os)
+      hunk = {
+        old_l1 = os, old_l2 = oc == 0 and os or os + oc - 1,
+        l1 = ns, l2 = nc == 0 and ns or ns + nc - 1,
+        add = 0, del = 0,
+      }
+      current.hunks[#current.hunks + 1] = hunk
+    elseif current and hunk and line:sub(1, 1) == "+" then
+      hunk.add = hunk.add + 1
+      current.add = current.add + 1
+    elseif current and hunk and line:sub(1, 1) == "-" then
+      hunk.del = hunk.del + 1
+      current.del = current.del + 1
+    end
+  end
+  table.sort(files, function(a, b) return a.path < b.path end)
+  return { files = files, bypath = bypath }
+end
+
+refresh_git_changes = function(cwd, path)
+  if not cwd or fn.isdirectory(cwd) ~= 1 then return end
+  if path and not S.gitdiff[cwd] then path = nil end
+  local ok, signs = pcall(require, "hunk-nvim.signs")
+  local base = ok and signs.base_for and signs.base_for(cwd) or "HEAD"
+  if not base or base == "" then base = "HEAD" end
+  local args = { "git", "-C", cwd, "diff", "--no-color", "--no-ext-diff", "--unified=0", base }
+  if path and path ~= "" then args[#args + 1] = "--"; args[#args + 1] = path end
+  local previous = S.diff_jobs[cwd]
+  if previous and previous > 0 then pcall(fn.jobstop, previous) end
+  S.diff_jobs[cwd] = nil
+  local output = {}
+  local job = fn.jobstart(args, {
+    stdout_buffered = true,
+    on_stdout = function(_, data)
+      for _, line in ipairs(data or {}) do if line ~= "" then output[#output + 1] = line end end
+    end,
+    on_exit = function(id, code)
+      if S.diff_jobs[cwd] ~= id then return end
+      S.diff_jobs[cwd] = nil
+      if code ~= 0 then return end
+      vim.schedule(function()
+        local parsed = parse_git_diff(output)
+        if path and S.gitdiff[cwd] then
+          local cache = S.gitdiff[cwd]
+          cache.bypath[path] = nil
+          for _, change in ipairs(parsed.files) do cache.bypath[change.path] = change end
+          cache.files = {}
+          for _, change in pairs(cache.bypath) do cache.files[#cache.files + 1] = change end
+          table.sort(cache.files, function(a, b) return a.path < b.path end)
+        else
+          S.gitdiff[cwd] = parsed
+        end
+        if S.selected and session_cwd(S.selected) == cwd then
+          if S.view == "changes" then render_changes() else render_chat(false) end
+        end
+      end)
+    end,
+  })
+  if job and job > 0 then S.diff_jobs[cwd] = job end
+end
+
 git_changes = function(cwd)
-  if not cwd or fn.isdirectory(cwd) ~= 1 then return {} end
-  if not fn.system({ "git", "-C", cwd, "rev-parse", "--is-inside-work-tree" }):match("true") then return {} end
-  -- Same base logic as the lualine diffstat + inline gutter signs, so every diff
-  -- view agrees: a feature branch uses hunk-nvim's canonical base_for(root) (per-root,
-  -- trunk-move- + LoL-init-aware); main/master has no feature diff, so HEAD → the
-  -- orchestrator shows only uncommitted work (≈ empty), not the local↔remote divergence.
-  local branch = fn.system({ "git", "-C", cwd, "branch", "--show-current" }):gsub("%s+$", "")
-  local base = "HEAD"
-  if branch ~= "" and branch ~= "main" and branch ~= "master" then
-    local ok, signs = pcall(require, "hunk-nvim.signs")
-    base = (ok and signs.base_for and signs.base_for(cwd)) or "HEAD"
-  end
-  local cmd = { "git", "-C", cwd, "diff", "--numstat" }
-  if base ~= "" then cmd[#cmd + 1] = base end
-  local files, seen = {}, {}
-  for _, line in ipairs(fn.systemlist(cmd)) do
-    local add, del, path = line:match("^(%S+)%s+(%S+)%s+(.+)$")
-    if path then
-      files[#files + 1] = { path = path, add = tonumber(add) or 0, del = tonumber(del) or 0 }
-      seen[path] = true
-    end
-  end
-  -- `diff <base>` covers TRACKED local changes but not brand-new UNTRACKED files —
-  -- yet those are local changes too (git status' working-tree view). List them and
-  -- count their lines as adds, so a just-created file shows real +N instead of +0.
-  for _, path in ipairs(fn.systemlist({ "git", "-C", cwd, "ls-files", "--others", "--exclude-standard" })) do
-    if path ~= "" and not seen[path] then
-      local ok, contents = pcall(fn.readfile, cwd .. "/" .. path)
-      files[#files + 1] = { path = path, add = (ok and contents) and #contents or 0, del = 0 }
-      seen[path] = true
-    end
-  end
-  return files
+  local cache = cwd and S.gitdiff[cwd]
+  if cwd and not cache and not S.diff_jobs[cwd] then refresh_git_changes(cwd) end
+  return cache and cache.files or {}
 end
 
 local function statmark(add, del)
@@ -3936,7 +3876,18 @@ render_changes = function()
           local ms, me = text:find("%-%d+", (pe or 0) + 1)
           if ms then segs[#segs + 1] = { ms - 1, me, "AgentErr" } end
         end
-        add(text, segs, r.path)
+        local first = r.hunks and r.hunks[1]
+        add(text, segs, r.path, first and first.l1)
+        for _, h in ipairs(r.hunks or {}) do
+          local range = h.l1 == h.l2 and ("L" .. h.l1) or ("L" .. h.l1 .. "-" .. h.l2)
+          local detail = "  ↳ " .. range .. string.format("  +%d -%d", h.add, h.del)
+          local hsegs = { { 0, #detail, "AgentMuted" }, { #"  ↳ ", #"  ↳ " + #range, "AgentHunkRange" } }
+          local ps, pe = detail:find("%+%d+")
+          if ps then hsegs[#hsegs + 1] = { ps - 1, pe, "AgentStream" } end
+          local ms, me = detail:find("%-%d+", (pe or 0) + 1)
+          if ms then hsegs[#hsegs + 1] = { ms - 1, me, "AgentErr" } end
+          add(detail, hsegs, r.path, h.l1)
+        end
       end
     end
 
@@ -3983,7 +3934,7 @@ render_changes = function()
         rows[#rows + 1] = {
           dot = pf.status == "done" and "●" or (pf.status == "touched" and "◐" or "○"),
           grp = pf.status == "done" and "AgentStream" or (pf.status == "touched" and "AgentAccent" or "AgentIdle"),
-          path = pf.file, add = c and c.add, del = c and c.del,
+          path = pf.file, add = c and c.add, del = c and c.del, hunks = c and c.hunks,
         }
         bypath[pf.file] = nil
       end
@@ -3994,7 +3945,7 @@ render_changes = function()
         table.sort(drift, function(a, b) return a.path < b.path end)
         box(push, decor, W, ICON.warn, "UNPLANNED", function(add)
           for _, c in ipairs(drift) do
-            box_files(add, { { dot = "⚠", grp = "AgentAttn", path = c.path, add = c.add, del = c.del } })
+            box_files(add, { { dot = "⚠", grp = "AgentAttn", path = c.path, add = c.add, del = c.del, hunks = c.hunks } })
           end
         end, nil, false, false, true, true)
       end
@@ -4006,7 +3957,7 @@ render_changes = function()
         else
           local rows = {}
           for _, c in ipairs(changes) do
-            rows[#rows + 1] = { dot = "○", grp = "AgentIdle", path = c.path, add = c.add, del = c.del }
+            rows[#rows + 1] = { dot = "○", grp = "AgentIdle", path = c.path, add = c.add, del = c.del, hunks = c.hunks }
           end
           box_files(add, rows)
         end
@@ -4839,6 +4790,7 @@ end
 function M.setup(opts)
   opts = opts or {}
   load_qsicons()
+  target_editor_win()
   if opts.scope then scope = opts.scope end
   if opts.scopes then ROOTS = opts.scopes end
   S.ns = api.nvim_create_namespace("agent_nvim")
@@ -4848,6 +4800,19 @@ function M.setup(opts)
   vim.defer_fn(set_hl, 200) -- win over markview's own group setup on load
   api.nvim_create_autocmd("ColorScheme", {
     callback = function() set_hl(); vim.defer_fn(set_hl, 120) end,
+  })
+  api.nvim_create_autocmd("User", {
+    pattern = "FileWatcherChanged",
+    callback = function(event)
+      local cwd = S.selected and session_cwd(S.selected)
+      local path = event.data and event.data.path
+      if not cwd or not path or path:sub(1, #cwd + 1) ~= cwd .. "/" then return end
+      local rel = path:sub(#cwd + 2)
+      local timer = S.diff_timers[cwd] or uv.new_timer()
+      S.diff_timers[cwd] = timer
+      timer:stop()
+      timer:start(75, 0, vim.schedule_wrap(function() refresh_git_changes(cwd, rel) end))
+    end,
   })
 
   api.nvim_create_user_command("AgentRail", function() M.toggle() end, {})
