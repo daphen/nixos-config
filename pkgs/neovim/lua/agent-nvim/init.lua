@@ -2227,15 +2227,17 @@ local function start_spin()
       elseif not S.connected and not S.connecting then
         connect(function() send({ type = "list_sources" }) end)
       end
-      -- Wedge watchdog: a prompt with NO response for ~12s means pi is stuck
+      -- Wedge watchdog: a prompt with NO event for a long time means pi is stuck
       -- (alive but not processing — the "goes stale, have to /reload" case). Auto
       -- stop+respawn it and reseed the prompt via the spawn so nothing's lost. One
       -- shot per wedge (the reseed doesn't re-arm awaiting) + a 90s cooldown, so it
-      -- can never reload-loop. A live pi acks in ~2s, so 12s is safe headroom.
+      -- can never reload-loop. TIMEOUT: a reasoning model (gpt-5.x) on a long prompt
+      -- can take 20-40s to its FIRST streamed event, so 12s false-fired and reseeded
+      -- → the message sent twice. 60s clears that; a truly-stuck pi is silent longer.
       if S.connected and S.awaiting then
         local now = os.time()
         for aid, t in pairs(S.awaiting) do
-          if now - t > 12 then
+          if now - t > 60 then
             S.awaiting[aid] = nil
             S.last_autoreload = S.last_autoreload or {}
             if not S.last_autoreload[aid] or now - S.last_autoreload[aid] > 90 then
@@ -3790,6 +3792,11 @@ end
 -- roster repaint. Mirrors refresh_plans' cadence but runs on the idle tick too, since
 -- a slice can start/stop while agents are idle.
 refresh_devenv = function()
+  -- devenv is a lovable-monorepo concept — only the lovable scope has slices. On any
+  -- other scope (personal/nixos), skip entirely: no chips, and crucially no orphan
+  -- surfacing (cockpit-devenv orphans scans ~/work/lovable*, so a personal rail was
+  -- flagging lovable devenvs as "orphans" because no personal session claims them).
+  if scope ~= "lovable" then S.devenv = {}; S.orphans = {}; return end
   local home = os.getenv("HOME") or ""
   local script = home .. "/.config/niri/scripts/cockpit-devenv"
   if fn.executable(script) == 0 then return end
