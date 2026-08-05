@@ -4825,10 +4825,31 @@ function M.setup(opts)
       local path = event.data and event.data.path
       if not cwd or not path or path:sub(1, #cwd + 1) ~= cwd .. "/" then return end
       local rel = path:sub(#cwd + 2)
+      -- fast path: async, per-file git diff + hunk signs ~75ms after the write
       local timer = S.diff_timers[cwd] or uv.new_timer()
       S.diff_timers[cwd] = timer
       timer:stop()
       timer:start(75, 0, vim.schedule_wrap(function() refresh_git_changes(cwd, rel) end))
+      -- live-follow: track the agent into the editor AS it writes (not at turn end),
+      -- coalesced so a multi-file burst doesn't thrash the window. Leading+trailing
+      -- throttle: jump ~130ms after the first change (once the diff above has landed
+      -- so follow_edit finds the hunk line), then at most once per 600ms, always
+      -- ending on the newest file. Cheap — follow_edit reads the in-memory diff (no
+      -- git spawn), self-guards focus (no steal while you're editing), dedups repeats.
+      S.follow_pending = { cwd = cwd, path = path }
+      if not S.follow_cd then
+        local function fire()
+          local p = S.follow_pending; S.follow_pending = nil
+          if p then follow_edit(p.cwd, p.path, nil) end
+        end
+        vim.defer_fn(fire, 130)
+        S.follow_cd = uv.new_timer()
+        S.follow_cd:start(600, 0, vim.schedule_wrap(function()
+          if S.follow_cd then S.follow_cd:stop(); pcall(function() S.follow_cd:close() end) end
+          S.follow_cd = nil
+          if S.follow_pending then fire() end
+        end))
+      end
     end,
   })
 
