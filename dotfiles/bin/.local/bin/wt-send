@@ -84,8 +84,8 @@ def try_agentd(cwd_target: str, text: str) -> bool:
                     for s in obj.get("sessions", []):
                         scwd = str(s.get("cwd", "") or "")
                         if scwd and (scwd == target
-                                     or target.startswith(scwd)
-                                     or scwd.startswith(target)):
+                                     or target.startswith(scwd + "/")
+                                     or scwd.startswith(target + "/")):
                             sid = s.get("id") or s.get("name")
                             break
             if sid:

@@ -1,18 +1,27 @@
 -- Picker for files changed vs hunk-nvim/signs.lua's base. <leader>gC and <C-f>.
 local function open_changed_files_picker()
 	local ok, signs = pcall(require, "hunk-nvim.signs")
-	if not ok or not signs.current_base then
+	if not ok or not signs.base_for then
 		vim.notify("hunk-nvim.signs unavailable", vim.log.levels.ERROR)
-		return
-	end
-	local base = signs.current_base()
-	if not base or base == "" then
-		vim.notify("Couldn't infer base commit", vim.log.levels.ERROR)
 		return
 	end
 	local uv = vim.loop or vim.uv
 	local repo_root = vim.fn.systemlist({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })[1]
-	local branch = repo_root and vim.fn.systemlist({ "git", "-C", repo_root, "branch", "--show-current" })[1] or ""
+	if not repo_root or repo_root == "" then
+		vim.notify("Not in a git worktree", vim.log.levels.ERROR)
+		return
+	end
+	-- Base for THIS worktree (getcwd's root), via base_for — NOT current_base(),
+	-- which is keyed to the FOCUSED buffer's repo. With a rail pane or a cross-repo
+	-- file focused (the vault plan .md), current_base() handed back the vault's base
+	-- and the picker diffed the worktree against it → the whole cross-repo divergence
+	-- (1161 files on a fresh worktree). base_for(root) matches lualine + the agent rail.
+	local base = signs.base_for(repo_root)
+	if not base or base == "" then
+		vim.notify("Couldn't infer base commit", vim.log.levels.ERROR)
+		return
+	end
+	local branch = vim.fn.systemlist({ "git", "-C", repo_root, "branch", "--show-current" })[1] or ""
 	Snacks.picker.pick({
 		title = (branch ~= "" and (branch .. "  ·  ") or "") .. "changed vs " .. base:sub(1, 8),
 		layout = {
@@ -33,9 +42,9 @@ local function open_changed_files_picker()
 		-- instantly and the git work (diff + untracked scan + mtime sort)
 		-- populates rows after, instead of blocking the open ~150ms.
 		finder = function()
-			local files = vim.fn.systemlist("git diff --name-only " .. base)
-			-- git diff omits untracked files; query them separately.
-			local untracked = vim.fn.systemlist("git ls-files --others --exclude-standard")
+			local files = vim.fn.systemlist({ "git", "-C", repo_root, "diff", "--name-only", base })
+			-- git diff omits untracked files; query them separately (repo-root-relative).
+			local untracked = vim.fn.systemlist({ "git", "-C", repo_root, "ls-files", "--others", "--exclude-standard" })
 			local seen = {}
 			for _, f in ipairs(files) do seen[f] = true end
 			for _, f in ipairs(untracked) do

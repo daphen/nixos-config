@@ -48,6 +48,40 @@ local OPEN = "▾"
 local LCAP = ""      -- rounded pill left cap
 local RCAP = ""      -- rounded pill right cap
 
+-- Nerd Font section icons (GeistMono Nerd Font — see kitty.conf). Codepoints, not
+-- literal glyphs, so they're self-documenting + trivial to swap if one renders odd.
+-- fn.nr2char is safe at load. If any glyph looks wrong in your font, change the hex.
+local ICON = {
+  -- Material Design set (crisper than the old FontAwesome-4 glyphs they replaced).
+  plan    = fn.nr2char(0xf0756), -- nf-md-format_list_checks
+  files   = fn.nr2char(0xf09ee), -- nf-md-file_document_outline
+  changes = fn.nr2char(0xf062c), -- nf-md-source_branch
+  mcp     = fn.nr2char(0xf0493), -- nf-md-cog
+  warn    = fn.nr2char(0xf002a), -- nf-md-alert_outline
+  session = fn.nr2char(0xf140b), -- nf-md-lightning_bolt
+  cycle   = fn.nr2char(0xf0b67), -- nf-md-calendar_outline
+  ticket  = fn.nr2char(0xf04fc), -- nf-md-tag_outline
+  -- roster status chip: nf-md-square_rounded — the rounded-square swatch volt uses
+  -- (0xf0764 was square-medium, which renders SHARP). Confirmed rounded in GeistMono.
+  swatch  = fn.nr2char(0xf14fb),
+  -- devenv link health: power-plug (running) / plug-off (stopped) / alert (broken).
+  -- The plugged-vs-unplugged shape signals up/down before colour even reads.
+  dev_up     = fn.nr2char(0xf06a5), -- nf-md-power_plug
+  dev_down   = fn.nr2char(0xf06a6), -- nf-md-power_plug_off
+  dev_broken = fn.nr2char(0xf0026), -- nf-md-alert
+}
+
+-- A volt-style progress bar: `width` vertical bars, the first `done/total` share in
+-- `fillhl`, the rest in `emptyhl`. Returns (text, segs) where segs are byte columns
+-- (each │ is 3 bytes) so callers drop it straight into a box row or a decor line.
+local function progress_bar(done, total, width, fillhl, emptyhl)
+  width = width or 16
+  total = math.max(1, total or 1)
+  local filled = math.max(0, math.min(width, math.floor((done / total) * width + 0.5)))
+  local s = string.rep("│", width)
+  return s, { { 0, filled * 3, fillhl or "AgentStream" }, { filled * 3, width * 3, emptyhl or "AgentMuted" } }
+end
+
 -- Scope resolution: an explicit AGENT_SCOPE wins (the cockpit sets it); otherwise
 -- derive from the focused niri workspace — the `lovable` workspace hosts lovable
 -- work, everything else (and off-niri) is personal. So an nvim started anywhere on
@@ -98,6 +132,11 @@ local S = {
   idle_since = {},    -- id -> os.time() when the session last went idle
   folds = {},         -- id -> { [msgIndex]=true }
   plan = {},          -- id -> { done, total, phase } | false  (cached, refreshed slowly)
+  devenv = {},        -- ctx -> "running"|"stopped"|"broken"  (devenv link health, cached)
+  orphans = {},       -- ctx[] with a running slice but no live session (from cockpit-devenv orphans)
+  nav_hist = {},      -- session-visit history (ids, oldest→newest); Ctrl-o/Ctrl-i walk it
+  nav_idx = 0,        -- current position in nav_hist
+  nav_lock = false,   -- true while nav_session drives view_session (so it doesn't re-record)
   show_all = false,   -- roster: false = attention queue only, true = every session
   roster_filter = "", -- roster: live name substring filter ("/" to set, esc clears)
   displayed = {},     -- the sessions actually shown in the roster (filtered), in order
@@ -111,9 +150,10 @@ local S = {
 }
 
 local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send, git_changes
-local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, sync_approval_keys
+local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, refresh_plan_one, refresh_devenv, sync_approval_keys
 local session_cwd, load_plan, answer, apply_prompt_mode
 local on_cockpit_active -- reconciles the rail's selection with the cockpit active context
+local on_agent_jump -- Super+i: select a session by name (works even without a cockpit tab)
 local reflect_context, cockpit_context, cockpit_sync -- view_session side-effects (defined later)
 local teardown_session -- full teardown: stop pi + close context + wt remove (defined later)
 local follow_edit -- live-follow the agent's edits into the editor window (defined later)
@@ -171,7 +211,14 @@ local function set_hl()
   -- idle = secondary-emphasis text: readable in both modes (fg_secondary sits between
   -- fg and fg_muted, so it darkens in light mode instead of washing out)
   hl("AgentIdle", { fg = p.fg_secondary or p.fg_muted or "#8a95a3" })
+  -- idle STATUS SWATCH: the theme's amber-yellow so a resting session carries warmth
+  -- (distinct from needs-input=accent and streaming=green).
+  hl("AgentSwatchIdle", { fg = p.yellow or "#d9b06a" })
   hl("AgentAccent", { fg = accent, bold = true })
+  -- Neutral heading colour for titles/section labels: orange is a SIGNAL (selection,
+  -- active state, identity), not the colour of every header — a bold near-fg reads as
+  -- a heading while keeping the accent rare and meaningful.
+  hl("AgentTitle", { fg = p.fg or "#c7ccd1", bold = true })
   hl("AgentFocusName", { fg = p.fg or "#c7ccd1", bold = true }) -- focused-but-not-open row
   hl("AgentMuted", { fg = p.fg_muted or "#5c6773" })
   hl("AgentFile", { fg = p.fg or "#c7ccd1" }) -- neutral file-path text (status lives on the dot)
@@ -187,16 +234,26 @@ local function set_hl()
   -- cell, not a ▌ glyph, so it's continuous across rows (glyphs leave inter-row
   -- gaps in fonts that don't draw block chars full-height).
   hl("AgentCard", { bg = cardbg })
+  -- active-session name chip: a distinct elevation from the box surface / AgentCard so
+  -- the selected name reads as its own pill (bg_surface3 / selection tone).
+  hl("AgentNameCard", { bg = p.bg_surface3 or p.bg_selection or p.bg_surface2 or cardbg })
+  -- chat: your (user) message blocks get a subtle full-width background; the agent's
+  -- turn-recap (✧ …) gets a lighter callout background. Both are HIGHLIGHTS (no border
+  -- chars in the buffer) so yanking the chat still copies clean text.
+  -- distinct HUES so the three chat fills don't blend: you = cool blue-grey (matches the
+  -- blue role bar), summary = green-grey (recap/done), code stays neutral grey (AgentCode).
+  hl("AgentUserBg", { bg = p.bg_info or p.bg_surface2 or cardbg })
+  hl("AgentSummaryBg", { bg = p.bg_success or p.bg_surface3 or cardbg })
   -- full-line background for fenced code blocks in the chat: applied via
   -- line_hl_group so it spans the whole rail width (a uniform rectangle), unlike
   -- markview's char-level bg which stops at the text and reads ragged.
   hl("AgentCode", { bg = cardbg })
-  hl("AgentBarSolid", { bg = accent })
-  -- dim edge for the selected row when the roster is NOT the focused pane: a
-  -- grey marker keeps the selection visible, but only the accent bar + card fill
-  -- (below) signal "the roster has keyboard focus" — so entering it lights up.
-  hl("AgentBarDim", { bg = p.fg_muted or p.bg_surface3 or "#5c6773" })
+  hl("AgentBarSolid", { bg = accent }) -- the roster's focus edge — ONLY drawn while the roster pane is focused
   hl("AgentSel", { bg = p.bg_surface3 or p.bg_selection or surface, bold = true }) -- picker selection bar
+  -- volt-style scope-box surfaces: two elevations off the theme's surface ladder so
+  -- boxes read as distinct filled panels and can be layered (a box, an inner box).
+  hl("AgentBox", { bg = surface })
+  hl("AgentBoxAlt", { bg = p.bg_surface2 or cardbg or surface })
 
   -- pills + rounded caps
   hl("AgentPillStream", { fg = dark, bg = p.green or "#5fca8b", bold = true })
@@ -213,6 +270,9 @@ local function set_hl()
   hl("AgentChipBar", { fg = accent })
   hl("AgentKey", { fg = dark, bg = accent, bold = true })
   hl("AgentKeyMuted", { fg = p.fg or "#c7ccd1", bg = surface })
+  -- keycap chip: dark legend on a bright neutral cap (like a physical key), so it reads
+  -- clearly against the dark rail — brighter than the surface-tone AgentKeyMuted.
+  hl("AgentKeyCap", { fg = dark, bg = p.fg_muted or "#707B84", bold = true })
   hl("AgentCaret", { fg = accent, bold = true })
   hl("AgentApproval", { fg = attn, bold = true })
 
@@ -325,7 +385,25 @@ local function tool_edits(c, cwd)
         if ok then return i, i + #nl - 1, anchor end
       end
     end
-    -- fallback: first-line anchor (block drifted from later edits)
+    -- fallback: anchor on the MOST DISTINCTIVE (longest) line of the new text, via an
+    -- exact full-line match. The first line is often the one a sibling edit changed
+    -- (so a first-line anchor gives up → blank range forever); a long inner line that
+    -- survived verbatim is far more likely to still be present and unique. Only a
+    -- pure deletion (no new text at all) stays unlocatable — there's nothing to point at.
+    local bk, blen = nil, -1
+    for k = 1, #nl do
+      local w = #vim.trim(nl[k])
+      if w > blen then blen, bk = w, k end
+    end
+    if bk and blen > 0 then
+      for i, l in ipairs(flines) do
+        if l == nl[bk] then
+          local s = math.max(1, i - (bk - 1))
+          return s, math.min(#flines, s + #nl - 1), anchor
+        end
+      end
+    end
+    -- last resort: first-line substring anchor (drifted block)
     for i, l in ipairs(flines) do
       if l:find(anchor, 1, true) then
         return math.max(1, i - (ai - 1)), math.max(1, i - (ai - 1)) + #nl - 1, anchor
@@ -361,7 +439,7 @@ local function tool_edits(c, cwd)
     if r.na > 0 and gb == 0 then gb = 1 elseif r.nd > 0 and gb == BARW then gb = BARW - 1 end
     lines[#lines + 1] = HUNK .. r.rng .. pad(r.rng, rw) .. "   " .. pad(r.add, aw) .. r.add
       .. "  " .. pad(r.del, dw) .. r.del .. "   " .. string.rep("█", BARW)
-    hunks[#hunks + 1] = { path = r.path, anchor = r.anchor, line = r.line, gb = gb }
+    hunks[#hunks + 1] = { path = r.path, anchor = r.anchor, line = r.line, gb = gb, na = r.na, nd = r.nd }
   end
   return table.concat(lines, "\n"), hunks
 end
@@ -426,30 +504,59 @@ end
 -- Resolve a session's visual state: glyph, name-highlight, pill text/groups.
 -- A pending approval overrides the daemon status with a "needs input" state.
 session_state = function(a)
+  -- `swatch` = the status-square colour (distinct per state so the roster reads at a
+  -- glance instead of a wall of grey); `name` stays the label/text colour.
   if S.pending[a.id] then
-    return { key = "needs_input", glyph = GLYPH.needs_input, name = "AgentAttn",
+    return { key = "needs_input", glyph = GLYPH.needs_input, name = "AgentAttn", swatch = "AgentAccent",
       pill = "AgentPillAttn", cap = "AgentCapAttn", label = "needs input" }
   end
   local st = a.status or "idle"
   if st == "streaming" then
     local d = dur(S.stream_since[a.id])
-    return { key = "streaming", glyph = SPIN[(S.spin % #SPIN) + 1], name = "AgentStream",
+    return { key = "streaming", glyph = SPIN[(S.spin % #SPIN) + 1], name = "AgentStream", swatch = "AgentStream",
       pill = "AgentPillStream", cap = "AgentCapStream", label = d and ("working " .. d) or "working" }
   elseif st == "error" then
-    return { key = "error", glyph = GLYPH.error, name = "AgentErr",
+    return { key = "error", glyph = GLYPH.error, name = "AgentErr", swatch = "AgentErr",
       pill = "AgentPillErr", cap = "AgentCapErr", label = "error" }
+  elseif st == "reconnecting" then
+    -- pi crashed; the supervisor is respawning it. Amber + spinner so it reads as a
+    -- transient hiccup, not a dead session.
+    return { key = "reconnecting", glyph = SPIN[(S.spin % #SPIN) + 1], name = "AgentAttn", swatch = "AgentAttn",
+      pill = "AgentPillAttn", cap = "AgentCapAttn", label = "reconnecting…" }
   end
   local d = dur(S.idle_since[a.id])
   -- idle is the resting state: plain readable text, no pill (a filled pill's
-  -- dark-on-blue is fragile against darker theme blues, and idle shouldn't shout)
-  return { key = "idle", glyph = GLYPH.idle, name = "AgentIdle", plain = true,
+  -- dark-on-blue is fragile against darker theme blues, and idle shouldn't shout).
+  -- The swatch is a soft amber so idle sessions still carry colour.
+  return { key = "idle", glyph = GLYPH.idle, name = "AgentIdle", swatch = "AgentSwatchIdle", plain = true,
     pill = "AgentIdle", cap = "AgentIdle", label = d and ("idle " .. d) or "idle" }
 end
 
 -- Session display name: prefer the ticket id (every-1234) embedded in the
 -- cwd-derived session name, else the raw name — keeps header/roster readable.
 local function short_name(n)
-  return (n and n:match("%a+%-%d+")) or n or "?"
+  if not n then return "?" end
+  -- Primary worktree sessions are named after the worktree dir (lovable.daphen-<slug>):
+  -- collapse those to the bare ticket id. Sub-agents spawned INTO a worktree get bare
+  -- custom names (every-2457-explore-ui) — keep the tail so siblings are told apart
+  -- (else the whole every-2457 family renders as one indistinguishable "every-2457").
+  local core = n:gsub("^lovable%.daphen%-", "")
+  local primary = core ~= n
+  core = core:gsub("^lovable%.", "")
+  local ticket = core:match("%a+%-%d+")
+  if not ticket then return (core ~= "" and core) or n end
+  if primary then return ticket end
+  local tail = core:match((ticket:gsub("%-", "%%-")) .. "%-(.+)$")
+  return tail and (ticket .. " · " .. tail) or ticket
+end
+
+-- A sub-agent is a bare ticket-prefixed name WITH a tail (every-2457-explore-ui),
+-- spawned into a worktree by its parent agent — as opposed to the primary worktree
+-- session (lovable.daphen-…) or the orchestrator (lovable). The roster marks these
+-- with a ↳ so a fanned-out family doesn't read as duplicate top-level sessions.
+local function is_subagent(n)
+  if not n or n:match("^lovable%.") then return false end
+  return n:match("^%a+%-%d+%-.+") ~= nil
 end
 
 -- One file-stat row (path + right-aligned, colour-coded +adds −dels) sized to the
@@ -476,7 +583,97 @@ end
 -- the cursor is in the pane.
 local function rail_width()
   local w = (S.chatwin and api.nvim_win_is_valid(S.chatwin)) and api.nvim_win_get_width(S.chatwin) or 60
-  return w - 4
+  return w - 2 -- window minus the 2-col left gutter → box spans border-to-border to the
+  -- pane's right edge, exactly where the chat text (same 2-col gutter) wraps.
+end
+
+-- A volt-style scope box: SQUARE corners + a filled surface behind the whole box, so
+-- scopes read as distinct panels (not just outlined). `push(l[,path])` appends a line,
+-- returns its 0-based index; `decor` collects { line, fg?, bg?, cs, ce } (byte columns,
+-- later fg wins; bg is a low-priority line fill). `body(add)` builds content via
+-- add(text, segs, path) where segs = {{cs,ce,grp},…} are byte columns RELATIVE to
+-- `text`. The box insets content to W-4 cols, shifts segs past "│ ", tints the border
+-- muted + title accent, and fills every row with `surface` (default AgentBox).
+local BOX_L = "│  " -- left border + 2 spaces: 5 bytes (│ is 3, 2 spaces). Inner-left pad.
+-- title_above=true renders the heading on its OWN line above a uniform-bordered box
+-- (like volt's Activity panel) — no title inset in the top border, so the border is a
+-- single flat colour instead of the two-tone (bright title + muted rule) that read as
+-- "two different colours". Use it wherever the inset title fights the border.
+local function box(push, decor, W, icon, title, body, surface, title_above, pad, nofill, noborder)
+  W = math.max(16, W)
+  if noborder then
+    -- borderless titled section: a bold header (aligned with title_above boxes) + content
+    -- indented to match a bordered box's inner column, no outline/fill. For sub-lists where
+    -- a full frame is clutter — the title + trailing gap separate them enough.
+    local head = (icon and (icon .. " ") or "") .. (title or "")
+    local hln = push(head)
+    decor[#decor + 1] = { line = hln, fg = "AgentTitle", cs = 0, ce = #head }
+    body(function(text, segs, path)
+      text = text or ""
+      -- indent 3 to match a bordered box's content column ("│  " = │ + 2 spaces)
+      local bl = push("   " .. text, path)
+      for _, s in ipairs(segs or {}) do
+        decor[#decor + 1] = { line = bl, fg = s[3], cs = s[1] + 3, ce = s[2] + 3 }
+      end
+      return bl
+    end)
+    push("")
+    return
+  end
+  -- nofill → surface stays nil, so every {bg=surface} decor becomes {bg=nil} and the
+  -- decor loop skips it: the box reads as outline-only (the border defines it, no fill).
+  -- NOT `nofill and nil or (...)` — that Lua idiom returns the fallback even when
+  -- nofill is set (nil is falsy), which silently kept the fill.
+  if nofill then surface = nil else surface = surface or "AgentBox" end
+  local bord = "AgentDivider" -- box outline == the chat pane's hairpin border colour
+  local inner = W - 6 -- W minus "│  " (3) + "  │" (3): 2-space inner pad each side
+  local head = (icon and (icon .. " ") or "") .. (title or "")
+  if title_above then
+    local hln = push(head)
+    decor[#decor + 1] = { line = hln, fg = "AgentTitle", cs = 0, ce = #head }
+    local top = "┌" .. string.rep("─", W - 2) .. "┐"
+    local tl = push(top)
+    decor[#decor + 1] = { line = tl, bg = surface }
+    decor[#decor + 1] = { line = tl, fg = bord }
+  else
+    if fn.strdisplaywidth(head) > inner - 2 then
+      head = fn.strcharpart(head, 0, math.max(1, inner - 3)) .. "…"
+    end
+    local hw = fn.strdisplaywidth(head)
+    local top = "┌─ " .. head .. " " .. string.rep("─", math.max(1, W - 5 - hw)) .. "┐"
+    local tl = push(top)
+    decor[#decor + 1] = { line = tl, bg = surface }
+    decor[#decor + 1] = { line = tl, fg = bord }
+    decor[#decor + 1] = { line = tl, fg = "AgentTitle", cs = #"┌─ ", ce = #"┌─ " + #head }
+  end
+  local function add(text, segs, path)
+    text = text or ""
+    -- Clamp to the inner width so a long row (path + right-aligned stats) can NEVER
+    -- overflow the box: an over-long row used to push its right │ + surface fill past
+    -- the others, which read as the background leaking outside the border. Truncating
+    -- keeps every row exactly W → a perfect rectangle where border + fill align.
+    while fn.strdisplaywidth(text) > inner and #text > 0 do
+      text = fn.strcharpart(text, 0, fn.strchars(text) - 1)
+    end
+    local pad = math.max(0, inner - fn.strdisplaywidth(text))
+    local l = BOX_L .. text .. string.rep(" ", pad) .. "  │"
+    local bl = push(l, path)
+    decor[#decor + 1] = { line = bl, bg = surface }                        -- surface fill
+    decor[#decor + 1] = { line = bl, fg = bord, cs = 0, ce = 3 }           -- left │
+    decor[#decor + 1] = { line = bl, fg = bord, cs = #l - 3, ce = #l }     -- right │
+    for _, s in ipairs(segs or {}) do
+      decor[#decor + 1] = { line = bl, fg = s[3], cs = s[1] + #BOX_L, ce = s[2] + #BOX_L }
+    end
+    return bl
+  end
+  -- pad=true adds a blank inner row above & below the content so the box's vertical
+  -- padding matches its 1-col side padding (content flush to the borders read wonky).
+  if pad then add("") end
+  body(add)
+  if pad then add("") end
+  local bl = push("└" .. string.rep("─", W - 2) .. "┘")
+  decor[#decor + 1] = { line = bl, bg = surface }
+  decor[#decor + 1] = { line = bl, fg = bord }
 end
 
 --------------------------------------------------------------------------------
@@ -535,7 +732,13 @@ local function active_winbar()
   -- state (spinner while working) + plan progress. The session id is NOT repeated
   -- here — the lualine's project component shows it.
   local ss = session_state(a)
-  local parts = { "%#" .. ss.name .. "#  " .. ss.glyph .. " " .. ss.label }
+  -- rounded swatch (like the roster) coloured by status, then the label neutral-ish;
+  -- streaming keeps its animated spinner. The swatch sits at col 2 — same column as the
+  -- composer's › prompt below it, so they line up.
+  local gl = (ss.key == "streaming") and ss.glyph or ICON.swatch
+  -- swatch at col 2 (= the composer's › below), label at col 5 (= the composer input),
+  -- so the winbar and the input line align column-for-column.
+  local parts = { "%#" .. (ss.swatch or ss.name) .. "#  " .. gl .. "%#" .. ss.name .. "#  " .. ss.label }
   -- live "doing" line: the agent's current action (latest thinking summary or
   -- tool call in the in-flight stream) so a long tool-heavy turn isn't opaque —
   -- you always see WHAT it's on, not just "working". (Claude-Code style.)
@@ -588,6 +791,14 @@ end
 render_roster = function()
   if not (S.buf and api.nvim_buf_is_valid(S.buf) and S.ns) then return end
 
+  -- Source of truth for "is the roster the focused pane": the ACTUAL current window,
+  -- recomputed every render. The enter/leave autocmds used to set S.roster_active,
+  -- but a programmatic focus could fire enter without a matching leave and leave it
+  -- stuck true — so the unfocused-roster highlight crept back. Computing it here (and
+  -- the spin timer re-renders periodically) makes it self-correct within a frame.
+  S.roster_active = (S.win and api.nvim_win_is_valid(S.win)
+    and api.nvim_get_current_win() == S.win) or false
+
   -- track streaming / idle start times so the pill can show elapsed
   for _, a in ipairs(S.roster) do
     if a.status == "streaming" then
@@ -623,100 +834,250 @@ render_roster = function()
       hidden = hidden + 1
     end
   end
+  -- Nest sub-agents under their parent: a ticket that fanned out (every-2457 +
+  -- every-2457-explore-ui + …) should read as ONE roster item with its workers
+  -- indented beneath it, not N look-alike top-level rows. Family = worktree (cwd).
+  do
+    local inset = {}
+    for _, a in ipairs(displayed) do inset[a.id] = true end
+    -- a displayed sub-agent needs its primary present as the group header, even idle
+    for _, a in ipairs(displayed) do
+      if is_subagent(a.name) and a.cwd then
+        for _, p in ipairs(S.roster) do
+          if p.cwd == a.cwd and not is_subagent(p.name) and not inset[p.id] then
+            displayed[#displayed + 1] = p; inset[p.id] = true; break
+          end
+        end
+      end
+    end
+    local fam = {}
+    for _, a in ipairs(displayed) do
+      local k = a.cwd or a.id; fam[k] = fam[k] or {}; fam[k][#fam[k] + 1] = a
+    end
+    local order, seen = {}, {}
+    for _, a in ipairs(displayed) do
+      local k = a.cwd or a.id
+      if not seen[k] then
+        seen[k] = true
+        local m = fam[k]
+        if #m > 1 then
+          table.sort(m, function(x, y) -- primary first, then subs by name
+            local sx, sy = is_subagent(x.name), is_subagent(y.name)
+            if sx ~= sy then return not sx end
+            return (x.name or "") < (y.name or "")
+          end)
+          for _, s in ipairs(m) do order[#order + 1] = s end
+        else
+          order[#order + 1] = a
+        end
+      end
+    end
+    displayed = order
+  end
+
   S.displayed = displayed
   if S.focus < 1 then S.focus = 1 end
   if #displayed > 0 and S.focus > #displayed then S.focus = #displayed end
 
+  -- Which worktrees have their PRIMARY session on screen: a sub-agent only renders
+  -- nested (↳ + bare tail) when its parent is actually above it. An orphaned sub
+  -- (parent crashed/stopped) renders as a normal top-level row with its full name,
+  -- instead of a ↳ pointing at nothing.
+  local primary_present = {}
+  for _, a in ipairs(displayed) do
+    if not is_subagent(a.name) then primary_present[a.cwd or a.id] = true end
+  end
+
   local lines, decor, mainline = {}, {}, {}
   local function push(l) lines[#lines + 1] = l; return #lines - 1 end
 
-  local dot = S.connected and "" or (GLYPH.offline .. " ")
-  local head = "  " .. dot .. (filt and ("/" .. S.roster_filter .. " · ") or (all and "sessions · " or "attention · ")) .. scope
-  decor[#decor + 1] = { line = push(head), fg = filt and "AgentAccent" or "AgentMuted" }
-
-  if #displayed == 0 then
-    local msg = filt and ("  no session matches /" .. S.roster_filter .. " · esc clears")
-      or (#S.roster == 0) and "  no sessions — n to start · . for cwd"
-      or ("  ✓ nothing needs attention" .. (hidden > 0 and ("   " .. hidden .. " idle · z for all") or ""))
-    decor[#decor + 1] = { line = push(msg), fg = "AgentMuted" }
-  else
+  -- The roster is one volt-style scope box: the header becomes the title, sessions
+  -- are inset rows. Focus (the j/k cursor, only while the roster pane is focused) is
+  -- shown as an accent LEFT BORDER on the row + a bold name — no full-row card, which
+  -- would bleed the fill past the box edge. Status colour lives on the whole row.
+  -- Width = window minus the 2-col left gutter, EXACTLY rail_width()'s formula, so the
+  -- roster box, the chat/changes boxes, AND the chat text all share the same left border
+  -- column (2) and right edge — everything in the rail lines up border-to-border.
+  local W = (S.win and api.nvim_win_is_valid(S.win)) and (api.nvim_win_get_width(S.win) - 2) or rail_width()
+  local offline = S.connected and "" or (GLYPH.offline .. " ")
+  local title = offline .. (filt and ("/" .. S.roster_filter) or "ROSTER") .. " · " .. scope
+  box(push, decor, W, ICON.session, title, function(add)
+    if #displayed == 0 then
+      -- compact, centred empty state: glyph inline with the headline + a muted hint —
+      -- two tight lines, sized like a small roster (not a big hero block).
+      local inner = math.max(12, W - 6)
+      local function center(text, segs)
+        local lead = string.rep(" ", math.max(0, math.floor((inner - fn.strdisplaywidth(text)) / 2)))
+        local sh = {}
+        for _, s in ipairs(segs or {}) do
+          sh[#sh + 1] = { s[1] + #lead, (s[2] == -1) and -1 or (s[2] + #lead), s[3] }
+        end
+        return add(lead .. text, sh)
+      end
+      if filt then
+        center("no match for /" .. S.roster_filter, { { 0, -1, "AgentMuted" } })
+        center("esc clears the filter", { { 0, -1, "AgentMuted" } })
+      elseif #S.roster == 0 then
+        local g = fn.nr2char(0xf0766) -- md-plus-circle-outline
+        local t = g .. "  no sessions yet"
+        center(t, { { 0, #g, "AgentAccent" }, { #g, #t, "AgentTitle" } })
+        center("n to start · . for the current dir", { { 0, -1, "AgentMuted" } })
+      else
+        -- nothing needs attention: the selected session name (ALL CAPS) as a centred
+        -- title — with its plan progress (N/M + bar) inline when it has a plan —
+        -- then a row with state swatches hard-LEFT and a Ctrl+t keycap hint
+        -- hard-RIGHT (space-filled between, no centre dot).
+        local title = ((S.selected and short_name(S.selected)) or scope):upper()
+        local pl = S.selected and S.plan[S.selected]
+        if pl and pl.total and pl.total > 0 then
+          local frac = pl.done .. "/" .. pl.total
+          local btext, bsegs = progress_bar(pl.done, pl.total, 12, "AgentStream", "AgentDivider")
+          local line = title .. "   " .. frac .. "  " .. btext
+          local segs = { { 0, #title, "AgentTitle" } }
+          local fo = #title + 3; segs[#segs + 1] = { fo, fo + #frac, "AgentMuted" }
+          local bo = fo + #frac + 2
+          for _, s in ipairs(bsegs) do segs[#segs + 1] = { bo + s[1], bo + s[2], s[3] } end
+          center(line, segs)
+        else
+          center(title, { { 0, -1, "AgentTitle" } })
+        end
+        add("")
+        local left, segs = "", {}
+        for i, a in ipairs(S.roster) do
+          local ss = session_state(a)
+          local gl = (ss.key == "streaming") and ss.glyph or ICON.swatch
+          segs[#segs + 1] = { #left, #left + #gl, ss.swatch or ss.name }
+          left = left .. gl
+          if i < #S.roster then left = left .. "   " end -- gap between swatches
+        end
+        local right, rseg = "", {}
+        local a1 = #right; right = right .. " Ctrl "; rseg[#rseg + 1] = { a1, #right, "AgentKeyCap" }
+        local a2 = #right; right = right .. " + ";    rseg[#rseg + 1] = { a2, #right, "AgentMuted" }
+        local a3 = #right; right = right .. " t ";    rseg[#rseg + 1] = { a3, #right, "AgentKeyCap" }
+        local a4 = #right; right = right .. "  toggle roster"; rseg[#rseg + 1] = { a4, #right, "AgentMuted" }
+        local inner = math.max(12, W - 6)
+        local fill = string.rep(" ", math.max(1, inner - fn.strdisplaywidth(left) - fn.strdisplaywidth(right)))
+        local off = #left + #fill
+        for _, s in ipairs(rseg) do segs[#segs + 1] = { s[1] + off, s[2] + off, s[3] } end
+        add(left .. fill .. right, segs)
+      end
+      return
+    end
     for i, a in ipairs(displayed) do
       local sstate = session_state(a)
-      local focused = (i == S.focus)
+      local show_focus = (i == S.focus) and S.roster_active
       local isSel = (a.id == S.selected)
-
-      -- name line: [bar] glyph name [✎ if draft]
+      -- name row. Only NEST (↳ + bare tail) when the parent is actually on screen; an
+      -- orphaned sub (parent crashed/stopped) renders top-level with its FULL name.
+      local sub = is_subagent(a.name) and primary_present[a.cwd or a.id]
       local nm = short_name(a.name)
+      if sub then nm = nm:gsub("^.- · ", "") end
       local dr = S.drafts[a.id]
       if dr and dr:gsub("%s", "") ~= "" then nm = nm .. "  ✎" end
-      -- col 0 is reserved for the focus edge (bg cell when focused); glyph at col 2
-      local ml = push("  " .. sstate.glyph .. " " .. nm)
-      mainline[i] = ml
-      decor[#decor + 1] = { line = ml, fg = isSel and "AgentAccent" or (focused and "AgentFocusName" or sstate.name) }
-      -- focus edge: accent bar + card fill ONLY when the roster is the active
-      -- pane (S.roster_active) — that's the cursor-less "you're here" signal;
-      -- when the roster is unfocused the selected row keeps just a dim marker.
-      local edge = S.roster_active and "AgentBarSolid" or "AgentBarDim"
-      if focused then
-        if S.roster_active then decor[#decor + 1] = { line = ml, card = true } end
-        decor[#decor + 1] = { line = ml, range = { 0, 1, edge } }
-      end
-
-      -- substatus line as REAL text + range highlights, so fg-only segments
-      -- (caps, model, cost) inherit the card bg instead of punching Normal-bg
-      -- holes through it (the overlay-virt-text bug). Active states wear a filled
-      -- pill; the resting idle state is plain fg-only text (see session_state).
-      -- On the FOCUSED (carded) row, use plain coloured text, not the filled pill:
-      -- the pill's rounded end-caps have a transparent bg, so on the card they pick
-      -- up the card grey instead of the dark Normal bg and the whole pill reads
-      -- muddy/black. Coloured text (green/red/amber fg) pops cleanly on the card.
-      -- The pill stays for unfocused rows, where it sits on the dark bg and pops.
-      local segs = (sstate.plain or focused) and {
-        -- align label under the name (name sits at col 4: 2 pad + glyph + space)
-        { t = "    " .. sstate.label, hl = sstate.name },
-      } or {
-        { t = "   ", hl = nil },
-        { t = LCAP, hl = sstate.cap },
-        { t = " " .. sstate.label .. " ", hl = sstate.pill },
-        { t = RCAP, hl = sstate.cap },
-      }
-      -- plan progress chip (◆ done/total) for sessions whose worktree has a plan
+      -- status marker = a filled square swatch coloured by state (grey/amber/red),
+      -- like a legend chip — except streaming keeps the animated spinner so working
+      -- sessions still pulse. The NAME stays neutral: colour on the swatch, not the row.
+      local gl = (sstate.key == "streaming") and sstate.glyph or ICON.swatch
+      local lead = sub and "  ↳ " or ""
+      local ntext = lead .. gl .. " " .. nm
+      -- active/focused names are neutral BOLD, not orange — the card fill (active) and
+      -- the border accent (cursor) carry the state, so the accent stays rare.
+      local namecol = (isSel or show_focus) and "AgentFocusName" or "AgentFile"
+      local g0 = #lead
+      local nml = add(ntext, {
+        { g0, g0 + #gl, sstate.swatch or sstate.name }, -- the swatch, status colour
+        { g0 + #gl, #ntext, namecol }, -- the name, neutral
+      })
+      mainline[i] = nml
+      -- substatus row: plain coloured label (no pill — a pill's transparent caps read
+      -- muddy on the box surface). plan chip only where a plan exists (subs get none).
+      local subind = sub and "  " or ""
+      local stext = subind .. "  " .. sstate.label
+      local segs = { { 0, #stext, sstate.name } }
       local pl = S.plan[a.id]
       if pl and pl.total and pl.total > 0 then
-        local hl = (pl.phase == "reconciled") and "AgentStream" or "AgentMuted"
-        segs[#segs + 1] = { t = "  ◆ " .. pl.done .. "/" .. pl.total, hl = hl }
+        local chip = "  ◆ " .. pl.done .. "/" .. pl.total
+        segs[#segs + 1] = { #stext, #stext + #chip, (pl.phase == "reconciled") and "AgentStream" or "AgentMuted" }
+        stext = stext .. chip
       end
-      local sline = ""
-      for _, s in ipairs(segs) do sline = sline .. s.t end
-      local sl = push(sline)
-      if focused then
-        if S.roster_active then decor[#decor + 1] = { line = sl, card = true } end
-        decor[#decor + 1] = { line = sl, range = { 0, 1, edge } }
+      -- devenv link health: green=running, red=broken (slice down but owns the fixed
+      -- ports → :3000 dead), muted=stopped. Tells you `d` will start vs just jump.
+      local dctx = a.cwd and a.cwd ~= "" and cockpit_context(a.cwd)
+      local dv = dctx and S.devenv[dctx]
+      if dv then
+        local gl = (dv == "running") and ICON.dev_up or (dv == "broken") and ICON.dev_broken or ICON.dev_down
+        local hl = (dv == "running") and "AgentStream" or (dv == "broken") and "AgentErr" or "AgentMuted"
+        local chip = "  " .. gl
+        segs[#segs + 1] = { #stext, #stext + #chip, hl }
+        stext = stext .. chip
       end
-      local col = 0
-      for _, s in ipairs(segs) do
-        local e = col + #s.t
-        if s.hl then decor[#decor + 1] = { line = sl, range = { col, e, s.hl } } end
-        col = e
+      local sml = add(stext, segs)
+      -- focus: turn the box's left │ ACCENT (the char's fg, not a bg block — a bg
+      -- fill read as a fat orange block interrupting the border) on both rows.
+      -- current row gets a real selection bar (AgentSel surface) across the inner span
+      -- of BOTH rows — bold accent text alone was too weak to spot. Span is content only
+      -- (byte 3 → just before the right │) so the box border stays clean. Applies to the
+      -- SELECTED session (chat open) AND the FOCUSED row (roster cursor) so navigating
+      -- the list is unmistakable; focus additionally lights the left │ accent.
+      -- ACTIVE/selected session → an elevated card fill (AgentCard) behind the NAME
+      -- only — a chip, not a full-item block. Span " name " (the space before the name
+      -- through the name + one trailing pad col), on the name row alone. Shown
+      -- regardless of roster focus; the "it's open" cue.
+      if isSel then
+        local n1 = lines[nml + 1] or ""
+        -- card wraps the whole "swatch name" unit: start one col BEFORE the swatch
+        -- (leading pad) and end one col past the name (trailing pad).
+        local cs = math.max(#BOX_L - 1, #BOX_L + g0 - 1)
+        local ce = math.min(#n1 - 3, #BOX_L + #ntext + 1)
+        decor[#decor + 1] = { line = nml, selbg = { cs, math.max(cs, ce) } }
+      end
+      -- CURSOR row (only while the roster is focused) → accent the left │ border. This
+      -- is a FG override of the border's own colour, so it must outrank the border
+      -- add_highlight (DECOR_PRIORITY_BASE) — hence the high explicit priority.
+      if show_focus then
+        decor[#decor + 1] = { line = nml, range = { 0, 3, "AgentAccent", 5000 } }
+        decor[#decor + 1] = { line = sml, range = { 0, 3, "AgentAccent", 5000 } }
       end
     end
     if not S.show_all and hidden > 0 then
-      decor[#decor + 1] = { line = push("   " .. hidden .. " idle · z for all"), fg = "AgentMuted" }
+      local t = hidden .. " idle · z for all"
+      add(t, { { 0, #t, "AgentMuted" } })
     end
-  end
+    -- orphan devenvs: a slice is running for a worktree with no session in the roster
+    -- (a leak — visible so it doesn't pile up unseen). `slice-down <dir>` clears one.
+    if S.orphans and #S.orphans > 0 then
+      local t = #S.orphans .. " orphan devenv" .. (#S.orphans > 1 and "s" or "") .. ": " .. table.concat(S.orphans, ", ")
+      add(t, { { 0, -1, "AgentErr" } })
+    end
+  end, nil, true, false, true)
 
   vim.bo[S.buf].modifiable = true
   api.nvim_buf_set_lines(S.buf, 0, -1, false, lines)
   vim.bo[S.buf].modifiable = false
   api.nvim_buf_clear_namespace(S.buf, S.ns, 0, -1)
   for _, d in ipairs(decor) do
-    if d.fg then pcall(api.nvim_buf_add_highlight, S.buf, S.ns, d.fg, d.line, 0, -1) end
+    -- box() emits {bg=surface} per row + {fg,cs,ce} per segment — the SAME convention
+    -- render_changes/render_chat use. Honour cs/ce (span, not full-line) so the status
+    -- swatch keeps its own colour instead of being overpainted by the full-line name,
+    -- and paint the surface fill via an end_col range (never line_hl_group → no bleed
+    -- past the right border).
+    if d.bg then
+      local endc = #(lines[d.line + 1] or "")
+      pcall(api.nvim_buf_set_extmark, S.buf, S.ns, d.line, 0, { end_col = endc, hl_group = d.bg, priority = 40 })
+    end
+    if d.selbg then
+      -- active session's name chip: above the box surface (40), below the fg text (so
+      -- the name reads on top). A distinct elevation, not a saturated selection bar.
+      pcall(api.nvim_buf_set_extmark, S.buf, S.ns, d.line, d.selbg[1],
+        { end_col = d.selbg[2], hl_group = "AgentNameCard", priority = 55 })
+    end
+    if d.fg then pcall(api.nvim_buf_add_highlight, S.buf, S.ns, d.fg, d.line, d.cs or 0, d.ce or -1) end
     if d.card then
       pcall(api.nvim_buf_set_extmark, S.buf, S.ns, d.line, 0, { line_hl_group = "AgentCard", priority = 90 })
     end
     if d.range then
       pcall(api.nvim_buf_set_extmark, S.buf, S.ns, d.line, d.range[1],
-        { end_col = d.range[2], hl_group = d.range[3], priority = 160 })
+        { end_col = d.range[2], hl_group = d.range[3], priority = d.range[4] or 160 })
     end
   end
 
@@ -724,6 +1085,21 @@ render_roster = function()
     pcall(api.nvim_win_set_height, S.win, math.max(1, #lines))
     if mainline[S.focus] then pcall(api.nvim_win_set_cursor, S.win, { mainline[S.focus] + 1, 0 }) end
   end
+end
+
+-- Toggle the roster between two MODES (not just show_all), top-level so both the
+-- roster and the composer can bind it (z there, <C-t> from anywhere):
+--   • auto (default): expand while focused, collapse to the attention queue on blur
+--   • pinned-open: every session, always — survives losing focus
+-- S.roster_pinned_open is the sticky flag the focus autocmds respect; show_all is
+-- the rendered state (pinned → always true; auto → true only while focused).
+local function toggle_roster_view()
+  S.roster_pinned_open = not S.roster_pinned_open
+  -- compute focus here too (render recomputes it, but we read it on the next line)
+  local active = (S.win and api.nvim_win_is_valid(S.win) and api.nvim_get_current_win() == S.win) or false
+  S.show_all = S.roster_pinned_open or active
+  S.focus = 1
+  render_roster()
 end
 
 --------------------------------------------------------------------------------
@@ -779,16 +1155,80 @@ render_chat = function(scroll)
         local isUser = m.role == "user"
         local folded = folds[mi]
         local caret = folded and FOLDED or OPEN
-        local hdr = (isUser and (caret .. " " .. BAR .. " you") or (caret .. " " .. BAR .. " agent"))
+        local label = isUser and "you" or "agent"
+        -- your (user) messages render as a padded card: a 2-col left pad inside the bg
+        -- (o), plus a blank bg row above and below. The bg is border-aligned (col 2).
+        local o = isUser and "  " or ""
+        local hdr = o .. caret .. " " .. BAR .. " " .. label
+        if isUser then decor[#decor + 1] = { line = push("", mi), bg = "AgentUserBg" } end
         blocks[#blocks + 1] = #lines + 1 -- 1-indexed bufline of this header
-        decor[#decor + 1] = { line = push(hdr, mi), fg = isUser and "AgentAccent" or "AgentStream" }
+        -- caret dim · a slim role-coloured bar (you=cool blue, agent=green; orange stays
+        -- reserved for selection/attention) · label in neutral bold, not a saturated wash
+        local bl0 = push(hdr, mi)
+        if isUser then decor[#decor + 1] = { line = bl0, bg = "AgentUserBg" } end
+        decor[#decor + 1] = { line = bl0, fg = "AgentMuted", cs = #o, ce = #o + #caret }
+        decor[#decor + 1] = { line = bl0, fg = isUser and "AgentHunkRange" or "AgentStream", cs = #o + #caret + 1, ce = #o + #caret + 1 + #BAR }
+        decor[#decor + 1] = { line = bl0, fg = "AgentTitle", cs = #o + #caret + 2 + #BAR, ce = #hdr }
         if folded then
           local n = select(2, (m.text or ""):gsub("\n", "\n")) + 1
-          decor[#decor + 1] = { line = push("  ⋯ " .. n .. " lines", mi), fg = "AgentMuted" }
+          local fl = push(o .. "⋯ " .. n .. " lines", mi)
+          decor[#decor + 1] = { line = fl, fg = "AgentMuted" }
+          if isUser then decor[#decor + 1] = { line = fl, bg = "AgentUserBg" } end
+        elseif isUser then
+          -- plain padded prose HARD-wrapped into 2-space-padded real lines. Soft-wrap
+          -- + breakindent left an unfilled bg notch on continuation rows (the same bug
+          -- the summary callout had): the bg extmark doesn't paint a wrapped row's
+          -- breakindent region. Each wrapped chunk as its own buffer line → the bg
+          -- fills edge-to-edge and the left pad is uniform. Empty paras keep a bg row.
+          local avail = math.max(20, rail_width() - 2)
+          for _, para in ipairs(vim.split(m.text or "", "\n", { plain = true })) do
+            local chunks = {}
+            if para == "" then
+              chunks = { "" }
+            else
+              local cur = ""
+              for _, wd in ipairs(vim.split(para, " ", { plain = true })) do
+                local cand = cur == "" and wd or (cur .. " " .. wd)
+                if cur ~= "" and fn.strdisplaywidth(cand) > avail then chunks[#chunks + 1] = cur; cur = wd
+                else cur = cand end
+              end
+              if cur ~= "" then chunks[#chunks + 1] = cur end
+            end
+            for _, ch in ipairs(chunks) do
+              local bl = push(o .. ch, mi)
+              decor[#decor + 1] = { line = bl, bg = "AgentUserBg" }
+              decor[#decor + 1] = { line = bl, fg = "AgentFile", cs = #o, ce = -1 }
+            end
+          end
         else
           local hq, hi = m.hunks or {}, 0
           local in_fence = false
           for _, para in ipairs(vim.split(m.text or "", "\n", { plain = true })) do
+            if para:match("^⟢") or para:match("^✧") then
+              -- turn-recap callout: blank bg row above + below, and the text HARD-wrapped
+              -- into 2-space-padded real lines. (Soft-wrap + breakindent left an unfilled
+              -- notch in the bg on continuation rows.) ⟢ is U+27E2 (3 bytes), not ✧.
+              decor[#decor + 1] = { line = push("", mi), bg = "AgentSummaryBg" }
+              local avail = math.max(20, rail_width() - 2) -- chunk width inside the 2-col pad
+              local cur, chunks = "", {}
+              for _, wd in ipairs(vim.split(para, " ", { plain = true })) do
+                local cand = cur == "" and wd or (cur .. " " .. wd)
+                if cur ~= "" and fn.strdisplaywidth(cand) > avail then chunks[#chunks + 1] = cur; cur = wd
+                else cur = cand end
+              end
+              if cur ~= "" then chunks[#chunks + 1] = cur end
+              for i, ch in ipairs(chunks) do
+                local bl = push("  " .. ch, mi)
+                decor[#decor + 1] = { line = bl, bg = "AgentSummaryBg" }
+                if i == 1 then
+                  decor[#decor + 1] = { line = bl, fg = "AgentAccent", cs = 2, ce = 5 } -- ⟢
+                  decor[#decor + 1] = { line = bl, fg = "AgentTitle", cs = 6, ce = -1 }
+                else
+                  decor[#decor + 1] = { line = bl, fg = "AgentTitle", cs = 2, ce = -1 }
+                end
+              end
+              decor[#decor + 1] = { line = push("", mi), bg = "AgentSummaryBg" }
+            else
             local bl = push(para, mi)
             if para:match("^%s*```") then
               -- fence delimiter (markview conceals the ```): paint it so the block
@@ -797,6 +1237,7 @@ render_chat = function(scroll)
               decor[#decor + 1] = { line = bl, bg = "AgentCode" }
             elseif in_fence then
               decor[#decor + 1] = { line = bl, bg = "AgentCode" } -- uniform full-width block
+              decor[#decor + 1] = { line = bl, virt = "  " } -- left padding (inline, clean yank)
             else
             local mk = para:sub(1, #HUNK) == HUNK and HUNK or nil
             if mk then
@@ -818,7 +1259,7 @@ render_chat = function(scroll)
               end
             elseif para:match("^⚙ ") then
               decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
-              decor[#decor + 1] = { line = bl, fg = "AgentAccent", cs = 0, ce = 3 } -- ⚙ glyph (3 bytes)
+              decor[#decor + 1] = { line = bl, fg = "AgentMuted", cs = 0, ce = 3 } -- ⚙ glyph (3 bytes)
               if para:match("^⚙ edit ") or para:match("^⚙ write ") then
                 local fs = para:find("%S+$") -- last token = the path
                 if fs then decor[#decor + 1] = { line = bl, fg = "AgentFocusName", cs = fs - 1, ce = -1 } end
@@ -827,15 +1268,21 @@ render_chat = function(scroll)
               decor[#decor + 1] = { line = bl, fg = "AgentMuted" } -- thinking: dim, secondary
             end
             end
+            end
           end
         end
+        if isUser then decor[#decor + 1] = { line = push("", mi), bg = "AgentUserBg" } end
       end
     end
     -- live streaming block (superseded by message_end when the turn completes)
     local sv = S.selected and S.stream[S.selected]
     if sv and sv ~= "" then
       if has_any then push(""); push("") end
-      decor[#decor + 1] = { line = push(OPEN .. " " .. BAR .. " agent"), fg = "AgentStream" }
+      local shdr = OPEN .. " " .. BAR .. " agent"
+      local sbl = push(shdr)
+      decor[#decor + 1] = { line = sbl, fg = "AgentMuted", cs = 0, ce = #OPEN }
+      decor[#decor + 1] = { line = sbl, fg = "AgentStream", cs = #OPEN + 1, ce = #OPEN + 1 + #BAR }
+      decor[#decor + 1] = { line = sbl, fg = "AgentTitle", cs = #OPEN + 2 + #BAR, ce = #shdr }
       for _, para in ipairs(vim.split(sv, "\n", { plain = true })) do push(para) end
       lines[#lines] = lines[#lines] .. " " .. CARET
       decor[#decor + 1] = { line = #lines - 1, caret = true }
@@ -908,14 +1355,39 @@ render_chat = function(scroll)
     local sum = S.summary and S.summary[S.selected]
     local pl = S.selected and S.plan[S.selected]
     -- prefer the agent's own one-line recap (⟢), else the plain done+elapsed.
-    local label = (sum and sum.recap) and ("⟢ " .. sum.recap) or (el and ("✓ done in " .. el) or "✓ done")
-    if pl and pl.total and pl.total > 0 then label = label .. " · ◆ " .. pl.done .. "/" .. pl.total .. " steps" end
-    if sum and sum.recap and el then label = label .. " · " .. el end
     push(""); push("")
-    -- No wrapping ───── rules around the label: a long ⟢ recap + the surrounding
-    -- rules blew past the rail width and spilled a lone "─────" onto the next row.
-    -- The ⟢/✓ marker + the blank line above already read as the done divider.
-    decor[#decor + 1] = { line = push(label), fg = "AgentIdle" }
+    if sum and sum.recap then
+      -- Turn recap: render it with the SAME bg callout as the persisted message
+      -- summary (hard-wrapped 2-space-padded lines), so the live done-divider and the
+      -- message-history summary look identical instead of flat-here, bg'd-there.
+      local text = "⟢ " .. sum.recap
+      if pl and pl.total and pl.total > 0 then text = text .. " · ◆ " .. pl.done .. "/" .. pl.total .. " steps" end
+      if el then text = text .. " · " .. el end
+      decor[#decor + 1] = { line = push(""), bg = "AgentSummaryBg" }
+      local avail = math.max(20, rail_width() - 2)
+      local cur, chunks = "", {}
+      for _, wd in ipairs(vim.split(text, " ", { plain = true })) do
+        local cand = cur == "" and wd or (cur .. " " .. wd)
+        if cur ~= "" and fn.strdisplaywidth(cand) > avail then chunks[#chunks + 1] = cur; cur = wd
+        else cur = cand end
+      end
+      if cur ~= "" then chunks[#chunks + 1] = cur end
+      for i, ch in ipairs(chunks) do
+        local bl = push("  " .. ch)
+        decor[#decor + 1] = { line = bl, bg = "AgentSummaryBg" }
+        if i == 1 then
+          decor[#decor + 1] = { line = bl, fg = "AgentAccent", cs = 2, ce = 5 } -- ⟢
+          decor[#decor + 1] = { line = bl, fg = "AgentTitle", cs = 6, ce = -1 }
+        else
+          decor[#decor + 1] = { line = bl, fg = "AgentTitle", cs = 2, ce = -1 }
+        end
+      end
+      decor[#decor + 1] = { line = push(""), bg = "AgentSummaryBg" }
+    else
+      -- no agent recap → a light done divider (the ✓ marker + blank line above read
+      -- as the divider; no ───── rules, which used to spill past the rail width).
+      decor[#decor + 1] = { line = push(el and ("✓ done in " .. el) or "✓ done"), fg = "AgentIdle" }
+    end
     -- touched files this turn, path + colour-coded +adds −dels (no bar; same look
     -- as the changes view). Only when the agent actually edited something.
     if sum and sum.files and #sum.files > 0 then
@@ -938,14 +1410,38 @@ render_chat = function(scroll)
     end
   end
 
-  -- queued message (held until the turn ends) — dim, with the esc hint to edit it
+  -- A message sent while the agent was mid-turn is QUEUED: NOT delivered yet — the
+  -- agent hasn't seen it — it sends by itself when the current turn ends. Render it
+  -- as an unmistakable "waiting" block (attn header + a ┆ pending gutter on every
+  -- line) so it never reads like an already-sent/read message. Once it's delivered
+  -- (turn ends, or esc = send now) it moves up into the chat as a normal user turn,
+  -- which the agent is then reading — that transition IS the read signal.
   local q = S.selected and S.queued and S.queued[S.selected]
   if q and q ~= "" then
     push("")
-    decor[#decor + 1] = { line = push("  " .. GLYPH.queued .. " queued  ·  sends after this turn · esc = interrupt + send now"), fg = "AgentAttn" }
+    decor[#decor + 1] = { line = push("  " .. GLYPH.queued .. " queued — not sent yet, the agent hasn't read this"), fg = "AgentAttn" }
+    decor[#decor + 1] = { line = push("     sends when this turn ends   ·   esc = send now"), fg = "AgentMuted" }
     for _, para in ipairs(vim.split(q, "\n", { plain = true })) do
-      decor[#decor + 1] = { line = push("  " .. para), fg = "AgentMuted" }
+      local ln = push("  ┆ " .. para)
+      decor[#decor + 1] = { line = ln, fg = "AgentMuted" }
+      decor[#decor + 1] = { line = ln, range = { 2, 5, "AgentAttn" } } -- ┆ pending gutter (U+2506, 3 bytes)
     end
+  end
+
+  -- Sticky-bottom: BEFORE the rebuild, capture whether you were at the bottom + your
+  -- exact view, and whether this render switches session. Used below so a streaming
+  -- message doesn't yank you down when you've scrolled up to read history — while a
+  -- switch/open still lands on the newest message.
+  local switched = S.chat_last_rendered ~= S.selected
+  S.chat_last_rendered = S.selected
+  local force_bottom = S.force_bottom -- one-shot: a user send forces scroll-to-bottom
+  S.force_bottom = nil
+  local was_bottom, saved_view = true, nil
+  if S.chatwin and api.nvim_win_is_valid(S.chatwin) and S.view == "chat" then
+    pcall(api.nvim_win_call, S.chatwin, function()
+      saved_view = fn.winsaveview()
+      was_bottom = fn.line("w$") >= fn.line("$") -- last visible row is the last buffer line
+    end)
   end
 
   vim.bo[S.chatbuf].modifiable = true
@@ -963,6 +1459,12 @@ render_chat = function(scroll)
       pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0, { line_hl_group = d.bg, priority = 190 })
     end
     if d.fg then pcall(api.nvim_buf_add_highlight, S.chatbuf, S.ns, d.fg, d.line, d.cs or 0, d.ce or -1) end
+    if d.virt then
+      -- inline left padding that is NOT buffer content, so yanking copies clean text
+      -- (e.g. a code block's commands). Coloured to blend into the block's bg.
+      pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0,
+        { virt_text = { { d.virt, d.virthl or "AgentCode" } }, virt_text_pos = "inline", priority = 200 })
+    end
     if d.caret then
       pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0, { line_hl_group = "AgentStream", priority = 80 })
     end
@@ -996,8 +1498,15 @@ render_chat = function(scroll)
       S.scroll_to_msg[S.selected] = nil
       pcall(api.nvim_win_set_cursor, S.chatwin, { best + 1, 0 })
       pcall(api.nvim_win_call, S.chatwin, function() vim.cmd("normal! zt") end)
-    elseif scroll and not jump then
+    elseif scroll and not jump and (switched or was_bottom or force_bottom) then
+      -- follow the stream / land at the newest message — if you were at the bottom, just
+      -- switched into this session, OR you just SENT a message (force_bottom): sending
+      -- always jumps to the bottom even if you'd scrolled up to copy something.
       pcall(api.nvim_win_set_cursor, S.chatwin, { #lines, 0 })
+    elseif not switched and saved_view then
+      -- same session and you'd scrolled up (or a passive render): keep your place so
+      -- an incoming message doesn't drag the view to the bottom.
+      pcall(api.nvim_win_call, S.chatwin, function() fn.winrestview(saved_view) end)
     end
   end
   if sync_approval_keys then sync_approval_keys() end
@@ -1026,12 +1535,46 @@ end
 -- Desktop ping for a BACKGROUND session (not the one you're viewing), so you
 -- learn a dispatched/spawned agent needs input or finished without watching the
 -- rail. The active session is skipped — you're already looking at it.
+-- Shared cross-instance focus marker. Every cockpit tab is its own nvim on the
+-- same agentd, so focus must be a GLOBAL fact, not a per-instance flag — else a
+-- background tab toasts while you sit in the focused one. On focus we write this
+-- pid; on blur/exit we clear it iff it's still ours. rail_focused() reports whether
+-- ANY live rail holds it (a dead pid — crashed nvim — is ignored, self-healing).
+local RAIL_FOCUS_FILE = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/agent-rail-focused"
+function rail_focus_mark(on)
+  if on then
+    pcall(fn.writefile, { tostring(fn.getpid()) }, RAIL_FOCUS_FILE)
+  else
+    local ok, l = pcall(fn.readfile, RAIL_FOCUS_FILE)
+    if ok and l[1] and vim.trim(l[1]) == tostring(fn.getpid()) then
+      pcall(fn.writefile, {}, RAIL_FOCUS_FILE)
+    end
+  end
+end
+local function rail_focused()
+  local ok, l = pcall(fn.readfile, RAIL_FOCUS_FILE)
+  local pid = ok and l[1] and tonumber(vim.trim(l[1]))
+  return pid ~= nil and fn.isdirectory("/proc/" .. pid) == 1
+end
+
 local function desktop_notify(session, body, urgency)
   if not session or session == S.selected then return end
-  -- While nvim itself is focused the rail (roster + status dots) is right there,
-  -- so a desktop toast is pure noise — suppress it. Toasts only fire when you've
-  -- tabbed away (browser, slack), which is exactly when you'd want to be pinged.
-  if S.nvim_focused then return end
+  -- ANY rail focused (this instance or another) → you're at the cockpit and the
+  -- roster already shows the change, so a desktop toast is pure noise. The shared
+  -- marker makes a background instance stay quiet while another holds focus — that
+  -- cross-instance case was the spam. Toasts only fire once every rail is blurred
+  -- (you've tabbed to the browser/slack), which is exactly when you'd want a ping.
+  if rail_focused() then return end
+  -- Cross-instance dedup for the tabbed-away case: with no rail focused, EVERY
+  -- instance would fire for the same event. Claim a short per-session lease (mtime
+  -- on a shared file); if another instance claimed it in the last 10s, stand down.
+  local ndir = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/agent-rail-notify"
+  pcall(fn.mkdir, ndir, "p")
+  local lock = ndir .. "/" .. session:gsub("[^%w%-_]", "_")
+  local uvv = vim.uv or vim.loop
+  local st = uvv and uvv.fs_stat(lock)
+  if st and (os.time() - st.mtime.sec) < 10 then return end
+  pcall(fn.writefile, { tostring(os.time()) }, lock)
   local name = session
   for _, a in ipairs(S.roster) do
     if a.id == session then name = short_name(a.name or session); break end
@@ -1220,12 +1763,37 @@ handle = function(obj)
     -- remember which files the agent touched, to reload them at turn end
     if hunks and #hunks > 0 then
       S.edited[obj.session] = S.edited[obj.session] or {}
-      for _, h in ipairs(hunks) do if h.path then S.edited[obj.session][h.path] = true end end
+      -- Accumulate this turn's +adds/−dels FROM THE STREAM, keyed like S.edited.
+      -- git can't be the only source: the vault (where plans live) is entirely
+      -- gitignored, so git_changes returns nothing there and the summary showed
+      -- +0 −0. The stream is the sole truth for git-invisible files.
+      S.editstats = S.editstats or {}
+      S.editstats[obj.session] = S.editstats[obj.session] or {}
+      for _, h in ipairs(hunks) do
+        if h.path then
+          S.edited[obj.session][h.path] = true
+          local st = S.editstats[obj.session][h.path] or { add = 0, del = 0 }
+          st.add = st.add + (h.na or 0); st.del = st.del + (h.nd or 0)
+          S.editstats[obj.session][h.path] = st
+        end
+      end
       -- live-follow: open the most-recently edited file in the editor window so it
-      -- tracks the agent instead of sitting on the plan (focus stays in the rail).
+      -- tracks the agent (focus stays in the rail). The PLAN artifact is NOT special-
+      -- cased here — /plan-ticket emits an explicit open event at the end (see the
+      -- open-file signal watcher), so the rail doesn't have to guess from hunks.
       if obj.session == S.selected then
         local last = hunks[#hunks]
         if last and last.path then follow_edit(session_cwd(obj.session), last.path, last.line) end
+      end
+      -- If any hunk couldn't be located yet (the file on disk lagged this event),
+      -- its line-range renders blank. Schedule ONE re-render ~400ms later, by which
+      -- time the write has settled and the locator resolves it. Bounded: fires once
+      -- per message, only when a blank exists; truly-unlocatable hunks (pure
+      -- deletions) simply stay blank after the retry — no loop, no polling.
+      local unlocated = false
+      for _, h in ipairs(hunks) do if h.path and not h.line then unlocated = true; break end end
+      if unlocated and obj.session == S.selected then
+        vim.defer_fn(function() if obj.session == S.selected then render_chat(false) end end, 400)
       end
     end
     if obj.session == S.selected then render_chat(true) end
@@ -1241,7 +1809,9 @@ handle = function(obj)
     -- footer stays hidden through the between-round idle gaps until agent_end.
     S.turn_active = S.turn_active or {}
     S.turn_active[obj.session] = true
-    if S.notified then S.notified[obj.session] = nil end -- re-arm the once-per-turn "finished" notify
+    -- a new turn started → invalidate any pending debounced "finished" notify
+    -- (the session isn't done, it's churning — e.g. a review moving to its next phase)
+    if S.notify_gen then S.notify_gen[obj.session] = (S.notify_gen[obj.session] or 0) + 1 end
     if S.summary then S.summary[obj.session] = nil end -- last turn's recap is stale now
     if obj.session == S.selected then render_chat(false) end
   elseif t == "turn_end" and obj.session then
@@ -1264,14 +1834,23 @@ handle = function(obj)
       S.chat[obj.session] = cq
       send({ type = "prompt", session = obj.session, message = q })
       flushed_queue = true
-    elseif not S.pending[obj.session] and obj.session ~= S.selected
-      and not (S.notified and S.notified[obj.session]) then
-      -- a background agent finished and isn't blocked on you → ONE notify per turn.
-      -- agent_end can fire more than once for a multi-round/subagent turn (a review),
-      -- so dedupe on S.notified (re-armed at agent_start) — else it spam-notifies.
-      desktop_notify(obj.session, "finished — ready for you", "normal")
-      S.notified = S.notified or {}
-      S.notified[obj.session] = true
+    elseif not S.pending[obj.session] and obj.session ~= S.selected then
+      -- DEBOUNCED "finished" notify. agent_end fires per turn, and an autonomous
+      -- skill (a PR review) runs MANY turns back-to-back — notifying on each is the
+      -- spam. Instead wait for the session to go QUIET: schedule the notify, and if
+      -- a new turn starts first (agent_start bumps notify_gen) it's cancelled. So it
+      -- fires exactly once, when the session actually stops and is waiting for you.
+      S.notify_gen = S.notify_gen or {}
+      local gen = (S.notify_gen[obj.session] or 0) + 1
+      S.notify_gen[obj.session] = gen
+      local sess = obj.session
+      vim.defer_fn(function()
+        if (S.notify_gen or {})[sess] ~= gen then return end          -- superseded by a newer turn
+        if S.turn_active and S.turn_active[sess] then return end       -- working again
+        if sess == S.selected then return end                          -- you're looking at it
+        if S.pending and S.pending[sess] then return end               -- blocked on you (its own notify)
+        desktop_notify(sess, "finished — ready for you", "normal")
+      end, 8000)
     end
     -- If the turn produced NO assistant reply (last message is still the user's
     -- prompt), the answer was dropped — almost always mid-turn context
@@ -1339,9 +1918,18 @@ handle = function(obj)
         else
           rel = fn.fnamemodify(p, ":~")
         end
-        files[#files + 1] = { path = rel, add = x and x.add or 0, del = x and x.del or 0 }
+        -- git wins for files it can see (accurate net diff); fall back to the
+        -- streamed counts when git has no entry — gitignored (the whole vault) or
+        -- otherwise git-invisible — so it's never a false +0 −0.
+        local st = S.editstats and S.editstats[obj.session] and S.editstats[obj.session][p]
+        files[#files + 1] = {
+          path = rel,
+          add = (x and x.add) or (st and st.add) or 0,
+          del = (x and x.del) or (st and st.del) or 0,
+        }
       end
     end
+    if S.editstats then S.editstats[obj.session] = nil end
     S.summary[obj.session] = { recap = recap, files = files }
     refresh_plans() -- capture final plan progress now the turn's done (the streaming sweep stopped)
     if obj.session == S.selected then render_chat(false) end
@@ -1618,13 +2206,48 @@ view_session = function(name, cwd)
   if S.selected and S.selected ~= name then capture_editor(S.selected) end
   S.dash_expand = false -- each session's dashboard opens collapsed
   S.selected = name
+  -- record the visit for Ctrl-o/Ctrl-i (jumplist-for-sessions): a fresh view drops any
+  -- forward history and appends, unless we're being driven BY nav_session (nav_lock).
+  if not S.nav_lock and name and S.nav_hist[S.nav_idx] ~= name then
+    for i = #S.nav_hist, S.nav_idx + 1, -1 do S.nav_hist[i] = nil end
+    S.nav_hist[#S.nav_hist + 1] = name
+    S.nav_idx = #S.nav_hist
+  end
   reload_messages(name)
   reroot(cwd)
+  -- refresh ONLY the switched-to session's plan (1 git call) so its dashboard/chip are
+  -- fresh — before reflect_context renders the dashboard. The rest of the roster stays
+  -- cached and refreshes on the slow tick. (Full refresh_plans here was O(sessions)
+  -- sync git calls on every switch — the swap lag.)
+  for _, a in ipairs(S.roster) do if a.id == name then refresh_plan_one(a); break end end
   reflect_context(cwd) -- restore this session's editor (S.editor[name]) or show the dashboard
   cockpit_sync(cwd)    -- drive the cockpit devenv tab + Super+T active marker to match
   load_draft(name)
-  refresh_plans()
   render_active()
+end
+
+-- Ctrl-o / Ctrl-i walk the session-visit history like a jumplist (delta -1 = back to
+-- an older session, +1 = forward). Bound buffer-locally in the rail panes ONLY, so a
+-- real editor window keeps the actual jumplist. Skips history entries whose session is
+-- gone, and sets nav_lock so the resulting view_session doesn't re-record the hop.
+local function nav_session(delta)
+  local i = S.nav_idx
+  while true do
+    i = i + delta
+    if i < 1 or i > #S.nav_hist then return end
+    local id = S.nav_hist[i]
+    if id ~= S.selected then
+      local found, cwd = false, nil
+      for _, a in ipairs(S.roster) do if a.id == id then found, cwd = true, a.cwd; break end end
+      if found then
+        S.nav_idx = i
+        S.nav_lock = true
+        pcall(view_session, id, cwd)
+        S.nav_lock = false
+        return
+      end
+    end
+  end
 end
 
 open_picker = function()
@@ -1675,6 +2298,9 @@ local function start_spin()
     -- running it on every idle tick was a periodic UI hitch all day. Switching
     -- sessions (view_session) and finishing a turn (agent_end) refresh on demand.
     if streaming and S.tick % 300 == 0 then refresh_plans() end
+    -- devenv link health polls on the idle tick too (~6s): a slice can start/stop
+    -- while agents are idle, unlike plan progress. Async, so it never blocks render.
+    if S.tick % 100 == 0 then refresh_devenv() end
     -- Watchdog: guarantee liveness even if a socket EOF is somehow missed. If we
     -- ever find ourselves disconnected (and no retry loop is already spinning),
     -- kick a reconnect. This is why the rail stays alive on its own — no manual
@@ -2107,6 +2733,7 @@ composer_send = function()
 
   c.msgs[#c.msgs + 1] = { role = "user", text = prompt .. (imgs and ("  🖼×" .. #imgs) or "") } -- optimistic echo
   S.chat[S.selected] = c
+  S.force_bottom = true -- a fresh send always lands at the bottom, even if scrolled up
   render_chat(true)
   send({ type = "prompt", session = S.selected, message = prompt, images = imgs })
   S.drafts[S.selected] = nil
@@ -2152,6 +2779,7 @@ function M.send_message()
     local c = S.chat[S.selected] or { msgs = {} }
     c.msgs[#c.msgs + 1] = { role = "user", text = text }
     S.chat[S.selected] = c
+    S.force_bottom = true
     send({ type = "prompt", session = S.selected, message = text })
     if S.view == "chat" then render_chat(true) end
     vim.notify("agent-nvim: → " .. S.selected)
@@ -2319,6 +2947,12 @@ end
 -- alone. Skips when the target buffer has unsaved changes. Toggle: S.follow_edits.
 follow_edit = function(cwd, path, line)
   if not path or S.follow_edits == false then return end
+  -- Never follow into plan machinery sidecars: a /plan-ticket turn writes the
+  -- reviewable .md and THEN its progress.json, so following the last edit would
+  -- dump you in raw JSON instead of the rendered plan. Skipping them keeps the
+  -- editor on the .md (which plan-nvim renders) — the thing you actually review.
+  if path:match("%.progress%.json$") or path:match("%.review%.json$")
+    or path:match("/plans/.*%.diagram%.html$") then return end
   local cur = api.nvim_get_current_win()
   if not api.nvim_buf_get_name(api.nvim_win_get_buf(cur)):match("agent%-") then return end -- you're in the code
   local file = fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
@@ -2627,10 +3261,9 @@ local function show_scratch(win, cwd)
   local function section(label, detail)
     local ln = push("  " .. label .. (detail and ("   " .. detail) or ""))
     hl(ln, "AgentMuted")
-    hl(ln, "AgentAccent", 2, 2 + #label)
+    hl(ln, "AgentTitle", 2, 2 + #label)
     return ln
   end
-
   local nm = short_name(S.selected) or fn.fnamemodify(cwd, ":t")
   local tik = (S.selected or ""):match("%a+%-%d+")
   local ctx = cockpit_ctx_registered(cwd)
@@ -2642,6 +3275,7 @@ local function show_scratch(win, cwd)
   hl(push(file_row(W - 2, "    ", fn.fnamemodify(cwd, ":~"))), "AgentMuted")
   push("")
 
+
   -- PLAN — only if the session has a plan
   local pl = load_plan(cwd)
   if pl and pl.progress then
@@ -2649,6 +3283,15 @@ local function show_scratch(win, cwd)
     local done, total = 0, 0
     for _, s in ipairs(pg.flow or {}) do total = total + 1; if s.status == "done" then done = done + 1 end end
     section("PLAN", pl.key .. " · " .. (pg.phase or "?") .. (total > 0 and ("   ◆ " .. done .. "/" .. total) or ""))
+    -- #18-style flow gauge: a big progress bar under the header, count on the left.
+    if total > 0 then
+      local label = "      " .. done .. "/" .. total .. " "
+      local barw = math.max(10, math.min(56, (W - 2) - #label))
+      local btext, bsegs = progress_bar(done, total, barw, "AgentStream", "AgentDivider")
+      local ln = push(label .. btext)
+      hl(ln, "AgentMuted", 0, #label)
+      for _, sg in ipairs(bsegs) do hl(ln, sg[3], sg[1] + #label, sg[2] + #label) end
+    end
     local savail = math.max(12, (W - 2) - 8)
     for _, s in ipairs(pg.flow or {}) do
       local g = s.status == "done" and "●" or (s.status == "active" and "◐" or "○")
@@ -2673,12 +3316,19 @@ local function show_scratch(win, cwd)
   end
   if ctx then
     act("d", "devenv", function()
-      -- point the devenv tab at this session's context, then focus the devenv window
-      fn.jobstart({ "sh", "-c", "COCKPIT_SWITCH_WINDOWS=devenv " .. home
-        .. "/.config/niri/scripts/cockpit-switch " .. fn.shellescape(ctx)
-        .. " && " .. home .. "/.config/niri/scripts/cockpit-focus devenv" }, { detach = true })
+      -- re-establish the session↔devenv link: ensure the tab exists, start the slice
+      -- if it's down, route the fixed ports here, focus. Idempotent however it broke.
+      fn.jobstart({ home .. "/.config/niri/scripts/cockpit-devenv", ctx }, { detach = true })
+      vim.defer_fn(function() if refresh_devenv then refresh_devenv() end end, 1500)
     end)
-    act("a", "app", function() fn.jobstart({ home .. "/.config/niri/scripts/browser-work" }, { detach = true }) end)
+    -- open the context's dev-preview URL in the work browser (+ focus it), via the
+    -- cockpit config's cockpit_open_app hook — which computes the wt-proxy preview URL.
+    -- The old action only launched browser-work, so it focused Helium but loaded nothing.
+    act("a", "app", function()
+      fn.jobstart({ "bash", "-c",
+        'source "$HOME/.config/cockpit/config" 2>/dev/null && cockpit_open_app "$1"',
+        "cockpit-app", ctx }, { detach = true })
+    end)
   end
   if root then
     act("n", "session", function() if open_picker then open_picker() end end) -- start/pick a session
@@ -2716,12 +3366,16 @@ local function show_scratch(win, cwd)
       local nm2 = short_name(a.name)
       local pl2 = S.plan[a.id]
       local prog = (pl2 and pl2.total and pl2.total > 0) and ("  ◆ " .. pl2.done .. "/" .. pl2.total) or ""
-      local line = "  " .. ss.glyph .. " " .. nm2 .. string.rep(" ", nw - #nm2) .. "   " .. ss.label .. prog
+      -- STATIC status dot, not the animated spinner glyph: the dashboard is a
+      -- snapshot (not re-rendered per frame), so a spinner frame would sit frozen
+      -- and read as broken. The live spinner lives in the roster; here ● = working.
+      local dot = ({ streaming = "●", needs_input = "◆", error = "✕" })[ss.key] or "○"
+      local line = "  " .. dot .. " " .. nm2 .. string.rep(" ", nw - #nm2) .. "   " .. ss.label .. prog
       local ln = push(line)
       sessmap[ln] = { id = a.id, cwd = a.cwd }
-      hl(ln, "AgentFile")                          -- name, neutral base
-      hl(ln, ss.name, 2, 2 + #ss.glyph)            -- status glyph, coloured
-      hl(ln, "AgentMuted", 6 + #ss.glyph + nw, -1) -- state + plan progress, muted
+      hl(ln, "AgentFile")                        -- name, neutral base
+      hl(ln, ss.name, 2, 2 + #dot)               -- status dot, coloured
+      hl(ln, "AgentMuted", 6 + #dot + nw, -1)    -- state + plan progress, muted
     end
     if #others == 0 then hl(push("      no other sessions · n starts one"), "AgentMuted") end
     push("")
@@ -2768,7 +3422,7 @@ local function show_scratch(win, cwd)
         if #title > avail then title = title:sub(1, avail - 1) .. "…" end
         local line = "  " .. mark .. " " .. id .. string.rep(" ", idw - #id) .. "   " .. title
         local ln = push(line)
-        ticketmap[ln] = { id = id, slug = t.slug, live = live }
+        ticketmap[ln] = { id = id, slug = t.slug, live = live, title = t.title }
         hl(ln, "AgentFile")                                       -- id + title, neutral
         hl(ln, prigrp[t.priority] or "AgentMuted", 2, 2 + #mark)  -- priority-coloured marker
       end
@@ -2888,9 +3542,16 @@ dash_keys = function(buf, acts)
       if t.live then
         vim.notify("agent: " .. t.id .. " already has a session")
       elseif t.slug and t.slug ~= "" then
-        if vim.fn.confirm("Start a session for " .. t.id .. "?  (cockpit-add " .. t.slug .. ")", "&Yes\n&No", 2) == 1 then
-          fn.jobstart({ (os.getenv("HOME") or "") .. "/.config/niri/scripts/cockpit-add", t.slug }, { detach = true })
-          vim.notify("agent: starting session · " .. t.slug)
+        -- cockpit-spawn = the full ticket kickoff in one command (same script any
+        -- agent can call): cockpit context (worktree + devenv + nvim tab, registered,
+        -- no focus steal) AND a seeded roster agent. One source of truth for "spawn a
+        -- ticket", so the button and an agent's `cockpit-spawn` do the exact same thing.
+        local seed = "Work " .. t.id .. (t.title and t.title ~= "" and (": " .. t.title) or "")
+          .. "\n\nStart with /plan-ticket " .. t.id .. " to scope it, then implement."
+        if vim.fn.confirm("Spawn a session for " .. t.id .. "?  (" .. t.slug .. ")", "&Yes\n&No", 2) == 1 then
+          local home = os.getenv("HOME") or ""
+          fn.jobstart({ home .. "/.local/bin/cockpit-spawn", t.slug, seed }, { detach = true })
+          vim.notify("agent: spawning session · " .. t.slug)
         end
       else
         vim.notify("agent: " .. t.id .. " has no slug in cycle.json")
@@ -3021,6 +3682,29 @@ on_cockpit_active = function()
     end
   end
 end
+-- Super+i jump-by-NAME: a notification names a session (short_name), which the
+-- dispatch drops into cockpit/agent-jump. Selecting it here — rather than via a
+-- context switch — reaches sessions with NO cockpit tab too (wt-spawned agents,
+-- sub-agents): the roster is cross-context, so any tab's rail can show any session.
+-- view_session's cockpit_sync switches context when the cwd IS a registered one,
+-- and no-ops otherwise, so both tabbed and tab-less sessions land correctly.
+on_agent_jump = function()
+  local home = os.getenv("HOME") or ""
+  local ok, lines = pcall(fn.readfile, home .. "/.local/state/cockpit/agent-jump")
+  if not ok or not lines[1] then return end
+  local want = vim.trim(lines[1])
+  if want == "" then return end
+  for _, a in ipairs(S.roster) do
+    if a.id == want or short_name(a.name) == want then
+      if a.id ~= S.selected then view_session(a.id, a.cwd) end
+      -- land IN the rail: focus the chat pane so the turn is right there to read
+      if S.chatwin and api.nvim_win_is_valid(S.chatwin) then
+        pcall(api.nvim_set_current_win, S.chatwin)
+      end
+      return
+    end
+  end
+end
 local function start_cockpit_watch()
   if cockpit_watch then return end
   local dir = (os.getenv("HOME") or "") .. "/.local/state/cockpit"
@@ -3030,8 +3714,11 @@ local function start_cockpit_watch()
   -- watch the DIR: cockpit-switch replaces `active` via atomic rename, which a
   -- file-level watch would miss.
   cockpit_watch:start(dir, {}, function(err, filename)
-    if not err and (filename == "active" or filename == ".active.tmp") then
+    if err then return end
+    if filename == "active" or filename == ".active.tmp" then
       vim.schedule(on_cockpit_active)
+    elseif filename == "agent-jump" then
+      vim.schedule(on_agent_jump)
     end
   end)
 end
@@ -3052,10 +3739,23 @@ git_changes = function(cwd)
   end
   local cmd = { "git", "-C", cwd, "diff", "--numstat" }
   if base ~= "" then cmd[#cmd + 1] = base end
-  local files = {}
+  local files, seen = {}, {}
   for _, line in ipairs(fn.systemlist(cmd)) do
     local add, del, path = line:match("^(%S+)%s+(%S+)%s+(.+)$")
-    if path then files[#files + 1] = { path = path, add = tonumber(add) or 0, del = tonumber(del) or 0 } end
+    if path then
+      files[#files + 1] = { path = path, add = tonumber(add) or 0, del = tonumber(del) or 0 }
+      seen[path] = true
+    end
+  end
+  -- `diff <base>` covers TRACKED local changes but not brand-new UNTRACKED files —
+  -- yet those are local changes too (git status' working-tree view). List them and
+  -- count their lines as adds, so a just-created file shows real +N instead of +0.
+  for _, path in ipairs(fn.systemlist({ "git", "-C", cwd, "ls-files", "--others", "--exclude-standard" })) do
+    if path ~= "" and not seen[path] then
+      local ok, contents = pcall(fn.readfile, cwd .. "/" .. path)
+      files[#files + 1] = { path = path, add = (ok and contents) and #contents or 0, del = 0 }
+      seen[path] = true
+    end
   end
   return files
 end
@@ -3089,19 +3789,72 @@ end
 
 -- refresh the cached plan progress for every rostered session (git + file reads,
 -- so called sparingly: on select, on open, and on a slow timer — not per render)
-refresh_plans = function()
-  for _, a in ipairs(S.roster) do
-    if a.cwd and a.cwd ~= "" then
-      local plan = load_plan(a.cwd)
-      if plan then
-        local flow, done = plan.progress.flow or {}, 0
-        for _, s in ipairs(flow) do if s.status == "done" then done = done + 1 end end
-        S.plan[a.id] = { done = done, total = #flow, phase = plan.progress.phase, key = plan.key }
-      else
-        S.plan[a.id] = false
-      end
+-- Refresh ONE session's cached plan (a sync git + glob + plan-file reads). Broken out
+-- so a session switch can refresh just the session it lands on instead of the whole
+-- roster — the full sweep is O(sessions) sync git calls and was the swap lag.
+refresh_plan_one = function(a)
+  -- Sub-agents share the parent's worktree, so load_plan would hand them the ticket's
+  -- plan too — but the plan belongs to the MAIN agent. Subs get none.
+  if is_subagent(a.name) then
+    S.plan[a.id] = false
+  elseif a.cwd and a.cwd ~= "" then
+    local plan = load_plan(a.cwd)
+    if plan then
+      local flow, done = plan.progress.flow or {}, 0
+      for _, s in ipairs(flow) do if s.status == "done" then done = done + 1 end end
+      S.plan[a.id] = { done = done, total = #flow, phase = plan.progress.phase, key = plan.key }
+    else
+      S.plan[a.id] = false
     end
   end
+end
+refresh_plans = function()
+  for _, a in ipairs(S.roster) do refresh_plan_one(a) end
+end
+
+-- Devenv link health, cached per CONTEXT (not per session — the slice is a property
+-- of the worktree, and a family of sessions shares one cwd). Async: `cockpit-devenv
+-- status` shells out per unique ctx + `orphans` once, and each result schedules a
+-- roster repaint. Mirrors refresh_plans' cadence but runs on the idle tick too, since
+-- a slice can start/stop while agents are idle.
+refresh_devenv = function()
+  local home = os.getenv("HOME") or ""
+  local script = home .. "/.config/niri/scripts/cockpit-devenv"
+  if fn.executable(script) == 0 then return end
+  local seen = {}
+  for _, a in ipairs(S.roster) do
+    local ctx = a.cwd and a.cwd ~= "" and cockpit_context(a.cwd)
+    if ctx and not seen[ctx] then
+      seen[ctx] = true
+      local out = {}
+      pcall(fn.jobstart, { script, "status", ctx }, {
+        stdout_buffered = true,
+        on_stdout = function(_, d) for _, l in ipairs(d or {}) do if l ~= "" then out[#out + 1] = l end end end,
+        on_exit = function()
+          local st = (out[1] or ""):gsub("%s+", "")
+          if st ~= "" and S.devenv[ctx] ~= st then
+            S.devenv[ctx] = st
+            vim.schedule(function() if render_roster then render_roster() end end)
+          end
+        end,
+      })
+    end
+  end
+  -- orphans = running slices whose ctx has no session in the roster
+  local oout = {}
+  pcall(fn.jobstart, { script, "orphans" }, {
+    stdout_buffered = true,
+    on_stdout = function(_, d) for _, l in ipairs(d or {}) do if l ~= "" then oout[#oout + 1] = l end end end,
+    on_exit = function()
+      local orphans = {}
+      for _, dir in ipairs(oout) do
+        local ctx = cockpit_context(dir)
+        if ctx and not seen[ctx] then orphans[#orphans + 1] = ctx end
+      end
+      S.orphans = orphans
+      vim.schedule(function() if render_roster then render_roster() end end)
+    end,
+  })
 end
 
 render_changes = function()
@@ -3117,80 +3870,81 @@ render_changes = function()
   if not cwd then
     decor[#decor + 1] = { line = push("  press <CR> to open a session"), fg = "AgentMuted" }
   else
+    local W = rail_width()
     local plan = load_plan(cwd)
     local changes = git_changes(cwd)
     local bypath = {}
     for _, c in ipairs(changes) do bypath[c.path] = c end
+    local inner = W - 6 -- match box()'s inner (│  … │ with 2-space pads)
 
-    -- render a file list: the STATUS colour lives on the leading dot only (done
-    -- green ● / touched amber ◐ / pending grey ○), the path stays a neutral fg,
-    -- and the stats are colour-coded (+green −red). Painting the whole path in the
-    -- status colour made a fully-done plan a wall of green. rows: { dot, grp, path,
-    -- add?, del? }.
-    local function push_files(rows)
-      local W, aw, dw = rail_width(), 0, 0
+    -- Emit file rows INTO a box via add(): status colour on the leading dot only,
+    -- path neutral, +adds green / −dels red, right-aligned + head-truncated to fit
+    -- the box's inner width. segs are byte columns relative to the row text.
+    local function box_files(add, rows)
+      local aw, dw = 0, 0
       for _, r in ipairs(rows) do
         if r.add then
-          aw = math.max(aw, #("+" .. r.add))
-          dw = math.max(dw, #("-" .. r.del))
+          aw = math.max(aw, #("+" .. r.add)); dw = math.max(dw, #("-" .. r.del))
         end
       end
-      -- colour just the dot glyph its status colour; "  " indent precedes it.
-      local function dot_hl(bl, dot, grp)
-        decor[#decor + 1] = { line = bl, fg = grp, cs = 2, ce = 2 + #dot }
-      end
       for _, r in ipairs(rows) do
-        local indent = "  " .. r.dot .. " "
+        local indent = r.dot .. " "
+        local text, segs
         if not r.add then
-          local bl = push(file_row(W, indent, r.path), r.path)
-          decor[#decor + 1] = { line = bl, fg = "AgentFile" }
-          dot_hl(bl, r.dot, r.grp)
+          text = file_row(inner, indent, r.path)
+          segs = { { 0, #text, "AgentFile" }, { 0, #r.dot, r.grp } }
         else
-          -- path + right-aligned, colour-coded +adds (green) −dels (red). Numbers
-          -- right-align to the rail width and the path head-truncates (…) so long
-          -- monorepo paths never wrap the number column onto a second grey row.
           local as, ds = "+" .. r.add, "-" .. r.del
           local acol = string.rep(" ", aw - #as) .. as
           local dcol = string.rep(" ", dw - #ds) .. ds
-          local line = file_row(W, indent, r.path, acol, dcol)
-          local bl = push(line, r.path)
-          decor[#decor + 1] = { line = bl, fg = "AgentFile" }
-          dot_hl(bl, r.dot, r.grp)
-          local ps, pe = line:find("%+%d+")
-          if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
-          local ms, me = line:find("%-%d+", (pe or 0) + 1)
-          if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
+          text = file_row(inner, indent, r.path, acol, dcol)
+          segs = { { 0, #text, "AgentFile" }, { 0, #r.dot, r.grp } }
+          local ps, pe = text:find("%+%d+")
+          if ps then segs[#segs + 1] = { ps - 1, pe, "AgentStream" } end
+          local ms, me = text:find("%-%d+", (pe or 0) + 1)
+          if ms then segs[#segs + 1] = { ms - 1, me, "AgentErr" } end
         end
+        add(text, segs, r.path)
       end
     end
 
-    -- one-line total diffstat (files · +adds -dels) for a quick size glance,
-    -- coloured like the per-file rows. No-op when there are no changes.
-    local function push_diffstat()
+    -- diffstat as (text, segs) for placement inside a box; nil when no changes.
+    local function diffstat()
       local ta, td = 0, 0
       for _, c in ipairs(changes) do ta = ta + (c.add or 0); td = td + (c.del or 0) end
-      if #changes == 0 then return end
-      local s = "  " .. #changes .. (#changes == 1 and " file   +" or " files   +") .. ta .. "  -" .. td
-      local bl = push(s)
-      decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
+      if #changes == 0 then return nil end
+      local s = #changes .. (#changes == 1 and " file   +" or " files   +") .. ta .. "  -" .. td
+      local segs = { { 0, #s, "AgentMuted" } }
       local ps, pe = s:find("%+%d+")
-      if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
+      if ps then segs[#segs + 1] = { ps - 1, pe, "AgentStream" } end
       local ms, me = s:find("%-%d+", (pe or 0) + 1)
-      if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
+      if ms then segs[#segs + 1] = { ms - 1, me, "AgentErr" } end
+      return s, segs
     end
 
     if plan then
       local pg = plan.progress
-      decor[#decor + 1] = { line = push("  plan · " .. plan.key .. " · " .. (pg.phase or "?")), fg = "AgentMuted" }
-      push_diffstat()
-      push("")
-      for _, step in ipairs(pg.flow or {}) do
-        local g = step.status == "done" and "●" or (step.status == "active" and "◐" or "○")
-        local grp = step.status == "done" and "AgentStream" or (step.status == "active" and "AgentAccent" or "AgentIdle")
-        decor[#decor + 1] = { line = push("  " .. g .. " " .. (step.step or "")), fg = grp }
-      end
-      push("")
-      decor[#decor + 1] = { line = push("  files"), fg = "AgentMuted" }
+      box(push, decor, W, ICON.plan, "PLAN · " .. plan.key .. " · " .. (pg.phase or "?"), function(add)
+        local ds, dsegs = diffstat(); if ds then add(ds, dsegs) end
+        local flow = pg.flow or {}
+        if #flow > 0 then
+          local done = 0
+          for _, s in ipairs(flow) do if s.status == "done" then done = done + 1 end end
+          local label = done .. "/" .. #flow .. " "
+          local btext, bsegs = progress_bar(done, #flow, math.max(8, inner - #label - 1))
+          local text = label .. btext
+          local segs = { { 0, #label, "AgentMuted" } }
+          for _, sg in ipairs(bsegs) do segs[#segs + 1] = { sg[1] + #label, sg[2] + #label, sg[3] } end
+          add(text, segs)
+        end
+        for _, step in ipairs(flow) do
+          local g = step.status == "done" and "●" or (step.status == "active" and "◐" or "○")
+          local grp = step.status == "done" and "AgentStream" or (step.status == "active" and "AgentAccent" or "AgentIdle")
+          local t = g .. " " .. (step.step or "")
+          -- status colour on the DOT only; the step text stays neutral (not a green wash)
+          add(t, { { 0, #g, grp }, { #g, #t, "AgentFile" } })
+        end
+      end, nil, false, false, true, true)
       local rows = {}
       for _, pf in ipairs(pg.planned or {}) do
         local c = bypath[pf.file]
@@ -3201,40 +3955,40 @@ render_changes = function()
         }
         bypath[pf.file] = nil
       end
-      push_files(rows)
+      box(push, decor, W, ICON.files, "FILES", function(add) box_files(add, rows) end, nil, true, false, true, false)
       local drift = {}
       for _, c in pairs(bypath) do drift[#drift + 1] = c end
       if #drift > 0 then
-        push("")
-        decor[#decor + 1] = { line = push("  unplanned"), fg = "AgentAttn" }
         table.sort(drift, function(a, b) return a.path < b.path end)
-        for _, c in ipairs(drift) do
-          decor[#decor + 1] = { line = push("  ⚠ " .. c.path .. statmark(c.add, c.del), c.path), fg = "AgentAttn" }
-        end
+        box(push, decor, W, ICON.warn, "UNPLANNED", function(add)
+          for _, c in ipairs(drift) do
+            box_files(add, { { dot = "⚠", grp = "AgentAttn", path = c.path, add = c.add, del = c.del } })
+          end
+        end, nil, false, false, true, true)
       end
     else
-      decor[#decor + 1] = { line = push("  changes · " .. base(cwd)), fg = "AgentMuted" }
-      push_diffstat()
-      push("")
-      if #changes == 0 then
-        decor[#decor + 1] = { line = push("  no changes on this branch"), fg = "AgentMuted" }
-      else
-        local rows = {}
-        for _, c in ipairs(changes) do
-          rows[#rows + 1] = { dot = "○", grp = "AgentIdle", path = c.path, add = c.add, del = c.del }
+      box(push, decor, W, ICON.changes, "CHANGES · " .. base(cwd), function(add)
+        local ds, dsegs = diffstat(); if ds then add(ds, dsegs) end
+        if #changes == 0 then
+          add("no changes on this branch", { { 0, #"no changes on this branch", "AgentMuted" } })
+        else
+          local rows = {}
+          for _, c in ipairs(changes) do
+            rows[#rows + 1] = { dot = "○", grp = "AgentIdle", path = c.path, add = c.add, del = c.del }
+          end
+          box_files(add, rows)
         end
-        push_files(rows)
-      end
+      end, nil, true, false, true)
     end
 
-    -- MCP servers this session's worktree has configured
     local mcp = session_mcp(cwd)
     if #mcp > 0 then
-      push("")
-      decor[#decor + 1] = { line = push("  mcp"), fg = "AgentMuted" }
-      for _, s in ipairs(mcp) do
-        decor[#decor + 1] = { line = push("  ⚙ " .. s), fg = "AgentIdle" }
-      end
+      box(push, decor, W, ICON.mcp, "MCP", function(add)
+        for _, s in ipairs(mcp) do
+          local t = ICON.mcp .. " " .. s
+          add(t, { { 0, #t, "AgentIdle" } })
+        end
+      end, nil, false, false, true, true)
     end
   end
 
@@ -3243,14 +3997,23 @@ render_changes = function()
   vim.bo[S.changesbuf].modifiable = false
   api.nvim_buf_clear_namespace(S.changesbuf, S.ns, 0, -1)
   for _, d in ipairs(decor) do
-    -- honour cs/ce so sub-range highlights land (the +adds green / −dels red columns
-    -- and the diffstat); without it every highlight painted the whole line, so the
-    -- last one won and the numbers rendered in the row's base colour instead.
+    -- bg first (low-priority line fill = the box surface), so the fg char highlights
+    -- layer on top. honour cs/ce so sub-range fg highlights land (the +adds/−dels).
+    if d.bg then
+      -- fill EXACTLY the box's own width (the line's bytes), not the whole window —
+      -- a line_hl_group would bleed the surface past the right border to the edge.
+      local endc = #(lines[d.line + 1] or "")
+      if endc > 0 then
+        pcall(api.nvim_buf_set_extmark, S.changesbuf, S.ns, d.line, 0, { end_col = endc, hl_group = d.bg, priority = 40 })
+      end
+    end
     if d.fg then pcall(api.nvim_buf_add_highlight, S.changesbuf, S.ns, d.fg, d.line, d.cs or 0, d.ce or -1) end
   end
   S.changes_open = openmap
   if S.chatwin and api.nvim_win_is_valid(S.chatwin) and S.view == "changes" then
-    vim.wo[S.chatwin].winbar = "%#AgentMuted#  changes · " .. (S.selected or "—")
+    -- no winbar: it showed "changes · <full worktree name>", a redundant path (the
+    -- boxes + composer already identify the session). The PLAN box title carries context.
+    vim.wo[S.chatwin].winbar = ""
   end
 end
 
@@ -3498,6 +4261,8 @@ ensure_buf = function()
   cmap("yc", function() chat_yank_convo() end) -- yank the whole conversation as md
   cmap("gf", function() chat_open() end)
   cmap("gx", function() chat_open_url() end) -- open the URL under the cursor
+  cmap("<C-o>", function() nav_session(-1) end) -- session jumplist: back
+  cmap("<C-i>", function() nav_session(1) end)  -- session jumplist: forward
   cmap("<CR>", function() chat_open() end)
   cmap("<Esc>", function()
     -- a pending approval? Esc cancels it (real: sends {cancelled}; mock: just clears)
@@ -3507,27 +4272,35 @@ ensure_buf = function()
   -- y/n/digit answer keys are bound only while an approval card is up (see
   -- sync_approval_keys) so they don't swallow count prefixes (22k) or yank (y)
 
-  -- relative line numbers in the chat only while the cursor is there (for count
-  -- motions like 12j); otherwise the 2-col alignment gutter
+  -- The chat gutter is ALWAYS a fixed 2-col statuscolumn — the width never changes,
+  -- so chat text stays put (col 5 inner, aligned with the composer input) regardless
+  -- of focus. Within those 2 cols we paint the RELATIVE line number when the chat
+  -- window is focused (for count-motions like 12j) and blanks when it isn't — so the
+  -- numbers appear on focus without ever shifting the text. (The old native
+  -- relativenumber toggle changed numberwidth and shifted the text col 2↔3.)
+  -- relnum for a VISIBLE line ≤ window height, so 2 digits always fit; the cursor
+  -- line (relnum 0) stays blank. g:statusline_winid is the window being drawn.
+  _G.__AgentChatStc = function()
+    -- focused = the chat window is the actually-current window. (Don't use
+    -- g:statusline_winid — it isn't set during 'statuscolumn' eval, only statusline/
+    -- winbar, so the old check always failed and the gutter was permanently blank.)
+    if not (S.chatwin and api.nvim_get_current_win() == S.chatwin) then return "  " end
+    local r = vim.v.relnum
+    if r == 0 then return "  " end
+    if r > 99 then return "99" end
+    return string.format("%2d", r)
+  end
+  local CHAT_STC = "%!v:lua.__AgentChatStc()"
   local chatnum = api.nvim_create_augroup("AgentChatNum", { clear = true })
-  api.nvim_create_autocmd({ "WinEnter", "BufEnter" }, {
-    group = chatnum, buffer = S.chatbuf,
-    callback = function()
-      if S.chatwin and api.nvim_win_is_valid(S.chatwin) then
-        vim.wo[S.chatwin].statuscolumn = ""
-        vim.wo[S.chatwin].number = true
-        vim.wo[S.chatwin].relativenumber = true
-        vim.wo[S.chatwin].numberwidth = 3
-      end
-    end,
-  })
-  api.nvim_create_autocmd({ "WinLeave", "BufLeave" }, {
+  api.nvim_create_autocmd({ "WinEnter", "BufEnter", "WinLeave", "BufLeave" }, {
     group = chatnum, buffer = S.chatbuf,
     callback = function()
       if S.chatwin and api.nvim_win_is_valid(S.chatwin) then
         vim.wo[S.chatwin].number = false
         vim.wo[S.chatwin].relativenumber = false
-        vim.wo[S.chatwin].statuscolumn = "  "
+        -- re-assigning the statuscolumn repaints it, so focus in/out (this autocmd
+        -- fires on the chat window's WinEnter/WinLeave) flips numbers ↔ blanks.
+        vim.wo[S.chatwin].statuscolumn = CHAT_STC
       end
     end,
   })
@@ -3557,11 +4330,19 @@ ensure_buf = function()
   vim.keymap.set({ "n", "i" }, "<C-d>", function() scroll_chat(false) end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set({ "n", "i" }, "<C-Up>", function() scroll_chat(true) end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set({ "n", "i" }, "<C-Down>", function() scroll_chat(false) end, { buffer = S.composerbuf, nowait = true, silent = true })
+  -- <C-t> toggles the roster expand/collapse from the input too (not just the roster
+  -- pane), in insert and normal — so you never have to leave the composer to do it.
+  vim.keymap.set({ "n", "i" }, "<C-t>", toggle_roster_view, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("n", "<CR>", composer_send, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("i", "<C-s>", function() vim.cmd("stopinsert"); composer_send() end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set({ "n", "i" }, "<C-x>", function() clear_attachments() end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set({ "n", "i" }, "<C-f>", function() vim.cmd("stopinsert"); M.attach_file() end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set({ "n", "i" }, "<C-v>", paste_clipboard, { buffer = S.composerbuf, nowait = true, silent = true })
+  -- Ctrl-o/Ctrl-i = session jumplist (back/forward through visited sessions), in both
+  -- modes. Buffer-local so plain nvim keeps the real jumplist. <C-i>≠<Tab> under
+  -- kitty's enhanced keyboard protocol, so this doesn't shadow the composer's <Tab>.
+  vim.keymap.set({ "n", "i" }, "<C-o>", function() nav_session(-1) end, { buffer = S.composerbuf, nowait = true, silent = true })
+  vim.keymap.set({ "n", "i" }, "<C-i>", function() nav_session(1) end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("n", "q", function()
     save_draft()
     if S.win and api.nvim_win_is_valid(S.win) then api.nvim_set_current_win(S.win) end
@@ -3697,7 +4478,22 @@ ensure_buf = function()
     if a then teardown_session(a.id, a.cwd) end
   end)
   map("a", function() local a = S.displayed[S.focus]; if a then send({ type = "abort", session = a.id }); S.stream[a.id] = nil; render_chat(false) end end)
-  map("z", function() S.show_all = not S.show_all; S.focus = 1; render_roster() end)
+  -- d: re-establish (or jump to) the focused session's devenv link — same gesture as
+  -- the dashboard `d`. The chip tells you whether it'll start or just focus.
+  map("d", function()
+    local a = S.displayed[S.focus]
+    if not (a and a.cwd and a.cwd ~= "") then return end
+    local ctx = cockpit_context(a.cwd)
+    if not ctx then return end
+    local home = os.getenv("HOME") or ""
+    fn.jobstart({ home .. "/.config/niri/scripts/cockpit-devenv", ctx }, { detach = true })
+    vim.defer_fn(function() if refresh_devenv then refresh_devenv() end end, 1500)
+  end)
+  map("<C-o>", function() nav_session(-1) end) -- session jumplist: back
+  map("<C-i>", function() nav_session(1) end)  -- session jumplist: forward
+  -- z / <C-t>: expand (every session) ⇄ collapse (attention queue — the default)
+  map("z", toggle_roster_view)
+  map("<C-t>", toggle_roster_view)
   -- / filters the roster by session name (searches every session); esc clears.
   map("/", function()
     local ok, q = pcall(vim.fn.input, { prompt = "filter sessions: ", default = S.roster_filter })
@@ -3743,8 +4539,7 @@ ensure_buf = function()
     callback = function()
       if not S.saved_gcr then S.saved_gcr = vim.o.guicursor end
       vim.o.guicursor = "a:AgentCursorRoster"
-      -- roster is the active pane → light up the selected row's focus edge.
-      S.roster_active = true
+      -- (S.roster_active is computed in render_roster from the current window)
       -- focusing the roster to switch sessions → show them all (collapses on leave).
       -- Gated on S.built: nvim_win_set_buf during M.open fires BufEnter here before
       -- the chat/composer windows exist — render_roster then shrinks the roster to
@@ -3752,7 +4547,7 @@ ensure_buf = function()
       -- "not enough room", aborting the rail half-built. Only render once the rail
       -- is fully constructed (i.e. a real user focus, not construction).
       if S.built then
-        S.show_all = true
+        if not S.roster_pinned_open then S.show_all = true end -- auto-expand (pinned already shows all)
         if render_roster then render_roster() end
       end
     end,
@@ -3761,12 +4556,52 @@ ensure_buf = function()
     group = grp, buffer = S.buf,
     callback = function()
       if S.saved_gcr then vim.o.guicursor = S.saved_gcr end
-      S.roster_active = false
       if S.built then
-        S.show_all = false
-        if render_roster then render_roster() end
+        if not S.roster_pinned_open then S.show_all = false end -- collapse on blur UNLESS pinned open
+        -- deferred: at WinLeave the roster is STILL the current window, so a
+        -- synchronous render would recompute roster_active=true and flash the
+        -- highlight back on. Schedule it so focus has settled to the new window.
+        if render_roster then vim.schedule(render_roster) end
       end
     end,
+  })
+
+  -- Guard the rail panes: only their OWN buffer may live in a rail window. Any picker
+  -- (<leader>ff, <C-f>, …), a raw :edit, or cockpit_open_plan can DISPLAY a file in a
+  -- rail window — sometimes WITHOUT focusing it, so checking only the focused window
+  -- missed it and the file clobbered the pane (that's how files kept landing in the
+  -- roster/composer). Instead sweep EVERY rail window on any buffer/window enter: if a
+  -- pane holds a foreign buffer, restore its own buffer and bounce the intruder to the
+  -- editor. Scheduled so it runs after the open settles; the bounce re-fires this but
+  -- the panes are correct by then, so it's a no-op (no loop).
+  local function bounce(win, cur)
+    local ed = target_editor_win and target_editor_win()
+    if ed and ed ~= win and api.nvim_buf_is_valid(cur) then pcall(api.nvim_win_set_buf, ed, cur) end
+  end
+  local function enforce_rail_panes()
+    if not S.built then return end
+    for _, c in ipairs({ { S.win, S.buf }, { S.composerwin, S.composerbuf } }) do
+      local win, want = c[1], c[2]
+      if win and api.nvim_win_is_valid(win) and want and api.nvim_buf_is_valid(want) then
+        local cur = api.nvim_win_get_buf(win)
+        if cur ~= want then
+          pcall(api.nvim_win_set_buf, win, want)
+          bounce(win, cur)
+        end
+      end
+    end
+    -- chat pane: chatbuf AND changesbuf are both legit; anything else is an intruder
+    if S.chatwin and api.nvim_win_is_valid(S.chatwin) then
+      local cur = api.nvim_win_get_buf(S.chatwin)
+      if cur ~= S.chatbuf and cur ~= S.changesbuf then
+        if api.nvim_buf_is_valid(S.chatbuf) then pcall(api.nvim_win_set_buf, S.chatwin, S.chatbuf) end
+        bounce(S.chatwin, cur)
+      end
+    end
+  end
+  api.nvim_create_autocmd({ "BufWinEnter", "BufEnter", "WinEnter" }, {
+    group = grp,
+    callback = vim.schedule_wrap(enforce_rail_panes),
   })
 
   -- rail-local resize: h widens, l narrows (the rail is on the right, so its
@@ -3797,13 +4632,18 @@ function M.open()
   api.nvim_win_set_width(S.win, math.max(40, math.min(120, math.floor(vim.o.columns * 0.40)))) -- 40% of the window, capped at 120 cols
   vim.wo[S.win].winfixwidth = true
   vim.wo[S.win].number = false; vim.wo[S.win].relativenumber = false; vim.wo[S.win].signcolumn = "no"
+  vim.wo[S.win].foldcolumn = "0"
+  -- 2-col left gutter, IDENTICAL to the chat window's, so the roster box and the
+  -- chat/changes boxes share the same left margin + width (see the W = win-4 below,
+  -- matching rail_width) — every box in the rail lines up.
+  vim.wo[S.win].statuscolumn = "  "
   vim.wo[S.win].wrap = true
   vim.wo[S.win].cursorline = false
   vim.wo[S.win].winhighlight = "WinSeparator:AgentDivider"
-  -- pane separation via a blank gap, not a ─ rule: horizontal box glyphs render
-  -- heavier than the vertical │ in this terminal/font and can't be matched, so
-  -- separate with whitespace and keep only the thin vertical side border.
-  vim.wo[S.win].fillchars = "eob: " -- default ─ divider below the roster
+  -- pane separation via a blank gap, not a ─ rule: blank the horizontal separator
+  -- chars (the line that read as a "divider under the box") + eob, keeping only the
+  -- thin vertical │ side border.
+  vim.wo[S.win].fillchars = "eob: ,horiz: ,horizup: ,horizdown: "
 
   vim.cmd("belowright split")
   S.chatwin = api.nvim_get_current_win()
@@ -3817,7 +4657,7 @@ function M.open()
   vim.wo[S.chatwin].breakindent = true
   vim.wo[S.chatwin].breakindentopt = "list:-1"
   vim.bo[S.chatbuf].formatlistpat = [[^\s*\%(\d\+[.)]\|[-*+•]\)\s\+]]
-  vim.wo[S.chatwin].statuscolumn = "  " -- 2-col left gutter, aligns body with roster + composer
+  vim.wo[S.chatwin].statuscolumn = "%!v:lua.__AgentChatStc()" -- 2-col gutter; relnum on focus, blank off (see __AgentChatStc)
   vim.wo[S.chatwin].fillchars = "eob: "
   -- MDNS scopes the rail's markdown styling to this window AND carries WinSeparator
   -- (see set_hl) — it supersedes winhighlight, so we don't set winhighlight here.
@@ -3830,9 +4670,17 @@ function M.open()
   vim.wo[S.composerwin].winfixheight = true
   vim.wo[S.composerwin].number = false; vim.wo[S.composerwin].relativenumber = false; vim.wo[S.composerwin].signcolumn = "no"
   vim.wo[S.composerwin].foldcolumn = "0"; vim.wo[S.composerwin].wrap = true
+  -- wrap at word boundaries, not mid-word. NO breakindent: the composer text has no
+  -- per-line indent, so the fixed 5-col statuscolumn already lands wrapped rows at the
+  -- input column (col 5) on its own — and breakindent + a statuscolumn can miscompute
+  -- the wrapped-row width and wrap early (an orphaned word on its own row).
+  vim.wo[S.composerwin].linebreak = true; vim.wo[S.composerwin].breakindent = false
   -- prompt marker only on the very first physical row (virtnum==0 keeps it off
   -- wrapped continuation rows of a long first line)
-  vim.wo[S.composerwin].statuscolumn = "%#AgentAccent#%{v:lnum==1&&v:virtnum==0?'› ':'  '}"
+  -- 5-col gutter: the › prompt sits at col 2 (the box-border column) and the input
+  -- starts at col 5 (the box-content column), so the composer lines up with the chat
+  -- text + box content above it, and the input gets left padding.
+  vim.wo[S.composerwin].statuscolumn = "%#AgentAccent#%{v:lnum==1&&v:virtnum==0?'  ›  ':'     '}"
   vim.wo[S.composerwin].fillchars = "eob: " -- blank bottom pad row (no hairline)
   vim.wo[S.composerwin].winhighlight = "Normal:Normal,WinSeparator:AgentDivider"
   render_chips(); composer_placeholder(); render_chips()
@@ -3859,15 +4707,26 @@ function M.open()
 
   -- Track terminal focus so desktop_notify stays silent while you're in nvim (the
   -- roster already shows the change) and only toasts once you've tabbed away.
+  -- SHARED across instances: every cockpit tab is a separate nvim all wired to the
+  -- same agentd, so a per-instance flag let a BACKGROUND tab toast while you sat in
+  -- the focused one. rail_focus_mark writes this nvim's pid to a shared file on
+  -- focus (clears it on blur/exit); desktop_notify suppresses while ANY live rail
+  -- holds it. So "a rail is focused" is global, not per-window.
   S.nvim_focused = true
+  rail_focus_mark(true)
   local fgrp = api.nvim_create_augroup("AgentRailFocus", { clear = true })
   api.nvim_create_autocmd("FocusGained", { group = fgrp, callback = function()
     S.nvim_focused = true
+    rail_focus_mark(true)
     -- a focus redraw can leave the composer mis-sized (win_text_height transient);
     -- recompute once the layout settles.
     vim.defer_fn(function() pcall(composer_resize) end, 50)
   end })
-  api.nvim_create_autocmd("FocusLost", { group = fgrp, callback = function() S.nvim_focused = false end })
+  api.nvim_create_autocmd("FocusLost", { group = fgrp, callback = function()
+    S.nvim_focused = false
+    rail_focus_mark(false)
+  end })
+  api.nvim_create_autocmd("VimLeavePre", { group = fgrp, callback = function() rail_focus_mark(false) end })
 
   connect(function() send({ type = "list_sources" }); render() end)
   vim.defer_fn(function() if S.win and api.nvim_win_is_valid(S.win) then refresh_plans(); render_roster() end end, 300)
@@ -4033,17 +4892,31 @@ function M.setup(opts)
       end
     end,
   })
-  vim.keymap.set("n", "<C-l>", function()
+  -- Rail-aware window motion: if a directional move lands you IN the rail from the
+  -- editor, jump to the pane you last used (last_rail_win) instead of nvim's
+  -- positional guess — so returning from the editor keeps your place, regardless of
+  -- which direction the rail sits or which motion you use. Bound on both <C-h>/<C-l>
+  -- and the raw <C-w>h/<C-w>l so mouse-free navigation of any style is covered.
+  -- Intentional jumps (R → roster, M.open) don't go through here, so they're honored.
+  local function wincmd_rail_aware(dir)
     local rail = rail_set()
-    if rail[api.nvim_get_current_win()] then return end -- already in the rail
-    vim.cmd("wincmd l")
-    -- Only redirect when <C-l> actually entered the rail; other splits keep
-    -- native window-right.
-    if rail[api.nvim_get_current_win()]
-      and S.last_rail_win and rail[S.last_rail_win] then
-      api.nvim_set_current_win(S.last_rail_win)
+    local was_rail = rail[api.nvim_get_current_win()]
+    -- Capture the remembered pane BEFORE the move: wincmd fires WinEnter on the
+    -- pane it lands on (positionally, usually the roster), whose recorder would
+    -- overwrite S.last_rail_win to that pane before we get to read it.
+    local remembered = S.last_rail_win
+    vim.cmd("wincmd " .. dir)
+    if not was_rail and rail[api.nvim_get_current_win()]
+      and remembered and rail[remembered] then
+      api.nvim_set_current_win(remembered)
     end
-  end, { desc = "Window right (rail-aware)" })
+  end
+  for _, d in ipairs({ "h", "l" }) do
+    vim.keymap.set("n", "<C-" .. d .. ">", function() wincmd_rail_aware(d) end,
+      { desc = "Window " .. d .. " (rail-aware)" })
+    vim.keymap.set("n", "<C-w>" .. d, function() wincmd_rail_aware(d) end,
+      { desc = "Window " .. d .. " (rail-aware)" })
+  end
   vim.keymap.set("n", "<leader>a", function() M.toggle() end, { desc = "Toggle agent rail" })
   vim.keymap.set("n", "<leader>A", function() M.send_message() end, { desc = "Quick-message the active agent" })
   vim.keymap.set("x", "<leader>as", ":<C-u>lua require('agent-nvim').send_range()<CR>", { silent = true, desc = "Send selection to agent" })

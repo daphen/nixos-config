@@ -25,6 +25,18 @@ base=$(cat "$dir/.devenv/state/wt-base-port" 2>/dev/null || true)
 web=$base
 api=$((base + 2))
 
+# The slice may be torn down while its wt-base-port file lingers — forwarding the
+# fixed ports to that dead base is exactly what left :3000 hanging on a corpse. Only
+# map a slice that's actually LISTENing; if it isn't, the slice is down, so clear any
+# stale forwarders (don't leave :3000/:8020 pointing into the void) and bail — a
+# stopped slice owns nothing.
+if ! ss -ltn "sport = :$web" 2>/dev/null | grep -q LISTEN; then
+    pkill -f "wt-portforward\.py (3000|8020) " 2>/dev/null
+    pkill -f "pf8020\.py (3000|8020) " 2>/dev/null
+    rm -f "$STATE" 2>/dev/null
+    exit 0
+fi
+
 [ "$(cat "$STATE" 2>/dev/null || true)" = "$web" ] && exit 0
 
 # Also matches the pre-dotfiles /tmp/pf8020.py forwarders: leaving one alive

@@ -30,11 +30,14 @@ prompt="$*"
 DIR=$(dirname "$(readlink -f "$0")")
 SCRIPTS="$HOME/.config/niri/scripts"
 
-# 1) context (worktree + devenv + nvim tabs + registration), focus stays put.
-"$SCRIPTS/cockpit-add" --no-switch "$name"
-
-# 2) seeded roster agent in that worktree (cockpit-add already made it, so no --create;
-#    keep --create as a harmless safety net in case the context hook didn't).
+# 1) rail agent FIRST — the essential half. --create makes the worktree if missing.
+#    This must not depend on step 2: a hiccup in cockpit-add (a down window, a tab
+#    clash) previously aborted the whole thing under `set -e` and no session appeared.
 wt-spawn "$name" ${prompt:+"$prompt"} --create $oneshot
 
-echo "cockpit-spawn: $name — context + rail agent up"
+# 2) cockpit context (devenv + nvim tabs) for that worktree — BEST-EFFORT, so a tab
+#    problem never costs you the agent. Focus stays put (--no-switch).
+"$SCRIPTS/cockpit-add" --no-switch "$name" \
+  || echo "cockpit-spawn: context/tabs step had issues — the rail agent is still up" >&2
+
+echo "cockpit-spawn: $name — rail agent up (context tabs attempted)"

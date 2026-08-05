@@ -18,6 +18,9 @@ local c = {
   bg_selection = "#2E2E2E",
   bg_surface = "#1B1B1B",
   bg_overlay = "#292826",
+  bg_prompt = "#323A40",
+  bg_info = "#45474B",
+  bg_success = "#313734",
   -- elevation ladder (derived by theme-processor: fg over surface1)
   bg_surface1 = "#1B1B1B",
   bg_surface2 = "#2E2E2E",

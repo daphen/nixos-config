@@ -8,7 +8,8 @@ never stealing focus:
   1. fetch the PR head and check it out on a `review/pr-<num>` branch in a
      worktree (the shape the review-pr pi skill auto-detects from the branch).
   2. start an agentd session for that worktree in the lovable-scope rail,
-     seeded with "review this PR" — it appears in the rail roster to open when
+     seeded with `/review-pr <num>` — the skill runs its full review flow and
+     writes the durable artifact. It appears in the rail roster to open when
      you're ready.
   --devenv also boots `devenv wt` for the worktree as a cockpit devenv tab, for
   PRs you want to actually run rather than just read.
@@ -192,7 +193,10 @@ def main() -> int:
     notify(f"preparing PR #{num}…")
     slug = slugify(gh_pr_title(num))
     wt = ensure_worktree(num, slug)
-    start_rail_session(f"review-pr-{num}", wt, "review this PR")
+    # Seed the /review-pr skill pointed at this PR (not a bare "review this PR"): the
+    # skill runs its full review flow + writes the durable review artifact. The number
+    # makes it unambiguous even though the review/pr-<n> worktree would auto-detect it.
+    start_rail_session(f"review-pr-{num}", wt, f"/review-pr {num}")
     if a.devenv:
         boot_devenv(num, wt)
     notify(f"PR #{num} review is in the rail roster"

@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# cockpit-devenv — the session↔devenv link's control surface. The link itself is
+# ambient (a session's cwd → its worktree → that worktree's devenv slice); this
+# script reports the link's health, re-establishes it on demand, and lists slices
+# that outlived their session.
+#
+#   cockpit-devenv <ctx>        re-establish the link: ensure the devenv tab exists,
+#                               start the slice if it's down, route the fixed ports
+#                               here, focus the tab. Idempotent — safe however the
+#                               link broke (never started, crashed, or misrouted).
+#   cockpit-devenv status <ctx> print running | stopped | broken (for the rail).
+#   cockpit-devenv orphans      print worktree dirs that have a RUNNING slice, one
+#                               per line (the rail cross-references its sessions to
+#                               decide which are orphaned — this script can't see
+#                               sessions).
+#
+# A "slice" is defined exactly as slice-down's `belongs`: a process-compose cwd'd
+# under the worktree, or an executable under <dir>/.devenv/ — so status, teardown,
+# and re-establish never disagree about what "the slice" is.
+set -uo pipefail
+
+CONFIG="${COCKPIT_CONFIG:-$HOME/.config/cockpit/config}"
+[ -r "$CONFIG" ] || { echo "cockpit-devenv: no config at $CONFIG" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$CONFIG" # cockpit_context_dir, cockpit_window_cmd, COCKPIT_STATE_DIR
+COCKPIT_STATE_DIR="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}"
+SCRIPTS="$HOME/.config/niri/scripts"
+devsock="${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-devenv"
+STATE="$COCKPIT_STATE_DIR/portmap"
+
+# Is a devenv slice running for <dir>? Mirrors slice-down's belongs() so the two
+# always agree on what counts as the slice.
+slice_running() { # $1 = dir
+    local dir pid e exe comm cwd
+    dir=$(readlink -f "$1" 2>/dev/null) || return 1
+    for e in /proc/[0-9]*; do
+        pid=${e#/proc/}
+        exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || exe=""
+        case "$exe" in "$dir"/.devenv/*) return 0 ;; esac
+        comm=$(cat "/proc/$pid/comm" 2>/dev/null) || comm=""
+        if [ "$comm" = "process-compose" ]; then
+            cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || cwd=""
+            case "$cwd" in "$dir" | "$dir"/*) return 0 ;; esac
+        fi
+    done
+    return 1
+}
+
+has_tab() { # $1 = ctx
+    [ -S "$devsock" ] || return 1
+    kitty @ --to "unix:$devsock" ls 2>/dev/null \
+        | jq -e --arg t "$1" 'any(.[].tabs[]; .title == $t)' >/dev/null 2>&1
+}
+
+cmd_status() { # $1 = ctx
+    local ctx=$1 dir base
+    dir=$(cockpit_context_dir "$ctx")
+    if slice_running "$dir"; then echo running; return 0; fi
+    # broken = this worktree owns the fixed ports (portmap points at its base) but the
+    # slice is down — i.e. :3000/:8020 route to a corpse. main has no wt-base-port, so
+    # it's only ever running|stopped.
+    base=$(cat "$dir/.devenv/state/wt-base-port" 2>/dev/null || true)
+    if [ -n "$base" ] && [ "$(cat "$STATE" 2>/dev/null || true)" = "$base" ]; then
+        echo broken
+        return 0
+    fi
+    echo stopped
+}
+
+cmd_orphans() {
+    local pid e comm cwd
+    for e in /proc/[0-9]*; do
+        pid=${e#/proc/}
+        comm=$(cat "/proc/$pid/comm" 2>/dev/null) || continue
+        [ "$comm" = process-compose ] || continue
+        cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue
+        case "$cwd" in "$HOME"/work/lovable | "$HOME"/work/lovable.daphen-*) echo "$cwd" ;; esac
+    done | sort -u
+}
+
+# Route the fixed ports to the slice once it's actually LISTENing (a freshly-started
+# slice takes a while to bind). Backgrounded so `d` returns immediately. main has no
+# wt-base-port, so wt-portmap no-ops for it and its own `devenv up` binds :3000.
+route_when_ready() { # $1 = dir
+    local dir=$1
+    (
+        for _ in $(seq 120); do
+            local base
+            base=$(cat "$dir/.devenv/state/wt-base-port" 2>/dev/null || true)
+            if [[ "$base" =~ ^[0-9]+$ ]] && ss -ltn "sport = :$base" 2>/dev/null | grep -q LISTEN; then
+                "$SCRIPTS/wt-portmap" "$dir"
+                break
+            fi
+            sleep 1
+        done
+    ) >/dev/null 2>&1 &
+}
+
+cmd_reestablish() { # $1 = ctx
+    local ctx=$1 dir wcmd
+    dir=$(cockpit_context_dir "$ctx")
+    [ -d "$dir" ] || { echo "cockpit-devenv: no dir for '$ctx' ($dir)" >&2; exit 1; }
+    [ -S "$devsock" ] || { echo "cockpit-devenv: devenv window not open (run cockpit-open)" >&2; exit 1; }
+
+    if ! has_tab "$ctx"; then
+        # No tab → create a lone linked devenv tab (title = ctx). NOT a full context:
+        # we don't register it or spawn nvim/agent tabs — cockpit-add does that.
+        # cockpit_window_cmd bakes the right command (main→deps, worktree→wt) and the
+        # supervisor auto-runs it, so the slice starts on launch.
+        wcmd=$(cockpit_window_cmd devenv "$ctx" "$dir")
+        [ -n "$wcmd" ] && kitty @ --to "unix:$devsock" launch \
+            --type=tab --tab-title "$ctx" --cwd "$dir" --keep-focus \
+            -- bash -c "$wcmd" >/dev/null 2>&1
+    elif ! slice_running "$dir"; then
+        # Tab exists but idle at the supervisor menu → empty enter restarts the
+        # current command (see cockpit/config's supervisor loop).
+        kitty @ --to "unix:$devsock" send-text --match-tab "title:^${ctx}\$" $'\r' 2>/dev/null || true
+    fi
+
+    route_when_ready "$dir"
+    # Bring the link into view: focus the devenv window + its ctx tab.
+    "$SCRIPTS/cockpit-focus" devenv >/dev/null 2>&1 || true
+    [ -S "$devsock" ] && kitty @ --to "unix:$devsock" focus-tab --match "title:^${ctx}\$" >/dev/null 2>&1 || true
+}
+
+sub=${1:?usage: cockpit-devenv <ctx> | status <ctx> | orphans}
+case "$sub" in
+    status)  cmd_status "${2:?usage: cockpit-devenv status <ctx>}" ;;
+    orphans) cmd_orphans ;;
+    *)       cmd_reestablish "$sub" ;;
+esac

@@ -88,6 +88,9 @@ in {
     ".local/bin/wt-agents".source = link "${dotfiles}/bin/.local/bin/wt-agents";
     ".local/bin/wt-read".source = link "${dotfiles}/bin/.local/bin/wt-read";
     ".local/bin/wt-spawn".source = link "${dotfiles}/bin/.local/bin/wt-spawn";
+    # cockpit-spawn: the full ticket kickoff (cockpit context + devenv + nvim rail tab
+    # + seeded roster agent) — callable by any agent, and by the rail's Enter-on-ticket.
+    ".local/bin/cockpit-spawn".source = link "${dotfiles}/bin/.local/bin/cockpit-spawn";
     ".local/bin/pi-to-vault".source = link "${dotfiles}/bin/.local/bin/pi-to-vault";
     ".local/bin/plan-ticket-rail".source = link "${dotfiles}/bin/.local/bin/plan-ticket-rail";
     ".local/bin/wt-plan".source = link "${dotfiles}/bin/.local/bin/wt-plan";

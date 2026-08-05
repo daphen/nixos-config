@@ -66,17 +66,17 @@ if [ "$1" = "--past" ]; then
         Slack|slack|slk) exec "$DIR/niri-jump-or-exec" "title:slqs" "$DIR/launch-slack-client" ;;
         mlqs)        exec "$DIR/niri-jump-or-exec" "title:mlqs" "$DIR/launch-mail-client" ;;
         agent-rail)
-            # In-nvim rail notification: summary is "agent · <name>" where <name>
-            # is the session short id (e.g. every-2585). Resolve it to the matching
-            # cockpit context (the tab title may be longer, e.g. every-2585-move-ds-…),
-            # switch the cockpit to it (the rail follows the active context on its
-            # own), and focus the nvim window so you land in that session's rail.
+            # In-nvim rail notification: summary is "agent · <name>". Jump by NAME,
+            # not by cockpit tab: drop the name in cockpit/agent-jump and the rail
+            # selects that session in whatever tab is active (its roster is
+            # cross-context), which reaches sessions that have NO cockpit tab too —
+            # wt-spawned agents and sub-agents. For a session that DOES own a context,
+            # the rail's own sync then switches to it. Atomic write (temp + rename).
             name=$(printf '%s' "$summary" | sed -n 's/^agent · //p')
-            sock=${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-nvim
-            if [ -n "$name" ] && [ -S "$sock" ]; then
-                ctx=$(kitty @ --to "unix:$sock" ls 2>/dev/null \
-                    | jq -r --arg n "$name" '[.[].tabs[].title | select(. == $n or startswith($n + "-"))][0] // empty')
-                [ -n "$ctx" ] && "$DIR/cockpit-switch" "$ctx" >/dev/null 2>&1 || true
+            if [ -n "$name" ]; then
+                jf="$HOME/.local/state/cockpit/agent-jump"
+                mkdir -p "$(dirname "$jf")"
+                printf '%s\n' "$name" > "$jf.tmp" && mv "$jf.tmp" "$jf"
             fi
             "$DIR/cockpit-focus" nvim >/dev/null 2>&1 || true
             exit 0 ;;
@@ -120,17 +120,17 @@ case "$app" in
         exec "$DIR/niri-jump-or-exec" "title:mlqs" "$DIR/launch-mail-client"
         ;;
     agent-rail)
-        # In-nvim rail toast ("agent · <name>"). The default *) branch can't find it
-        # (the rail is a kitty TAB, not its own app_id), which is why Super+i did
-        # nothing. Switch the cockpit to that session's context + focus nvim, so you
-        # land in its rail — mirroring the --past branch above.
+        # In-nvim rail toast ("agent · <name>"). Jump by NAME via cockpit/agent-jump
+        # (see the --past branch): the rail selects the session in the active tab —
+        # cross-context, so it reaches tab-less wt-spawned agents + sub-agents, and
+        # switches context on its own for sessions that do own one. The default *)
+        # branch can't help (the rail is a kitty TAB, not its own app_id).
         summary=$(printf '%s' "$data" | jq -r '.summary // empty')
         name=$(printf '%s' "$summary" | sed -n 's/^agent · //p')
-        sock=${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-nvim
-        if [ -n "$name" ] && [ -S "$sock" ]; then
-            ctx=$(kitty @ --to "unix:$sock" ls 2>/dev/null \
-                | jq -r --arg n "$name" '[.[].tabs[].title | select(. == $n or startswith($n + "-"))][0] // empty')
-            [ -n "$ctx" ] && "$DIR/cockpit-switch" "$ctx" >/dev/null 2>&1 || true
+        if [ -n "$name" ]; then
+            jf="$HOME/.local/state/cockpit/agent-jump"
+            mkdir -p "$(dirname "$jf")"
+            printf '%s\n' "$name" > "$jf.tmp" && mv "$jf.tmp" "$jf"
         fi
         "$DIR/cockpit-focus" nvim >/dev/null 2>&1 || true
         qs ipc call notifications dismiss "$id" >/dev/null 2>&1 || true

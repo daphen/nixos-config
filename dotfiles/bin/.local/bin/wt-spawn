@@ -97,6 +97,9 @@ def main() -> int:
     ap.add_argument("--create", action="store_true", help="create the worktree if missing")
     ap.add_argument("--scope", help="agentd scope (default: inferred from the dir)")
     ap.add_argument("--name", help="session name (default: the dir basename)")
+    ap.add_argument("--oneshot", action="store_true",
+                    help="ephemeral sub-agent: run the seed once, then exit + leave the "
+                         "roster (phrase the prompt to report a summary back to the parent first)")
     a = ap.parse_args()
 
     d = resolve_dir(a.target, a.create)
@@ -104,20 +107,28 @@ def main() -> int:
     name = a.name or d.name  # default matches the rail's own `.` (basename) convention
     prompt = " ".join(a.prompt).strip()
 
+    # Send the prompt INSIDE the spawn (as a seed): the daemon delivers it the moment
+    # pi's stdin is ready, so it can't be lost racing a cold start — which for a
+    # one-shot would mean it never runs its turn, never finishes, never reaps.
+    spawn = {"type": "spawn", "session": name, "cwd": str(d)}
+    if prompt:
+        spawn["prompt"] = prompt
+    if a.oneshot:
+        spawn["oneshot"] = True
+
     c = agentd_connect(scope)
     try:
-        c.sendall((json.dumps({"type": "spawn", "session": name, "cwd": str(d)}) + "\n").encode())
-        if prompt:
-            c.sendall((json.dumps({"type": "prompt", "session": name, "message": prompt}) + "\n").encode())
+        c.sendall((json.dumps(spawn) + "\n").encode())
         try:
             c.shutdown(socket.SHUT_WR)
         except OSError:
             pass
-        time.sleep(0.5)  # let the daemon spawn + flush the prompt to pi's stdin
+        time.sleep(0.5)  # let the daemon spawn + flush the seed to pi's stdin
     finally:
         c.close()
 
-    print(f"spawned '{name}' in the {scope} rail (cwd {d})" + (" + seeded prompt" if prompt else ""))
+    print(f"spawned '{name}' in the {scope} rail (cwd {d})"
+          + (" + seeded prompt" if prompt else "") + (" [one-shot]" if a.oneshot else ""))
     return 0
 
 

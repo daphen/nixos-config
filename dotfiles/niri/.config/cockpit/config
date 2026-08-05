@@ -148,9 +148,20 @@ cockpit_window_cmd() {
                 # so no api/watcher outlives it (the orphan-api leak). `fish` (not exec)
                 # keeps this bash alive to run the trap. $dir is baked in so slice-down
                 # targets THIS worktree only. main's shared deps skip all this.
-                cmd="trap 'slice-down \"$dir\"' EXIT HUP TERM; ${seed}while true; do direnv exec . devenv wt; rc=\$?; slice-down \"$dir\"; echo; echo \"[cockpit] devenv wt exited (\$rc) — enter to restart, ctrl-c for a shell\"; read -r || break; done; fish"
+                # trap ':' INT so ctrl-c kills only the foreground child (devenv wt),
+                # not this supervising bash — otherwise SIGINT to the process group
+                # takes the loop down too, the tab's command exits, and kitty closes
+                # the tab (swapping the window to the deps tab). Now ctrl-c stops wt
+                # and lands you at the prompt (tab intact); `s` gives a shell in the
+                # worktree, or type a command to relaunch (e.g. a different profile).
+                cmd="trap 'slice-down \"$dir\"' EXIT HUP TERM; trap ':' INT; ${seed}next='devenv wt'; while true; do direnv exec . \$next; slice-down \"$dir\"; echo; echo \"[cockpit] \$next stopped — enter: restart · s: shell here · or type a command (e.g. devenv --profile X up)\"; IFS= read -r line || break; case \"\$line\" in '') next='devenv wt' ;; s|shell) break ;; *) next=\"\$line\" ;; esac; done; fish"
             else
-                cmd="while true; do direnv exec . devenv deps; echo; echo \"[cockpit] devenv deps exited (\$?) — enter to restart, ctrl-c for a shell\"; read -r || break; done; exec fish"
+                # Parity with the wt branch: a `next` command you can override at
+                # the menu, so `devenv up` on main is one line (ctrl-c deps → type
+                # `devenv up`) instead of forcing the s→shell dance. Empty enter
+                # restarts the CURRENT command (so a typed `devenv up` sticks across
+                # restarts); `s` drops to a shell.
+                cmd="trap ':' INT; next='devenv deps'; while true; do direnv exec . \$next; echo; echo \"[cockpit] \$next stopped — enter: restart · s: shell here · or type a command (e.g. devenv up)\"; IFS= read -r line || break; case \"\$line\" in '') : ;; s|shell) break ;; *) next=\"\$line\" ;; esac; done; exec fish"
             fi
             printf '%s' "$cmd" ;;
         *)      printf 'exec fish' ;;

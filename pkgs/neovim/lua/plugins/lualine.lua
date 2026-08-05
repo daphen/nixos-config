@@ -131,6 +131,10 @@ return {
 			local cur = vim.api.nvim_get_current_buf()
 			local ebuf, name = cur, vim.api.nvim_buf_get_name(cur)
 			if name == "" or name:match("agent%-") then
+				-- focus is on a rail pane / the dashboard scratch — hunt for a REAL file
+				-- open in the tab; reset first so if none is found we show NOTHING (not
+				-- the composer's own agent-composer path, which resolves to the worktree).
+				ebuf, name = nil, ""
 				for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
 					local b = vim.api.nvim_win_get_buf(w)
 					local n = vim.api.nvim_buf_get_name(b)
@@ -140,7 +144,7 @@ return {
 					end
 				end
 			end
-			if name == "" then return "" end
+			if not ebuf or name == "" then return "" end -- dashboard/rail, no file open → blank
 			return vim.fn.fnamemodify(name, ":.") .. (vim.bo[ebuf].modified and " ●" or "")
 		end
 
@@ -149,7 +153,8 @@ return {
 		local function get_theme()
 			local pal = vim.g.theme_palette or {}
 			local dark = vim.o.background == "dark"
-			local surface = pal.bg_surface or (dark and "#24242b" or "#E8EAED")
+			-- statusline background = the theme's surface2 elevation.
+			local surface = pal.bg_surface2 or pal.bg_surface or (dark and "#2E2E2E" or "#E8EAED")
 			local fg = dark and "#EDEDED" or "#2D4A3D"
 			local s = { fg = fg, bg = surface }
 			return { normal = { a = s, b = s, c = s, x = s, y = s, z = { fg = "#ED333B", bg = surface } } }

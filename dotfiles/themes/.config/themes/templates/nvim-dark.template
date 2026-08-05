@@ -18,6 +18,9 @@ local c = {
   bg_selection = "{{dark.background.selection}}",
   bg_surface = "{{dark.background.surface}}",
   bg_overlay = "{{dark.background.overlay}}",
+  bg_prompt = "{{dark.background.prompt}}",
+  bg_info = "{{dark.background.info}}",
+  bg_success = "{{dark.background.success}}",
   -- elevation ladder (derived by theme-processor: fg over surface1)
   bg_surface1 = "{{dark.background.surface1}}",
   bg_surface2 = "{{dark.background.surface2}}",

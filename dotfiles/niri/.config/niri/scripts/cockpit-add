@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# cockpit-add <context> — create the context (config hook) and open one tab per
-# cockpit window running that window's configured command, then switch to it.
-# Idempotent: a window that already has a tab titled <context> is left alone.
+# cockpit-add [--no-switch] <context> — create the context (config hook) and open
+# one tab per cockpit window running that window's configured command, then switch
+# to it. --no-switch registers + opens the tabs but leaves the active context (and
+# focus) where it is — for the orchestrator standing up a ticket agent in the
+# background without leaving its own view. Idempotent: a window that already has a
+# tab titled <context> is left alone.
 set -euo pipefail
 
 CONFIG="${COCKPIT_CONFIG:-$HOME/.config/cockpit/config}"
@@ -13,7 +16,9 @@ COCKPIT_STATE_DIR="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}"
 
 win_sock() { printf '%s/kitty-cockpit-%s' "${XDG_RUNTIME_DIR:-/tmp}" "$1"; }
 
-name=${1:?usage: cockpit-add <context>}
+switch=1
+if [ "${1:-}" = "--no-switch" ]; then switch=0; shift; fi
+name=${1:?usage: cockpit-add [--no-switch] <context>}
 
 if declare -F cockpit_context_create >/dev/null; then
     cockpit_context_create "$name"
@@ -23,6 +28,12 @@ dir=$(cockpit_context_dir "$name")
 
 for w in "${COCKPIT_WINDOWS[@]}"; do
     sock=$(win_sock "$w")
+    # Compute the window's command FIRST: a window may opt out for this context by
+    # printing nothing (e.g. the agent leg for a local worktree, where the in-nvim
+    # rail IS the agent). An opted-out window needs no tab, so a down socket there is
+    # harmless — skip it. Only a window that actually wants a tab requires its socket.
+    cmd=$(cockpit_window_cmd "$w" "$name" "$dir")
+    [ -z "$cmd" ] && continue
     if [ ! -S "$sock" ]; then
         echo "cockpit: window '$w' is not open — run cockpit-open first" >&2
         exit 1
@@ -31,10 +42,6 @@ for w in "${COCKPIT_WINDOWS[@]}"; do
         | jq -e --arg t "$name" 'any(.[].tabs[]; .title == $t)' >/dev/null; then
         continue
     fi
-    cmd=$(cockpit_window_cmd "$w" "$name" "$dir")
-    # A window may opt out for a given context by printing nothing (e.g. the agent
-    # leg for a local worktree, where the in-nvim rail is the agent) — skip its tab.
-    [ -z "$cmd" ] && continue
     kitty @ --to "unix:$sock" launch \
         --type=tab --tab-title "$name" --cwd "$dir" --keep-focus \
         -- bash -c "$cmd" >/dev/null
@@ -48,4 +55,5 @@ mkdir -p "$COCKPIT_STATE_DIR"
 grep -qxF "$name" "$COCKPIT_STATE_DIR/contexts" 2>/dev/null \
     || printf '%s\n' "$name" >> "$COCKPIT_STATE_DIR/contexts"
 
+[ "$switch" = 1 ] || exit 0
 exec "$(dirname "$(readlink -f "$0")")/cockpit-switch" "$name"

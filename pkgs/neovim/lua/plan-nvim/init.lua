@@ -1253,7 +1253,12 @@ function M.setup()
 		callback = function()
 			vim.defer_fn(function()
 				M.bind() -- silently bind so the statusline + <C-p> work in any worktree nvim
-				if want_auto_open() then M.autostart() end
+				-- Only auto-open the plan on a bare launch (no file args). In the cockpit
+				-- tab PLAN_NVIM_OPEN/AGENT_SCOPE are EXPORTED, so `nvim <somefile>` there
+				-- would otherwise fire autostart and replace your file with the lovable
+				-- plan — opening a note yanked you "into the lovable repo". Honor explicit
+				-- file args: bind silently, never clobber the buffer the user asked for.
+				if vim.fn.argc() == 0 and want_auto_open() then M.autostart() end
 			end, 150)
 		end,
 	})
