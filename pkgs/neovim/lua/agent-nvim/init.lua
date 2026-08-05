@@ -64,6 +64,7 @@ local ICON_FALLBACK = {
   image = "🖼",
   check = "✓",
   xmark = "✗",
+  file_change = "○",
 }
 local ICON_NAMES = {
   plan = "tasks-2",
@@ -81,6 +82,7 @@ local ICON_NAMES = {
   image = "image",
   check = "check",
   xmark = "xmark",
+  file_change = "pen-3",
 }
 local ICON = vim.deepcopy(ICON_FALLBACK)
 local qsicons = {}
@@ -3963,7 +3965,7 @@ render_changes = function()
         else
           local rows = {}
           for _, c in ipairs(changes) do
-            rows[#rows + 1] = { dot = "○", grp = "AgentIdle", path = c.path, add = c.add, del = c.del, hunks = c.hunks }
+            rows[#rows + 1] = { dot = ICON.file_change, grp = "AgentIdle", path = c.path, add = c.add, del = c.del, hunks = c.hunks }
           end
           box_files(add, rows)
         end
