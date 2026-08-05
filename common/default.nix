@@ -259,6 +259,7 @@
 
   # Fonts
   fonts.packages = with pkgs; [
+    (callPackage ../pkgs/qsicons { })
     geist-font
     inter
     noto-fonts

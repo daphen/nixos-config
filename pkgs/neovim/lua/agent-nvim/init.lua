@@ -48,28 +48,60 @@ local OPEN = "▾"
 local LCAP = ""      -- rounded pill left cap
 local RCAP = ""      -- rounded pill right cap
 
--- Nerd Font section icons (GeistMono Nerd Font — see kitty.conf). Codepoints, not
--- literal glyphs, so they're self-documenting + trivial to swap if one renders odd.
--- fn.nr2char is safe at load. If any glyph looks wrong in your font, change the hex.
-local ICON = {
-  -- Material Design set (crisper than the old FontAwesome-4 glyphs they replaced).
-  plan    = fn.nr2char(0xf0756), -- nf-md-format_list_checks
-  files   = fn.nr2char(0xf09ee), -- nf-md-file_document_outline
-  changes = fn.nr2char(0xf062c), -- nf-md-source_branch
-  mcp     = fn.nr2char(0xf0493), -- nf-md-cog
-  warn    = fn.nr2char(0xf002a), -- nf-md-alert_outline
-  session = fn.nr2char(0xf140b), -- nf-md-lightning_bolt
-  cycle   = fn.nr2char(0xf0b67), -- nf-md-calendar_outline
-  ticket  = fn.nr2char(0xf04fc), -- nf-md-tag_outline
-  -- roster status chip: nf-md-square_rounded — the rounded-square swatch volt uses
-  -- (0xf0764 was square-medium, which renders SHARP). Confirmed rounded in GeistMono.
-  swatch  = fn.nr2char(0xf14fb),
-  -- devenv link health: power-plug (running) / plug-off (stopped) / alert (broken).
-  -- The plugged-vs-unplugged shape signals up/down before colour even reads.
-  dev_up     = fn.nr2char(0xf06a5), -- nf-md-power_plug
-  dev_down   = fn.nr2char(0xf06a6), -- nf-md-power_plug_off
-  dev_broken = fn.nr2char(0xf0026), -- nf-md-alert
+local ICON_FALLBACK = {
+  plan = fn.nr2char(0xf0756),
+  files = fn.nr2char(0xf09ee),
+  changes = fn.nr2char(0xf062c),
+  mcp = fn.nr2char(0xf0493),
+  warn = fn.nr2char(0xf002a),
+  session = fn.nr2char(0xf140b),
+  cycle = fn.nr2char(0xf0b67),
+  ticket = fn.nr2char(0xf04fc),
+  swatch = fn.nr2char(0xf14fb),
+  dev_up = fn.nr2char(0xf06a5),
+  dev_down = fn.nr2char(0xf06a6),
+  dev_broken = fn.nr2char(0xf0026),
 }
+local ICON_NAMES = {
+  plan = "tasks-2",
+  files = "file-content",
+  changes = "nodes",
+  mcp = "gear-2",
+  warn = "triangle-warning",
+  session = "bolt-lightning",
+  cycle = "refresh-2",
+  ticket = "ticket-4",
+  dev_up = "plug-2",
+  dev_down = "plug-2-outline",
+  dev_broken = "triangle-warning",
+}
+local ICON = vim.deepcopy(ICON_FALLBACK)
+local qsicons = {}
+
+local function icon(name, fallback)
+  local codepoint = qsicons[name]
+  return codepoint and fn.nr2char(codepoint) or fallback or ""
+end
+
+local function load_qsicons()
+  local map_path = vim.env.QSICONS_MAP
+  if not map_path or map_path == "" then
+    local match = fn.system({ "fc-match", "-f", "%{family}\n%{file}\n", "QsIcons" })
+    local lines = vim.split(match, "\n", { plain = true, trimempty = true })
+    if lines[1] == "QsIcons" and lines[2] then
+      map_path = fn.fnamemodify(lines[2], ":h") .. "/qsicons-map.json"
+    end
+  end
+  if not map_path or fn.filereadable(map_path) ~= 1 then return end
+  local ok, decoded = pcall(vim.json.decode, table.concat(fn.readfile(map_path), "\n"))
+  if not ok or type(decoded) ~= "table" then return end
+  qsicons = decoded
+  for key, name in pairs(ICON_NAMES) do
+    ICON[key] = icon(name, ICON_FALLBACK[key])
+  end
+end
+
+M.icon = icon
 
 -- A volt-style progress bar: `width` vertical bars, the first `done/total` share in
 -- `fillhl`, the rest in `emptyhl`. Returns (text, segs) where segs are byte columns
@@ -4806,6 +4838,7 @@ end
 --------------------------------------------------------------------------------
 function M.setup(opts)
   opts = opts or {}
+  load_qsicons()
   if opts.scope then scope = opts.scope end
   if opts.scopes then ROOTS = opts.scopes end
   S.ns = api.nvim_create_namespace("agent_nvim")
