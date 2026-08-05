@@ -3889,18 +3889,11 @@ render_changes = function()
           local ms, me = text:find("%-%d+", (pe or 0) + 1)
           if ms then segs[#segs + 1] = { ms - 1, me, "AgentErr" } end
         end
+        -- File row only (navigable to its first hunk). Per-hunk ↳ breakdown is
+        -- intentionally NOT listed here — the file view stays a compact files+counts
+        -- summary; hunk-level detail belongs in the chat during real-time editing.
         local first = r.hunks and r.hunks[1]
         add(text, segs, r.path, first and first.l1)
-        for _, h in ipairs(r.hunks or {}) do
-          local range = h.l1 == h.l2 and ("L" .. h.l1) or ("L" .. h.l1 .. "-" .. h.l2)
-          local detail = "  ↳ " .. range .. string.format("  +%d -%d", h.add, h.del)
-          local hsegs = { { 0, #detail, "AgentMuted" }, { #"  ↳ ", #"  ↳ " + #range, "AgentHunkRange" } }
-          local ps, pe = detail:find("%+%d+")
-          if ps then hsegs[#hsegs + 1] = { ps - 1, pe, "AgentStream" } end
-          local ms, me = detail:find("%-%d+", (pe or 0) + 1)
-          if ms then hsegs[#hsegs + 1] = { ms - 1, me, "AgentErr" } end
-          add(detail, hsegs, r.path, h.l1)
-        end
       end
     end
 
