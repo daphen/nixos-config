@@ -61,6 +61,9 @@ local ICON_FALLBACK = {
   dev_up = fn.nr2char(0xf06a5),
   dev_down = fn.nr2char(0xf06a6),
   dev_broken = fn.nr2char(0xf0026),
+  image = "🖼",
+  check = "✓",
+  xmark = "✗",
 }
 local ICON_NAMES = {
   plan = "tasks-2",
@@ -75,6 +78,9 @@ local ICON_NAMES = {
   dev_down = "plug-2-outline",
   dev_broken = "triangle-warning",
   swatch = "chip",
+  image = "image",
+  check = "check",
+  xmark = "xmark",
 }
 local ICON = vim.deepcopy(ICON_FALLBACK)
 local qsicons = {}
@@ -715,7 +721,7 @@ local function active_winbar()
   -- plan progress (◆ N/N) now lives in the lualine (M.plan_chip); this header
   -- stays focused on the live working state + spinner.
   if #S.paste_images > 0 then
-    parts[#parts + 1] = "%#AgentMuted#  🖼 ×" .. #S.paste_images
+    parts[#parts + 1] = "%#AgentMuted#  " .. ICON.image .. " ×" .. #S.paste_images
   end
   return table.concat(parts)
 end
@@ -1273,7 +1279,7 @@ render_chat = function(scroll)
   local errmsg = S.selected and S.errors and S.errors[S.selected]
   if errmsg then
     push(""); push("")
-    decor[#decor + 1] = { line = push("╭─ ✗ error"), fg = "AgentErr" }
+    decor[#decor + 1] = { line = push("╭─ " .. ICON.xmark .. " error"), fg = "AgentErr" }
     for _, l in ipairs(vim.split(errmsg, "\n", { plain = true })) do
       decor[#decor + 1] = { line = push("│ " .. l), fg = "AgentErr" }
     end
@@ -1329,7 +1335,7 @@ render_chat = function(scroll)
     else
       -- no agent recap → a light done divider (the ✓ marker + blank line above read
       -- as the divider; no ───── rules, which used to spill past the rail width).
-      decor[#decor + 1] = { line = push(el and ("✓ done in " .. el) or "✓ done"), fg = "AgentIdle" }
+      decor[#decor + 1] = { line = push(ICON.check .. (el and (" done in " .. el) or " done")), fg = "AgentIdle" }
     end
     -- touched files this turn, path + colour-coded +adds −dels (no bar; same look
     -- as the changes view). Only when the agent actually edited something.
@@ -1674,7 +1680,7 @@ handle = function(obj)
       -- the optimistic echo appends an image marker ("  🖼×N") the server echo
       -- doesn't carry — strip it before comparing, else image messages dedup-miss
       -- and render twice.
-      local lasttext = last and last.role == "user" and (last.text or ""):gsub("%s*🖼×%d+%s*$", "") or nil
+      local lasttext = last and last.role == "user" and (last.text or ""):gsub("%s*" .. ICON.image .. "×%d+%s*$", "") or nil
       if lasttext ~= text then
         c.msgs[#c.msgs + 1] = { role = "user", text = text }
         S.chat[obj.session] = c
@@ -2645,7 +2651,7 @@ composer_send = function()
     return
   end
 
-  c.msgs[#c.msgs + 1] = { role = "user", text = prompt .. (imgs and ("  🖼×" .. #imgs) or "") } -- optimistic echo
+  c.msgs[#c.msgs + 1] = { role = "user", text = prompt .. (imgs and ("  " .. ICON.image .. "×" .. #imgs) or "") } -- optimistic echo
   S.chat[S.selected] = c
   S.force_bottom = true -- a fresh send always lands at the bottom, even if scrolled up
   render_chat(true)
@@ -3366,7 +3372,7 @@ local function show_scratch(win, cwd)
         for i = 1, math.min(#done, 5) do
           local t = done[i]
           local sess = have[(t.id or ""):upper()]
-          local mark = sess and "⊘" or "✓"
+          local mark = sess and "⊘" or ICON.check
           local suffix = sess and "   ⏎ teardown" or ""
           local ln = push("  " .. mark .. " " .. (t.id or "?") .. "  " .. (t.title or "") .. suffix)
           hl(ln, "AgentMuted")
