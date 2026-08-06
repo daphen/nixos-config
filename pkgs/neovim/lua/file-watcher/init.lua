@@ -295,7 +295,9 @@ function M.start()
 		"git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard",
 	})
 	if vim.v.shell_error ~= 0 then
-		vim.notify("file-watcher: not a git repo, not watching", vim.log.levels.WARN)
+		-- Not a git repo → nothing to watch. This is normal (a plain nvim in a
+		-- non-repo dir), not a problem — DEBUG, not a WARN toast in the user's face.
+		vim.notify("file-watcher: not a git repo, not watching", vim.log.levels.DEBUG)
 		return
 	end
 	local t_git = (vim.uv.hrtime() - t0) / 1e6
@@ -377,10 +379,14 @@ function M.setup(opts)
 		local scheduled = vim.uv.hrtime()
 		vim.defer_fn(function()
 			state.defer_late = math.floor((vim.uv.hrtime() - scheduled) / 1e6 - 1500)
+			-- Only auto-start inside a real work tree. `--show-toplevel` + `~= ""` was
+			-- wrong: a non-repo can still return a non-empty line, so it started the
+			-- watcher which then failed on ls-files. is-inside-work-tree == "true" is
+			-- the robust test (matches M.start's capability + heidr's reroot check).
 			local in_repo = vim.fn.systemlist({
-				"git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel",
+				"git", "-C", vim.fn.getcwd(), "rev-parse", "--is-inside-work-tree",
 			})[1]
-			if in_repo and in_repo ~= "" then M.start() end
+			if in_repo == "true" then M.start() end
 		end, 1500)
 	end
 end
