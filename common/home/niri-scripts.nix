@@ -19,7 +19,9 @@ let
     installPhase = ''
       mkdir -p $out/bin
       cp -r $src/* $out/bin/
-      chmod +x $out/bin/*
+      # chmod only regular files — `chmod +x $out/bin/*` chokes on a stray/dangling
+      # symlink (a `bash -> /run/current-system/…` symlink once broke this build).
+      find $out/bin -type f -exec chmod +x {} +
       patchShebangs $out/bin
     '';
   };
