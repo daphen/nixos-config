@@ -4840,7 +4840,16 @@ function M.setup(opts)
       if not S.follow_cd then
         local function fire()
           local p = S.follow_pending; S.follow_pending = nil
-          if p then follow_edit(p.cwd, p.path, nil) end
+          if not p then return end
+          -- Only chase a REAL tracked code change. inotify fires for every write in
+          -- the cwd — Claude/pi history + state files, logs, build artifacts — and
+          -- following those yanks you into junk. By the ~130ms fire the async diff
+          -- has landed, so a genuine edit is in S.gitdiff; anything absent (untracked
+          -- /ignored/not-a-diff) is skipped. Turn-settle follow is the fallback.
+          local rel = p.path:sub(1, #p.cwd + 1) == p.cwd .. "/" and p.path:sub(#p.cwd + 2) or p.path
+          local g = S.gitdiff[p.cwd]
+          if not (g and g.bypath[rel]) then return end
+          follow_edit(p.cwd, p.path, nil)
         end
         vim.defer_fn(fire, 130)
         S.follow_cd = uv.new_timer()
