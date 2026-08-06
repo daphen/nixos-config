@@ -3836,16 +3836,32 @@ refresh_devenv = function()
   -- surfacing (cockpit-devenv orphans scans ~/work/lovable*, so a personal rail was
   -- flagging lovable devenvs as "orphans" because no personal session claims them).
   if scope ~= "lovable" then S.devenv = {}; S.orphans = {}; return end
+  -- SINGLE-FLIGHT. cockpit-devenv shells out (process scans) and under load can run
+  -- slower than the poll cadence. Without this guard, each tick stacks another
+  -- status-per-ctx + orphans batch on top of the still-running one; with several rail
+  -- instances alive that cascaded into a fork bomb (thousands of bash). Never start a
+  -- new poll while the previous batch is in flight; a stuck batch self-clears after
+  -- 30s so a hung job can't lock refresh out forever.
+  local now = os.time()
+  if S.devenv_inflight and S.devenv_inflight_at and (now - S.devenv_inflight_at) < 30 then return end
   local home = os.getenv("HOME") or ""
   local script = home .. "/.config/niri/scripts/cockpit-devenv"
   if fn.executable(script) == 0 then return end
+  S.devenv_inflight = true
+  S.devenv_inflight_at = now
+  local pending = 1 -- the orphans job; each status job below adds one
+  local function done_one()
+    pending = pending - 1
+    if pending <= 0 then S.devenv_inflight = false end
+  end
   local seen = {}
   for _, a in ipairs(S.roster) do
     local ctx = a.cwd and a.cwd ~= "" and cockpit_context(a.cwd)
     if ctx and not seen[ctx] then
       seen[ctx] = true
+      pending = pending + 1
       local out = {}
-      pcall(fn.jobstart, { script, "status", ctx }, {
+      local ok = pcall(fn.jobstart, { script, "status", ctx }, {
         stdout_buffered = true,
         on_stdout = function(_, d) for _, l in ipairs(d or {}) do if l ~= "" then out[#out + 1] = l end end end,
         on_exit = function()
@@ -3854,13 +3870,15 @@ refresh_devenv = function()
             S.devenv[ctx] = st
             vim.schedule(function() if render_roster then render_roster() end end)
           end
+          done_one()
         end,
       })
+      if not ok then done_one() end -- jobstart failed → don't leak the in-flight counter
     end
   end
   -- orphans = running slices whose ctx has no session in the roster
   local oout = {}
-  pcall(fn.jobstart, { script, "orphans" }, {
+  local ok = pcall(fn.jobstart, { script, "orphans" }, {
     stdout_buffered = true,
     on_stdout = function(_, d) for _, l in ipairs(d or {}) do if l ~= "" then oout[#oout + 1] = l end end end,
     on_exit = function()
@@ -3871,8 +3889,10 @@ refresh_devenv = function()
       end
       S.orphans = orphans
       vim.schedule(function() if render_roster then render_roster() end end)
+      done_one()
     end,
   })
+  if not ok then done_one() end
 end
 
 render_changes = function()
