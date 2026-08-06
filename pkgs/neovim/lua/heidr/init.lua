@@ -3687,7 +3687,11 @@ local function start_cockpit_watch()
     if err then return end
     if filename == "active" or filename == ".active.tmp" then
       vim.schedule(on_cockpit_active)
-    elseif filename == "agent-jump" then
+    elseif filename == "agent-jump" or filename == "agent-jump.tmp" then
+      -- Match BOTH forms like `active` above: the writer does temp+rename
+      -- (agent-jump.tmp → agent-jump), and libuv's fs_event frequently reports the
+      -- TEMP name for the rename — so watching only "agent-jump" missed the event
+      -- and Super+i (notification jump) never selected the roster item.
       vim.schedule(on_agent_jump)
     end
   end)
