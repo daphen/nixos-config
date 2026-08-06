@@ -2661,7 +2661,12 @@ composer_send = function()
   -- Sending mid-turn QUEUES locally (held in the rail, flushed on turn_end) so
   -- you can still cancel or edit it with Esc — unlike a fired-off follow_up.
   -- Images can't be queued, so a message with attachments always sends now.
-  local working = S.stream[S.selected] and S.stream[S.selected] ~= ""
+  -- "working" = the whole turn (agent_start→agent_end), NOT just visible streaming.
+  -- Gating on S.stream alone missed the thinking/reasoning/tool-call phase before any
+  -- text streams: a message sent then took the immediate-send path and raced pi's
+  -- mid-turn stdin, so it fell through. turn_active covers the entire turn → it queues.
+  local working = (S.turn_active and S.turn_active[S.selected])
+    or (S.stream[S.selected] and S.stream[S.selected] ~= "")
   if working and not imgs then
     S.queued = S.queued or {}
     S.queued[S.selected] = (S.queued[S.selected] and (S.queued[S.selected] .. "\n\n") or "") .. prompt
