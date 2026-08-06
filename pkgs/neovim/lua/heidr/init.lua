@@ -1711,11 +1711,15 @@ handle = function(obj)
       -- Record this session's edits LIVE (sub-turn) so the inotify live-follow can
       -- verify a disk change belongs to THIS session — not a co-located agent sharing
       -- the cwd. Keys are absolute to match the (absolute) inotify path.
+      -- ONLY record paths that are real files on disk: this event streams the edit
+      -- tool's path a char at a time, so a partial like "/home/daph" would otherwise
+      -- get recorded as its own "edited file" (the prefix-row garbage). A partial
+      -- never exists as a file; the complete path does once the edit is written.
       if hunks and #hunks > 0 then
         S.edited[obj.session] = S.edited[obj.session] or {}
         for _, h in ipairs(hunks) do
           local abs = edit_abs(scwd, h.path)
-          if abs then S.edited[obj.session][abs] = true end
+          if abs and fn.filereadable(abs) == 1 then S.edited[obj.session][abs] = true end
         end
       end
       if obj.session == S.selected then render_stream() end
