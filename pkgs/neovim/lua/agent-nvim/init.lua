@@ -4491,9 +4491,18 @@ ensure_buf = function()
   map("i", function() focus_composer() end)
   map("n", function() open_picker() end)
   map(".", function() local d = fn.getcwd(); start_session(fn.fnamemodify(d, ":t"), d) end)
-  map("x", function() -- stop the session (light: keeps the worktree + devenv to resume)
+  map("x", function() -- stop the session + tear down its devenv slice; KEEP the worktree on disk
     local a = S.displayed[S.focus]
-    if a then send({ type = "stop", session = a.id }); if S.selected == a.id then S.selected = nil end end
+    if not a then return end
+    send({ type = "stop", session = a.id })
+    if S.selected == a.id then S.selected = nil end
+    -- Also tear down the worktree's devenv slice so `x` doesn't leave an orphan
+    -- devenv behind. slice-down kills only the .devenv procs + that worktree's
+    -- process-compose (targeted by exe path) — it never removes the worktree files.
+    -- Lovable scope only (where devenv exists); `X` remains the full teardown (wt rm).
+    if scope == "lovable" and a.cwd and a.cwd ~= "" then
+      pcall(fn.jobstart, { (os.getenv("HOME") or "") .. "/.local/bin/slice-down", a.cwd }, { detach = true })
+    end
   end)
   map("X", function() -- full teardown: stop + close context + wt remove (confirms)
     local a = S.displayed[S.focus]
