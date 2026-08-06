@@ -1822,16 +1822,27 @@ handle = function(obj)
     -- it with the +adds/−dels of the files it touched this turn.
     S.summary = S.summary or {}
     local recap
-    local last = c and c.msgs and c.msgs[#c.msgs]
-    if last and last.role == "assistant" and type(last.text) == "string" then
-      local kept = {}
-      for _, ln in ipairs(vim.split(last.text, "\n", { plain = true })) do
-        local m = ln:match("^%s*⟢%s*(.+)")
-        if m then recap = m else kept[#kept + 1] = ln end
-      end
-      if recap then
-        local body = (table.concat(kept, "\n")):gsub("%s+$", "")
-        if body == "" then table.remove(c.msgs) else last.text = body end
+    -- Strip the ⟢ recap line from EVERY trailing assistant message of this turn, not
+    -- just the last: a multi-round turn (or a streamed-then-persisted recap) can leave
+    -- an earlier ⟢ line in a message, which then renders inline as a DUPLICATE of the
+    -- done-divider summary callout (the "two near-identical summaries" bug). Walk back
+    -- to the user-turn boundary; the last assistant message's recap (first seen) wins.
+    if c and c.msgs then
+      for i = #c.msgs, 1, -1 do
+        local m = c.msgs[i]
+        if not m or m.role ~= "assistant" then break end -- stop at the user turn boundary
+        if type(m.text) == "string" and m.text:find("⟢") then
+          local kept, r = {}, nil
+          for _, ln in ipairs(vim.split(m.text, "\n", { plain = true })) do
+            local mm = ln:match("^%s*⟢%s*(.+)")
+            if mm then r = mm else kept[#kept + 1] = ln end
+          end
+          if r then
+            recap = recap or r
+            local body = (table.concat(kept, "\n")):gsub("%s+$", "")
+            if body == "" then table.remove(c.msgs, i) else m.text = body end
+          end
+        end
       end
     end
     local files = {}
