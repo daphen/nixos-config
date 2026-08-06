@@ -1592,6 +1592,14 @@ local function sync_edited(cwd, paths)
   end
 end
 
+-- Normalize a pi edit path (may be relative to the session cwd or absolute) to an
+-- absolute path, so per-session edit attribution can be compared against the
+-- inotify path (always absolute) without format mismatch.
+local function edit_abs(cwd, path)
+  if not path or path == "" then return nil end
+  return fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
+end
+
 handle = function(obj)
   -- Any event carrying a session id (except a get_entries response, which is a
   -- reply to us, not pi working) means that pi is alive → disarm its wedge watchdog.
@@ -1697,7 +1705,19 @@ handle = function(obj)
     local partial = ev and ev.partial
     if partial and type(partial.content) == "table" then
       if S.errors then S.errors[obj.session] = nil end
-      S.stream[obj.session] = msg_text({ content = partial.content }, session_cwd(obj.session))
+      local scwd = session_cwd(obj.session)
+      local text, hunks = msg_text({ content = partial.content }, scwd)
+      S.stream[obj.session] = text
+      -- Record this session's edits LIVE (sub-turn) so the inotify live-follow can
+      -- verify a disk change belongs to THIS session — not a co-located agent sharing
+      -- the cwd. Keys are absolute to match the (absolute) inotify path.
+      if hunks and #hunks > 0 then
+        S.edited[obj.session] = S.edited[obj.session] or {}
+        for _, h in ipairs(hunks) do
+          local abs = edit_abs(scwd, h.path)
+          if abs then S.edited[obj.session][abs] = true end
+        end
+      end
       if obj.session == S.selected then render_stream() end
     end
   elseif t == "message_end" and obj.session then
@@ -1713,12 +1733,14 @@ handle = function(obj)
     S.chat[obj.session] = c
     if hunks and #hunks > 0 then
       S.edited[obj.session] = S.edited[obj.session] or {}
+      local scwd = session_cwd(obj.session)
       for _, h in ipairs(hunks) do
-        if h.path then S.edited[obj.session][h.path] = true end
+        local abs = edit_abs(scwd, h.path)
+        if abs then S.edited[obj.session][abs] = true end
       end
       if obj.session == S.selected then
         local last = hunks[#hunks]
-        if last and last.path then follow_edit(session_cwd(obj.session), last.path, nil) end
+        if last and last.path then follow_edit(scwd, last.path, nil) end
       end
     end
     if obj.session == S.selected then render_chat(true) end
@@ -4836,20 +4858,24 @@ function M.setup(opts)
       -- so follow_edit finds the hunk line), then at most once per 600ms, always
       -- ending on the newest file. Cheap — follow_edit reads the in-memory diff (no
       -- git spawn), self-guards focus (no steal while you're editing), dedups repeats.
-      S.follow_pending = { cwd = cwd, path = path }
+      S.follow_pending = { cwd = cwd, path = path, sid = S.selected }
       if not S.follow_cd then
         local function fire()
           local p = S.follow_pending; S.follow_pending = nil
-          if not p then return end
-          -- Only chase a REAL tracked code change. inotify fires for every write in
-          -- the cwd — Claude/pi history + state files, logs, build artifacts — and
-          -- following those yanks you into junk. By the ~130ms fire the async diff
-          -- has landed, so a genuine edit is in S.gitdiff; anything absent (untracked
-          -- /ignored/not-a-diff) is skipped. Turn-settle follow is the fallback.
-          local rel = p.path:sub(1, #p.cwd + 1) == p.cwd .. "/" and p.path:sub(#p.cwd + 2) or p.path
+          if not p or p.sid ~= S.selected then return end -- switched sessions → drop
+          local abs = edit_abs(p.cwd, p.path)
+          -- Attribution gate (bulletproof for shared-cwd multi-agent): only follow a
+          -- file THIS session's own tool-calls edited, recorded live from
+          -- message_update. Excludes a co-located agent's writes in a shared cwd, plus
+          -- history/state/log files nothing edited via a tool. inotify has no agent
+          -- info; agentd's per-session stream is the only ground truth for authorship.
+          local ed = S.edited[p.sid]
+          if not (abs and ed and ed[abs]) then return end
+          -- And only when it's a real tracked hunk to reveal (skips untracked scratch).
+          local rel = abs:sub(1, #p.cwd + 1) == p.cwd .. "/" and abs:sub(#p.cwd + 2) or abs
           local g = S.gitdiff[p.cwd]
           if not (g and g.bypath[rel]) then return end
-          follow_edit(p.cwd, p.path, nil)
+          follow_edit(p.cwd, abs, nil)
         end
         vim.defer_fn(fire, 130)
         S.follow_cd = uv.new_timer()
