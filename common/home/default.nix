@@ -15,6 +15,7 @@ in
     ./programs.nix
     ./theme-system.nix
     ./daemons.nix
+    ./niri-scripts.nix
     inputs.worktrunk.homeModules.default
   ];
 
