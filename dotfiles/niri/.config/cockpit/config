@@ -114,7 +114,7 @@ cockpit_window_cmd() {
         return 0
     fi
     case "$window" in
-        # Local worktree: the agent leg is the in-nvim rail (AGENT_SCOPE-scoped
+        # Local worktree: the agent leg is the in-nvim rail (HEIDR_SCOPE-scoped
         # agentd), so this window opts out (prints nothing → cockpit-add skips its
         # tab). Remote lovbox/LoL contexts keep their claude/lovc agent tab via the
         # early-return branches above. Super+G focuses the nvim rail (config.kdl).
@@ -125,11 +125,12 @@ cockpit_window_cmd() {
         nvim)
             local sess="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}/nvim/${name}.vim"
             # export (not just prefix) so a manual :qa + nvim in this tab keeps the
-            # lovable scope + plan auto-open — the rail and plan-nvim both key off these.
+            # rail active — the rail autostarts off HEIDR_OPEN, attaches to the lovable
+            # scope off HEIDR_SCOPE, and plan-nvim keys off PLAN_NVIM_OPEN.
             if [ -f "$sess" ]; then
-                printf 'export AGENT_SCOPE=lovable PLAN_NVIM_OPEN=1; COCKPIT_NVIM_SESSION=%q direnv exec . nvim -S %q; exec fish' "$sess" "$sess"
+                printf 'export HEIDR_SCOPE=lovable HEIDR_OPEN=1 PLAN_NVIM_OPEN=1; COCKPIT_NVIM_SESSION=%q direnv exec . nvim -S %q; exec fish' "$sess" "$sess"
             else
-                printf 'export AGENT_SCOPE=lovable PLAN_NVIM_OPEN=1; COCKPIT_NVIM_SESSION=%q direnv exec . nvim; exec fish' "$sess"
+                printf 'export HEIDR_SCOPE=lovable HEIDR_OPEN=1 PLAN_NVIM_OPEN=1; COCKPIT_NVIM_SESSION=%q direnv exec . nvim; exec fish' "$sess"
             fi ;;
         # main runs the shared deps singleton (wt-proxy caddy, nats, …);
         # worktrees run their own wt slice on top of it. The retry loop keeps

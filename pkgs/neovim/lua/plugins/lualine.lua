@@ -126,7 +126,7 @@ return {
 		end
 
 		local function editor_filename()
-			local ok, rail = pcall(require, "agent-nvim")
+			local ok, rail = pcall(require, "heidr")
 			local win = ok and rail.editor_win and rail.editor_win()
 			if not win or not vim.api.nvim_win_is_valid(win) then return "" end
 			local ebuf = vim.api.nvim_win_get_buf(win)
@@ -198,7 +198,7 @@ return {
 					-- live working state/spinner stays above the composer input.
 					{
 						function()
-							local ok, m = pcall(require, "agent-nvim")
+							local ok, m = pcall(require, "heidr")
 							return (ok and m.plan_chip) and m.plan_chip() or ""
 						end,
 						padding = { left = 1, right = 1 },
@@ -274,7 +274,7 @@ return {
 								-- work items (plan progress ◆ N/N) for the active rail session
 								{
 									function()
-										local ok, m = pcall(require, "agent-nvim")
+										local ok, m = pcall(require, "heidr")
 										return (ok and m.plan_chip) and m.plan_chip() or ""
 									end,
 									padding = { left = 1, right = 1 },

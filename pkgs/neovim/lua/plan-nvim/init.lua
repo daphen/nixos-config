@@ -270,7 +270,7 @@ local function watch()
 end
 
 -- An nvim that should auto-open plans: the old worktree stack set PLAN_NVIM_OPEN;
--- the agent cockpit's nvim exports AGENT_SCOPE; and, as a fallback for an nvim
+-- the agent cockpit's nvim exports HEIDR_SCOPE; and, as a fallback for an nvim
 -- relaunched in the cockpit tab without those, being on the `lovable` niri
 -- workspace (same signal the rail uses). Cached — computed once per session.
 local _auto_open = nil
@@ -282,7 +282,7 @@ local function want_auto_open()
 	if vim.g.plan_nvim_no_autoopen then return false end
 	if _auto_open ~= nil then return _auto_open end
 	_auto_open = vim.env.PLAN_NVIM_OPEN == "1"
-		or (vim.env.AGENT_SCOPE ~= nil and vim.env.AGENT_SCOPE ~= "")
+		or (vim.env.HEIDR_SCOPE ~= nil and vim.env.HEIDR_SCOPE ~= "")
 	if not _auto_open then
 		local ok, out = pcall(vim.fn.system, { "niri", "msg", "--json", "workspaces" })
 		if ok and type(out) == "string" and out ~= "" then
@@ -631,7 +631,7 @@ function M.ask_visual()
 	-- Route to the active rail session ("the agent") whenever one is open, so
 	-- <C-p> works from ANY buffer, not just a plan; fall back to the plan's repo.
 	local target_cwd
-	local ok, agent = pcall(require, "agent-nvim")
+	local ok, agent = pcall(require, "heidr")
 	if ok and agent.active_session then
 		local a = agent.active_session()
 		if a then target_cwd = a.cwd end
@@ -1254,7 +1254,7 @@ function M.setup()
 			vim.defer_fn(function()
 				M.bind() -- silently bind so the statusline + <C-p> work in any worktree nvim
 				-- Only auto-open the plan on a bare launch (no file args). In the cockpit
-				-- tab PLAN_NVIM_OPEN/AGENT_SCOPE are EXPORTED, so `nvim <somefile>` there
+				-- tab PLAN_NVIM_OPEN/HEIDR_SCOPE are EXPORTED, so `nvim <somefile>` there
 				-- would otherwise fire autostart and replace your file with the lovable
 				-- plan — opening a note yanked you "into the lovable repo". Honor explicit
 				-- file args: bind silently, never clobber the buffer the user asked for.

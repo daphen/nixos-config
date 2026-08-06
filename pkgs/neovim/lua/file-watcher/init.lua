@@ -98,7 +98,7 @@ local function repo_of(path)
 end
 
 local function pick_target_window()
-	local ok, rail = pcall(require, "agent-nvim")
+	local ok, rail = pcall(require, "heidr")
 	local shared = ok and rail.editor_win and rail.editor_win()
 	if shared then return shared end
 	local function is_editor(w)

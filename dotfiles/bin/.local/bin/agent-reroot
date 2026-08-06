@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""agent-reroot <dir> — tell the workspace's nvim to :AgentReroot <dir>.
+"""agent-reroot <dir> — tell the workspace's nvim to :HeidrReroot <dir>.
 
 Reverse channel from the quickshell rail to the editor. Finds the target nvim the
 nvim-open way (nvim auto-listens on $XDG_RUNTIME_DIR/nvim.<pid>.0): prefer the nvim
@@ -82,7 +82,7 @@ def main() -> int:
 
     # <C-\><C-N> forces normal mode first (nvim-open idiom), then run the command.
     subprocess.run(["nvim", "--server", sock, "--remote-send",
-                    f"<C-\\><C-N>:AgentReroot {d}<CR>"])
+                    f"<C-\\><C-N>:HeidrReroot {d}<CR>"])
     return 0
 
 

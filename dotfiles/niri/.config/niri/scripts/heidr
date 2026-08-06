@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# heidr — open neovim with the Heidr agent rail active.
+#
+# Two entry points, deliberately distinct:
+#   nvim    → plain editor, NO rail (quicknotes, config edits, quick diffs)
+#   heidr   → editor + the agent rail (mission control for the agentd sessions)
+#
+# HEIDR_OPEN=1 is the signal heidr/init.lua's autostart keys off. Which daemon
+# (scope) the rail attaches to is auto-detected independently (HEIDR_SCOPE env, or
+# the niri workspace: lovable vs personal). Args pass through, so `heidr file.lua`
+# opens the rail with that file in the editor.
+exec env HEIDR_OPEN=1 nvim "$@"

@@ -1,10 +1,10 @@
--- agent-nvim — the rail: a left sidebar cockpit for orchestrating `agentd`
+-- heidr — the rail: a left sidebar cockpit for orchestrating `agentd`
 -- agents. Three stacked windows in one column:
 --   • roster  (top, sticky)   — sessions with live state, focus-ring selection
 --   • chat    (middle, scrolls)— the active session's transcript, markdown+TS
 --   • composer(bottom, grows)  — a real editable buffer with attachment chips
 --
--- Scope = one agentd instance = one socket. Set AGENT_SCOPE per niri workspace to
+-- Scope = one agentd instance = one socket. Set HEIDR_SCOPE per niri workspace to
 -- get independent rails (e.g. lovable vs personal).
 --
 -- Rail keys — roster:  j/k move · <CR> open · ]a/[a next needing you · n new
@@ -14,7 +14,7 @@
 --                      i compose · <Esc> back to roster · (y/n answer approvals)
 --          — composer: <CR> send · <C-s> send-from-insert · <C-↑/↓> scroll chat · <C-x> drop attachments
 --                      q back to roster · /slash commands · @ path hints
--- Anywhere: <leader>as (visual) send selection · :AgentSend[File|Diff|Diagnostics]
+-- Anywhere: <leader>as (visual) send selection · :HeidrSend[File|Diff|Diagnostics]
 local M = {}
 
 local uv = vim.uv or vim.loop
@@ -120,15 +120,15 @@ local function progress_bar(done, total, width, fillhl, emptyhl)
   total = math.max(1, total or 1)
   local filled = math.max(0, math.min(width, math.floor((done / total) * width + 0.5)))
   local s = string.rep("│", width)
-  return s, { { 0, filled * 3, fillhl or "AgentStream" }, { filled * 3, width * 3, emptyhl or "AgentMuted" } }
+  return s, { { 0, filled * 3, fillhl or "HeidrStream" }, { filled * 3, width * 3, emptyhl or "HeidrMuted" } }
 end
 
--- Scope resolution: an explicit AGENT_SCOPE wins (the cockpit sets it); otherwise
+-- Scope resolution: an explicit HEIDR_SCOPE wins (the cockpit sets it); otherwise
 -- derive from the focused niri workspace — the `lovable` workspace hosts lovable
 -- work, everything else (and off-niri) is personal. So an nvim started anywhere on
 -- the lovable workspace is a lovable rail, not just the cockpit's launch command.
 local function detect_scope()
-  local env = vim.env.AGENT_SCOPE
+  local env = vim.env.HEIDR_SCOPE
   if env and env ~= "" then return env end
   local ok, out = pcall(vim.fn.system, { "niri", "msg", "--json", "workspaces" })
   if ok and type(out) == "string" and out ~= "" then
@@ -251,81 +251,81 @@ local function set_hl()
   local cardbg = p.bg_surface2 or p.bg_selection or surface -- focus-ring card fill
   local function hl(n, o) api.nvim_set_hl(0, n, o) end
 
-  hl("AgentStream", { fg = p.green or "#5fca8b" })
-  hl("AgentErr", { fg = p.red or "#e5675f" })
+  hl("HeidrStream", { fg = p.green or "#5fca8b" })
+  hl("HeidrErr", { fg = p.red or "#e5675f" })
   -- idle = secondary-emphasis text: readable in both modes (fg_secondary sits between
   -- fg and fg_muted, so it darkens in light mode instead of washing out)
-  hl("AgentIdle", { fg = p.fg_secondary or p.fg_muted or "#8a95a3" })
+  hl("HeidrIdle", { fg = p.fg_secondary or p.fg_muted or "#8a95a3" })
   -- idle STATUS SWATCH: the theme's amber-yellow so a resting session carries warmth
   -- (distinct from needs-input=accent and streaming=green).
-  hl("AgentSwatchIdle", { fg = p.yellow or "#d9b06a" })
-  hl("AgentAccent", { fg = accent, bold = true })
+  hl("HeidrSwatchIdle", { fg = p.yellow or "#d9b06a" })
+  hl("HeidrAccent", { fg = accent, bold = true })
   -- Neutral heading colour for titles/section labels: orange is a SIGNAL (selection,
   -- active state, identity), not the colour of every header — a bold near-fg reads as
   -- a heading while keeping the accent rare and meaningful.
-  hl("AgentTitle", { fg = p.fg or "#c7ccd1", bold = true })
-  hl("AgentFocusName", { fg = p.fg or "#c7ccd1", bold = true }) -- focused-but-not-open row
-  hl("AgentMuted", { fg = p.fg_muted or "#5c6773" })
-  hl("AgentFile", { fg = p.fg or "#c7ccd1" }) -- neutral file-path text (status lives on the dot)
-  hl("AgentHunkRange", { fg = p.blue or p.cyan or "#5aa9e6" }) -- hunk line-range in the chat
+  hl("HeidrTitle", { fg = p.fg or "#c7ccd1", bold = true })
+  hl("HeidrFocusName", { fg = p.fg or "#c7ccd1", bold = true }) -- focused-but-not-open row
+  hl("HeidrMuted", { fg = p.fg_muted or "#5c6773" })
+  hl("HeidrFile", { fg = p.fg or "#c7ccd1" }) -- neutral file-path text (status lives on the dot)
+  hl("HeidrHunkRange", { fg = p.blue or p.cyan or "#5aa9e6" }) -- hunk line-range in the chat
   -- approval-card key caps (a subtle elevated pill behind the key char)
-  hl("AgentKeyOk", { fg = p.green or "#5fca8b", bg = cardbg, bold = true })
-  hl("AgentKeyNo", { fg = p.red or "#e5675f", bg = cardbg, bold = true })
-  hl("AgentKeyNum", { fg = accent, bg = cardbg, bold = true })
-  hl("AgentAttn", { fg = attn, bold = true })
-  hl("AgentDivider", { fg = p.bg_surface2 or p.bg_secondary or "#2a3038" }) -- subtle line
+  hl("HeidrKeyOk", { fg = p.green or "#5fca8b", bg = cardbg, bold = true })
+  hl("HeidrKeyNo", { fg = p.red or "#e5675f", bg = cardbg, bold = true })
+  hl("HeidrKeyNum", { fg = accent, bg = cardbg, bold = true })
+  hl("HeidrAttn", { fg = attn, bold = true })
+  hl("HeidrDivider", { fg = p.bg_surface2 or p.bg_secondary or "#2a3038" }) -- subtle line
 
   -- focus-ring card (elevated fill + solid accent edge). The edge is a bg-filled
   -- cell, not a ▌ glyph, so it's continuous across rows (glyphs leave inter-row
   -- gaps in fonts that don't draw block chars full-height).
-  hl("AgentCard", { bg = cardbg })
-  -- active-session name chip: a distinct elevation from the box surface / AgentCard so
+  hl("HeidrCard", { bg = cardbg })
+  -- active-session name chip: a distinct elevation from the box surface / HeidrCard so
   -- the selected name reads as its own pill (bg_surface3 / selection tone).
-  hl("AgentNameCard", { bg = p.bg_surface3 or p.bg_selection or p.bg_surface2 or cardbg })
+  hl("HeidrNameCard", { bg = p.bg_surface3 or p.bg_selection or p.bg_surface2 or cardbg })
   -- chat: your (user) message blocks get a subtle full-width background; the agent's
   -- turn-recap (✧ …) gets a lighter callout background. Both are HIGHLIGHTS (no border
   -- chars in the buffer) so yanking the chat still copies clean text.
   -- distinct HUES so the three chat fills don't blend: you = cool blue-grey (matches the
-  -- blue role bar), summary = green-grey (recap/done), code stays neutral grey (AgentCode).
-  hl("AgentUserBg", { bg = p.bg_info or p.bg_surface2 or cardbg })
-  hl("AgentSummaryBg", { bg = p.bg_success or p.bg_surface3 or cardbg })
+  -- blue role bar), summary = green-grey (recap/done), code stays neutral grey (HeidrCode).
+  hl("HeidrUserBg", { bg = p.bg_info or p.bg_surface2 or cardbg })
+  hl("HeidrSummaryBg", { bg = p.bg_success or p.bg_surface3 or cardbg })
   -- full-line background for fenced code blocks in the chat: applied via
   -- line_hl_group so it spans the whole rail width (a uniform rectangle), unlike
   -- markview's char-level bg which stops at the text and reads ragged.
-  hl("AgentCode", { bg = cardbg })
-  hl("AgentBarSolid", { bg = accent }) -- the roster's focus edge — ONLY drawn while the roster pane is focused
-  hl("AgentSel", { bg = p.bg_surface3 or p.bg_selection or surface, bold = true }) -- picker selection bar
+  hl("HeidrCode", { bg = cardbg })
+  hl("HeidrBarSolid", { bg = accent }) -- the roster's focus edge — ONLY drawn while the roster pane is focused
+  hl("HeidrSel", { bg = p.bg_surface3 or p.bg_selection or surface, bold = true }) -- picker selection bar
   -- volt-style scope-box surfaces: two elevations off the theme's surface ladder so
   -- boxes read as distinct filled panels and can be layered (a box, an inner box).
-  hl("AgentBox", { bg = surface })
-  hl("AgentBoxAlt", { bg = p.bg_surface2 or cardbg or surface })
+  hl("HeidrBox", { bg = surface })
+  hl("HeidrBoxAlt", { bg = p.bg_surface2 or cardbg or surface })
 
   -- pills + rounded caps
-  hl("AgentPillStream", { fg = dark, bg = p.green or "#5fca8b", bold = true })
-  hl("AgentPillErr", { fg = dark, bg = p.red or "#e5675f", bold = true })
-  hl("AgentPillIdle", { fg = dark, bg = p.blue or "#5aa9e6" })
-  hl("AgentPillAttn", { fg = dark, bg = attn, bold = true })
-  hl("AgentCapStream", { fg = p.green or "#5fca8b" })
-  hl("AgentCapErr", { fg = p.red or "#e5675f" })
-  hl("AgentCapIdle", { fg = p.blue or "#5aa9e6" })
-  hl("AgentCapAttn", { fg = attn })
+  hl("HeidrPillStream", { fg = dark, bg = p.green or "#5fca8b", bold = true })
+  hl("HeidrPillErr", { fg = dark, bg = p.red or "#e5675f", bold = true })
+  hl("HeidrPillIdle", { fg = dark, bg = p.blue or "#5aa9e6" })
+  hl("HeidrPillAttn", { fg = dark, bg = attn, bold = true })
+  hl("HeidrCapStream", { fg = p.green or "#5fca8b" })
+  hl("HeidrCapErr", { fg = p.red or "#e5675f" })
+  hl("HeidrCapIdle", { fg = p.blue or "#5aa9e6" })
+  hl("HeidrCapAttn", { fg = attn })
 
   -- composer chips + keycaps + caret
-  hl("AgentChip", { fg = p.fg or "#c7ccd1", bg = surface })
-  hl("AgentChipBar", { fg = accent })
-  hl("AgentKey", { fg = dark, bg = accent, bold = true })
-  hl("AgentKeyMuted", { fg = p.fg or "#c7ccd1", bg = surface })
+  hl("HeidrChip", { fg = p.fg or "#c7ccd1", bg = surface })
+  hl("HeidrChipBar", { fg = accent })
+  hl("HeidrKey", { fg = dark, bg = accent, bold = true })
+  hl("HeidrKeyMuted", { fg = p.fg or "#c7ccd1", bg = surface })
   -- keycap chip: dark legend on a bright neutral cap (like a physical key), so it reads
-  -- clearly against the dark rail — brighter than the surface-tone AgentKeyMuted.
-  hl("AgentKeyCap", { fg = dark, bg = p.fg_muted or "#707B84", bold = true })
-  hl("AgentCaret", { fg = accent, bold = true })
-  hl("AgentApproval", { fg = attn, bold = true })
+  -- clearly against the dark rail — brighter than the surface-tone HeidrKeyMuted.
+  hl("HeidrKeyCap", { fg = dark, bg = p.fg_muted or "#707B84", bold = true })
+  hl("HeidrCaret", { fg = accent, bold = true })
+  hl("HeidrApproval", { fg = attn, bold = true })
 
   -- Cursor hiding by colour-match (blend=100 is unreliable in some terminals):
   -- in the roster the cursor parks on the accent bar → paint it accent; in
   -- floats it sits on Normal bg → paint it Normal. Chat/composer keep a real cursor.
-  hl("AgentCursorRoster", { fg = accent, bg = accent, blend = 100 })
-  hl("AgentCursorFloat", { fg = dark, bg = dark, blend = 100 })
+  hl("HeidrCursorRoster", { fg = accent, bg = accent, blend = 100 })
+  hl("HeidrCursorFloat", { fg = dark, bg = dark, blend = 100 })
 
   -- markview markdown groups from the theme so chat messages pop. Inline code gets
   -- a calm distinct hue (cyan) on the subtle surface bg — distinguishable from body
@@ -333,7 +333,7 @@ local function set_hl()
   local code = p.cyan or p.blue or "#7dcfff"
   local function hlmd(n, o) api.nvim_set_hl(MDNS, n, o) end
   -- the chat window resolves highlights through MDNS, which supersedes its
-  -- winhighlight — so the WinSeparator:AgentDivider remap must live here too,
+  -- winhighlight — so the WinSeparator:HeidrDivider remap must live here too,
   -- else the chat's borders fall back to the default separator.
   hlmd("WinSeparator", { fg = p.bg_surface2 or p.bg_secondary or "#2a3038" })
   -- fenced code blocks sit on the elevated card tone so they read as a distinct
@@ -461,29 +461,29 @@ session_state = function(a)
   -- `swatch` = the status-square colour (distinct per state so the roster reads at a
   -- glance instead of a wall of grey); `name` stays the label/text colour.
   if S.pending[a.id] then
-    return { key = "needs_input", glyph = GLYPH.needs_input, name = "AgentAttn", swatch = "AgentAccent",
-      pill = "AgentPillAttn", cap = "AgentCapAttn", label = "needs input" }
+    return { key = "needs_input", glyph = GLYPH.needs_input, name = "HeidrAttn", swatch = "HeidrAccent",
+      pill = "HeidrPillAttn", cap = "HeidrCapAttn", label = "needs input" }
   end
   local st = a.status or "idle"
   if st == "streaming" then
     local d = dur(S.stream_since[a.id])
-    return { key = "streaming", glyph = SPIN[(S.spin % #SPIN) + 1], name = "AgentStream", swatch = "AgentStream",
-      pill = "AgentPillStream", cap = "AgentCapStream", label = d and ("working " .. d) or "working" }
+    return { key = "streaming", glyph = SPIN[(S.spin % #SPIN) + 1], name = "HeidrStream", swatch = "HeidrStream",
+      pill = "HeidrPillStream", cap = "HeidrCapStream", label = d and ("working " .. d) or "working" }
   elseif st == "error" then
-    return { key = "error", glyph = GLYPH.error, name = "AgentErr", swatch = "AgentErr",
-      pill = "AgentPillErr", cap = "AgentCapErr", label = "error" }
+    return { key = "error", glyph = GLYPH.error, name = "HeidrErr", swatch = "HeidrErr",
+      pill = "HeidrPillErr", cap = "HeidrCapErr", label = "error" }
   elseif st == "reconnecting" then
     -- pi crashed; the supervisor is respawning it. Amber + spinner so it reads as a
     -- transient hiccup, not a dead session.
-    return { key = "reconnecting", glyph = SPIN[(S.spin % #SPIN) + 1], name = "AgentAttn", swatch = "AgentAttn",
-      pill = "AgentPillAttn", cap = "AgentCapAttn", label = "reconnecting…" }
+    return { key = "reconnecting", glyph = SPIN[(S.spin % #SPIN) + 1], name = "HeidrAttn", swatch = "HeidrAttn",
+      pill = "HeidrPillAttn", cap = "HeidrCapAttn", label = "reconnecting…" }
   end
   local d = dur(S.idle_since[a.id])
   -- idle is the resting state: plain readable text, no pill (a filled pill's
   -- dark-on-blue is fragile against darker theme blues, and idle shouldn't shout).
   -- The swatch is a soft amber so idle sessions still carry colour.
-  return { key = "idle", glyph = GLYPH.idle, name = "AgentIdle", swatch = "AgentSwatchIdle", plain = true,
-    pill = "AgentIdle", cap = "AgentIdle", label = d and ("idle " .. d) or "idle" }
+  return { key = "idle", glyph = GLYPH.idle, name = "HeidrIdle", swatch = "HeidrSwatchIdle", plain = true,
+    pill = "HeidrIdle", cap = "HeidrIdle", label = d and ("idle " .. d) or "idle" }
 end
 
 -- Session display name: prefer the ticket id (every-1234) embedded in the
@@ -547,7 +547,7 @@ end
 -- later fg wins; bg is a low-priority line fill). `body(add)` builds content via
 -- add(text, segs, path, l1) where segs = {{cs,ce,grp},…} are byte columns RELATIVE to
 -- `text`. The box insets content to W-4 cols, shifts segs past "│ ", tints the border
--- muted + title accent, and fills every row with `surface` (default AgentBox).
+-- muted + title accent, and fills every row with `surface` (default HeidrBox).
 local BOX_L = "│  " -- left border + 2 spaces: 5 bytes (│ is 3, 2 spaces). Inner-left pad.
 -- title_above=true renders the heading on its OWN line above a uniform-bordered box
 -- (like volt's Activity panel) — no title inset in the top border, so the border is a
@@ -561,7 +561,7 @@ local function box(push, decor, W, icon, title, body, surface, title_above, pad,
     -- a full frame is clutter — the title + trailing gap separate them enough.
     local head = (icon and (icon .. " ") or "") .. (title or "")
     local hln = push(head)
-    decor[#decor + 1] = { line = hln, fg = "AgentTitle", cs = 0, ce = #head }
+    decor[#decor + 1] = { line = hln, fg = "HeidrTitle", cs = 0, ce = #head }
     body(function(text, segs, path, l1)
       text = text or ""
       -- indent 3 to match a bordered box's content column ("│  " = │ + 2 spaces)
@@ -578,13 +578,13 @@ local function box(push, decor, W, icon, title, body, surface, title_above, pad,
   -- decor loop skips it: the box reads as outline-only (the border defines it, no fill).
   -- NOT `nofill and nil or (...)` — that Lua idiom returns the fallback even when
   -- nofill is set (nil is falsy), which silently kept the fill.
-  if nofill then surface = nil else surface = surface or "AgentBox" end
-  local bord = "AgentDivider" -- box outline == the chat pane's hairpin border colour
+  if nofill then surface = nil else surface = surface or "HeidrBox" end
+  local bord = "HeidrDivider" -- box outline == the chat pane's hairpin border colour
   local inner = W - 6 -- W minus "│  " (3) + "  │" (3): 2-space inner pad each side
   local head = (icon and (icon .. " ") or "") .. (title or "")
   if title_above then
     local hln = push(head)
-    decor[#decor + 1] = { line = hln, fg = "AgentTitle", cs = 0, ce = #head }
+    decor[#decor + 1] = { line = hln, fg = "HeidrTitle", cs = 0, ce = #head }
     local top = "┌" .. string.rep("─", W - 2) .. "┐"
     local tl = push(top)
     decor[#decor + 1] = { line = tl, bg = surface }
@@ -598,7 +598,7 @@ local function box(push, decor, W, icon, title, body, surface, title_above, pad,
     local tl = push(top)
     decor[#decor + 1] = { line = tl, bg = surface }
     decor[#decor + 1] = { line = tl, fg = bord }
-    decor[#decor + 1] = { line = tl, fg = "AgentTitle", cs = #"┌─ ", ce = #"┌─ " + #head }
+    decor[#decor + 1] = { line = tl, fg = "HeidrTitle", cs = #"┌─ ", ce = #"┌─ " + #head }
   end
   local function add(text, segs, path, l1)
     text = text or ""
@@ -646,15 +646,15 @@ local function prompt_mode()
   if not ap or m == "notify" then
     return { kind = "idle", editable = true, insert = true, hide_cursor = false,
       placeholder = S.selected and ("message " .. short_name(S.selected) .. "…  (/ for commands)") or "open a session first",
-      placeholder_hl = "AgentMuted" }
+      placeholder_hl = "HeidrMuted" }
   elseif m == "input" or m == "editor" then
     return { kind = "type", ap = ap, editable = true, insert = true, hide_cursor = false,
-      placeholder = "type your reply · ⏎ to send · esc cancels", placeholder_hl = "AgentAttn" }
+      placeholder = "type your reply · ⏎ to send · esc cancels", placeholder_hl = "HeidrAttn" }
   else
     local ph = (m == "select") and ("↑ pick an option above · 1–" .. math.min(9, #(ap.options or {})))
       or "↑ answer above · y / n · esc cancels"
     return { kind = "choose", ap = ap, editable = false, insert = false, hide_cursor = true,
-      placeholder = ph, placeholder_hl = "AgentAttn" }
+      placeholder = ph, placeholder_hl = "HeidrAttn" }
   end
 end
 
@@ -669,7 +669,7 @@ apply_prompt_mode = function()
   -- roster, whose callback restores guicursor — so our hide has to come last to win.
   if pm.hide_cursor then
     if not S.prompt_gcr then S.prompt_gcr = vim.o.guicursor end
-    vim.o.guicursor = "a:AgentCursorFloat" -- bg-matching → invisible while answering
+    vim.o.guicursor = "a:HeidrCursorFloat" -- bg-matching → invisible while answering
   elseif S.prompt_gcr then
     vim.o.guicursor = S.prompt_gcr; S.prompt_gcr = nil
   end
@@ -710,7 +710,7 @@ local function active_winbar()
       doing = doing:gsub("^✻ ", ""):gsub("^⚙ ", ""):gsub("%s+", " ")
       if #doing > 56 then doing = doing:sub(1, 55) .. "…" end
       doing = doing:gsub("%%", "%%%%") -- escape for the winbar (tool args have %H%M etc.)
-      parts[#parts + 1] = "%#AgentMuted#  · " .. doing
+      parts[#parts + 1] = "%#HeidrMuted#  · " .. doing
     end
   end
   -- queued messages (held until the turn ends): always-visible count in the
@@ -718,12 +718,12 @@ local function active_winbar()
   local q = S.queued and S.queued[S.selected]
   if q and q ~= "" then
     local n = select(2, q:gsub("\n\n", "")) + 1
-    parts[#parts + 1] = "%#AgentAttn#  " .. GLYPH.queued .. " " .. n .. " queued"
+    parts[#parts + 1] = "%#HeidrAttn#  " .. GLYPH.queued .. " " .. n .. " queued"
   end
   -- plan progress (◆ N/N) now lives in the lualine (M.plan_chip); this header
   -- stays focused on the live working state + spinner.
   if #S.paste_images > 0 then
-    parts[#parts + 1] = "%#AgentMuted#  " .. ICON.image .. " ×" .. #S.paste_images
+    parts[#parts + 1] = "%#HeidrMuted#  " .. ICON.image .. " ×" .. #S.paste_images
   end
   return table.concat(parts)
 end
@@ -869,13 +869,13 @@ render_roster = function()
         return add(lead .. text, sh)
       end
       if filt then
-        center("no match for /" .. S.roster_filter, { { 0, -1, "AgentMuted" } })
-        center("esc clears the filter", { { 0, -1, "AgentMuted" } })
+        center("no match for /" .. S.roster_filter, { { 0, -1, "HeidrMuted" } })
+        center("esc clears the filter", { { 0, -1, "HeidrMuted" } })
       elseif #S.roster == 0 then
         local g = fn.nr2char(0xf0766) -- md-plus-circle-outline
         local t = g .. "  no sessions yet"
-        center(t, { { 0, #g, "AgentAccent" }, { #g, #t, "AgentTitle" } })
-        center("n to start · . for the current dir", { { 0, -1, "AgentMuted" } })
+        center(t, { { 0, #g, "HeidrAccent" }, { #g, #t, "HeidrTitle" } })
+        center("n to start · . for the current dir", { { 0, -1, "HeidrMuted" } })
       else
         -- nothing needs attention: the selected session name (ALL CAPS) as a centred
         -- title — with its plan progress (N/M + bar) inline when it has a plan —
@@ -885,15 +885,15 @@ render_roster = function()
         local pl = S.selected and S.plan[S.selected]
         if pl and pl.total and pl.total > 0 then
           local frac = pl.done .. "/" .. pl.total
-          local btext, bsegs = progress_bar(pl.done, pl.total, 12, "AgentStream", "AgentDivider")
+          local btext, bsegs = progress_bar(pl.done, pl.total, 12, "HeidrStream", "HeidrDivider")
           local line = title .. "   " .. frac .. "  " .. btext
-          local segs = { { 0, #title, "AgentTitle" } }
-          local fo = #title + 3; segs[#segs + 1] = { fo, fo + #frac, "AgentMuted" }
+          local segs = { { 0, #title, "HeidrTitle" } }
+          local fo = #title + 3; segs[#segs + 1] = { fo, fo + #frac, "HeidrMuted" }
           local bo = fo + #frac + 2
           for _, s in ipairs(bsegs) do segs[#segs + 1] = { bo + s[1], bo + s[2], s[3] } end
           center(line, segs)
         else
-          center(title, { { 0, -1, "AgentTitle" } })
+          center(title, { { 0, -1, "HeidrTitle" } })
         end
         add("")
         local left, segs = "", {}
@@ -905,10 +905,10 @@ render_roster = function()
           if i < #S.roster then left = left .. "   " end -- gap between swatches
         end
         local right, rseg = "", {}
-        local a1 = #right; right = right .. " Ctrl "; rseg[#rseg + 1] = { a1, #right, "AgentKeyCap" }
-        local a2 = #right; right = right .. " + ";    rseg[#rseg + 1] = { a2, #right, "AgentMuted" }
-        local a3 = #right; right = right .. " t ";    rseg[#rseg + 1] = { a3, #right, "AgentKeyCap" }
-        local a4 = #right; right = right .. "  toggle roster"; rseg[#rseg + 1] = { a4, #right, "AgentMuted" }
+        local a1 = #right; right = right .. " Ctrl "; rseg[#rseg + 1] = { a1, #right, "HeidrKeyCap" }
+        local a2 = #right; right = right .. " + ";    rseg[#rseg + 1] = { a2, #right, "HeidrMuted" }
+        local a3 = #right; right = right .. " t ";    rseg[#rseg + 1] = { a3, #right, "HeidrKeyCap" }
+        local a4 = #right; right = right .. "  toggle roster"; rseg[#rseg + 1] = { a4, #right, "HeidrMuted" }
         local inner = math.max(12, W - 6)
         local fill = string.rep(" ", math.max(1, inner - fn.strdisplaywidth(left) - fn.strdisplaywidth(right)))
         local off = #left + #fill
@@ -936,7 +936,7 @@ render_roster = function()
       local ntext = lead .. gl .. " " .. nm
       -- active/focused names are neutral BOLD, not orange — the card fill (active) and
       -- the border accent (cursor) carry the state, so the accent stays rare.
-      local namecol = (isSel or show_focus) and "AgentFocusName" or "AgentFile"
+      local namecol = (isSel or show_focus) and "HeidrFocusName" or "HeidrFile"
       local g0 = #lead
       local nml = add(ntext, {
         { g0, g0 + #gl, sstate.swatch or sstate.name }, -- the swatch, status colour
@@ -951,7 +951,7 @@ render_roster = function()
       local pl = S.plan[a.id]
       if pl and pl.total and pl.total > 0 then
         local chip = "  ◆ " .. pl.done .. "/" .. pl.total
-        segs[#segs + 1] = { #stext, #stext + #chip, (pl.phase == "reconciled") and "AgentStream" or "AgentMuted" }
+        segs[#segs + 1] = { #stext, #stext + #chip, (pl.phase == "reconciled") and "HeidrStream" or "HeidrMuted" }
         stext = stext .. chip
       end
       -- devenv link health: green=running, red=broken (slice down but owns the fixed
@@ -960,7 +960,7 @@ render_roster = function()
       local dv = dctx and S.devenv[dctx]
       if dv then
         local gl = (dv == "running") and ICON.dev_up or (dv == "broken") and ICON.dev_broken or ICON.dev_down
-        local hl = (dv == "running") and "AgentStream" or (dv == "broken") and "AgentErr" or "AgentMuted"
+        local hl = (dv == "running") and "HeidrStream" or (dv == "broken") and "HeidrErr" or "HeidrMuted"
         local chip = "  " .. gl
         segs[#segs + 1] = { #stext, #stext + #chip, hl }
         stext = stext .. chip
@@ -968,12 +968,12 @@ render_roster = function()
       local sml = add(stext, segs)
       -- focus: turn the box's left │ ACCENT (the char's fg, not a bg block — a bg
       -- fill read as a fat orange block interrupting the border) on both rows.
-      -- current row gets a real selection bar (AgentSel surface) across the inner span
+      -- current row gets a real selection bar (HeidrSel surface) across the inner span
       -- of BOTH rows — bold accent text alone was too weak to spot. Span is content only
       -- (byte 3 → just before the right │) so the box border stays clean. Applies to the
       -- SELECTED session (chat open) AND the FOCUSED row (roster cursor) so navigating
       -- the list is unmistakable; focus additionally lights the left │ accent.
-      -- ACTIVE/selected session → an elevated card fill (AgentCard) behind the NAME
+      -- ACTIVE/selected session → an elevated card fill (HeidrCard) behind the NAME
       -- only — a chip, not a full-item block. Span " name " (the space before the name
       -- through the name + one trailing pad col), on the name row alone. Shown
       -- regardless of roster focus; the "it's open" cue.
@@ -989,19 +989,19 @@ render_roster = function()
       -- is a FG override of the border's own colour, so it must outrank the border
       -- add_highlight (DECOR_PRIORITY_BASE) — hence the high explicit priority.
       if show_focus then
-        decor[#decor + 1] = { line = nml, range = { 0, 3, "AgentAccent", 5000 } }
-        decor[#decor + 1] = { line = sml, range = { 0, 3, "AgentAccent", 5000 } }
+        decor[#decor + 1] = { line = nml, range = { 0, 3, "HeidrAccent", 5000 } }
+        decor[#decor + 1] = { line = sml, range = { 0, 3, "HeidrAccent", 5000 } }
       end
     end
     if not S.show_all and hidden > 0 then
       local t = hidden .. " idle · z for all"
-      add(t, { { 0, #t, "AgentMuted" } })
+      add(t, { { 0, #t, "HeidrMuted" } })
     end
     -- orphan devenvs: a slice is running for a worktree with no session in the roster
     -- (a leak — visible so it doesn't pile up unseen). `slice-down <dir>` clears one.
     if S.orphans and #S.orphans > 0 then
       local t = #S.orphans .. " orphan devenv" .. (#S.orphans > 1 and "s" or "") .. ": " .. table.concat(S.orphans, ", ")
-      add(t, { { 0, -1, "AgentErr" } })
+      add(t, { { 0, -1, "HeidrErr" } })
     end
   end, nil, true, false, true)
 
@@ -1023,11 +1023,11 @@ render_roster = function()
       -- active session's name chip: above the box surface (40), below the fg text (so
       -- the name reads on top). A distinct elevation, not a saturated selection bar.
       pcall(api.nvim_buf_set_extmark, S.buf, S.ns, d.line, d.selbg[1],
-        { end_col = d.selbg[2], hl_group = "AgentNameCard", priority = 55 })
+        { end_col = d.selbg[2], hl_group = "HeidrNameCard", priority = 55 })
     end
     if d.fg then pcall(api.nvim_buf_add_highlight, S.buf, S.ns, d.fg, d.line, d.cs or 0, d.ce or -1) end
     if d.card then
-      pcall(api.nvim_buf_set_extmark, S.buf, S.ns, d.line, 0, { line_hl_group = "AgentCard", priority = 90 })
+      pcall(api.nvim_buf_set_extmark, S.buf, S.ns, d.line, 0, { line_hl_group = "HeidrCard", priority = 90 })
     end
     if d.range then
       pcall(api.nvim_buf_set_extmark, S.buf, S.ns, d.line, d.range[1],
@@ -1101,7 +1101,7 @@ render_chat = function(scroll)
     else
       empty = "  ↑ press <CR> on a session above to open it"
     end
-    decor[#decor + 1] = { line = push(empty), fg = "AgentMuted" }
+    decor[#decor + 1] = { line = push(empty), fg = "HeidrMuted" }
   else
     if chat and chat.msgs then
       for mi, m in ipairs(chat.msgs) do
@@ -1114,20 +1114,20 @@ render_chat = function(scroll)
         -- (o), plus a blank bg row above and below. The bg is border-aligned (col 2).
         local o = isUser and "  " or ""
         local hdr = o .. caret .. " " .. BAR .. " " .. label
-        if isUser then decor[#decor + 1] = { line = push("", mi), bg = "AgentUserBg" } end
+        if isUser then decor[#decor + 1] = { line = push("", mi), bg = "HeidrUserBg" } end
         blocks[#blocks + 1] = #lines + 1 -- 1-indexed bufline of this header
         -- caret dim · a slim role-coloured bar (you=cool blue, agent=green; orange stays
         -- reserved for selection/attention) · label in neutral bold, not a saturated wash
         local bl0 = push(hdr, mi)
-        if isUser then decor[#decor + 1] = { line = bl0, bg = "AgentUserBg" } end
-        decor[#decor + 1] = { line = bl0, fg = "AgentMuted", cs = #o, ce = #o + #caret }
-        decor[#decor + 1] = { line = bl0, fg = isUser and "AgentHunkRange" or "AgentStream", cs = #o + #caret + 1, ce = #o + #caret + 1 + #BAR }
-        decor[#decor + 1] = { line = bl0, fg = "AgentTitle", cs = #o + #caret + 2 + #BAR, ce = #hdr }
+        if isUser then decor[#decor + 1] = { line = bl0, bg = "HeidrUserBg" } end
+        decor[#decor + 1] = { line = bl0, fg = "HeidrMuted", cs = #o, ce = #o + #caret }
+        decor[#decor + 1] = { line = bl0, fg = isUser and "HeidrHunkRange" or "HeidrStream", cs = #o + #caret + 1, ce = #o + #caret + 1 + #BAR }
+        decor[#decor + 1] = { line = bl0, fg = "HeidrTitle", cs = #o + #caret + 2 + #BAR, ce = #hdr }
         if folded then
           local n = select(2, (m.text or ""):gsub("\n", "\n")) + 1
           local fl = push(o .. "⋯ " .. n .. " lines", mi)
-          decor[#decor + 1] = { line = fl, fg = "AgentMuted" }
-          if isUser then decor[#decor + 1] = { line = fl, bg = "AgentUserBg" } end
+          decor[#decor + 1] = { line = fl, fg = "HeidrMuted" }
+          if isUser then decor[#decor + 1] = { line = fl, bg = "HeidrUserBg" } end
         elseif isUser then
           -- plain padded prose HARD-wrapped into 2-space-padded real lines. Soft-wrap
           -- + breakindent left an unfilled bg notch on continuation rows (the same bug
@@ -1150,8 +1150,8 @@ render_chat = function(scroll)
             end
             for _, ch in ipairs(chunks) do
               local bl = push(o .. ch, mi)
-              decor[#decor + 1] = { line = bl, bg = "AgentUserBg" }
-              decor[#decor + 1] = { line = bl, fg = "AgentFile", cs = #o, ce = -1 }
+              decor[#decor + 1] = { line = bl, bg = "HeidrUserBg" }
+              decor[#decor + 1] = { line = bl, fg = "HeidrFile", cs = #o, ce = -1 }
             end
           end
         else
@@ -1162,7 +1162,7 @@ render_chat = function(scroll)
               -- turn-recap callout: blank bg row above + below, and the text HARD-wrapped
               -- into 2-space-padded real lines. (Soft-wrap + breakindent left an unfilled
               -- notch in the bg on continuation rows.) ⟢ is U+27E2 (3 bytes), not ✧.
-              decor[#decor + 1] = { line = push("", mi), bg = "AgentSummaryBg" }
+              decor[#decor + 1] = { line = push("", mi), bg = "HeidrSummaryBg" }
               local avail = math.max(20, rail_width() - 2) -- chunk width inside the 2-col pad
               local cur, chunks = "", {}
               for _, wd in ipairs(vim.split(para, " ", { plain = true })) do
@@ -1173,15 +1173,15 @@ render_chat = function(scroll)
               if cur ~= "" then chunks[#chunks + 1] = cur end
               for i, ch in ipairs(chunks) do
                 local bl = push("  " .. ch, mi)
-                decor[#decor + 1] = { line = bl, bg = "AgentSummaryBg" }
+                decor[#decor + 1] = { line = bl, bg = "HeidrSummaryBg" }
                 if i == 1 then
-                  decor[#decor + 1] = { line = bl, fg = "AgentAccent", cs = 2, ce = 5 } -- ⟢
-                  decor[#decor + 1] = { line = bl, fg = "AgentTitle", cs = 6, ce = -1 }
+                  decor[#decor + 1] = { line = bl, fg = "HeidrAccent", cs = 2, ce = 5 } -- ⟢
+                  decor[#decor + 1] = { line = bl, fg = "HeidrTitle", cs = 6, ce = -1 }
                 else
-                  decor[#decor + 1] = { line = bl, fg = "AgentTitle", cs = 2, ce = -1 }
+                  decor[#decor + 1] = { line = bl, fg = "HeidrTitle", cs = 2, ce = -1 }
                 end
               end
-              decor[#decor + 1] = { line = push("", mi), bg = "AgentSummaryBg" }
+              decor[#decor + 1] = { line = push("", mi), bg = "HeidrSummaryBg" }
             else
               local nav
               if para:match("^⚙ edit ") or para:match("^⚙ write ") then
@@ -1200,29 +1200,29 @@ render_chat = function(scroll)
               if nav then S.hunknav[bl + 1] = nav end
               if para:match("^%s*```") then
                 in_fence = not in_fence
-                decor[#decor + 1] = { line = bl, bg = "AgentCode" }
+                decor[#decor + 1] = { line = bl, bg = "HeidrCode" }
               elseif in_fence then
-                decor[#decor + 1] = { line = bl, bg = "AgentCode" }
+                decor[#decor + 1] = { line = bl, bg = "HeidrCode" }
                 decor[#decor + 1] = { line = bl, virt = "  " }
               elseif para:match("^⚙ ") then
-                decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
-                decor[#decor + 1] = { line = bl, fg = "AgentMuted", cs = 0, ce = 3 }
+                decor[#decor + 1] = { line = bl, fg = "HeidrMuted" }
+                decor[#decor + 1] = { line = bl, fg = "HeidrMuted", cs = 0, ce = 3 }
                 if nav then
                   local display = fn.fnamemodify(nav.path, ":.")
                   local fs = para:find(display, 1, true)
-                  if fs then decor[#decor + 1] = { line = bl, fg = "AgentFocusName", cs = fs - 1, ce = fs - 1 + #display } end
+                  if fs then decor[#decor + 1] = { line = bl, fg = "HeidrFocusName", cs = fs - 1, ce = fs - 1 + #display } end
                   local ps, pe = para:find("%+%d+")
-                  if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
+                  if ps then decor[#decor + 1] = { line = bl, fg = "HeidrStream", cs = ps - 1, ce = pe } end
                   local ms, me = para:find("%-%d+", (pe or 0) + 1)
-                  if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
+                  if ms then decor[#decor + 1] = { line = bl, fg = "HeidrErr", cs = ms - 1, ce = me } end
                 end
               elseif para:sub(1, #THINK) == THINK then
-                decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
+                decor[#decor + 1] = { line = bl, fg = "HeidrMuted" }
               end
             end
           end
         end
-        if isUser then decor[#decor + 1] = { line = push("", mi), bg = "AgentUserBg" } end
+        if isUser then decor[#decor + 1] = { line = push("", mi), bg = "HeidrUserBg" } end
       end
     end
     -- live streaming block (superseded by message_end when the turn completes)
@@ -1231,9 +1231,9 @@ render_chat = function(scroll)
       if has_any then push(""); push("") end
       local shdr = OPEN .. " " .. BAR .. " agent"
       local sbl = push(shdr)
-      decor[#decor + 1] = { line = sbl, fg = "AgentMuted", cs = 0, ce = #OPEN }
-      decor[#decor + 1] = { line = sbl, fg = "AgentStream", cs = #OPEN + 1, ce = #OPEN + 1 + #BAR }
-      decor[#decor + 1] = { line = sbl, fg = "AgentTitle", cs = #OPEN + 2 + #BAR, ce = #shdr }
+      decor[#decor + 1] = { line = sbl, fg = "HeidrMuted", cs = 0, ce = #OPEN }
+      decor[#decor + 1] = { line = sbl, fg = "HeidrStream", cs = #OPEN + 1, ce = #OPEN + 1 + #BAR }
+      decor[#decor + 1] = { line = sbl, fg = "HeidrTitle", cs = #OPEN + 2 + #BAR, ce = #shdr }
       for _, para in ipairs(vim.split(sv, "\n", { plain = true })) do push(para) end
       lines[#lines] = lines[#lines] .. " " .. CARET
       decor[#decor + 1] = { line = #lines - 1, caret = true }
@@ -1245,34 +1245,34 @@ render_chat = function(scroll)
   if ap then
     local function seg(line, segs) local bl = push(line); for _, s in ipairs(segs) do decor[#decor + 1] = { line = bl, fg = s.fg, cs = s.cs, ce = s.ce } end end
     push(""); push("")
-    decor[#decor + 1] = { line = push("╭─ needs your input"), fg = "AgentApproval" }
-    decor[#decor + 1] = { line = push("│"), fg = "AgentApproval" }
+    decor[#decor + 1] = { line = push("╭─ needs your input"), fg = "HeidrApproval" }
+    decor[#decor + 1] = { line = push("│"), fg = "HeidrApproval" }
     if ap.title and ap.title ~= "" then
-      decor[#decor + 1] = { line = push("│  " .. ap.title), fg = "AgentFocusName" }
+      decor[#decor + 1] = { line = push("│  " .. ap.title), fg = "HeidrFocusName" }
     end
     if ap.message and ap.message ~= "" then
       for _, l in ipairs(vim.split(ap.message, "\n", { plain = true })) do
-        decor[#decor + 1] = { line = push("│  " .. l), fg = "AgentMuted" }
+        decor[#decor + 1] = { line = push("│  " .. l), fg = "HeidrMuted" }
       end
     end
     push("")
     if ap.method == "select" and ap.options then
       for oi, opt in ipairs(ap.options) do
-        local line, segs = button_row("│  ", { { key = tostring(oi), label = tostring(opt), keyhl = "AgentKeyNum", labelhl = "AgentFocusName" } })
+        local line, segs = button_row("│  ", { { key = tostring(oi), label = tostring(opt), keyhl = "HeidrKeyNum", labelhl = "HeidrFocusName" } })
         seg(line, segs)
       end
-      decor[#decor + 1] = { line = push("╰  press a number · esc cancels"), fg = "AgentMuted" }
+      decor[#decor + 1] = { line = push("╰  press a number · esc cancels"), fg = "HeidrMuted" }
     elseif ap.method == "input" or ap.method == "editor" then
-      local line, segs = button_row("│  ", { { key = "i", label = "type a reply", keyhl = "AgentKeyNum", labelhl = "AgentFocusName" } })
+      local line, segs = button_row("│  ", { { key = "i", label = "type a reply", keyhl = "HeidrKeyNum", labelhl = "HeidrFocusName" } })
       seg(line, segs)
-      decor[#decor + 1] = { line = push("╰  esc cancels"), fg = "AgentMuted" }
+      decor[#decor + 1] = { line = push("╰  esc cancels"), fg = "HeidrMuted" }
     else
       local line, segs = button_row("│  ", {
-        { key = "y", label = "yes", keyhl = "AgentKeyOk", labelhl = "AgentStream" },
-        { key = "n", label = "no", keyhl = "AgentKeyNo", labelhl = "AgentErr" },
+        { key = "y", label = "yes", keyhl = "HeidrKeyOk", labelhl = "HeidrStream" },
+        { key = "n", label = "no", keyhl = "HeidrKeyNo", labelhl = "HeidrErr" },
       })
       seg(line, segs)
-      decor[#decor + 1] = { line = push("╰  esc cancels"), fg = "AgentMuted" }
+      decor[#decor + 1] = { line = push("╰  esc cancels"), fg = "HeidrMuted" }
     end
   end
 
@@ -1281,11 +1281,11 @@ render_chat = function(scroll)
   local errmsg = S.selected and S.errors and S.errors[S.selected]
   if errmsg then
     push(""); push("")
-    decor[#decor + 1] = { line = push("╭─ " .. ICON.xmark .. " error"), fg = "AgentErr" }
+    decor[#decor + 1] = { line = push("╭─ " .. ICON.xmark .. " error"), fg = "HeidrErr" }
     for _, l in ipairs(vim.split(errmsg, "\n", { plain = true })) do
-      decor[#decor + 1] = { line = push("│ " .. l), fg = "AgentErr" }
+      decor[#decor + 1] = { line = push("│ " .. l), fg = "HeidrErr" }
     end
-    decor[#decor + 1] = { line = push("╰ send again to retry"), fg = "AgentMuted" }
+    decor[#decor + 1] = { line = push("╰ send again to retry"), fg = "HeidrMuted" }
   end
 
   -- footer: agent is done and nothing awaits you → mark the end of the chat.
@@ -1314,7 +1314,7 @@ render_chat = function(scroll)
       local text = "⟢ " .. sum.recap
       if pl and pl.total and pl.total > 0 then text = text .. " · ◆ " .. pl.done .. "/" .. pl.total .. " steps" end
       if el then text = text .. " · " .. el end
-      decor[#decor + 1] = { line = push(""), bg = "AgentSummaryBg" }
+      decor[#decor + 1] = { line = push(""), bg = "HeidrSummaryBg" }
       local avail = math.max(20, rail_width() - 2)
       local cur, chunks = "", {}
       for _, wd in ipairs(vim.split(text, " ", { plain = true })) do
@@ -1325,19 +1325,19 @@ render_chat = function(scroll)
       if cur ~= "" then chunks[#chunks + 1] = cur end
       for i, ch in ipairs(chunks) do
         local bl = push("  " .. ch)
-        decor[#decor + 1] = { line = bl, bg = "AgentSummaryBg" }
+        decor[#decor + 1] = { line = bl, bg = "HeidrSummaryBg" }
         if i == 1 then
-          decor[#decor + 1] = { line = bl, fg = "AgentAccent", cs = 2, ce = 5 } -- ⟢
-          decor[#decor + 1] = { line = bl, fg = "AgentTitle", cs = 6, ce = -1 }
+          decor[#decor + 1] = { line = bl, fg = "HeidrAccent", cs = 2, ce = 5 } -- ⟢
+          decor[#decor + 1] = { line = bl, fg = "HeidrTitle", cs = 6, ce = -1 }
         else
-          decor[#decor + 1] = { line = bl, fg = "AgentTitle", cs = 2, ce = -1 }
+          decor[#decor + 1] = { line = bl, fg = "HeidrTitle", cs = 2, ce = -1 }
         end
       end
-      decor[#decor + 1] = { line = push(""), bg = "AgentSummaryBg" }
+      decor[#decor + 1] = { line = push(""), bg = "HeidrSummaryBg" }
     else
       -- no agent recap → a light done divider (the ✓ marker + blank line above read
       -- as the divider; no ───── rules, which used to spill past the rail width).
-      decor[#decor + 1] = { line = push(ICON.check .. (el and (" done in " .. el) or " done")), fg = "AgentIdle" }
+      decor[#decor + 1] = { line = push(ICON.check .. (el and (" done in " .. el) or " done")), fg = "HeidrIdle" }
     end
     -- touched files this turn, path + colour-coded +adds −dels (no bar; same look
     -- as the changes view). Only when the agent actually edited something.
@@ -1352,11 +1352,11 @@ render_chat = function(scroll)
         local dcol = string.rep(" ", dw - #ds) .. ds
         local line = file_row(W, "  ", f.path, acol, dcol)
         local bl = push(line)
-        decor[#decor + 1] = { line = bl, fg = "AgentMuted" }
+        decor[#decor + 1] = { line = bl, fg = "HeidrMuted" }
         local ps, pe = line:find("%+%d+")
-        if ps then decor[#decor + 1] = { line = bl, fg = "AgentStream", cs = ps - 1, ce = pe } end
+        if ps then decor[#decor + 1] = { line = bl, fg = "HeidrStream", cs = ps - 1, ce = pe } end
         local ms, me = line:find("%-%d+", (pe or 0) + 1)
-        if ms then decor[#decor + 1] = { line = bl, fg = "AgentErr", cs = ms - 1, ce = me } end
+        if ms then decor[#decor + 1] = { line = bl, fg = "HeidrErr", cs = ms - 1, ce = me } end
       end
     end
   end
@@ -1370,12 +1370,12 @@ render_chat = function(scroll)
   local q = S.selected and S.queued and S.queued[S.selected]
   if q and q ~= "" then
     push("")
-    decor[#decor + 1] = { line = push("  " .. GLYPH.queued .. " queued — not sent yet, the agent hasn't read this"), fg = "AgentAttn" }
-    decor[#decor + 1] = { line = push("     sends when this turn ends   ·   esc = send now"), fg = "AgentMuted" }
+    decor[#decor + 1] = { line = push("  " .. GLYPH.queued .. " queued — not sent yet, the agent hasn't read this"), fg = "HeidrAttn" }
+    decor[#decor + 1] = { line = push("     sends when this turn ends   ·   esc = send now"), fg = "HeidrMuted" }
     for _, para in ipairs(vim.split(q, "\n", { plain = true })) do
       local ln = push("  ┆ " .. para)
-      decor[#decor + 1] = { line = ln, fg = "AgentMuted" }
-      decor[#decor + 1] = { line = ln, range = { 2, 5, "AgentAttn" } } -- ┆ pending gutter (U+2506, 3 bytes)
+      decor[#decor + 1] = { line = ln, fg = "HeidrMuted" }
+      decor[#decor + 1] = { line = ln, range = { 2, 5, "HeidrAttn" } } -- ┆ pending gutter (U+2506, 3 bytes)
     end
   end
 
@@ -1414,10 +1414,10 @@ render_chat = function(scroll)
       -- inline left padding that is NOT buffer content, so yanking copies clean text
       -- (e.g. a code block's commands). Coloured to blend into the block's bg.
       pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0,
-        { virt_text = { { d.virt, d.virthl or "AgentCode" } }, virt_text_pos = "inline", priority = 200 })
+        { virt_text = { { d.virt, d.virthl or "HeidrCode" } }, virt_text_pos = "inline", priority = 200 })
     end
     if d.caret then
-      pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0, { line_hl_group = "AgentStream", priority = 80 })
+      pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0, { line_hl_group = "HeidrStream", priority = 80 })
     end
   end
 
@@ -2103,7 +2103,7 @@ end
 -- external pkill. The short delay lets the stop tear down before spawn re-adds
 -- (spawn is idempotent-by-name, so it'd no-op against a not-yet-removed entry).
 local function reload_session(sid, cwd, seed)
-  if not (sid and cwd and cwd ~= "") then vim.notify("agent-nvim: open a session first"); return end
+  if not (sid and cwd and cwd ~= "") then vim.notify("heidr: open a session first"); return end
   send({ type = "stop", session = sid })
   S.stream[sid] = nil
   -- mark reloading so the ~2s pi-boot gap shows "restarting…" instead of a
@@ -2113,7 +2113,7 @@ local function reload_session(sid, cwd, seed)
   S.reloading[sid] = true
   vim.defer_fn(function() if S.reloading then S.reloading[sid] = nil end end, 12000)
   if sid == S.selected then render_chat(false) end
-  vim.notify("agent-nvim: restarting " .. short_name(sid) .. " — reloading MCP config…")
+  vim.notify("heidr: restarting " .. short_name(sid) .. " — reloading MCP config…")
   vim.defer_fn(function()
     -- carry the seed IN the spawn so the daemon delivers it the moment pi's stdin
     -- is ready (event-driven) — used by the wedge watchdog to resend the prompt
@@ -2246,7 +2246,7 @@ local function start_spin()
     -- Watchdog: guarantee liveness even if a socket EOF is somehow missed. If we
     -- ever find ourselves disconnected (and no retry loop is already spinning),
     -- kick a reconnect. This is why the rail stays alive on its own — no manual
-    -- :AgentReconnect needed.
+    -- :HeidrReconnect needed.
     if S.tick % 33 == 0 then
       if S.connected and S.pipe and S.last_recv and (os.time() - S.last_recv > 10) then
         -- Heartbeat: agentd broadcasts a ping every 3s. >10s of silence means the
@@ -2275,7 +2275,7 @@ local function start_spin()
               local cwd
               for _, a in ipairs(S.roster) do if a.id == aid then cwd = a.cwd; break end end
               if cwd then
-                vim.notify("agent-nvim: " .. short_name(aid) .. " unresponsive — reloading + resending", vim.log.levels.WARN)
+                vim.notify("heidr: " .. short_name(aid) .. " unresponsive — reloading + resending", vim.log.levels.WARN)
                 reload_session(aid, cwd, S.last_sent and S.last_sent[aid])
               end
             end
@@ -2382,10 +2382,10 @@ render_chips = function()
     local loc = at.path
     if at.l1 then loc = loc .. ":" .. at.l1 .. (at.l2 and at.l2 ~= at.l1 and ("-" .. at.l2) or "") end
     local tag = (at.lang and at.lang ~= "") and ("  " .. at.lang) or ""
-    vls[#vls + 1] = { { CHIP_BAR .. " ", "AgentChipBar" }, { " " .. loc .. tag .. " ", "AgentChip" } }
+    vls[#vls + 1] = { { CHIP_BAR .. " ", "HeidrChipBar" }, { " " .. loc .. tag .. " ", "HeidrChip" } }
   end
   for i, img in ipairs(S.paste_images) do
-    vls[#vls + 1] = { { CHIP_BAR .. " ", "AgentChipBar" }, { "  image " .. i .. " · " .. img.mimeType .. " ", "AgentChip" } }
+    vls[#vls + 1] = { { CHIP_BAR .. " ", "HeidrChipBar" }, { "  image " .. i .. " · " .. img.mimeType .. " ", "HeidrChip" } }
   end
   pcall(api.nvim_buf_set_extmark, S.composerbuf, S.chip_ns, 0, 0, { virt_lines = vls, virt_lines_above = true })
   -- And a blank below the input so it doesn't butt the lualine bar.
@@ -2577,7 +2577,7 @@ local function sl_render()
     vim.wo[SL.win].winhighlight = "Normal:NormalFloat,FloatBorder:FloatBorder"
   end
   api.nvim_buf_clear_namespace(SL.buf, S.ns, 0, -1)
-  pcall(api.nvim_buf_set_extmark, SL.buf, S.ns, SL.sel - 1, 0, { line_hl_group = "AgentSel" })
+  pcall(api.nvim_buf_set_extmark, SL.buf, S.ns, SL.sel - 1, 0, { line_hl_group = "HeidrSel" })
   -- scroll the (unfocused) float so the selection stays visible past the fold —
   -- this is how C-n reaches the skills that sit below the rail commands.
   pcall(api.nvim_win_set_cursor, SL.win, { SL.sel, 0 })
@@ -2629,7 +2629,7 @@ local function stay_in_composer()
 end
 
 composer_send = function()
-  if not S.selected then vim.notify("agent-nvim: open a session first (<CR>)", vim.log.levels.INFO); return end
+  if not S.selected then vim.notify("heidr: open a session first (<CR>)", vim.log.levels.INFO); return end
   local text = table.concat(api.nvim_buf_get_lines(S.composerbuf, 0, -1, false), "\n"):gsub("%s+$", "")
   -- a pending prompt takes over the input: <CR> submits an input answer, and a
   -- confirm/select is answered with y/n/number (not by sending a message)
@@ -2688,7 +2688,7 @@ composer_send = function()
 end
 
 focus_composer = function()
-  if not S.selected then vim.notify("agent-nvim: open a session first (<CR>)", vim.log.levels.INFO); return end
+  if not S.selected then vim.notify("heidr: open a session first (<CR>)", vim.log.levels.INFO); return end
   if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
     api.nvim_set_current_win(S.composerwin)
     vim.cmd("startinsert!")
@@ -2706,7 +2706,7 @@ end
 -- Quick-send: a small floating prompt at the cursor to message the active session
 -- from anywhere in the editor, without opening/focusing the rail.
 function M.send_message()
-  if not S.selected then vim.notify("agent-nvim: no active session — open one first", vim.log.levels.WARN); return end
+  if not S.selected then vim.notify("heidr: no active session — open one first", vim.log.levels.WARN); return end
   local buf = api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = "nofile"
   local width = math.min(80, vim.o.columns - 6)
@@ -2714,7 +2714,7 @@ function M.send_message()
     relative = "cursor", row = 1, col = 0, width = width, height = 1,
     style = "minimal", border = "rounded", title = " → " .. S.selected .. " ", title_pos = "left",
   })
-  vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:AgentAccent"
+  vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:HeidrAccent"
   vim.cmd("startinsert")
   local function submit()
     local text = table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n"):gsub("%s+$", "")
@@ -2726,7 +2726,7 @@ function M.send_message()
     S.force_bottom = true
     send({ type = "prompt", session = S.selected, message = text })
     if S.view == "chat" then render_chat(true) end
-    vim.notify("agent-nvim: → " .. S.selected)
+    vim.notify("heidr: → " .. S.selected)
   end
   vim.keymap.set({ "n", "i" }, "<CR>", submit, { buffer = buf, nowait = true, silent = true })
   vim.keymap.set({ "n", "i" }, "<Esc>", function() pcall(api.nvim_win_close, win, true) end, { buffer = buf, nowait = true })
@@ -2756,7 +2756,7 @@ end
 function M.send_diff()
   local path = fn.expand("%:.")
   local out = fn.systemlist({ "git", "diff", "--", (path ~= "" and path or ".") })
-  if #out == 0 then vim.notify("agent-nvim: no diff", vim.log.levels.INFO); return end
+  if #out == 0 then vim.notify("heidr: no diff", vim.log.levels.INFO); return end
   add_attachment({ path = "git diff " .. (path ~= "" and path or "."), lang = "diff", text = table.concat(out, "\n") })
   ensure_open_and_compose()
 end
@@ -2765,7 +2765,7 @@ function M.attach_file()
   vim.ui.input({ prompt = "Attach file: ", default = "", completion = "file" }, function(path)
     if not path or path == "" then return end
     local p = fn.expand(path)
-    if fn.filereadable(p) == 0 then vim.notify("agent-nvim: not readable — " .. path, vim.log.levels.WARN); return end
+    if fn.filereadable(p) == 0 then vim.notify("heidr: not readable — " .. path, vim.log.levels.WARN); return end
     local text = table.concat(fn.readfile(p), "\n")
     local ft = vim.filetype.match({ filename = p }) or ""
     add_attachment({ path = fn.fnamemodify(p, ":."), lang = ft, text = text })
@@ -2776,7 +2776,7 @@ end
 function M.send_diagnostics()
   local buf = api.nvim_get_current_buf()
   local ds = vim.diagnostic.get(buf)
-  if #ds == 0 then vim.notify("agent-nvim: no diagnostics", vim.log.levels.INFO); return end
+  if #ds == 0 then vim.notify("heidr: no diagnostics", vim.log.levels.INFO); return end
   local sev = { "ERROR", "WARN", "INFO", "HINT" }
   local out = {}
   for _, d in ipairs(ds) do
@@ -2869,7 +2869,7 @@ M.editor_win = target_editor_win
 local function open_in_editor(cwd, path, line)
   local file = path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)
   file = fn.expand(file)
-  if fn.filereadable(file) == 0 then vim.notify("agent-nvim: not readable — " .. path, vim.log.levels.WARN); return end
+  if fn.filereadable(file) == 0 then vim.notify("heidr: not readable — " .. path, vim.log.levels.WARN); return end
   local target = target_editor_win()
   if not target then
     vim.cmd("topleft vsplit")
@@ -2945,7 +2945,7 @@ end
 -- reverse bridge: open the file referenced in the nearest fenced-code header
 -- (```lang path:l1-l2). Opens in the main editor window, not the rail.
 -- find a `path[:line]` token spanning the cursor column on one line (agent prose
--- often names files inline: "see agent-nvim/init.lua:409"). Requires a .ext or a
+-- often names files inline: "see heidr/init.lua:409"). Requires a .ext or a
 -- :line so ordinary words don't match. col is 0-indexed byte.
 local function inline_ref(line, col)
   local i = 1
@@ -2973,7 +2973,7 @@ local function chat_open_ref()
       open_in_editor(S.selected and session_cwd(S.selected), p or tok, l1)
       return
     end
-    vim.notify("agent-nvim: no file reference at cursor", vim.log.levels.INFO); return
+    vim.notify("heidr: no file reference at cursor", vim.log.levels.INFO); return
   end
   local path, l1 = loc:match("^([^:]+):(%d+)")
   open_in_editor(nil, path or loc, l1)
@@ -2998,9 +2998,9 @@ local function chat_open_url()
   local pos = api.nvim_win_get_cursor(S.chatwin)
   local line = api.nvim_buf_get_lines(S.chatbuf, pos[1] - 1, pos[1], false)[1] or ""
   local u = url_under_cursor(line, pos[2])
-  if not u then vim.notify("agent-nvim: no URL at cursor", vim.log.levels.INFO); return end
+  if not u then vim.notify("heidr: no URL at cursor", vim.log.levels.INFO); return end
   if vim.ui.open then vim.ui.open(u) else fn.jobstart({ "xdg-open", u }, { detach = true }) end
-  vim.notify("agent-nvim: opening " .. u)
+  vim.notify("heidr: opening " .. u)
 end
 
 -- <CR>/gf on a chat edit row opens that file; exact hunk navigation lives in
@@ -3044,30 +3044,30 @@ local function chat_yank_code()
   local s = cur
   while s > 1 and not all[s]:match("^```") do s = s - 1 end
   if not all[s] or not all[s]:match("^```") then
-    fn.setreg("+", all[cur] or ""); vim.notify("agent-nvim: yanked line", vim.log.levels.INFO); return
+    fn.setreg("+", all[cur] or ""); vim.notify("heidr: yanked line", vim.log.levels.INFO); return
   end
   local e = cur + 1
   while e <= #all and not all[e]:match("^```") do e = e + 1 end
   local body = {}
   for i = s + 1, e - 1 do body[#body + 1] = all[i] end
   fn.setreg("+", table.concat(body, "\n"))
-  vim.notify("agent-nvim: yanked code block (" .. #body .. " lines)", vim.log.levels.INFO)
+  vim.notify("heidr: yanked code block (" .. #body .. " lines)", vim.log.levels.INFO)
 end
 
 -- Copy the LAST agent reply's full text to the clipboard (Claude-Code parity —
 -- "copy response"). Whole message, not just the code block under the cursor.
 local function chat_yank_reply()
   local c = S.selected and S.chat[S.selected]
-  if not (c and c.msgs) then vim.notify("agent-nvim: no reply to copy"); return end
+  if not (c and c.msgs) then vim.notify("heidr: no reply to copy"); return end
   for i = #c.msgs, 1, -1 do
     if c.msgs[i].role == "assistant" then
       local text = c.msgs[i].text or ""
       fn.setreg("+", text); fn.setreg('"', text)
-      vim.notify("agent-nvim: copied last agent reply (" .. #text .. " chars)")
+      vim.notify("heidr: copied last agent reply (" .. #text .. " chars)")
       return
     end
   end
-  vim.notify("agent-nvim: no agent reply to copy")
+  vim.notify("heidr: no agent reply to copy")
 end
 
 -- Copy the WHOLE conversation as role-labelled markdown — for handing the
@@ -3075,7 +3075,7 @@ end
 -- (it's dimmed noise in the chat; not useful downstream).
 local function chat_yank_convo()
   local c = S.selected and S.chat[S.selected]
-  if not (c and c.msgs and #c.msgs > 0) then vim.notify("agent-nvim: no conversation to copy"); return end
+  if not (c and c.msgs and #c.msgs > 0) then vim.notify("heidr: no conversation to copy"); return end
   local out = {}
   for _, m in ipairs(c.msgs) do
     local text = m.text or ""
@@ -3087,7 +3087,7 @@ local function chat_yank_convo()
   end
   local md = table.concat(out, "\n")
   fn.setreg("+", md); fn.setreg('"', md)
-  vim.notify("agent-nvim: copied conversation (" .. #c.msgs .. " messages, " .. #md .. " chars)")
+  vim.notify("heidr: copied conversation (" .. #c.msgs .. " messages, " .. #md .. " chars)")
 end
 
 -- Cross-session search: grep every loaded transcript for a substring, pick a hit,
@@ -3122,7 +3122,7 @@ local function chat_search()
   -- selected session). One round-trip per session, bounded by the roster size.
   for _, id in ipairs(unloaded) do send({ type = "get_entries", session = id }) end
   local coverage = #unloaded > 0 and ("  ·  " .. #unloaded .. " now loading — search again to include") or ""
-  if #matches == 0 then vim.notify("agent-nvim: no matches for '" .. q .. "'" .. coverage); return end
+  if #matches == 0 then vim.notify("heidr: no matches for '" .. q .. "'" .. coverage); return end
   vim.ui.select(matches, { prompt = "matches (" .. #matches .. ")" .. coverage, format_item = function(it) return it.label end },
     function(choice)
       if not choice then return end
@@ -3221,8 +3221,8 @@ local function show_scratch(win, cwd)
   -- a small-caps accent section label + muted detail on one line
   local function section(label, detail)
     local ln = push("  " .. label .. (detail and ("   " .. detail) or ""))
-    hl(ln, "AgentMuted")
-    hl(ln, "AgentTitle", 2, 2 + #label)
+    hl(ln, "HeidrMuted")
+    hl(ln, "HeidrTitle", 2, 2 + #label)
     return ln
   end
   local nm = short_name(S.selected) or fn.fnamemodify(cwd, ":t")
@@ -3232,8 +3232,8 @@ local function show_scratch(win, cwd)
 
   -- masthead: accent bar + session name, worktree path beneath
   push(""); push("")
-  hl(push("  ▍ " .. nm .. (root and "  ·  orchestrator" or "")), "AgentAccent")
-  hl(push(file_row(W - 2, "    ", fn.fnamemodify(cwd, ":~"))), "AgentMuted")
+  hl(push("  ▍ " .. nm .. (root and "  ·  orchestrator" or "")), "HeidrAccent")
+  hl(push(file_row(W - 2, "    ", fn.fnamemodify(cwd, ":~"))), "HeidrMuted")
   push("")
 
 
@@ -3248,19 +3248,19 @@ local function show_scratch(win, cwd)
     if total > 0 then
       local label = "      " .. done .. "/" .. total .. " "
       local barw = math.max(10, math.min(56, (W - 2) - #label))
-      local btext, bsegs = progress_bar(done, total, barw, "AgentStream", "AgentDivider")
+      local btext, bsegs = progress_bar(done, total, barw, "HeidrStream", "HeidrDivider")
       local ln = push(label .. btext)
-      hl(ln, "AgentMuted", 0, #label)
+      hl(ln, "HeidrMuted", 0, #label)
       for _, sg in ipairs(bsegs) do hl(ln, sg[3], sg[1] + #label, sg[2] + #label) end
     end
     local savail = math.max(12, (W - 2) - 8)
     for _, s in ipairs(pg.flow or {}) do
       local g = s.status == "done" and "●" or (s.status == "active" and "◐" or "○")
-      local grp = s.status == "done" and "AgentStream" or (s.status == "active" and "AgentAccent" or "AgentIdle")
+      local grp = s.status == "done" and "HeidrStream" or (s.status == "active" and "HeidrAccent" or "HeidrIdle")
       local step = s.step or ""
       if #step > savail then step = step:sub(1, savail - 1) .. "…" end
       local ln = push("      " .. g .. " " .. step)
-      hl(ln, "AgentFile"); hl(ln, grp, 6, 6 + #g)
+      hl(ln, "HeidrFile"); hl(ln, grp, 6, 6 + #g)
     end
     push("")
   end
@@ -3334,11 +3334,11 @@ local function show_scratch(win, cwd)
       local line = "  " .. dot .. " " .. nm2 .. string.rep(" ", nw - #nm2) .. "   " .. ss.label .. prog
       local ln = push(line)
       sessmap[ln] = { id = a.id, cwd = a.cwd }
-      hl(ln, "AgentFile")                        -- name, neutral base
+      hl(ln, "HeidrFile")                        -- name, neutral base
       hl(ln, ss.name, 2, 2 + #dot)               -- status dot, coloured
-      hl(ln, "AgentMuted", 6 + #dot + nw, -1)    -- state + plan progress, muted
+      hl(ln, "HeidrMuted", 6 + #dot + nw, -1)    -- state + plan progress, muted
     end
-    if #others == 0 then hl(push("      no other sessions · n starts one"), "AgentMuted") end
+    if #others == 0 then hl(push("      no other sessions · n starts one"), "HeidrMuted") end
     push("")
 
     -- CYCLE + TICKETS from the agent-cached cycle.json. Tickets in priority order;
@@ -3367,7 +3367,7 @@ local function show_scratch(win, cwd)
       for _, a in ipairs(S.roster) do
         local t = (a.name or ""):match("%a+%-%d+"); if t then have[t:upper()] = a end
       end
-      local prigrp = { [1] = "AgentErr", [2] = "AgentAccent", [3] = "AgentFile", [4] = "AgentMuted" }
+      local prigrp = { [1] = "HeidrErr", [2] = "HeidrAccent", [3] = "HeidrFile", [4] = "HeidrMuted" }
       local idw = 0
       for _, t in ipairs(open) do idw = math.max(idw, #(t.id or "")) end
       section("TICKETS", #open .. " open · ⏎ starts a session")
@@ -3384,12 +3384,12 @@ local function show_scratch(win, cwd)
         local line = "  " .. mark .. " " .. id .. string.rep(" ", idw - #id) .. "   " .. title
         local ln = push(line)
         ticketmap[ln] = { id = id, slug = t.slug, live = live, title = t.title }
-        hl(ln, "AgentFile")                                       -- id + title, neutral
-        hl(ln, prigrp[t.priority] or "AgentMuted", 2, 2 + #mark)  -- priority-coloured marker
+        hl(ln, "HeidrFile")                                       -- id + title, neutral
+        hl(ln, prigrp[t.priority] or "HeidrMuted", 2, 2 + #mark)  -- priority-coloured marker
       end
       if #open > fit then
         expand_ln = push("      " .. (S.dash_expand and "⏶ show less" or ("… " .. (#open - fit) .. " more")) .. "   ⏎")
-        hl(expand_ln, "AgentMuted")
+        hl(expand_ln, "HeidrMuted")
       end
       -- DONE — dim. A done ticket that STILL has a session/worktree is offered for
       -- teardown (⊘ + ⏎); the rest are just ✓. Teardown-able ones sort first.
@@ -3408,13 +3408,13 @@ local function show_scratch(win, cwd)
           local mark = sess and "⊘" or ICON.check
           local suffix = sess and "   ⏎ teardown" or ""
           local ln = push("  " .. mark .. " " .. (t.id or "?") .. "  " .. (t.title or "") .. suffix)
-          hl(ln, "AgentMuted")
+          hl(ln, "HeidrMuted")
           if sess then
-            hl(ln, "AgentErr", 2, 2 + #mark) -- ⊘ flags a lingering session to clean up
+            hl(ln, "HeidrErr", 2, 2 + #mark) -- ⊘ flags a lingering session to clean up
             teardownmap[ln] = { id = sess.id, cwd = sess.cwd, ticket = t.id }
           end
         end
-        if #done > 5 then hl(push("      … " .. (#done - 5) .. " more"), "AgentMuted") end
+        if #done > 5 then hl(push("      … " .. (#done - 5) .. " more"), "HeidrMuted") end
       end
       push("")
     end
@@ -3438,17 +3438,17 @@ local function show_scratch(win, cwd)
       local line = file_row(W - 2, "      • ", c.path, acol, dcol)
       local ln = push(line)
       openmap[ln] = c.path -- <CR>/o opens it
-      hl(ln, "AgentFile")
-      hl(ln, "AgentMuted", 6, 9) -- the • bullet
-      local ps, pe = line:find("%+%d+"); if ps then hl(ln, "AgentStream", ps - 1, pe) end
-      local ms, me = line:find("%-%d+", (pe or 0) + 1); if ms then hl(ln, "AgentErr", ms - 1, me) end
+      hl(ln, "HeidrFile")
+      hl(ln, "HeidrMuted", 6, 9) -- the • bullet
+      local ps, pe = line:find("%+%d+"); if ps then hl(ln, "HeidrStream", ps - 1, pe) end
+      local ms, me = line:find("%-%d+", (pe or 0) + 1); if ms then hl(ln, "HeidrErr", ms - 1, me) end
     end
     if not S.dash_expand and #ch > fitcap then
       expand_ln = push("      … " .. (#ch - fitcap) .. " more   ⏎")
-      hl(expand_ln, "AgentMuted")
+      hl(expand_ln, "HeidrMuted")
     elseif S.dash_expand and #ch > fitcap then
       expand_ln = push("      ⏶ show less   ⏎")
-      hl(expand_ln, "AgentMuted")
+      hl(expand_ln, "HeidrMuted")
     end
     push("")
   elseif ctx then
@@ -3469,8 +3469,8 @@ local function show_scratch(win, cwd)
   while #lines < target do push("") end
   for bi, bl in ipairs(box) do
     local ln = push(string.rep(" ", leftpad) .. bl)
-    hl(ln, "AgentMuted")
-    if bi > 1 and bi <= #labels + 1 then hl(ln, "AgentAccent", leftpad + 5, leftpad + 6) end
+    hl(ln, "HeidrMuted")
+    if bi > 1 and bi <= #labels + 1 then hl(ln, "HeidrAccent", leftpad + 5, leftpad + 6) end
   end
 
   vim.bo[buf].modifiable = true
@@ -3599,7 +3599,7 @@ teardown_session = function(id, cwd)
   if ctx and ctx ~= "main" then
     fn.jobstart({ (os.getenv("HOME") or "") .. "/.config/niri/scripts/cockpit-remove", ctx }, { detach = true })
   end
-  vim.notify("agent-nvim: tearing down " .. what)
+  vim.notify("heidr: tearing down " .. what)
   render_roster()
 end
 
@@ -3906,7 +3906,7 @@ render_changes = function()
 
   local cwd = S.selected and session_cwd(S.selected)
   if not cwd then
-    decor[#decor + 1] = { line = push("  press <CR> to open a session"), fg = "AgentMuted" }
+    decor[#decor + 1] = { line = push("  press <CR> to open a session"), fg = "HeidrMuted" }
   else
     local W = rail_width()
     local plan = load_plan(cwd)
@@ -3930,17 +3930,17 @@ render_changes = function()
         local text, segs
         if not r.add then
           text = file_row(inner, indent, r.path)
-          segs = { { 0, #text, "AgentFile" }, { 0, #r.dot, r.grp } }
+          segs = { { 0, #text, "HeidrFile" }, { 0, #r.dot, r.grp } }
         else
           local as, ds = "+" .. r.add, "-" .. r.del
           local acol = string.rep(" ", aw - #as) .. as
           local dcol = string.rep(" ", dw - #ds) .. ds
           text = file_row(inner, indent, r.path, acol, dcol)
-          segs = { { 0, #text, "AgentFile" }, { 0, #r.dot, r.grp } }
+          segs = { { 0, #text, "HeidrFile" }, { 0, #r.dot, r.grp } }
           local ps, pe = text:find("%+%d+")
-          if ps then segs[#segs + 1] = { ps - 1, pe, "AgentStream" } end
+          if ps then segs[#segs + 1] = { ps - 1, pe, "HeidrStream" } end
           local ms, me = text:find("%-%d+", (pe or 0) + 1)
-          if ms then segs[#segs + 1] = { ms - 1, me, "AgentErr" } end
+          if ms then segs[#segs + 1] = { ms - 1, me, "HeidrErr" } end
         end
         -- File row only (navigable to its first hunk). Per-hunk ↳ breakdown is
         -- intentionally NOT listed here — the file view stays a compact files+counts
@@ -3956,11 +3956,11 @@ render_changes = function()
       for _, c in ipairs(changes) do ta = ta + (c.add or 0); td = td + (c.del or 0) end
       if #changes == 0 then return nil end
       local s = #changes .. (#changes == 1 and " file   +" or " files   +") .. ta .. "  -" .. td
-      local segs = { { 0, #s, "AgentMuted" } }
+      local segs = { { 0, #s, "HeidrMuted" } }
       local ps, pe = s:find("%+%d+")
-      if ps then segs[#segs + 1] = { ps - 1, pe, "AgentStream" } end
+      if ps then segs[#segs + 1] = { ps - 1, pe, "HeidrStream" } end
       local ms, me = s:find("%-%d+", (pe or 0) + 1)
-      if ms then segs[#segs + 1] = { ms - 1, me, "AgentErr" } end
+      if ms then segs[#segs + 1] = { ms - 1, me, "HeidrErr" } end
       return s, segs
     end
 
@@ -3975,16 +3975,16 @@ render_changes = function()
           local label = done .. "/" .. #flow .. " "
           local btext, bsegs = progress_bar(done, #flow, math.max(8, inner - #label - 1))
           local text = label .. btext
-          local segs = { { 0, #label, "AgentMuted" } }
+          local segs = { { 0, #label, "HeidrMuted" } }
           for _, sg in ipairs(bsegs) do segs[#segs + 1] = { sg[1] + #label, sg[2] + #label, sg[3] } end
           add(text, segs)
         end
         for _, step in ipairs(flow) do
           local g = step.status == "done" and "●" or (step.status == "active" and "◐" or "○")
-          local grp = step.status == "done" and "AgentStream" or (step.status == "active" and "AgentAccent" or "AgentIdle")
+          local grp = step.status == "done" and "HeidrStream" or (step.status == "active" and "HeidrAccent" or "HeidrIdle")
           local t = g .. " " .. (step.step or "")
           -- status colour on the DOT only; the step text stays neutral (not a green wash)
-          add(t, { { 0, #g, grp }, { #g, #t, "AgentFile" } })
+          add(t, { { 0, #g, grp }, { #g, #t, "HeidrFile" } })
         end
       end, nil, false, false, true, true)
       local rows = {}
@@ -3992,7 +3992,7 @@ render_changes = function()
         local c = bypath[pf.file]
         rows[#rows + 1] = {
           dot = pf.status == "done" and "●" or (pf.status == "touched" and "◐" or "○"),
-          grp = pf.status == "done" and "AgentStream" or (pf.status == "touched" and "AgentAccent" or "AgentIdle"),
+          grp = pf.status == "done" and "HeidrStream" or (pf.status == "touched" and "HeidrAccent" or "HeidrIdle"),
           path = pf.file, add = c and c.add, del = c and c.del, hunks = c and c.hunks,
         }
         bypath[pf.file] = nil
@@ -4004,7 +4004,7 @@ render_changes = function()
         table.sort(drift, function(a, b) return a.path < b.path end)
         box(push, decor, W, ICON.warn, "UNPLANNED", function(add)
           for _, c in ipairs(drift) do
-            box_files(add, { { dot = "⚠", grp = "AgentAttn", path = c.path, add = c.add, del = c.del, hunks = c.hunks } })
+            box_files(add, { { dot = "⚠", grp = "HeidrAttn", path = c.path, add = c.add, del = c.del, hunks = c.hunks } })
           end
         end, nil, false, false, true, true)
       end
@@ -4012,11 +4012,11 @@ render_changes = function()
       box(push, decor, W, ICON.changes, "CHANGES · " .. base(cwd), function(add)
         local ds, dsegs = diffstat(); if ds then add(ds, dsegs) end
         if #changes == 0 then
-          add("no changes on this branch", { { 0, #"no changes on this branch", "AgentMuted" } })
+          add("no changes on this branch", { { 0, #"no changes on this branch", "HeidrMuted" } })
         else
           local rows = {}
           for _, c in ipairs(changes) do
-            rows[#rows + 1] = { dot = ICON.file_change, grp = "AgentIdle", path = c.path, add = c.add, del = c.del, hunks = c.hunks }
+            rows[#rows + 1] = { dot = ICON.file_change, grp = "HeidrIdle", path = c.path, add = c.add, del = c.del, hunks = c.hunks }
           end
           box_files(add, rows)
         end
@@ -4028,7 +4028,7 @@ render_changes = function()
       box(push, decor, W, ICON.mcp, "MCP", function(add)
         for _, s in ipairs(mcp) do
           local t = ICON.mcp .. " " .. s
-          add(t, { { 0, #t, "AgentIdle" } })
+          add(t, { { 0, #t, "HeidrIdle" } })
         end
       end, nil, false, false, true, true)
     end
@@ -4191,7 +4191,7 @@ local function float(lines, title)
     row = math.floor((vim.o.lines - h) / 2), col = math.floor((vim.o.columns - w) / 2),
     style = "minimal", border = "rounded", title = " " .. title .. " ", title_pos = "center",
   })
-  vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:AgentMuted"
+  vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:HeidrMuted"
   vim.wo[win].conceallevel = 2
   vim.wo[win].wrap = true
   vim.keymap.set("n", "q", "<cmd>close<CR>", { buffer = b, nowait = true })
@@ -4199,12 +4199,12 @@ local function float(lines, title)
   -- floats are read-only navigation surfaces — hide the cursor here too. One fixed
   -- group (cleared each open) — floats are modal, so per-buffer named groups just
   -- leaked one augroup per float opened.
-  local grp = api.nvim_create_augroup("AgentFloatCursor", { clear = true })
+  local grp = api.nvim_create_augroup("HeidrFloatCursor", { clear = true })
   api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     group = grp, buffer = b,
     callback = function()
       if not S.saved_gcr then S.saved_gcr = vim.o.guicursor end
-      vim.o.guicursor = "a:AgentCursorFloat"
+      vim.o.guicursor = "a:HeidrCursorFloat"
     end,
   })
   api.nvim_create_autocmd({ "BufLeave", "WinLeave", "BufWipeout" }, {
@@ -4212,7 +4212,7 @@ local function float(lines, title)
     callback = function() if S.saved_gcr then vim.o.guicursor = S.saved_gcr end end,
   })
   if not S.saved_gcr then S.saved_gcr = vim.o.guicursor end
-  vim.o.guicursor = "a:AgentCursorFloat"
+  vim.o.guicursor = "a:HeidrCursorFloat"
   return win
 end
 
@@ -4228,7 +4228,7 @@ function M.help()
     "          <C-x> drop attachments · q roster · / commands",
     "",
     " anywhere R focus roster · <leader>a toggle · <leader>A quick-message active session",
-    "          <leader>as (visual) send selection · :AgentSend / File / Diff / Diagnostics",
+    "          <leader>as (visual) send selection · :HeidrSend / File / Diff / Diagnostics",
     "",
     " slash    rail: /abort /steer /clear /diff /plan /retry /model /think /reload /help",
     "          pi:   /mcp-auth /mcp · skills/templates · (TUI cmds like /reload don't run via rpc)",
@@ -4322,7 +4322,7 @@ ensure_buf = function()
   -- relativenumber toggle changed numberwidth and shifted the text col 2↔3.)
   -- relnum for a VISIBLE line ≤ window height, so 2 digits always fit; the cursor
   -- line (relnum 0) stays blank. g:statusline_winid is the window being drawn.
-  _G.__AgentChatStc = function()
+  _G.__HeidrChatStc = function()
     -- focused = the chat window is the actually-current window. (Don't use
     -- g:statusline_winid — it isn't set during 'statuscolumn' eval, only statusline/
     -- winbar, so the old check always failed and the gutter was permanently blank.)
@@ -4332,8 +4332,8 @@ ensure_buf = function()
     if r > 99 then return "99" end
     return string.format("%2d", r)
   end
-  local CHAT_STC = "%!v:lua.__AgentChatStc()"
-  local chatnum = api.nvim_create_augroup("AgentChatNum", { clear = true })
+  local CHAT_STC = "%!v:lua.__HeidrChatStc()"
+  local chatnum = api.nvim_create_augroup("HeidrChatNum", { clear = true })
   api.nvim_create_autocmd({ "WinEnter", "BufEnter", "WinLeave", "BufLeave" }, {
     group = chatnum, buffer = S.chatbuf,
     callback = function()
@@ -4563,7 +4563,7 @@ ensure_buf = function()
     for _, a in ipairs(S.roster) do
       if S.pending[a.id] or a.status == "error" then q[#q + 1] = a end
     end
-    if #q == 0 then vim.notify("agent-nvim: nothing needs you"); return end
+    if #q == 0 then vim.notify("heidr: nothing needs you"); return end
     local at = 0
     for i, a in ipairs(q) do if a.id == S.selected then at = i break end end
     local nxt = q[((at - 1 + delta) % #q) + 1]
@@ -4584,12 +4584,12 @@ ensure_buf = function()
   map("q", function() M.close() end)
 
   -- hide the cursor while in the roster (focus ring stands in for it)
-  local grp = api.nvim_create_augroup("AgentRailCursor", { clear = true })
+  local grp = api.nvim_create_augroup("HeidrRailCursor", { clear = true })
   api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     group = grp, buffer = S.buf,
     callback = function()
       if not S.saved_gcr then S.saved_gcr = vim.o.guicursor end
-      vim.o.guicursor = "a:AgentCursorRoster"
+      vim.o.guicursor = "a:HeidrCursorRoster"
       -- (S.roster_active is computed in render_roster from the current window)
       -- focusing the roster to switch sessions → show them all (collapses on leave).
       -- Gated on S.built: nvim_win_set_buf during M.open fires BufEnter here before
@@ -4690,7 +4690,7 @@ function M.open()
   vim.wo[S.win].statuscolumn = "  "
   vim.wo[S.win].wrap = true
   vim.wo[S.win].cursorline = false
-  vim.wo[S.win].winhighlight = "WinSeparator:AgentDivider"
+  vim.wo[S.win].winhighlight = "WinSeparator:HeidrDivider"
   -- pane separation via a blank gap, not a ─ rule: blank the horizontal separator
   -- chars (the line that read as a "divider under the box") + eob, keeping only the
   -- thin vertical │ side border.
@@ -4708,7 +4708,7 @@ function M.open()
   vim.wo[S.chatwin].breakindent = true
   vim.wo[S.chatwin].breakindentopt = "list:-1"
   vim.bo[S.chatbuf].formatlistpat = [[^\s*\%(\d\+[.)]\|[-*+•]\)\s\+]]
-  vim.wo[S.chatwin].statuscolumn = "%!v:lua.__AgentChatStc()" -- 2-col gutter; relnum on focus, blank off (see __AgentChatStc)
+  vim.wo[S.chatwin].statuscolumn = "%!v:lua.__HeidrChatStc()" -- 2-col gutter; relnum on focus, blank off (see __HeidrChatStc)
   vim.wo[S.chatwin].fillchars = "eob: "
   -- MDNS scopes the rail's markdown styling to this window AND carries WinSeparator
   -- (see set_hl) — it supersedes winhighlight, so we don't set winhighlight here.
@@ -4731,9 +4731,9 @@ function M.open()
   -- 5-col gutter: the › prompt sits at col 2 (the box-border column) and the input
   -- starts at col 5 (the box-content column), so the composer lines up with the chat
   -- text + box content above it, and the input gets left padding.
-  vim.wo[S.composerwin].statuscolumn = "%#AgentAccent#%{v:lnum==1&&v:virtnum==0?'  ›  ':'     '}"
+  vim.wo[S.composerwin].statuscolumn = "%#HeidrAccent#%{v:lnum==1&&v:virtnum==0?'  ›  ':'     '}"
   vim.wo[S.composerwin].fillchars = "eob: " -- blank bottom pad row (no hairline)
-  vim.wo[S.composerwin].winhighlight = "Normal:Normal,WinSeparator:AgentDivider"
+  vim.wo[S.composerwin].winhighlight = "Normal:Normal,WinSeparator:HeidrDivider"
   render_chips(); composer_placeholder(); render_chips()
 
   vim.wo[S.win].winfixheight = true
@@ -4748,11 +4748,11 @@ function M.open()
   if edwin ~= 0 and edwin ~= S.win and api.nvim_win_is_valid(edwin) then
     S.editorwin = edwin
     S.editor_wh = vim.wo[edwin].winhighlight
-    vim.wo[edwin].winhighlight = (S.editor_wh ~= "" and (S.editor_wh .. ",") or "") .. "WinSeparator:AgentDivider"
+    vim.wo[edwin].winhighlight = (S.editor_wh ~= "" and (S.editor_wh .. ",") or "") .. "WinSeparator:HeidrDivider"
   end
 
   if not S.saved_gcr then S.saved_gcr = vim.o.guicursor end
-  vim.o.guicursor = "a:AgentCursorRoster"
+  vim.o.guicursor = "a:HeidrCursorRoster"
   start_spin()
   start_cockpit_watch() -- Super+T context switches → select the matching session
 
@@ -4765,7 +4765,7 @@ function M.open()
   -- holds it. So "a rail is focused" is global, not per-window.
   S.nvim_focused = true
   rail_focus_mark(true)
-  local fgrp = api.nvim_create_augroup("AgentRailFocus", { clear = true })
+  local fgrp = api.nvim_create_augroup("HeidrRailFocus", { clear = true })
   api.nvim_create_autocmd("FocusGained", { group = fgrp, callback = function()
     S.nvim_focused = true
     rail_focus_mark(true)
@@ -4917,37 +4917,37 @@ function M.setup(opts)
     end,
   })
 
-  api.nvim_create_user_command("AgentRail", function() M.toggle() end, {})
-  api.nvim_create_user_command("AgentReconnect", function()
+  api.nvim_create_user_command("HeidrRail", function() M.toggle() end, {})
+  api.nvim_create_user_command("HeidrReconnect", function()
     S.connected = false
     pcall(function() if S.pipe then S.pipe:close() end end)
     S.pipe, S.readbuf, S.connecting = nil, "", false
     render_roster()
     connect(function() send({ type = "list_sources" }) end)
   end, {})
-  api.nvim_create_user_command("AgentReroot", function(o) reroot(o.args) end, { nargs = 1 })
-  api.nvim_create_user_command("AgentDash", to_dashboard, {}) -- editor back to the session dashboard
+  api.nvim_create_user_command("HeidrReroot", function(o) reroot(o.args) end, { nargs = 1 })
+  api.nvim_create_user_command("HeidrDash", to_dashboard, {}) -- editor back to the session dashboard
   -- global: jump the editor to the active session's dashboard from ANY buffer
   -- (no-ops when there's no session, so it's a safe always-on binding). <leader>D
   -- rather than gd — bare gd is LSP go-to-definition.
-  vim.keymap.set("n", "<leader>D", to_dashboard, { desc = "Agent: session dashboard" })
-  api.nvim_create_user_command("AgentFollow", function()
+  vim.keymap.set("n", "<leader>D", to_dashboard, { desc = "Heidr: session dashboard" })
+  api.nvim_create_user_command("HeidrFollow", function()
     S.follow_edits = not (S.follow_edits ~= false)
-    vim.notify("agent-nvim: live-follow edits " .. (S.follow_edits and "on" or "off"))
+    vim.notify("heidr: live-follow edits " .. (S.follow_edits and "on" or "off"))
   end, {})
-  api.nvim_create_user_command("AgentSend", function() M.send_range() end, { range = true })
-  api.nvim_create_user_command("AgentSendFile", function() M.send_file() end, {})
-  api.nvim_create_user_command("AgentSendDiff", function() M.send_diff() end, {})
-  api.nvim_create_user_command("AgentSendDiagnostics", function() M.send_diagnostics() end, {})
-  api.nvim_create_user_command("AgentMsg", function() M.send_message() end, {})
+  api.nvim_create_user_command("HeidrSend", function() M.send_range() end, { range = true })
+  api.nvim_create_user_command("HeidrSendFile", function() M.send_file() end, {})
+  api.nvim_create_user_command("HeidrSendDiff", function() M.send_diff() end, {})
+  api.nvim_create_user_command("HeidrSendDiagnostics", function() M.send_diagnostics() end, {})
+  api.nvim_create_user_command("HeidrMsg", function() M.send_message() end, {})
   -- Open a file in a real editor window, NEVER a rail buffer: open_in_editor skips
   -- every agent-* window and makes a fresh vsplit if only the rail is up. The
-  -- review-pr skill calls this (`:AgentEdit <path>`) so the review .md can't land in
+  -- review-pr skill calls this (`:HeidrEdit <path>`) so the review .md can't land in
   -- the composer/chat even when a rail pane is focused.
-  api.nvim_create_user_command("AgentEdit", function(o) open_in_editor(nil, o.args, nil) end,
+  api.nvim_create_user_command("HeidrEdit", function(o) open_in_editor(nil, o.args, nil) end,
     { nargs = 1, complete = "file" })
-  -- preview the approval card without a real agent: :AgentMockApproval [confirm|select|input]
-  api.nvim_create_user_command("AgentMockApproval", function(o)
+  -- preview the approval card without a real agent: :HeidrMockApproval [confirm|select|input]
+  api.nvim_create_user_command("HeidrMockApproval", function(o)
     M.open()
     if not S.selected then
       if not S.roster or #S.roster == 0 then S.roster = { { id = "mock", name = "mock-0000", cwd = fn.getcwd(), status = "idle" } } end
@@ -5019,21 +5019,17 @@ function M.setup(opts)
   end
   vim.keymap.set("n", "<leader>a", function() M.toggle() end, { desc = "Toggle agent rail" })
   vim.keymap.set("n", "<leader>A", function() M.send_message() end, { desc = "Quick-message the active agent" })
-  vim.keymap.set("x", "<leader>as", ":<C-u>lua require('agent-nvim').send_range()<CR>", { silent = true, desc = "Send selection to agent" })
+  vim.keymap.set("x", "<leader>as", ":<C-u>lua require('heidr').send_range()<CR>", { silent = true, desc = "Send selection to agent" })
 
-  -- Autostart the rail when a scope is explicitly set: the cockpit/agent nvim sets
-  -- AGENT_SCOPE per workspace (lovable / personal), so the rail becomes that scope's
-  -- mission control on launch. A bare personal-machine nvim with no AGENT_SCOPE stays
-  -- dormant (open on demand with <leader>a). Pass opts.autostart to force either way.
-  -- Autostart when the scope resolved to a "work" world: an explicit AGENT_SCOPE
-  -- (cockpit / opt-in personal) or the lovable workspace. A bare personal nvim
-  -- elsewhere stays dormant (open on demand with <leader>a).
-  -- Open by default. Scope (which daemon) is still auto-detected — AGENT_SCOPE or
-  -- the lovable niri workspace → lovable, else personal — but the rail always opens,
-  -- rather than depending on that (fragile) detection to even show up. Opt out with
-  -- AGENT_RAIL_NOAUTOSTART=1 or setup({ autostart = false }).
+  -- Autostart ONLY when launched via the `heidr` command (which sets HEIDR_OPEN=1)
+  -- or the cockpit nvim leg. A plain `nvim` stays dormant — quicknotes, config edits,
+  -- etc. get a clean editor with no rail. `nvim` vs `heidr` are the two explicit
+  -- entry points; the rail no longer hijacks every nvim (which also stopped N stray
+  -- nvims each polling devenv). The rail is still one keypress away: <leader>a.
+  -- Scope (which daemon) is auto-detected independently (HEIDR_SCOPE / niri workspace).
+  -- Force either way with setup({ autostart = true|false }).
   local autostart = opts.autostart
-  if autostart == nil then autostart = vim.env.AGENT_RAIL_NOAUTOSTART == nil end
+  if autostart == nil then autostart = vim.env.HEIDR_OPEN ~= nil end
   if autostart then
     -- The rail owns the editor's default view (per-session dashboard), so tell
     -- plan-nvim not to auto-open the plan on boot (it raced boot and clobbered the

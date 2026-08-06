@@ -89,18 +89,18 @@ no browser page. Structure it as plain markdown, same content as step 5:
 - `## Intent` — satisfied / missing / out-of-scope against the linked ticket.
 - `## Verification` — what you actually ran + results; CI rollup for the rest.
 
-Then open it via the rail's `:AgentEdit` command (best-effort; silently no-ops
-outside the cockpit). Use `:AgentEdit`, NOT a bare `:e` — `:AgentEdit` opens in a real
+Then open it via the rail's `:HeidrEdit` command (best-effort; silently no-ops
+outside the cockpit). Use `:HeidrEdit`, NOT a bare `:e` — `:HeidrEdit` opens in a real
 editor window and never a rail buffer (it skips every `agent-*` window and makes a
 fresh vsplit if only the rail is up), so the review can't land in the composer/chat
 even when a rail pane is focused:
 
 ```
 sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kitty-cockpit-nvim"
-[ -S "$sock" ] && kitty @ --to "unix:$sock" send-text $'\x1c\x0e'":AgentEdit ~/personal/notes/storage/reviews/pr-<num>.md"$'\r'
+[ -S "$sock" ] && kitty @ --to "unix:$sock" send-text $'\x1c\x0e'":HeidrEdit ~/personal/notes/storage/reviews/pr-<num>.md"$'\r'
 ```
 
-(`\x1c\x0e` = `<C-\><C-n>` to force normal mode first; then the `:AgentEdit` command
+(`\x1c\x0e` = `<C-\><C-n>` to force normal mode first; then the `:HeidrEdit` command
 picks the editor window itself.)
 
 To restyle every review, change this section — the file is plain markdown rendered by
