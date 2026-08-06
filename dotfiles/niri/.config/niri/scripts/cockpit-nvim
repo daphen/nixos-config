@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# cockpit-nvim — bring up JUST the cockpit nvim window, correctly wired so the
+# cockpit can control it: spawned with --class cockpit-nvim + --listen-on the
+# kitty-cockpit-nvim socket (Super+T / cockpit-switch talk to that socket — a
+# plain `kitty` + nvim has neither, so it's invisible to the cockpit). Repopulates
+# the nvim context tabs from the registry and focuses the roster.
+#
+# Use when you want the rail without spawning the devenv/agent legs, or to
+# re-attach after the nvim window was lost. Idempotent: if the window is already
+# up, this just focuses it + the roster (no respawn, no duplicate tabs).
+set -euo pipefail
+
+CONFIG="${COCKPIT_CONFIG:-$HOME/.config/cockpit/config}"
+[ -r "$CONFIG" ] || { echo "cockpit: no config at $CONFIG" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$CONFIG"
+: "${COCKPIT_WORKSPACE:?config must set COCKPIT_WORKSPACE}"
+STATE="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}"
+sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kitty-cockpit-nvim"
+here=$(dirname "$(readlink -f "$0")")
+
+exists() { niri msg --json windows | jq -e 'any(.[]; .app_id=="cockpit-nvim")' >/dev/null; }
+
+# Land spawns on the cockpit workspace (niri only spawns onto the focused one).
+niri msg action focus-workspace "$COCKPIT_WORKSPACE" >/dev/null 2>&1 \
+    || niri msg action set-workspace-name "$COCKPIT_WORKSPACE" >/dev/null
+
+if ! exists; then
+    # A leftover socket from a dead kitty blocks the new --listen-on bind. Clear it.
+    rm -f "$sock"
+    setsid -f kitty --class cockpit-nvim --listen-on "unix:$sock" >/dev/null 2>&1
+    for _ in $(seq 50); do
+        exists && [ -S "$sock" ] && break
+        sleep 0.1
+    done
+    [ -S "$sock" ] || { echo "cockpit-nvim: window spawned but socket never came up" >&2; exit 1; }
+
+    # Repopulate the nvim leg's context tabs (nvim only — devenv/agent untouched).
+    if [ -f "$STATE/contexts" ]; then
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            dir=$(cockpit_context_dir "$name")
+            [ -d "$dir" ] || continue
+            cmd=$(cockpit_window_cmd nvim "$name" "$dir")
+            [ -z "$cmd" ] && continue
+            kitty @ --to "unix:$sock" ls \
+                | jq -e --arg t "$name" 'any(.[].tabs[]; .title == $t)' >/dev/null && continue
+            kitty @ --to "unix:$sock" launch --type=tab --tab-title "$name" \
+                --cwd "$dir" --keep-focus -- bash -c "$cmd" >/dev/null
+        done < "$STATE/contexts"
+        # Drop cockpit-open's scaffolding shell tab once real tabs exist.
+        kitty @ --to "unix:$sock" close-tab --match 'title:^~$' 2>/dev/null || true
+    fi
+
+    # Land on the context that was active.
+    active=$(cat "$STATE/active" 2>/dev/null || true)
+    [ -n "$active" ] && kitty @ --to "unix:$sock" focus-tab --match "title:^${active}\$" >/dev/null 2>&1 || true
+fi
+
+# Focus the window + its roster (reuses the Super+T path).
+exec "$here/cockpit-roster"
