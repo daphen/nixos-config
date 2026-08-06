@@ -19,6 +19,11 @@ let
     installPhase = ''
       mkdir -p $out/bin
       cp -r $src/* $out/bin/
+      # Expose only the `cockpit` dispatcher, not the dozen cockpit-* engine scripts.
+      # Those stay in ~/.config/niri/scripts (via symlinks.nix) for keybinds + the
+      # dispatcher to call by full path — they don't need to clutter the shell's
+      # command namespace. `cockpit-*` matches the engine scripts, not `cockpit`.
+      rm -f $out/bin/cockpit-*
       # chmod only regular files — `chmod +x $out/bin/*` chokes on a stray/dangling
       # symlink (a `bash -> /run/current-system/…` symlink once broke this build).
       find $out/bin -type f -exec chmod +x {} +

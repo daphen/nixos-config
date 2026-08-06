@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# cockpit — single front-end for the cockpit engine. `cockpit <cmd> [args]`
+# dispatches to the matching cockpit-<cmd> engine script. The individual
+# cockpit-* scripts stay in ~/.config/niri/scripts (niri keybinds + the scripts
+# themselves call each other there by full path); only THIS dispatcher is exposed
+# as a bare command, so the shell isn't cluttered with a dozen cockpit-* entries.
+set -euo pipefail
+
+SCRIPTS="$HOME/.config/niri/scripts"
+
+usage() {
+    cat <<'EOF'
+cockpit <command> [args]
+
+  nvim              bring up just the rail's nvim window (wired for the cockpit)
+  add <name>        add a worktree context (branch + worktree + tabs)
+  add-lol <name>    add a Lovable-on-Lovable context
+  add-lovbox <name> add a lovbox sandbox context
+  remove <name>     remove a context
+  switch <name>     focus a context across all cockpit windows
+  restore           rebuild the whole cockpit after a crash/reboot
+  open              spawn the cockpit windows (no contexts)
+  roster            focus the nvim rail's roster (also Super+T)
+  toggle            jump to the previous context (also Super+O)
+  focus <window>    focus a cockpit window (agent|nvim|devenv)
+  devenv ...        devenv health/orphans helper (used by the rail)
+EOF
+}
+
+sub=${1:-}
+[ "$#" -gt 0 ] && shift || true
+
+case "$sub" in
+    nvim|add|add-lol|add-lovbox|remove|switch|restore|open|roster|toggle|focus|devenv)
+        exec "$SCRIPTS/cockpit-$sub" "$@" ;;
+    "" | -h | --help | help)
+        usage ;;
+    *)
+        echo "cockpit: unknown command '$sub'" >&2
+        echo >&2
+        usage >&2
+        exit 1 ;;
+esac
