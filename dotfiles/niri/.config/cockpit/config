@@ -124,13 +124,14 @@ cockpit_window_cmd() {
         # plugin/cockpit-session.lua autosaves it while nvim runs.
         nvim)
             local sess="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}/nvim/${name}.vim"
-            # export (not just prefix) so a manual :qa + nvim in this tab keeps the
-            # rail active — the rail autostarts off HEIDR_OPEN, attaches to the lovable
-            # scope off HEIDR_SCOPE, and plan-nvim keys off PLAN_NVIM_OPEN.
+            # Launch via `heidr` (nvim + rail) — the single entry point, which sets
+            # HEIDR_OPEN itself. HEIDR_SCOPE is exported so it attaches to the lovable
+            # daemon; plan-nvim keys off PLAN_NVIM_OPEN. After :qa, a bare `nvim` in
+            # this tab is rail-less (matches the global rule); `heidr` reopens the rail.
             if [ -f "$sess" ]; then
-                printf 'export HEIDR_SCOPE=lovable HEIDR_OPEN=1 PLAN_NVIM_OPEN=1; COCKPIT_NVIM_SESSION=%q direnv exec . nvim -S %q; exec fish' "$sess" "$sess"
+                printf 'export HEIDR_SCOPE=lovable PLAN_NVIM_OPEN=1; COCKPIT_NVIM_SESSION=%q direnv exec . heidr -S %q; exec fish' "$sess" "$sess"
             else
-                printf 'export HEIDR_SCOPE=lovable HEIDR_OPEN=1 PLAN_NVIM_OPEN=1; COCKPIT_NVIM_SESSION=%q direnv exec . nvim; exec fish' "$sess"
+                printf 'export HEIDR_SCOPE=lovable PLAN_NVIM_OPEN=1; COCKPIT_NVIM_SESSION=%q direnv exec . heidr; exec fish' "$sess"
             fi ;;
         # main runs the shared deps singleton (wt-proxy caddy, nats, …);
         # worktrees run their own wt slice on top of it. The retry loop keeps
