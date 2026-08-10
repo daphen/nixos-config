@@ -36,21 +36,28 @@ done
 # cwd: matching the cmdline string alone silently misses those, which is how a pair
 # of stray dev instances survived every reap here for hours.
 _mlqs_ui_pids() {
+  local p pid comm cfg prev a cwd
   for p in /proc/[0-9]*; do
-    exe=$(readlink "$p/exe" 2>/dev/null) || continue
-    case "$exe" in *quickshell*) ;; *) continue ;; esac
+    # Shortlist on comm with a BUILTIN read — no fork. Doing readlink/tr for every
+    # /proc entry costs ~2.5s on this box (≈700 procs), and this runs before every
+    # summon, so it has to stay in the millisecond range.
+    read -r comm < "$p/comm" 2>/dev/null || continue
+    case "$comm" in *quickshell*) ;; *) continue ;; esac
     pid=${p#/proc/}
+    # the -p argument may be RELATIVE (`qs -p ui` from the repo, as a QML load test
+    # does) — such a process has no "mlqs" anywhere in argv, so resolve against cwd
+    # or the strays a dev session leaves behind stay invisible to every reap here
     cfg="" prev=""
     while IFS= read -r -d '' a; do
       if [ "$prev" = "-p" ]; then cfg="$a"; break; fi
       prev="$a"
-    done < "/proc/$pid/cmdline" 2>/dev/null
+    done < "$p/cmdline" 2>/dev/null
     [ -n "$cfg" ] || continue
     case "$cfg" in
       /*) ;;
-      *) cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue; cfg="$cwd/$cfg" ;;
+      *) cwd=$(readlink "$p/cwd" 2>/dev/null) || continue; cfg="$cwd/$cfg" ;;
     esac
-    case "${cfg%/}" in *mlqs/ui) echo "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) $pid" ;; esac
+    case "${cfg%/}" in *mlqs/ui) echo "$(awk '{print $22}' "$p/stat" 2>/dev/null) $pid" ;; esac
   done | sort -n | awk '{print $2}'
 }
 
