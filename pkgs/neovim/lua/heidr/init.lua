@@ -1941,11 +1941,15 @@ handle = function(obj)
     if text:gsub("%s", "") ~= "" then
       local c = S.chat[obj.session] or { msgs = {} }
       local last = c.msgs[#c.msgs]
-      -- the optimistic echo appends an image marker ("  🖼×N") the server echo
-      -- doesn't carry — strip it before comparing, else image messages dedup-miss
-      -- and render twice.
-      local lasttext = last and last.role == "user" and (last.text or ""):gsub("%s*" .. ICON.image .. "×%d+%s*$", "") or nil
-      if lasttext ~= text then
+      -- Dedup the server echo against the optimistic one, WHITESPACE-INSENSITIVELY. The
+      -- optimistic echo carries what you typed (plus an image marker "  🖼×N"); the server
+      -- copy is msg_text-trimmed and can differ in leading/internal whitespace (an injected
+      -- context prefix, indent) — an exact compare missed and the turn rendered twice.
+      local norm = function(s)
+        return (s or ""):gsub("%s*" .. ICON.image .. "×%d+%s*$", ""):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+      end
+      local lasttext = last and last.role == "user" and norm(last.text) or nil
+      if lasttext ~= norm(text) then
         c.msgs[#c.msgs + 1] = { role = "user", text = text }
         S.chat[obj.session] = c
         if obj.session == S.selected then render_chat(true) end
