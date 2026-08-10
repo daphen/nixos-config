@@ -37,7 +37,13 @@ If the diff is large or spans unrelated areas, **delegate reading to subagents b
 ## 3 — Review dimensions (read-only, thorough)
 
 Cover each; for a sizeable diff, fan these out to parallel subagents (Explore /
-general-purpose), one dimension or one area each. No edits, no fixes.
+general-purpose), one dimension or one area each. **These fan-out agents are
+READ-ONLY analysis: no edits, no fixes, and NO commands — no builds, no `go test`,
+no `direnv exec`, nothing that compiles or runs the suite.** Running verification
+belongs to the single pass in step 4, done ONCE by the coordinating agent. If each
+dimension agent runs the suite, you get N concurrent full monorepo builds
+(`go test -parallel=24` ×N) that peg every core for 10+ minutes — the exact failure
+this rule exists to prevent.
 
 - **Correctness** — logic errors, off-by-one, nil/err handling, concurrency, edge cases the change introduces or fails to handle.
 - **Security** — authz/ownership boundaries, injection, unsafe input, leaked secrets, unsafe deserialization.
@@ -51,7 +57,14 @@ general-purpose), one dimension or one area each. No edits, no fixes.
 Before a finding reaches the report, **try to refute it.** For each candidate:
 - Re-read the surrounding code and the rest of the diff — is there already a guard, a caller-side check, or a test that covers it?
 - Is the bad path actually reachable with real inputs?
-- Where cheap, **run it**: build, lint, or the specific tests touching the changed files (via `direnv exec . <cmd>` in the worktree). Never claim a check passed without running it; report CI rollup for what you didn't run.
+- Where cheap, **run it** — but this is the ONE place commands run, executed by the
+  coordinating agent, **serially, once**. Never spawn the suite from a fan-out agent,
+  and never run two suites at the same time (see step 3). **Scope it to what the diff
+  touched** — the specific packages/tests for the changed files (`direnv exec . go test
+  ./go/api/pkg/<changed-pkg>/...`), NOT the whole `./pkg/...` tree, and don't crank
+  `-parallel`/`-p` past the default. A full-tree, high-parallelism run — or several at
+  once — is what melts the CPU. Never claim a check passed without running it; report
+  the CI rollup for everything you didn't run yourself.
 
 Drop anything that doesn't survive. A finding you can't state a concrete failure scenario for is not a finding. When in doubt on a judgment call, keep it but label it clearly as unverified/opinion rather than asserting a bug.
 

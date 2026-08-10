@@ -65,6 +65,11 @@ local ICON_FALLBACK = {
   check = "✓",
   xmark = "✗",
   file_change = "○",
+  step_done = "●",
+  step_active = "◐",
+  step_todo = "○",
+  tests = "☑",
+  work = "▪",
 }
 local ICON_NAMES = {
   plan = "tasks-2",
@@ -78,11 +83,17 @@ local ICON_NAMES = {
   dev_up = "plug-2",
   dev_down = "plug-2-outline",
   dev_broken = "triangle-warning",
-  swatch = "chip",
+  -- NO nucleo "chip" (a microchip — nonsensical as a session marker); fall through to the
+  -- ICON_FALLBACK swatch = mdi-square-rounded (U+F14FB), a filled rounded square.
   image = "image",
   check = "check",
   xmark = "xmark",
   file_change = "pen-3",
+  step_done = "circle-half-dotted-check",
+  step_active = "half-dotted-circle-play",
+  step_todo = "circle-half-dotted-check-outline",
+  tests = "clipboard-check",
+  work = "box",
 }
 local ICON = vim.deepcopy(ICON_FALLBACK)
 local qsicons = {}
@@ -119,7 +130,7 @@ local function progress_bar(done, total, width, fillhl, emptyhl)
   width = width or 16
   total = math.max(1, total or 1)
   local filled = math.max(0, math.min(width, math.floor((done / total) * width + 0.5)))
-  local s = string.rep("│", width)
+  local s = string.rep("┃", width) -- heavy vertical: matches the quickshell minimap tick thickness
   return s, { { 0, filled * 3, fillhl or "HeidrStream" }, { filled * 3, width * 3, emptyhl or "HeidrMuted" } }
 end
 
@@ -194,7 +205,8 @@ local S = {
   saved_gcr = nil,
 }
 
-local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send, git_changes, refresh_git_changes
+local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send, git_changes, refresh_git_changes, parse_git_diff
+local refresh_dashboard, hide_banner
 local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, refresh_plan_one, refresh_devenv, sync_approval_keys
 local session_cwd, load_plan, answer, apply_prompt_mode
 local on_cockpit_active -- reconciles the rail's selection with the cockpit active context
@@ -250,16 +262,45 @@ local function set_hl()
   -- out to white in light mode.
   local cardbg = p.bg_surface2 or p.bg_selection or surface -- focus-ring card fill
   local function hl(n, o) api.nvim_set_hl(0, n, o) end
+  -- blend `base` (hex string or 0xRRGGBB int) toward `tint` by `amt` (0..1) → hex string.
+  -- Used for the chat message tints: mixing the theme bg toward blue yields a dark blue in
+  -- dark mode and a light periwinkle (not a washed grey) in light mode — same hue both ways.
+  local function to_rgb(c)
+    if type(c) == "number" then return math.floor(c / 65536) % 256, math.floor(c / 256) % 256, c % 256 end
+    local s = tostring(c):gsub("#", "")
+    return tonumber(s:sub(1, 2), 16) or 0, tonumber(s:sub(3, 4), 16) or 0, tonumber(s:sub(5, 6), 16) or 0
+  end
+  local function mix(base, tint, amt)
+    local br, bg, bb = to_rgb(base)
+    local tr, tg, tb = to_rgb(tint)
+    return string.format("#%02x%02x%02x",
+      math.floor(br + (tr - br) * amt + 0.5),
+      math.floor(bg + (tg - bg) * amt + 0.5),
+      math.floor(bb + (tb - bb) * amt + 0.5))
+  end
 
   hl("HeidrStream", { fg = p.green or "#5fca8b" })
   hl("HeidrErr", { fg = p.red or "#e5675f" })
   -- idle = secondary-emphasis text: readable in both modes (fg_secondary sits between
   -- fg and fg_muted, so it darkens in light mode instead of washing out)
   hl("HeidrIdle", { fg = p.fg_secondary or p.fg_muted or "#8a95a3" })
-  -- idle STATUS SWATCH: the theme's amber-yellow so a resting session carries warmth
-  -- (distinct from needs-input=accent and streaming=green).
-  hl("HeidrSwatchIdle", { fg = p.yellow or "#d9b06a" })
+  -- Softer electric for the small rail elements (spinner, session-name text, roster
+  -- dots): slightly LIGHTER than the dark electric so it doesn't glare at small sizes,
+  -- and slightly DARKER than the light electric (lighter would wash out on white).
+  local elec_soft = (vim.o.background == "light") and "#0000c4" or "#7385ff"
+  -- idle STATUS SWATCH: the softer electric for a resting session — the roster swatches
+  -- read off this. Streaming still reads apart via its animated spinner glyph, not colour.
+  -- (distinct from needs-input=accent and streaming=electric).
+  hl("HeidrSwatchIdle", { fg = elec_soft })
   hl("HeidrAccent", { fg = accent, bold = true })
+  -- Electric: the dashboard's own accent (matches the HEIÐR banner ink). Scoped to
+  -- the resting view so the rail's orange signal stays untouched everywhere else.
+  hl("HeidrElectric", { fg = "#5566ff", bold = true })
+  -- Softer electric variant — the spinner + streaming session name read off this.
+  hl("HeidrElectricSoft", { fg = elec_soft, bold = true })
+  -- active dashboard tab: an Electric pill (elevated bg) so the selected view reads at a
+  -- glance against the dimmed inactive tabs, without a full box on the border line.
+  hl("HeidrTabActive", { fg = "#5566ff", bg = p.bg_surface3 or p.bg_selection or cardbg, bold = true })
   -- Neutral heading colour for titles/section labels: orange is a SIGNAL (selection,
   -- active state, identity), not the colour of every header — a bold near-fg reads as
   -- a heading while keeping the accent rare and meaningful.
@@ -285,14 +326,20 @@ local function set_hl()
   -- chat: your (user) message blocks get a subtle full-width background; the agent's
   -- turn-recap (✧ …) gets a lighter callout background. Both are HIGHLIGHTS (no border
   -- chars in the buffer) so yanking the chat still copies clean text.
-  -- distinct HUES so the three chat fills don't blend: you = cool blue-grey (matches the
-  -- blue role bar), summary = green-grey (recap/done), code stays neutral grey (HeidrCode).
-  hl("HeidrUserBg", { bg = p.bg_info or p.bg_surface2 or cardbg })
-  hl("HeidrSummaryBg", { bg = p.bg_success or p.bg_surface3 or cardbg })
+  -- All three lean BLUE (blended into the theme bg so they track light/dark), kept distinct
+  -- by depth + hue: you = electric-blue (strongest, matches the role bar), summary = a lighter
+  -- sky-blue so the recap still reads apart, code = a barely-there blue-neutral.
+  local elec = "#5566ff"
+  local light = vim.o.background == "light"
+  -- you: electric in dark (matches the role bar); in light, electric blends to a pinkish
+  -- periwinkle, so lean to a truer blue AND drop the alpha hard — light fills read heavy.
+  local you_tint = light and "#2b6bf5" or elec
+  hl("HeidrUserBg", { bg = mix(dark, you_tint, light and 0.09 or 0.15) })
+  hl("HeidrSummaryBg", { bg = mix(dark, p.blue or "#5aa9e6", light and 0.05 or 0.12) })
   -- full-line background for fenced code blocks in the chat: applied via
   -- line_hl_group so it spans the whole rail width (a uniform rectangle), unlike
   -- markview's char-level bg which stops at the text and reads ragged.
-  hl("HeidrCode", { bg = cardbg })
+  hl("HeidrCode", { bg = mix(dark, elec, light and 0.03 or 0.09) })
   hl("HeidrBarSolid", { bg = accent }) -- the roster's focus edge — ONLY drawn while the roster pane is focused
   hl("HeidrSel", { bg = p.bg_surface3 or p.bg_selection or surface, bold = true }) -- picker selection bar
   -- volt-style scope-box surfaces: two elevations off the theme's surface ladder so
@@ -437,6 +484,35 @@ local function msg_text(msg, cwd)
   return table.concat(t, "\n\n"), hunks
 end
 
+-- Peel the ⟢ recap line out of the trailing assistant message(s) of a turn and
+-- return it. The recap belongs to the done-divider summary callout ONLY; left in
+-- the message it renders inline as a near-identical DUPLICATE of that callout (the
+-- "two summaries" bug). Runs both live (agent_end) AND on get_entries reconstruction
+-- — a reopened session rebuilds msgs from the transcript with the ⟢ line intact, so
+-- stripping only at agent_end let the dupe reappear after any reload. Walks back to
+-- the user-turn boundary; the last assistant message's recap (first seen) wins.
+local function strip_recap(msgs)
+  if not msgs then return nil end
+  local recap
+  for i = #msgs, 1, -1 do
+    local m = msgs[i]
+    if not m or m.role ~= "assistant" then break end
+    if type(m.text) == "string" and m.text:find("⟢") then
+      local kept, r = {}, nil
+      for _, ln in ipairs(vim.split(m.text, "\n", { plain = true })) do
+        local mm = ln:match("^%s*⟢%s*(.+)")
+        if mm then r = mm else kept[#kept + 1] = ln end
+      end
+      if r then
+        recap = recap or r
+        local body = (table.concat(kept, "\n")):gsub("%s+$", "")
+        if body == "" then table.remove(msgs, i) else m.text = body end
+      end
+    end
+  end
+  return recap
+end
+
 -- compact elapsed: 12s · 5m · 3h
 local function dur(since)
   if not since then return nil end
@@ -467,7 +543,10 @@ session_state = function(a)
   local st = a.status or "idle"
   if st == "streaming" then
     local d = dur(S.stream_since[a.id])
-    return { key = "streaming", glyph = SPIN[(S.spin % #SPIN) + 1], name = "HeidrStream", swatch = "HeidrStream",
+    -- Electric (not green): the spinner + "working" label ARE the loading indicator, so they
+    -- carry the dashboard's electric accent; green (HeidrStream) stays reserved for success
+    -- semantics (diff +adds, plan-done, tests-pass, devenv running).
+    return { key = "streaming", glyph = SPIN[(S.spin % #SPIN) + 1], name = "HeidrElectricSoft", swatch = "HeidrElectricSoft",
       pill = "HeidrPillStream", cap = "HeidrCapStream", label = d and ("working " .. d) or "working" }
   elseif st == "error" then
     return { key = "error", glyph = GLYPH.error, name = "HeidrErr", swatch = "HeidrErr",
@@ -504,13 +583,30 @@ local function short_name(n)
   return tail and (ticket .. " · " .. tail) or ticket
 end
 
--- A sub-agent is a bare ticket-prefixed name WITH a tail (every-2457-explore-ui),
--- spawned into a worktree by its parent agent — as opposed to the primary worktree
--- session (lovable.daphen-…) or the orchestrator (lovable). The roster marks these
--- with a ↳ so a fanned-out family doesn't read as duplicate top-level sessions.
-local function is_subagent(n)
+-- A sub-agent was spawned by another session. agentd stamps the spawner's name as
+-- `parent` on every spawn (the same field registry.isLineage gates on) — that's
+-- authoritative and immune to how the parent chose to name its worker. Sessions from
+-- before that field (restored/legacy) fall back to the old name-shape heuristic: a
+-- bare ticket-prefixed name WITH a tail (every-2457-explore-ui), as opposed to the
+-- primary worktree session (lovable.daphen-…) or the orchestrator (lovable). The
+-- roster nests subs under their parent with a ↳ so a fan-out reads as one family.
+-- Takes the session table (not a bare name) so it can consult `parent`.
+local function is_subagent(a)
+  if not a then return false end
+  if a.parent and a.parent ~= "" then return true end -- authoritative
+  local n = a.name
   if not n or n:match("^lovable%.") then return false end
-  return n:match("^%a+%-%d+%-.+") ~= nil
+  return n:match("^%a+%-%d+%-.+") ~= nil -- legacy fallback
+end
+
+-- The roster row a session belongs under: a sub → its parent's name (authoritative)
+-- or, for a legacy parent-less sub, its worktree cwd; a primary → its own name. A
+-- family = a primary plus everything keyed to it. Grandchildren keyed by parent-name
+-- collapse into the same family as their parent once the parent is present.
+local function family_of(a)
+  if a.parent and a.parent ~= "" then return "n:" .. a.parent end
+  if is_subagent(a) then return "c:" .. (a.cwd or a.id) end
+  return "n:" .. (a.name or a.id)
 end
 
 -- One file-stat row (path + right-aligned, colour-coded +adds −dels) sized to the
@@ -520,7 +616,9 @@ end
 -- numbers off-width). acol/dcol are pre-padded sign columns so several rows' signs
 -- line up; omit them for a plain (no-stats) row. Caller recolours via line:find.
 local function file_row(W, indent, path, acol, dcol)
-  local nums = acol and (acol .. "  " .. dcol) or nil
+  -- acol+dcol → the "+N  -M" stat block; acol alone → a single right-aligned label
+  -- (e.g. "untracked" for files git has no diff stats for).
+  local nums = acol and (dcol and (acol .. "  " .. dcol) or acol) or nil
   local nw = nums and fn.strdisplaywidth(nums) or 0
   local budget = W - fn.strdisplaywidth(indent) - nw - (nums and 3 or 1)
   if budget > 4 and fn.strdisplaywidth(path) > budget then
@@ -790,33 +888,40 @@ render_roster = function()
   end
   -- Nest sub-agents under their parent: a ticket that fanned out (every-2457 +
   -- every-2457-explore-ui + …) should read as ONE roster item with its workers
-  -- indented beneath it, not N look-alike top-level rows. Family = worktree (cwd).
+  -- indented beneath it, not N look-alike top-level rows. Family = the parent the
+  -- spawner stamped (family_of), so nesting holds regardless of how the parent named
+  -- its worker; cwd is only the legacy fallback for parent-less restored subs.
   do
     local inset = {}
     for _, a in ipairs(displayed) do inset[a.id] = true end
-    -- a displayed sub-agent needs its primary present as the group header, even idle
+    -- a displayed sub-agent needs its parent present as the group header, even idle.
+    -- Pull it from the full roster: a named parent matches by name; a legacy cwd sub
+    -- matches the non-sub session sharing its worktree.
     for _, a in ipairs(displayed) do
-      if is_subagent(a.name) and a.cwd then
+      if is_subagent(a) then
+        local key = family_of(a)
         for _, p in ipairs(S.roster) do
-          if p.cwd == a.cwd and not is_subagent(p.name) and not inset[p.id] then
-            displayed[#displayed + 1] = p; inset[p.id] = true; break
+          if not inset[p.id] then
+            local hit = ("n:" .. (p.name or "")) == key
+              or (key:sub(1, 2) == "c:" and not is_subagent(p) and ("c:" .. (p.cwd or "")) == key)
+            if hit then displayed[#displayed + 1] = p; inset[p.id] = true; break end
           end
         end
       end
     end
     local fam = {}
     for _, a in ipairs(displayed) do
-      local k = a.cwd or a.id; fam[k] = fam[k] or {}; fam[k][#fam[k] + 1] = a
+      local k = family_of(a); fam[k] = fam[k] or {}; fam[k][#fam[k] + 1] = a
     end
     local order, seen = {}, {}
     for _, a in ipairs(displayed) do
-      local k = a.cwd or a.id
+      local k = family_of(a)
       if not seen[k] then
         seen[k] = true
         local m = fam[k]
         if #m > 1 then
-          table.sort(m, function(x, y) -- primary first, then subs by name
-            local sx, sy = is_subagent(x.name), is_subagent(y.name)
+          table.sort(m, function(x, y) -- primary/header first, then subs by name
+            local sx, sy = is_subagent(x), is_subagent(y)
             if sx ~= sy then return not sx end
             return (x.name or "") < (y.name or "")
           end)
@@ -833,13 +938,14 @@ render_roster = function()
   if S.focus < 1 then S.focus = 1 end
   if #displayed > 0 and S.focus > #displayed then S.focus = #displayed end
 
-  -- Which worktrees have their PRIMARY session on screen: a sub-agent only renders
-  -- nested (↳ + bare tail) when its parent is actually above it. An orphaned sub
-  -- (parent crashed/stopped) renders as a normal top-level row with its full name,
-  -- instead of a ↳ pointing at nothing.
+  -- Which families have their header (the parent/primary) on screen: a sub-agent only
+  -- renders nested (↳ + bare tail) when its parent is actually above it. An orphaned
+  -- sub (parent crashed/stopped) renders as a normal top-level row with its full name,
+  -- instead of a ↳ pointing at nothing. Keyed by family_of so a sub and its parent
+  -- share the key (sub → parent name, primary → own name).
   local primary_present = {}
   for _, a in ipairs(displayed) do
-    if not is_subagent(a.name) then primary_present[a.cwd or a.id] = true end
+    if not is_subagent(a) then primary_present[family_of(a)] = true end
   end
 
   local lines, decor, mainline = {}, {}, {}
@@ -856,7 +962,13 @@ render_roster = function()
   local offline = S.connected and "" or (GLYPH.offline .. " ")
   local title = offline .. (filt and ("/" .. S.roster_filter) or "ROSTER") .. " · " .. scope
   box(push, decor, W, ICON.session, title, function(add)
-    if #displayed == 0 then
+    -- Collapsed = a glance card: the active session titled + one dot per session (a
+    -- spinner while working). Only the EXPANDED roster (show_all — focused, or pinned via
+    -- C-t) lists sessions by name. So "which worktree am I in" is always answered — a
+    -- working background session can't masquerade as the active one by being the only
+    -- named row on screen. (filt / no-selection still fall through to the list.)
+    local collapsed = (not S.show_all) and (not filt) and (S.selected ~= nil)
+    if collapsed or #displayed == 0 then
       -- compact, centred empty state: glyph inline with the headline + a muted hint —
       -- two tight lines, sized like a small roster (not a big hero block).
       local inner = math.max(12, W - 6)
@@ -885,7 +997,7 @@ render_roster = function()
         local pl = S.selected and S.plan[S.selected]
         if pl and pl.total and pl.total > 0 then
           local frac = pl.done .. "/" .. pl.total
-          local btext, bsegs = progress_bar(pl.done, pl.total, 12, "HeidrStream", "HeidrDivider")
+          local btext, bsegs = progress_bar(pl.done, pl.total, 12, "HeidrElectric", "HeidrDivider")
           local line = title .. "   " .. frac .. "  " .. btext
           local segs = { { 0, #title, "HeidrTitle" } }
           local fo = #title + 3; segs[#segs + 1] = { fo, fo + #frac, "HeidrMuted" }
@@ -899,7 +1011,9 @@ render_roster = function()
         local left, segs = "", {}
         for i, a in ipairs(S.roster) do
           local ss = session_state(a)
-          local gl = (ss.key == "streaming") and ss.glyph or ICON.swatch
+          -- idle = a plain swatch dot; every non-idle state shows its own glyph so the
+          -- card conveys attention at a glance: spinner while working, ? needs-input, ! error.
+          local gl = ss.plain and ICON.swatch or ss.glyph
           segs[#segs + 1] = { #left, #left + #gl, ss.swatch or ss.name }
           left = left .. gl
           if i < #S.roster then left = left .. "   " end -- gap between swatches
@@ -921,76 +1035,75 @@ render_roster = function()
       local sstate = session_state(a)
       local show_focus = (i == S.focus) and S.roster_active
       local isSel = (a.id == S.selected)
-      -- name row. Only NEST (↳ + bare tail) when the parent is actually on screen; an
-      -- orphaned sub (parent crashed/stopped) renders top-level with its FULL name.
-      local sub = is_subagent(a.name) and primary_present[a.cwd or a.id]
+      -- ONE aligned row per session (Volt-style): swatch + name hard-left, metadata
+      -- (status · plan · devenv-link) right-flushed into a clean column so every row's
+      -- numbers and icons line up. Nest a sub-agent (↳ + bare tail) only when its
+      -- parent is on screen; an orphan renders top-level with its full name.
+      local sub = is_subagent(a) and primary_present[family_of(a)]
       local nm = short_name(a.name)
       if sub then nm = nm:gsub("^.- · ", "") end
       local dr = S.drafts[a.id]
       if dr and dr:gsub("%s", "") ~= "" then nm = nm .. "  ✎" end
-      -- status marker = a filled square swatch coloured by state (grey/amber/red),
-      -- like a legend chip — except streaming keeps the animated spinner so working
-      -- sessions still pulse. The NAME stays neutral: colour on the swatch, not the row.
-      local gl = (sstate.key == "streaming") and sstate.glyph or ICON.swatch
+      local gl = (sstate.key == "streaming") and sstate.glyph or ICON.swatch -- spinner while working, else the rounded-square status swatch (colour = state)
       local lead = sub and "  ↳ " or ""
-      local ntext = lead .. gl .. " " .. nm
-      -- active/focused names are neutral BOLD, not orange — the card fill (active) and
-      -- the border accent (cursor) carry the state, so the accent stays rare.
+      -- LEFT: swatch + name, then plan progress (Nucleo tasks glyph + N/M) right after.
+      local left = lead .. gl .. " " .. nm
       local namecol = (isSel or show_focus) and "HeidrFocusName" or "HeidrFile"
-      local g0 = #lead
-      local nml = add(ntext, {
-        { g0, g0 + #gl, sstate.swatch or sstate.name }, -- the swatch, status colour
-        { g0 + #gl, #ntext, namecol }, -- the name, neutral
-      })
-      mainline[i] = nml
-      -- substatus row: plain coloured label (no pill — a pill's transparent caps read
-      -- muddy on the box surface). plan chip only where a plan exists (subs get none).
-      local subind = sub and "  " or ""
-      local stext = subind .. "  " .. sstate.label
-      local segs = { { 0, #stext, sstate.name } }
+      local segs = {
+        { #lead, #lead + #gl, sstate.swatch or sstate.name },
+        { #lead + #gl, #left, namecol },
+      }
       local pl = S.plan[a.id]
       if pl and pl.total and pl.total > 0 then
-        local chip = "  ◆ " .. pl.done .. "/" .. pl.total
-        segs[#segs + 1] = { #stext, #stext + #chip, (pl.phase == "reconciled") and "HeidrStream" or "HeidrMuted" }
-        stext = stext .. chip
+        local chip = "   " .. ICON.plan .. " " .. pl.done .. "/" .. pl.total
+        local cs = #left; left = left .. chip
+        segs[#segs + 1] = { cs, #left, (pl.phase == "reconciled") and "HeidrStream" or "HeidrMuted" }
       end
-      -- devenv link health: green=running, red=broken (slice down but owns the fixed
-      -- ports → :3000 dead), muted=stopped. Tells you `d` will start vs just jump.
+      -- RIGHT cluster: agent status, then the devenv link glyph ALL THE WAY RIGHT
+      -- (green=running · red=broken · muted=stopped). The devenv column is always
+      -- reserved (a blank when there's no context) so the agent status left of it
+      -- aligns across every row.
+      local right, rseg = "", {}
+      local function radd(s, hlg)
+        if right ~= "" then right = right .. "   " end
+        local o = #right; right = right .. s; rseg[#rseg + 1] = { o, #right, hlg }
+      end
+      radd(sstate.label, sstate.name)
       local dctx = a.cwd and a.cwd ~= "" and cockpit_context(a.cwd)
       local dv = dctx and S.devenv[dctx]
-      if dv then
-        local gl = (dv == "running") and ICON.dev_up or (dv == "broken") and ICON.dev_broken or ICON.dev_down
-        local hl = (dv == "running") and "HeidrStream" or (dv == "broken") and "HeidrErr" or "HeidrMuted"
-        local chip = "  " .. gl
-        segs[#segs + 1] = { #stext, #stext + #chip, hl }
-        stext = stext .. chip
-      end
-      local sml = add(stext, segs)
-      -- focus: turn the box's left │ ACCENT (the char's fg, not a bg block — a bg
-      -- fill read as a fat orange block interrupting the border) on both rows.
-      -- current row gets a real selection bar (HeidrSel surface) across the inner span
-      -- of BOTH rows — bold accent text alone was too weak to spot. Span is content only
-      -- (byte 3 → just before the right │) so the box border stays clean. Applies to the
-      -- SELECTED session (chat open) AND the FOCUSED row (roster cursor) so navigating
-      -- the list is unmistakable; focus additionally lights the left │ accent.
-      -- ACTIVE/selected session → an elevated card fill (HeidrCard) behind the NAME
-      -- only — a chip, not a full-item block. Span " name " (the space before the name
-      -- through the name + one trailing pad col), on the name row alone. Shown
-      -- regardless of roster focus; the "it's open" cue.
-      if isSel then
-        local n1 = lines[nml + 1] or ""
-        -- card wraps the whole "swatch name" unit: start one col BEFORE the swatch
-        -- (leading pad) and end one col past the name (trailing pad).
-        local cs = math.max(#BOX_L - 1, #BOX_L + g0 - 1)
-        local ce = math.min(#n1 - 3, #BOX_L + #ntext + 1)
-        decor[#decor + 1] = { line = nml, selbg = { cs, math.max(cs, ce) } }
-      end
-      -- CURSOR row (only while the roster is focused) → accent the left │ border. This
-      -- is a FG override of the border's own colour, so it must outrank the border
-      -- add_highlight (DECOR_PRIORITY_BASE) — hence the high explicit priority.
-      if show_focus then
-        decor[#decor + 1] = { line = nml, range = { 0, 3, "HeidrAccent", 5000 } }
-        decor[#decor + 1] = { line = sml, range = { 0, 3, "HeidrAccent", 5000 } }
+      local dgl = dv and ((dv == "running") and ICON.dev_up or (dv == "broken") and ICON.dev_broken or ICON.dev_down) or " "
+      radd(dgl, (dv == "running") and "HeidrStream" or (dv == "broken") and "HeidrErr" or "HeidrMuted")
+      local inner = W - 6
+      -- Outline the CURRENT item with the rail's hairpin box (replaces the neovim
+      -- cursor): the focused row while the roster is focused, else the open session.
+      -- Accent border under the j/k cursor, divider border for the resting selection.
+      local boxed = (S.roster_active and i == S.focus) or (not S.roster_active and isSel)
+      -- content column = inner minus "│ " (2) on the left + "   │" (4) on the right,
+      -- so there's a 3-cell inset between the content and the border. Unboxed rows use
+      -- the identical column ("  " left + 4 spaces right) so metadata never shifts.
+      local cinner = inner - 6
+      if boxed then
+        local bc = show_focus and "HeidrElectric" or "HeidrDivider"
+        local topstr = "┌" .. string.rep("─", inner - 2) .. "┐"
+        add(topstr, { { 0, #topstr, bc } })
+        local fill = string.rep(" ", math.max(2, cinner - fn.strdisplaywidth(left) - fn.strdisplaywidth(right)))
+        local pre = #("│ ") -- 4 bytes (│ is 3 + space)
+        local bsegs = { { 0, 3, bc } } -- left nested │
+        for _, s in ipairs(segs) do bsegs[#bsegs + 1] = { s[1] + pre, s[2] + pre, s[3] } end
+        local off = pre + #left + #fill
+        for _, s in ipairs(rseg) do bsegs[#bsegs + 1] = { s[1] + off, s[2] + off, s[3] } end
+        local body = "│ " .. left .. fill .. right .. "   │"
+        bsegs[#bsegs + 1] = { #body - 3, #body, bc } -- right nested │
+        mainline[i] = add(body, bsegs)
+        local botstr = "└" .. string.rep("─", inner - 2) .. "┘"
+        add(botstr, { { 0, #botstr, bc } })
+      else
+        local fill = string.rep(" ", math.max(2, cinner - fn.strdisplaywidth(left) - fn.strdisplaywidth(right)))
+        local usegs = {}
+        for _, s in ipairs(segs) do usegs[#usegs + 1] = { s[1] + 2, s[2] + 2, s[3] } end -- +2 bytes for "  "
+        local off = 2 + #left + #fill
+        for _, s in ipairs(rseg) do usegs[#usegs + 1] = { s[1] + off, s[2] + off, s[3] } end
+        mainline[i] = add("  " .. left .. fill .. right .. "    ", usegs)
       end
     end
     if not S.show_all and hidden > 0 then
@@ -1077,6 +1190,37 @@ local function button_row(indent, buttons)
   return line, segs
 end
 
+-- Bottom-anchor a short conversation: when the rendered content occupies fewer screen
+-- rows than the chat window, nvim leaves it pinned to the TOP with dead space below (a
+-- short buffer can't scroll). Pad the top with blank virtual lines so the newest message
+-- sits at the BOTTOM and you read upward — chat-app style. Uses its OWN namespace so it
+-- can clear+recompute without touching the message decor, forces topline=1 so the pad
+-- (drawn above line 1) is actually on-screen, and runs deferred too because markview
+-- renders AFTER render_chat and changes the true display height.
+local function bottom_anchor()
+  if not (S.chatwin and api.nvim_win_is_valid(S.chatwin) and S.view == "chat") then return end
+  if not (S.chatbuf and api.nvim_buf_is_valid(S.chatbuf)) then return end
+  api.nvim_buf_clear_namespace(S.chatbuf, S.pad_ns, 0, -1)
+  local winh = api.nvim_win_get_height(S.chatwin)
+  -- CHEAP early-out: if the buffer already has ≥ winh lines, display rows ≥ line count
+  -- (wrapping only ADDS rows), so the content already fills the window — no top-pad is
+  -- possible. Return WITHOUT nvim_win_text_height, which scans the whole buffer (O(lines))
+  -- and, run twice per render during streaming on a big transcript, was the rail's lag.
+  -- Only a genuinely short buffer needs the precise display-height check below.
+  if api.nvim_buf_line_count(S.chatbuf) >= winh then return end
+  local ok, h = pcall(api.nvim_win_text_height, S.chatwin, {})
+  local th = (ok and type(h) == "table" and h.all) or api.nvim_buf_line_count(S.chatbuf)
+  if th < winh then
+    local blanks = {}
+    for _ = 1, (winh - th) do blanks[#blanks + 1] = { { "", "Normal" } } end
+    pcall(api.nvim_buf_set_extmark, S.chatbuf, S.pad_ns, 0, 0,
+      { virt_lines = blanks, virt_lines_above = true })
+    pcall(api.nvim_win_call, S.chatwin, function()
+      fn.winrestview({ topline = 1, lnum = api.nvim_buf_line_count(S.chatbuf), col = 0, leftcol = 0 })
+    end)
+  end
+end
+
 render_chat = function(scroll)
   if not (S.chatbuf and api.nvim_buf_is_valid(S.chatbuf)) then return end
   local lines, decor = {}, {}
@@ -1103,6 +1247,11 @@ render_chat = function(scroll)
     end
     decor[#decor + 1] = { line = push(empty), fg = "HeidrMuted" }
   else
+    if chat and chat.more and chat.more > 0 then
+      local t = "  ⤒ " .. chat.more .. " earlier messages — zo to load all"
+      decor[#decor + 1] = { line = push(t), fg = "HeidrMuted" }
+      push("")
+    end
     if chat and chat.msgs then
       for mi, m in ipairs(chat.msgs) do
         if mi > 1 then push(""); push("") end
@@ -1110,11 +1259,11 @@ render_chat = function(scroll)
         local folded = folds[mi]
         local caret = folded and FOLDED or OPEN
         local label = isUser and "you" or "agent"
-        -- your (user) messages render as a padded card: a 2-col left pad inside the bg
-        -- (o), plus a blank bg row above and below. The bg is border-aligned (col 2).
+        -- your (user) messages: a 2-col indent (o) + blue role bar + a soft blue fill on
+        -- the header and body lines (the "sent message" card). The empty blank-bg pad
+        -- rows above/below are intentionally NOT re-added — the fill hugs real content only.
         local o = isUser and "  " or ""
         local hdr = o .. caret .. " " .. BAR .. " " .. label
-        if isUser then decor[#decor + 1] = { line = push("", mi), bg = "HeidrUserBg" } end
         blocks[#blocks + 1] = #lines + 1 -- 1-indexed bufline of this header
         -- caret dim · a slim role-coloured bar (you=cool blue, agent=green; orange stays
         -- reserved for selection/attention) · label in neutral bold, not a saturated wash
@@ -1126,8 +1275,8 @@ render_chat = function(scroll)
         if folded then
           local n = select(2, (m.text or ""):gsub("\n", "\n")) + 1
           local fl = push(o .. "⋯ " .. n .. " lines", mi)
-          decor[#decor + 1] = { line = fl, fg = "HeidrMuted" }
           if isUser then decor[#decor + 1] = { line = fl, bg = "HeidrUserBg" } end
+          decor[#decor + 1] = { line = fl, fg = "HeidrMuted" }
         elseif isUser then
           -- plain padded prose HARD-wrapped into 2-space-padded real lines. Soft-wrap
           -- + breakindent left an unfilled bg notch on continuation rows (the same bug
@@ -1142,6 +1291,17 @@ render_chat = function(scroll)
             else
               local cur = ""
               for _, wd in ipairs(vim.split(para, " ", { plain = true })) do
+                -- hard-break a single token wider than the line (URLs/paths have no
+                -- spaces, so word-wrap alone emits an over-long line that soft-wraps —
+                -- and the bg extmark can't paint the wrapped continuation → the notch).
+                while fn.strdisplaywidth(wd) > avail do
+                  if cur ~= "" then chunks[#chunks + 1] = cur; cur = "" end
+                  local n = avail
+                  while n > 1 and fn.strdisplaywidth(fn.strcharpart(wd, 0, n)) > avail do n = n - 1 end
+                  local take = fn.strcharpart(wd, 0, n)
+                  chunks[#chunks + 1] = take
+                  wd = wd:sub(#take + 1)
+                end
                 local cand = cur == "" and wd or (cur .. " " .. wd)
                 if cur ~= "" and fn.strdisplaywidth(cand) > avail then chunks[#chunks + 1] = cur; cur = wd
                 else cur = cand end
@@ -1158,11 +1318,15 @@ render_chat = function(scroll)
           local hq, hi = m.hunks or {}, 0
           local in_fence = false
           for _, para in ipairs(vim.split(m.text or "", "\n", { plain = true })) do
-            if para:match("^⟢") or para:match("^✧") then
-              -- turn-recap callout: blank bg row above + below, and the text HARD-wrapped
-              -- into 2-space-padded real lines. (Soft-wrap + breakindent left an unfilled
-              -- notch in the bg on continuation rows.) ⟢ is U+27E2 (3 bytes), not ✧.
-              decor[#decor + 1] = { line = push("", mi), bg = "HeidrSummaryBg" }
+            local is_recap = para:match("^⟢") or para:match("^✧")
+            local recap_body = is_recap and para:gsub("^⟢%s*", ""):gsub("^✧%s*", "") or ""
+            if is_recap and not recap_body:match("%S") then
+              -- bare recap marker with no text → skip entirely (no empty gray band)
+            elseif is_recap then
+              -- turn-recap callout: a soft fill on the recap TEXT lines ONLY — no blank
+              -- padded bg rows above/below. Those empty HeidrSummaryBg rows were THE gray
+              -- band that showed above the next message. Text is HARD-wrapped into 2-space-
+              -- padded real lines (soft-wrap+breakindent left a bg notch). ⟢ is U+27E2.
               local avail = math.max(20, rail_width() - 2) -- chunk width inside the 2-col pad
               local cur, chunks = "", {}
               for _, wd in ipairs(vim.split(para, " ", { plain = true })) do
@@ -1181,7 +1345,6 @@ render_chat = function(scroll)
                   decor[#decor + 1] = { line = bl, fg = "HeidrTitle", cs = 2, ce = -1 }
                 end
               end
-              decor[#decor + 1] = { line = push("", mi), bg = "HeidrSummaryBg" }
             else
               local nav
               if para:match("^⚙ edit ") or para:match("^⚙ write ") then
@@ -1222,7 +1385,6 @@ render_chat = function(scroll)
             end
           end
         end
-        if isUser then decor[#decor + 1] = { line = push("", mi), bg = "HeidrUserBg" } end
       end
     end
     -- live streaming block (superseded by message_end when the turn completes)
@@ -1305,16 +1467,23 @@ render_chat = function(scroll)
     local el = S.selected and fmt_el(S.lastdur[S.selected])
     local sum = S.summary and S.summary[S.selected]
     local pl = S.selected and S.plan[S.selected]
+    -- Dedup the turn recap: the agent (per agentd's turnSummary) usually ends its message
+    -- with the SAME ⟢/✧ line, so rendering sum.recap here too shows it TWICE. If the last
+    -- assistant message already carries it, fall through to the plain done+elapsed divider
+    -- (keeps the timing, drops the duplicate sentence).
+    local lastm = chat and chat.msgs and chat.msgs[#chat.msgs]
+    local recap_in_msg = sum and sum.recap and lastm and lastm.role == "assistant"
+      and lastm.text and lastm.text:find(sum.recap, 1, true) ~= nil
     -- prefer the agent's own one-line recap (⟢), else the plain done+elapsed.
     push(""); push("")
-    if sum and sum.recap then
+    if sum and sum.recap and sum.recap:match("%S") and not recap_in_msg then
       -- Turn recap: render it with the SAME bg callout as the persisted message
       -- summary (hard-wrapped 2-space-padded lines), so the live done-divider and the
       -- message-history summary look identical instead of flat-here, bg'd-there.
       local text = "⟢ " .. sum.recap
       if pl and pl.total and pl.total > 0 then text = text .. " · ◆ " .. pl.done .. "/" .. pl.total .. " steps" end
       if el then text = text .. " · " .. el end
-      decor[#decor + 1] = { line = push(""), bg = "HeidrSummaryBg" }
+      -- fill on the recap TEXT lines only — no blank padded bg row (that was the gray band)
       local avail = math.max(20, rail_width() - 2)
       local cur, chunks = "", {}
       for _, wd in ipairs(vim.split(text, " ", { plain = true })) do
@@ -1333,7 +1502,6 @@ render_chat = function(scroll)
           decor[#decor + 1] = { line = bl, fg = "HeidrTitle", cs = 2, ce = -1 }
         end
       end
-      decor[#decor + 1] = { line = push(""), bg = "HeidrSummaryBg" }
     else
       -- no agent recap → a light done divider (the ✓ marker + blank line above read
       -- as the divider; no ───── rules, which used to spill past the rail width).
@@ -1344,19 +1512,25 @@ render_chat = function(scroll)
     if sum and sum.files and #sum.files > 0 then
       local W, aw, dw = rail_width(), 0, 0
       for _, f in ipairs(sum.files) do
-        aw = math.max(aw, #("+" .. f.add)); dw = math.max(dw, #("-" .. f.del))
+        if not f.untracked then aw = math.max(aw, #("+" .. f.add)); dw = math.max(dw, #("-" .. f.del)) end
       end
       for _, f in ipairs(sum.files) do
-        local as, ds = "+" .. f.add, "-" .. f.del
-        local acol = string.rep(" ", aw - #as) .. as
-        local dcol = string.rep(" ", dw - #ds) .. ds
-        local line = file_row(W, "  ", f.path, acol, dcol)
-        local bl = push(line)
-        decor[#decor + 1] = { line = bl, fg = "HeidrMuted" }
-        local ps, pe = line:find("%+%d+")
-        if ps then decor[#decor + 1] = { line = bl, fg = "HeidrStream", cs = ps - 1, ce = pe } end
-        local ms, me = line:find("%-%d+", (pe or 0) + 1)
-        if ms then decor[#decor + 1] = { line = bl, fg = "HeidrErr", cs = ms - 1, ce = me } end
+        if f.untracked then
+          -- no git-diff stats → say "untracked" instead of a meaningless "+0 -0"
+          local line = file_row(W, "  ", f.path, "untracked")
+          decor[#decor + 1] = { line = push(line), fg = "HeidrMuted" }
+        else
+          local as, ds = "+" .. f.add, "-" .. f.del
+          local acol = string.rep(" ", aw - #as) .. as
+          local dcol = string.rep(" ", dw - #ds) .. ds
+          local line = file_row(W, "  ", f.path, acol, dcol)
+          local bl = push(line)
+          decor[#decor + 1] = { line = bl, fg = "HeidrMuted" }
+          local ps, pe = line:find("%+%d+")
+          if ps then decor[#decor + 1] = { line = bl, fg = "HeidrStream", cs = ps - 1, ce = pe } end
+          local ms, me = line:find("%-%d+", (pe or 0) + 1)
+          if ms then decor[#decor + 1] = { line = bl, fg = "HeidrErr", cs = ms - 1, ce = me } end
+        end
       end
     end
   end
@@ -1364,14 +1538,14 @@ render_chat = function(scroll)
   -- A message sent while the agent was mid-turn is QUEUED: NOT delivered yet — the
   -- agent hasn't seen it — it sends by itself when the current turn ends. Render it
   -- as an unmistakable "waiting" block (attn header + a ┆ pending gutter on every
-  -- line) so it never reads like an already-sent/read message. Once it's delivered
-  -- (turn ends, or esc = send now) it moves up into the chat as a normal user turn,
-  -- which the agent is then reading — that transition IS the read signal.
+  -- line) so it never reads like an already-sent/read message. When the turn ends it
+  -- moves up into the chat as a normal user turn, which the agent is then reading —
+  -- that transition IS the read signal. Esc pulls it BACK to the composer to edit.
   local q = S.selected and S.queued and S.queued[S.selected]
   if q and q ~= "" then
     push("")
     decor[#decor + 1] = { line = push("  " .. GLYPH.queued .. " queued — not sent yet, the agent hasn't read this"), fg = "HeidrAttn" }
-    decor[#decor + 1] = { line = push("     sends when this turn ends   ·   esc = send now"), fg = "HeidrMuted" }
+    decor[#decor + 1] = { line = push("     sends when this turn ends   ·   esc = edit"), fg = "HeidrMuted" }
     for _, para in ipairs(vim.split(q, "\n", { plain = true })) do
       local ln = push("  ┆ " .. para)
       decor[#decor + 1] = { line = ln, fg = "HeidrMuted" }
@@ -1395,11 +1569,57 @@ render_chat = function(scroll)
     end)
   end
 
+  -- INCREMENTAL buffer update: replace only the changed SUFFIX, not 0..-1. A full
+  -- set_lines(0,-1) is a whole-buffer edit, so markview/treesitter re-parse the ENTIRE
+  -- transcript on every 70ms streaming tick — the live-follow lag on big sessions.
+  -- Streaming only appends to the tail, so the unchanged prefix is almost the whole
+  -- buffer: diff for the longest common prefix and touch only from there, so the
+  -- re-parse (and decor re-placement) is bounded to the growing tail. The chat buffer's
+  -- lines are only ever set here, so the current buffer always equals the last render's
+  -- `lines` — making the prefix comparison valid (a session switch differs at line 1 →
+  -- p=0 → full replace, same as before).
   vim.bo[S.chatbuf].modifiable = true
-  api.nvim_buf_set_lines(S.chatbuf, 0, -1, false, lines)
+  local old = api.nvim_buf_get_lines(S.chatbuf, 0, -1, false)
+  local p, lim = 0, math.min(#old, #lines)
+  while p < lim and old[p + 1] == lines[p + 1] do p = p + 1 end
+  if not (p == #old and p == #lines) then -- skip a true no-op render entirely
+    api.nvim_buf_set_lines(S.chatbuf, p, -1, false, vim.list_slice(lines, p + 1))
+  end
   vim.bo[S.chatbuf].modifiable = false
-  api.nvim_buf_clear_namespace(S.chatbuf, S.ns, 0, -1)
+  -- decor for the unchanged prefix [0,p) is byte-identical to last render, so its
+  -- extmarks stay put; clear + re-place only [p,-1).
+  api.nvim_buf_clear_namespace(S.chatbuf, S.ns, p, -1)
+  -- TEMP band-debug: `:lua vim.g.heidr_debug_band=1` then re-render → dumps every
+  -- background-painted row + its exact text to /tmp/heidr-band-debug.log, so the
+  -- empty gray band's real source (bg group + which line) is unambiguous. Remove after.
+  if vim.g.heidr_debug_band then
+    pcall(function()
+      local out = { "== decor[] bg entries ==" }
+      for _, d in ipairs(decor) do
+        if d.bg then
+          out[#out + 1] = string.format("line=%-4d bg=%-16s text=%q", d.line, tostring(d.bg), lines[d.line + 1] or "<nil>")
+        end
+      end
+      -- Also enumerate EVERY extmark on the chat buffer across ALL namespaces (markview,
+      -- our ns, the top-pad ns, signs) that paints a background — so a band from a source
+      -- other than decor[] (markdown block bg, virt_lines padding) can't hide.
+      out[#out + 1] = "== all buffer extmarks with a bg/line_hl_group =="
+      local marks = api.nvim_buf_get_extmarks(S.chatbuf, -1, 0, -1, { details = true })
+      for _, m in ipairs(marks) do
+        local row, det = m[2], m[4] or {}
+        local bg = det.line_hl_group or det.hl_group
+        if bg and tostring(bg):lower():find("bg") or det.line_hl_group or det.virt_lines then
+          local kind = det.line_hl_group and "line_hl" or (det.virt_lines and "virt_lines" or "hl")
+          out[#out + 1] = string.format("row=%-4d %s=%s text=%q", row, kind,
+            tostring(det.line_hl_group or det.hl_group or "?"), lines[row + 1] or "<nil>")
+        end
+      end
+      local fh = io.open("/tmp/heidr-band-debug.log", "w")
+      if fh then fh:write(table.concat(out, "\n") .. "\n"); fh:close() end
+    end)
+  end
   for _, d in ipairs(decor) do
+   if d.line >= p then
     if d.bg then
       -- priority 190 puts our full-line fill ABOVE markview's code-block bg. On
       -- nvim 0.12 line_hl_group fills every screen row of a wrapped line, but
@@ -1419,6 +1639,7 @@ render_chat = function(scroll)
     if d.caret then
       pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, d.line, 0, { line_hl_group = "HeidrStream", priority = 80 })
     end
+   end
   end
 
   S.chat_line_msg = line_msg
@@ -1459,6 +1680,10 @@ render_chat = function(scroll)
       -- an incoming message doesn't drag the view to the bottom.
       pcall(api.nvim_win_call, S.chatwin, function() fn.winrestview(saved_view) end)
     end
+    -- Bottom-anchor a short conversation now AND after markview settles (it renders
+    -- async and changes the true display height, so the sync pass alone is unreliable).
+    bottom_anchor()
+    vim.defer_fn(bottom_anchor, 80)
   end
   if sync_approval_keys then sync_approval_keys() end
 end
@@ -1607,7 +1832,16 @@ handle = function(obj)
   local t = obj.type
   if t == "roster" then
     S.roster = obj.sessions or {}
-    table.sort(S.roster, function(a, b) return (a.name or "") < (b.name or "") end)
+    -- Order by RECENCY (most-recently-active first) so the top — where Super+T/R lands you —
+    -- is the session you most likely want. Streaming sessions float to the top; idle ones
+    -- sort by when they last finished (idle_since); name breaks ties.
+    local now = os.time()
+    local function rk(a) return S.stream_since[a.id] and now or (S.idle_since[a.id] or 0) end
+    table.sort(S.roster, function(a, b)
+      local ra, rb = rk(a), rk(b)
+      if ra ~= rb then return ra > rb end
+      return (a.name or "") < (b.name or "")
+    end)
     render_roster()
     -- reconcile with the cockpit active context: adopts the persisted active on
     -- startup and picks up a session that appears after a context switch, so the
@@ -1650,18 +1884,38 @@ handle = function(obj)
       chain[#chain + 1] = byid[cur]
       cur = byid[cur].parentId
     end
-    local msgs = {}
-    for i = #chain, 1, -1 do -- chain is leaf→root; render root→leaf
+    -- Cap the reconstruction to the most recent CHAT_CAP messages by default. A big session
+    -- (2662: 1558 entries / ~7MB) is otherwise msg_text-formatted AND rendered in full on
+    -- open — that's the multi-second first-open lag (old turns carry huge tool outputs). We
+    -- only format the tail; `zo` in the chat loads the rest on demand.
+    local CHAT_CAP = 80
+    local full = S.chat_full and S.chat_full[obj.session]
+    local active = {} -- user/assistant messages, chronological (chain is leaf→root)
+    for i = #chain, 1, -1 do
       local m = chain[i].type == "message" and chain[i].message
-      if m and (m.role == "user" or m.role == "assistant") then
-        local text, hunks = msg_text(m, cwd)
-        if text:gsub("%s", "") ~= "" then
-          msgs[#msgs + 1] = { role = m.role, text = text, hunks = hunks }
-        end
+      if m and (m.role == "user" or m.role == "assistant") then active[#active + 1] = m end
+    end
+    local start = (full or #active <= CHAT_CAP) and 1 or (#active - CHAT_CAP + 1)
+    local msgs = {}
+    for i = start, #active do
+      local m = active[i]
+      local text, hunks = msg_text(m, cwd)
+      if text:gsub("%s", "") ~= "" then
+        msgs[#msgs + 1] = { role = m.role, text = text, hunks = hunks }
+      end
+    end
+    -- Peel the trailing turn's ⟢ recap out of the rebuilt tail so it renders only in
+    -- the done-divider callout, not inline too. Seed S.summary only when nothing's set
+    -- live (a fresh reopen) — never clobber a live summary that carries steps/elapsed.
+    local rc = strip_recap(msgs)
+    if rc then
+      S.summary = S.summary or {}
+      if not (S.summary[obj.session] and S.summary[obj.session].recap) then
+        S.summary[obj.session] = { recap = rc, files = (S.summary[obj.session] or {}).files }
       end
     end
     -- Never blank a populated chat if reconstruction came back empty (broken leaf).
-    if #msgs > 0 or not S.chat[obj.session] then S.chat[obj.session] = { msgs = msgs } end
+    if #msgs > 0 or not S.chat[obj.session] then S.chat[obj.session] = { msgs = msgs, more = start - 1 } end
     if S.reloading then S.reloading[obj.session] = nil end -- pi's back, restart done
     if obj.session == S.selected then render_chat(true) end
   elseif t == "rewound" and obj.session then
@@ -1681,7 +1935,7 @@ handle = function(obj)
       end
     end
   elseif t == "message_start" and obj.session and obj.message and obj.message.role == "user" then
-    -- echo the user prompt — covers prompts injected via wt-send / plan dispatch
+    -- echo the user prompt — covers prompts injected via `agent send` / plan dispatch
     -- that the composer never optimistically echoed. Dedup vs a just-echoed one.
     local text = msg_text(obj.message, session_cwd(obj.session))
     if text:gsub("%s", "") ~= "" then
@@ -1771,14 +2025,52 @@ handle = function(obj)
     -- notifying here would fire once per round (the mid-turn spam).
     S.stream[obj.session] = nil
     if obj.session == S.selected then render_chat(false) end
+  elseif t == "changes" and obj.session then
+    -- Server-streamed working-tree diff from a REMOTE agentd: populate the diff
+    -- cache + re-render CHANGES without the files being local. Same parser + re-render
+    -- path as the local git watcher. (follow_edit still can't OPEN a remote file — it
+    -- early-returns on filereadable — so remote live-follow is diff-visibility for now.)
+    local cwd = obj.cwd or session_cwd(obj.session)
+    if cwd and type(obj.diff) == "string" then
+      S.gitdiff[cwd] = parse_git_diff(vim.split(obj.diff, "\n", { plain = true }))
+      if S.selected and session_cwd(S.selected) == cwd then
+        if S.view == "changes" then render_changes() else render_chat(false) end
+        refresh_dashboard()
+      end
+    end
   elseif t == "agent_end" and obj.session then
     -- the ENTIRE turn is complete (fires once, after every round).
     S.stream[obj.session] = nil
     if S.turn_active then S.turn_active[obj.session] = nil end
     local flushed_queue = false
-    if S.queued and S.queued[obj.session] then
-      -- a message queued mid-turn becomes the next turn now (only at true end,
-      -- so it isn't injected between the agent's own tool rounds)
+    -- STEER FALLBACK: a message steered mid-turn is best-effort — pi strands it if the
+    -- turn ends right after accepting it. If this agent_end lands within STEER_GRACE of
+    -- the steer, the turn was too short to have consumed it → re-send as a fresh prompt
+    -- (the guaranteed delivery). It's ALREADY echoed in the chat from steer time, so we
+    -- fire the prompt WITHOUT re-echoing. A longer turn is assumed to have consumed it.
+    local STEER_GRACE = 3
+    if S.steer_pending and S.steer_pending[obj.session] then
+      local sp = S.steer_pending[obj.session]; S.steer_pending[obj.session] = nil
+      if (os.time() - (sp.at or 0)) < STEER_GRACE then
+        -- Stranded: reposition the steer echo to the END (it becomes this fresh turn's
+        -- prompt, after the turn that ignored it) so message_start's re-echo dedups
+        -- against it instead of appending a duplicate.
+        local cq = S.chat[obj.session]
+        if cq and cq.msgs then
+          for i = #cq.msgs, 1, -1 do
+            local m = cq.msgs[i]
+            if m and m.steer and m.text == sp.text then table.remove(cq.msgs, i); break end
+          end
+          cq.msgs[#cq.msgs + 1] = { role = "user", text = sp.text }
+        end
+        send({ type = "prompt", session = obj.session, message = sp.text })
+        flushed_queue = true -- answer still coming → suppress the no-reply auto-resend
+        if obj.session == S.selected then render_chat(true) end
+      end
+    end
+    if not flushed_queue and S.queued and S.queued[obj.session] then
+      -- a message queued mid-turn becomes the next turn now (only at true end, so it
+      -- isn't injected between the agent's own tool rounds) — guaranteed to get answered.
       local q = S.queued[obj.session]; S.queued[obj.session] = nil
       local cq = S.chat[obj.session] or { msgs = {} }
       cq.msgs[#cq.msgs + 1] = { role = "user", text = q }
@@ -1809,10 +2101,25 @@ handle = function(obj)
     -- Skip when we just appended a queued prompt (its answer is still coming), and
     -- guard S.errors (lazily created — nil on a session's first clean turn).
     local c = S.chat[obj.session]
-    if not flushed_queue and c and c.msgs and #c.msgs > 0 and c.msgs[#c.msgs].role == "user"
-      and not (S.errors and S.errors[obj.session]) then
-      c.msgs[#c.msgs + 1] = { role = "assistant",
-        text = THINK .. "no reply — the turn ended without an answer (likely context compaction). Re-ask, or start a fresh session for research-heavy tasks." }
+    if c and c.msgs and #c.msgs > 0 then
+      local last = c.msgs[#c.msgs]
+      S.autoresend = S.autoresend or {}
+      if last.role == "assistant" then
+        S.autoresend[obj.session] = nil -- a real answer landed → clear the resend guard
+      elseif not flushed_queue and last.role == "user" and not (S.errors and S.errors[obj.session]) then
+        -- turn ended with your message UNANSWERED (usually mid-turn context compaction
+        -- dropped the reply). Auto-resend it ONCE to get an answer; the per-session counter
+        -- caps it at a single retry so a genuinely stuck (full-context) session can't loop.
+        local tries = S.autoresend[obj.session] or 0
+        if tries < 1 and last.text and last.text ~= "" then
+          S.autoresend[obj.session] = tries + 1
+          send({ type = "prompt", session = obj.session, message = last.text })
+        else
+          S.autoresend[obj.session] = nil
+          c.msgs[#c.msgs + 1] = { role = "assistant",
+            text = THINK .. "no reply even after a resend — likely a full context. Re-ask, or start a fresh session for research-heavy tasks." }
+        end
+      end
     end
     -- writes settled → reload the exact files the agent edited (see sync_edited)
     local ed = S.edited[obj.session]
@@ -1821,30 +2128,7 @@ handle = function(obj)
     -- assistant message (stripping the marker line so it isn't shown twice), and pair
     -- it with the +adds/−dels of the files it touched this turn.
     S.summary = S.summary or {}
-    local recap
-    -- Strip the ⟢ recap line from EVERY trailing assistant message of this turn, not
-    -- just the last: a multi-round turn (or a streamed-then-persisted recap) can leave
-    -- an earlier ⟢ line in a message, which then renders inline as a DUPLICATE of the
-    -- done-divider summary callout (the "two near-identical summaries" bug). Walk back
-    -- to the user-turn boundary; the last assistant message's recap (first seen) wins.
-    if c and c.msgs then
-      for i = #c.msgs, 1, -1 do
-        local m = c.msgs[i]
-        if not m or m.role ~= "assistant" then break end -- stop at the user turn boundary
-        if type(m.text) == "string" and m.text:find("⟢") then
-          local kept, r = {}, nil
-          for _, ln in ipairs(vim.split(m.text, "\n", { plain = true })) do
-            local mm = ln:match("^%s*⟢%s*(.+)")
-            if mm then r = mm else kept[#kept + 1] = ln end
-          end
-          if r then
-            recap = recap or r
-            local body = (table.concat(kept, "\n")):gsub("%s+$", "")
-            if body == "" then table.remove(c.msgs, i) else m.text = body end
-          end
-        end
-      end
-    end
+    local recap = strip_recap(c and c.msgs)
     local files = {}
     if ed then
       -- A turn can edit files across REPOS (the code worktree + the vault plan .md),
@@ -1884,12 +2168,13 @@ handle = function(obj)
           path = rel,
           add = (x and x.add) or 0,
           del = (x and x.del) or 0,
+          untracked = not x, -- no git-diff entry (new/untracked file or outside any repo)
         }
       end
     end
     S.summary[obj.session] = { recap = recap, files = files }
     refresh_plans() -- capture final plan progress now the turn's done (the streaming sweep stopped)
-    if obj.session == S.selected then render_chat(false) end
+    if obj.session == S.selected then render_chat(false); refresh_dashboard() end
   elseif t == "extension_ui_request" then
     local m = obj.method
     if m == "notify" then
@@ -1967,36 +2252,48 @@ on_read = function(err, chunk)
   end
 end
 
+-- Remote agentd (the split setup): HEIDR_AGENTD_ADDR="host:port" → connect over
+-- TCP (a tailnet IP, or a localhost SSH-forwarded port) instead of the local
+-- unix socket. The daemon protocol is transport-agnostic NDJSON, so only the
+-- connect call differs — nvim still runs locally, only events cross the wire.
+local function remote_addr()
+  local a = os.getenv("HEIDR_AGENTD_ADDR")
+  if not a or a == "" then return nil end
+  local host, port = a:match("^(.-):(%d+)$")
+  if host and port then return host, tonumber(port) end
+  return nil
+end
+
 try_connect = function(cb, tries)
   tries = tries or 0
   S.connecting = true
-  local p = uv.new_pipe(false)
-  p:connect(sock(), function(cerr)
+  local rhost, rport = remote_addr()
+  local stream = rhost and uv.new_tcp() or uv.new_pipe(false)
+  local function on_conn(cerr)
     if not cerr then
       S.connecting = false
-      S.pipe = p
+      S.pipe = stream
       S.connected = true
       S.last_recv = os.time() -- fresh connection: don't flag it stale immediately
       S.ever_connected = true
-      p:read_start(vim.schedule_wrap(on_read))
+      stream:read_start(vim.schedule_wrap(on_read))
       -- flush anything queued while we were down so a daemon restart / socket
       -- drop is transparent: messages you sent mid-outage get delivered now,
       -- in order, instead of being silently lost.
       if S.outbox and #S.outbox > 0 then
         local pending = S.outbox; S.outbox = {}
         for _, m in ipairs(pending) do
-          pcall(function() p:write(vim.json.encode(m) .. "\n") end)
+          pcall(function() stream:write(vim.json.encode(m) .. "\n") end)
         end
       end
       vim.schedule(function() render_roster() end)
       if cb then vim.schedule(cb) end
       return
     end
-    pcall(function() p:close() end)
-    -- Only spawn a daemon on the very first boot attempt: a reconnect after a
-    -- drop (S.ever_connected) means the daemon is normally already up and just
-    -- blipped — spawning a duplicate would race the socket bind and log-spam.
-    if tries == 0 and not S.ever_connected then
+    pcall(function() stream:close() end)
+    -- Only cold-start a LOCAL daemon on first boot; a remote one can't be spawned
+    -- from here, and a reconnect after a drop means it's normally already up.
+    if not rhost and tries == 0 and not S.ever_connected then
       vim.schedule(function()
         fn.jobstart({ agentd_bin(), "--scope", scope, "--repo", scope_root() }, { detach = true })
       end)
@@ -2007,7 +2304,12 @@ try_connect = function(cb, tries)
     local delay = (tries < 30) and 200 or 2000
     local tm = uv.new_timer()
     tm:start(delay, 0, function() tm:close(); try_connect(cb, tries + 1) end)
-  end)
+  end
+  if rhost then
+    stream:connect(rhost, rport, on_conn)
+  else
+    stream:connect(sock(), on_conn)
+  end
 end
 
 connect = function(cb)
@@ -2064,13 +2366,42 @@ end
 --------------------------------------------------------------------------------
 -- re-root + session lifecycle
 --------------------------------------------------------------------------------
+-- "is this cwd inside a work tree" is invariant for a given dir, but fn.system git
+-- forks a subprocess that BLOCKS the switch every time — so memoize per cwd. A
+-- session's worktree doesn't stop being a repo mid-life, so a stale-cache risk isn't
+-- real here; this removes one synchronous git fork from every session switch.
+local in_repo_cache = {}
 local function reroot(cwd)
   if not cwd or cwd == "" then return end
-  pcall(vim.cmd, "tcd " .. fn.fnameescape(cwd))
-  pcall(function() require("plan-nvim").bind() end)
-  local in_repo = fn.system({ "git", "-C", cwd, "rev-parse", "--is-inside-work-tree" })
-  if in_repo:match("true") then pcall(function() require("file-watcher").start() end) end
-  pcall(api.nvim_exec_autocmds, "DirChanged", { modeline = false })
+  if fn.getcwd() == cwd then return end -- already rooted here (e.g. parent ↔ its sub-agent) — nothing to do
+  local rec = vim.g.heidr_debug_switch and {} or nil
+  local function step(label, f)
+    if not rec then f(); return end
+    local t0 = vim.loop.hrtime(); f(); rec[#rec + 1] = string.format("%s=%.1fms", label, (vim.loop.hrtime() - t0) / 1e6)
+  end
+  -- cd WITHOUT firing autocmds: a plain :tcd fires DirChanged synchronously, and its
+  -- handlers (gitsigns et al.) re-scan git on the whole monorepo — ~600-900ms, the bulk
+  -- of every switch. Do the cheap cd now; the git isrepo probe is memoised per cwd.
+  step("tcd", function() pcall(vim.cmd, "noautocmd tcd " .. fn.fnameescape(cwd)) end)
+  step("plan_bind", function() pcall(function() require("plan-nvim").bind() end) end)
+  local in_repo = in_repo_cache[cwd]
+  step("git_isrepo", function()
+    if in_repo == nil then
+      in_repo = fn.system({ "git", "-C", cwd, "rev-parse", "--is-inside-work-tree" }):match("true") ~= nil
+      in_repo_cache[cwd] = in_repo
+    end
+  end)
+  if rec then
+    pcall(fn.writefile, { "  reroot: " .. table.concat(rec, " ") }, "/tmp/heidr-switch-timing.log", "a")
+  end
+  -- The expensive tail — the DirChanged fan-out (git re-scan) and the file-watcher tree
+  -- walk (~250-750ms) — runs DEFERRED, off the switch's paint path. Bail if the user has
+  -- since switched to a different worktree, so we don't scan a dir we've already left.
+  vim.schedule(function()
+    if fn.getcwd() ~= cwd then return end
+    if in_repo then pcall(function() require("file-watcher").start() end) end
+    pcall(api.nvim_exec_autocmds, "DirChanged", { modeline = false })
+  end)
 end
 
 -- save the current composer text as the draft for the outgoing session
@@ -2156,7 +2487,19 @@ start_session = function(name, cwd)
   render_active()
 end
 
+-- Switch-timing: with `:lua vim.g.heidr_debug_switch=1`, view_session records each
+-- step's wall time and appends a line to /tmp/heidr-switch-timing.log so we can see
+-- which step dominates a switch (measure before optimizing). No-op when the flag's off.
+local function switch_step(rec, label, f)
+  if not rec then f(); return end
+  local t0 = vim.loop.hrtime()
+  f()
+  rec[#rec + 1] = string.format("%s=%.1fms", label, (vim.loop.hrtime() - t0) / 1e6)
+end
+
 view_session = function(name, cwd)
+  local rec = vim.g.heidr_debug_switch and {} or nil
+  local t_all = rec and vim.loop.hrtime()
   save_draft()
   -- Remember what the OUTGOING session had in the editor so returning restores it
   -- (per-session, so one session's file can never bleed into another's).
@@ -2170,17 +2513,30 @@ view_session = function(name, cwd)
     S.nav_hist[#S.nav_hist + 1] = name
     S.nav_idx = #S.nav_hist
   end
-  reload_messages(name)
-  reroot(cwd)
-  -- refresh ONLY the switched-to session's plan (1 git call) so its dashboard/chip are
-  -- fresh — before reflect_context renders the dashboard. The rest of the roster stays
-  -- cached and refreshes on the slow tick. (Full refresh_plans here was O(sessions)
-  -- sync git calls on every switch — the swap lag.)
-  for _, a in ipairs(S.roster) do if a.id == name then refresh_plan_one(a); break end end
-  reflect_context(cwd) -- restore this session's editor (S.editor[name]) or show the dashboard
-  cockpit_sync(cwd)    -- drive the cockpit devenv tab + Super+T active marker to match
-  load_draft(name)
-  render_active()
+  switch_step(rec, "reload_messages", function() reload_messages(name) end)
+  switch_step(rec, "reroot", function() reroot(cwd) end)
+  switch_step(rec, "reflect_context", function() reflect_context(cwd) end) -- restore editor or show dashboard (sync: deferring it let another buffer open in the gap and got clobbered)
+  switch_step(rec, "cockpit_sync", function() cockpit_sync(cwd) end)       -- drive cockpit devenv tab + Super+T marker
+  switch_step(rec, "load_draft", function() load_draft(name) end)
+  switch_step(rec, "render_active", function() render_active() end)
+  if rec then
+    local total = (vim.loop.hrtime() - t_all) / 1e6
+    pcall(fn.writefile,
+      { string.format("switch → %s  total=%.1fms  [%s]", short_name(name), total, table.concat(rec, " ")) },
+      "/tmp/heidr-switch-timing.log", "a")
+  end
+  -- Refresh the switched-to session's plan AFTER the switch has painted. It's a sync
+  -- git call, so running it inline was the swap lag; deferring it lets the roster/chat
+  -- appear instantly with the cached plan, then the dashboard/chip update a tick later
+  -- if the plan changed. (reflect_context is NOT deferred — doing so let another buffer
+  -- open in the gap and the deferred restore clobbered it, losing the review output.)
+  vim.schedule(function()
+    if S.selected ~= name then return end -- switched away again before we ran
+    for _, a in ipairs(S.roster) do
+      if a.id == name then refresh_plan_one(a); break end
+    end
+    if S.selected == name then reflect_context(cwd); render_active() end
+  end)
 end
 
 -- Ctrl-o / Ctrl-i walk the session-visit history like a jumplist (delta -1 = back to
@@ -2361,7 +2717,7 @@ composer_resize = function()
   vim.wo[S.composerwin].wrap = true -- long lines wrap+grow, never side-scroll
   -- Height = total display rows, which includes the single blank pad virtual line
   -- above the input (see render_chips) plus wrapped content.
-  local extra = #S.attach + #S.paste_images -- chip virt-lines above the input
+  local extra = #S.attach -- file-attachment chip virt-lines; images show in the winbar 🖼 count (no growth)
   -- True display height (wrapped content + the top/bottom pad + chip virt-lines).
   -- The old "grew out of nowhere on niri navigation" was a transient from a focus
   -- redraw; it's corrected by re-running this on FocusGained (see M.open), not by
@@ -2399,9 +2755,9 @@ render_chips = function()
     local tag = (at.lang and at.lang ~= "") and ("  " .. at.lang) or ""
     vls[#vls + 1] = { { CHIP_BAR .. " ", "HeidrChipBar" }, { " " .. loc .. tag .. " ", "HeidrChip" } }
   end
-  for i, img in ipairs(S.paste_images) do
-    vls[#vls + 1] = { { CHIP_BAR .. " ", "HeidrChipBar" }, { "  image " .. i .. " · " .. img.mimeType .. " ", "HeidrChip" } }
-  end
+  -- pasted images are NOT chipped here: a per-image virt-line grows the composer, and the
+  -- winbar already carries a 🖼 ×N count on a row that doesn't grow. File attachments keep
+  -- their chip (the path:line ref is worth the row).
   pcall(api.nvim_buf_set_extmark, S.composerbuf, S.chip_ns, 0, 0, { virt_lines = vls, virt_lines_above = true })
   -- And a blank below the input so it doesn't butt the lualine bar.
   local last = math.max(0, api.nvim_buf_line_count(S.composerbuf) - 1)
@@ -2669,6 +3025,13 @@ composer_send = function()
   if S.errors then S.errors[S.selected] = nil end -- clear last error on retry
   S.last_sent = S.last_sent or {}
   S.last_sent[S.selected] = text -- for Esc-restore (edit + resend the last message)
+  -- shell-style sent-message history for ↑/↓ recall (skip consecutive dupes, cap 100);
+  -- a send also ends any in-progress history browsing.
+  S.history = S.history or {}
+  local _h = S.history[S.selected] or {}; S.history[S.selected] = _h
+  if _h[#_h] ~= text then _h[#_h + 1] = text end
+  if #_h > 100 then table.remove(_h, 1) end
+  if S.histpos then S.histpos[S.selected] = nil end
   local prompt = build_prompt(text)
   local imgs = (#S.paste_images > 0) and vim.deepcopy(S.paste_images) or nil
   local c = S.chat[S.selected] or { msgs = {} }
@@ -2683,14 +3046,24 @@ composer_send = function()
   local working = (S.turn_active and S.turn_active[S.selected])
     or (S.stream[S.selected] and S.stream[S.selected] ~= "")
   if working and not imgs then
-    S.queued = S.queued or {}
-    S.queued[S.selected] = (S.queued[S.selected] and (S.queued[S.selected] .. "\n\n") or "") .. prompt
+    -- STEER-FIRST, fall back to queue (the chosen default). Inject the message into
+    -- the LIVE turn so the agent can read it mid-work — real mid-turn conversation.
+    -- pi's steer is best-effort: it strands the message, unanswered, if the turn ends
+    -- right after accepting it. So we arm a fallback (see agent_end): if the turn ends
+    -- within STEER_GRACE of the steer — too fast to have consumed it — the message is
+    -- re-sent as a fresh prompt (the delivery pi guarantees an answer for). Echoed now
+    -- as a normal user turn so you see it went. Images can't steer, so they send now.
+    send({ type = "steer", session = S.selected, message = prompt })
+    c.msgs[#c.msgs + 1] = { role = "user", text = prompt, steer = true } -- tagged so the strand-fallback can reposition it
     S.chat[S.selected] = c
+    S.steer_pending = S.steer_pending or {}
+    S.steer_pending[S.selected] = { text = prompt, at = os.time() }
+    S.force_bottom = true
     S.drafts[S.selected] = nil
     clear_attachments()
     api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, { "" })
     render_chips(); composer_placeholder()
-    render_chat(false) -- show the queued indicator
+    render_chat(true)
     stay_in_composer()
     return
   end
@@ -2886,6 +3259,38 @@ end
 
 M.editor_win = target_editor_win
 
+-- The dashboard hides the editor gutter (number/sign/fold columns) for a clean
+-- resting view; a real file restores it to the user's global defaults. Toggled by
+-- the two file-show paths + show_scratch so it can never get stuck off.
+local function editor_gutter(win, on)
+  if not (win and api.nvim_win_is_valid(win)) then return end
+  pcall(function()
+    -- Clear any statuscolumn that leaked from the chat pane: its %!__HeidrChatStc() drew a
+    -- bare, marginless 2-col gutter on the editor that only rendered numbers for the chat
+    -- window (hence "numbers vanish when the editor is focused").
+    vim.wo[win].statuscolumn = ""
+    if on then
+      -- Restore the editor window to the GLOBAL default (options.lua sets number +
+      -- relativenumber). heidr never forces its own values here — it only RESTORES what
+      -- the dashboard turned off — so the gutter matches plain nvim everywhere else.
+      -- FORCE number + relativenumber on (options.lua's intent). We can't derive from the
+      -- global: something in the plugin/loader path resets vim.go.number to OFF after
+      -- startup (even the VimEnter re-assert loses in the cockpit nvim), so a derived value
+      -- came back false and the gutter vanished. Hardcoding the default is the reliable fix.
+      vim.wo[win].number = true
+      vim.wo[win].relativenumber = true
+      vim.wo[win].numberwidth = (vim.go.numberwidth and vim.go.numberwidth > 0) and vim.go.numberwidth or 4
+      vim.wo[win].signcolumn = "yes"
+      vim.wo[win].foldcolumn = "0"
+    else
+      vim.wo[win].number = false
+      vim.wo[win].relativenumber = false
+      vim.wo[win].signcolumn = "no"
+      vim.wo[win].foldcolumn = "0"
+    end
+  end)
+end
+
 local function open_in_editor(cwd, path, line)
   local file = path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)
   file = fn.expand(file)
@@ -2899,6 +3304,8 @@ local function open_in_editor(cwd, path, line)
   end
   api.nvim_set_current_win(target)
   pcall(vim.cmd, "edit " .. fn.fnameescape(file))
+  editor_gutter(target, true)
+  if hide_banner then hide_banner() end -- a real file is showing now → drop the dashboard banner float
   if line then pcall(api.nvim_win_set_cursor, 0, { tonumber(line), 0 }) end
 end
 
@@ -2960,6 +3367,8 @@ follow_edit = function(cwd, path, line)
     end
     if line then pcall(api.nvim_win_set_cursor, target, { tonumber(line), 0 }); vim.cmd("normal! zz") end
   end)
+  editor_gutter(target, true) -- a real file is showing → restore number/sign/fold cols (the dashboard turned them off)
+  if hide_banner then hide_banner() end
 end
 
 -- reverse bridge: open the file referenced in the nearest fenced-code header
@@ -3011,16 +3420,57 @@ local function url_under_cursor(line, col)
   end
 end
 
--- gx in the chat: open the URL under the cursor (PR / preview / docs links the
+-- URL at/near the cursor. Handles both a bare http URL AND a markdown link
+-- [text](url): markview CONCEALS the ](url) part, so the cursor sits on the visible
+-- TEXT, never on the URL — url_under_cursor alone always missed those. We match the
+-- whole [text](url) span (so cursor-on-text works), dedup against bare URLs, and fall
+-- back to the sole link on the line so gx/yank don't need pixel-precise cursoring.
+local function link_at(line, col)
+  local hits, seen = {}, {}
+  local i = 1
+  while true do -- markdown links first: span covers the whole [text](url)
+    local s, e, href = line:find("%[.-%]%((%S-)%)", i)
+    if not s then break end
+    href = href:gsub("[%.,%)%]}>\"']+$", "")
+    if not seen[href] then hits[#hits + 1] = { s = s, e = e, url = href }; seen[href] = true end
+    i = e + 1
+  end
+  i = 1
+  while true do -- bare URLs not already part of a markdown link
+    local s, e, u = line:find("(https?://[%w%._~:/%?#%[%]@!$&'()*+,;=%%~-]+)", i)
+    if not s then break end
+    u = u:gsub("[%.,%)%]}>\"']+$", "")
+    if not seen[u] then hits[#hits + 1] = { s = s, e = e, url = u }; seen[u] = true end
+    i = e + 1
+  end
+  if #hits == 0 then return nil end
+  for _, h in ipairs(hits) do if col + 1 >= h.s and col + 1 <= h.e then return h.url end end
+  if #hits == 1 then return hits[1].url end
+  return nil
+end
+
+-- gx in the chat: open the URL/link under the cursor (PR / preview / docs links the
 -- agent emits) via the system opener, in the work browser.
 local function chat_open_url()
   if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
   local pos = api.nvim_win_get_cursor(S.chatwin)
   local line = api.nvim_buf_get_lines(S.chatbuf, pos[1] - 1, pos[1], false)[1] or ""
-  local u = url_under_cursor(line, pos[2])
-  if not u then vim.notify("heidr: no URL at cursor", vim.log.levels.INFO); return end
+  local u = link_at(line, pos[2])
+  if not u then vim.notify("heidr: no link at cursor", vim.log.levels.INFO); return end
   if vim.ui.open then vim.ui.open(u) else fn.jobstart({ "xdg-open", u }, { detach = true }) end
   vim.notify("heidr: opening " .. u)
+end
+
+-- gy / yank a chat link's URL (the concealed href of the [text](url) under the cursor,
+-- or a bare URL) to the clipboard — no more copying the raw [text](url) markdown.
+local function chat_yank_url()
+  if not (S.chatwin and api.nvim_win_is_valid(S.chatwin)) then return end
+  local pos = api.nvim_win_get_cursor(S.chatwin)
+  local line = api.nvim_buf_get_lines(S.chatbuf, pos[1] - 1, pos[1], false)[1] or ""
+  local u = link_at(line, pos[2])
+  if not u then vim.notify("heidr: no link at cursor", vim.log.levels.INFO); return end
+  fn.setreg("+", u); fn.setreg('"', u)
+  vim.notify("heidr: yanked " .. u)
 end
 
 -- <CR>/gf on a chat edit row opens that file; exact hunk navigation lives in
@@ -3175,7 +3625,14 @@ load_plan = function(cwd)
   for _, f in ipairs(fn.globpath(dir, "*.progress.json", false, true)) do
     local ok, data = pcall(function() return vim.json.decode(table.concat(fn.readfile(f), "\n")) end)
     if ok and type(data) == "table" and data.branch == branch then
-      return { progress = data, key = fn.fnamemodify(f, ":t"):gsub("%.progress%.json$", "") }
+      local key = fn.fnamemodify(f, ":t"):gsub("%.progress%.json$", "")
+      local review
+      local rf = dir .. "/" .. key .. ".review.json"
+      if fn.filereadable(rf) == 1 then
+        local rok, rdata = pcall(function() return vim.json.decode(table.concat(fn.readfile(rf), "\n")) end)
+        if rok and type(rdata) == "table" then review = rdata end
+      end
+      return { progress = data, key = key, review = review }
     end
   end
   return nil
@@ -3222,7 +3679,72 @@ local dash_keys
 -- a bottom-right action box whose rows exist ONLY when their target does (devenv/
 -- app only for a registered cockpit context, plan only with a plan, ticket only
 -- with a ticket id). Reused across sessions; unnamed so lualine shows no filename.
+-- Heidr masthead banner — theme-aware PNG (light/dark electric) rendered inline
+-- via snacks.image (kitty graphics). Wrapped so a missing file or a terminal
+-- without image support never breaks the resting view.
+local HEIDR_BANNER_DIR = fn.expand("~/personal/heidr/assets")
+local HEIDR_BANNER_W = 22 -- banner width in cells
+-- 790×184 scaled to 22 cells ≈ 3 text rows. Declared before place_banner so its
+-- float config captures the local (a later declaration resolved to a nil global →
+-- height=nil → open_win threw under pcall → the banner never rendered).
+local HEIDR_BANNER_ROWS = 3
+-- The banner lives in its OWN floating window over the dashboard's reserved top
+-- rows — NOT inline in the card buffer. An inline image shares the card's buffer, so
+-- every set_lines re-render wiped + re-placed it and its virtual columns offset the
+-- content rows (the recurring jagged-border bug, unfixable while it's inline). In a
+-- float the image is physically isolated: the card's set_lines can't touch it, and it
+-- can't shift a single content column. `win` = the editor window showing the dashboard.
+local function place_banner(_buf, win)
+  if not (win and api.nvim_win_is_valid(win)) then hide_banner(); return end
+  -- The banner draws ONLY over the dashboard. If the target window isn't currently
+  -- showing the scratch buffer (a file is open — including a stray re-place from a
+  -- ColorScheme/User autocmd), never draw it over code.
+  if not (S.scratchbuf and api.nvim_win_get_buf(win) == S.scratchbuf) then hide_banner(); return end
+  local ok, Placement = pcall(require, "snacks.image.placement")
+  if not ok then return end
+  local variant = vim.o.background == "light" and "light" or "dark"
+  local src = HEIDR_BANNER_DIR .. "/heidr-" .. variant .. ".png"
+  if fn.filereadable(src) == 0 then hide_banner(); return end
+  if not (S.banner_buf and api.nvim_buf_is_valid(S.banner_buf)) then
+    S.banner_buf = api.nvim_create_buf(false, true)
+    vim.bo[S.banner_buf].bufhidden = "hide"; vim.bo[S.banner_buf].swapfile = false
+  end
+  local col = math.max(0, math.floor((api.nvim_win_get_width(win) - HEIDR_BANNER_W) / 2))
+  local cfg = {
+    relative = "win", win = win, anchor = "NW", row = 0, col = col,
+    width = HEIDR_BANNER_W, height = HEIDR_BANNER_ROWS,
+    -- border=none EXPLICITLY: a global `winborder` (e.g. "rounded") otherwise leaks a box
+    -- onto this float, framing the banner in an ugly outline over the card.
+    focusable = false, style = "minimal", zindex = 45, border = "none",
+    -- NO noautocmd: snacks.image hooks window autocmds to draw the inline image, so
+    -- suppressing them left the float empty (the "no header" bug).
+  }
+  if S.banner_win and api.nvim_win_is_valid(S.banner_win) then
+    pcall(api.nvim_win_set_config, S.banner_win, cfg)
+  else
+    S.banner_win = api.nvim_open_win(S.banner_buf, false, cfg)
+    pcall(function() vim.wo[S.banner_win].winhighlight = "Normal:Normal,NormalFloat:Normal" end)
+  end
+  pcall(Placement.clean, S.banner_buf)
+  pcall(Placement.new, S.banner_buf, src, { pos = { 1, 0 }, inline = true, width = HEIDR_BANNER_W, auto_resize = false })
+end
+
+hide_banner = function()
+  if S.banner_win and api.nvim_win_is_valid(S.banner_win) then pcall(api.nvim_win_close, S.banner_win, true) end
+  S.banner_win = nil
+end
+
+-- 0 when the banner won't render (no snacks / missing PNG), so the reserved top
+-- rows collapse and the layout stays exact in a plain terminal too.
+local function banner_rows()
+  if not pcall(require, "snacks.image.placement") then return 0 end
+  local variant = vim.o.background == "light" and "light" or "dark"
+  if fn.filereadable(HEIDR_BANNER_DIR .. "/heidr-" .. variant .. ".png") == 0 then return 0 end
+  return HEIDR_BANNER_ROWS
+end
+
 local function show_scratch(win, cwd)
+  local _d = vim.g.heidr_debug_switch and { vim.loop.hrtime() } or nil -- switch-timing marks
   if not (S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf)) then
     S.scratchbuf = api.nvim_create_buf(false, true)
     vim.bo[S.scratchbuf].buftype = "nofile"
@@ -3238,52 +3760,42 @@ local function show_scratch(win, cwd)
   local lines, decor = {}, {}
   local function push(l) lines[#lines + 1] = l or ""; return #lines - 1 end
   local function hl(ln, grp, cs, ce) decor[#decor + 1] = { ln = ln, grp = grp, cs = cs or 0, ce = ce or -1 } end
-  -- a small-caps accent section label + muted detail on one line
-  local function section(label, detail)
-    local ln = push("  " .. label .. (detail and ("   " .. detail) or ""))
-    hl(ln, "HeidrMuted")
-    hl(ln, "HeidrTitle", 2, 2 + #label)
-    return ln
+  -- Centered card matching the rail's box(): surface fill + hairpin border + titled
+  -- top, drawn in a centered content column of width CW at left margin LM. Reuses
+  -- box() verbatim (same glyphs/colours as the rail) via a thin adapter: box writes
+  -- {line,fg,bg,cs,ce} decor with group-name attrs → we replay it as add_highlight
+  -- offset by LM, so the surface fills only the card columns, not the whole row.
+  local CW = math.max(40, math.min(W - 8, 96))
+  local LM = math.max(0, math.floor((W - CW) / 2))
+  local LMS = string.rep(" ", LM)
+  local function card(ic, title, bodyfn)
+    local bd, first = {}, nil
+    local function bpush(line) local ln = push(LMS .. line); first = first or ln; return ln end -- nav is the caller's job (via add's return)
+    box(bpush, bd, CW, ic, title, bodyfn, "HeidrBox", false, true, true) -- nofill: outline-only, no surface fill (cleaner, esp. light mode)
+    for _, d in ipairs(bd) do
+      if d.bg then hl(d.line, d.bg, LM, -1) end
+      if d.fg then hl(d.line, d.fg, (d.cs or 0) + LM, d.ce and (d.ce + LM) or -1) end
+    end
+    return first -- the top-border line, so callers can overlay accents on the title
   end
+  local CARD_INNER = CW - 6 -- box()'s content width (W minus "│  " + "  │")
   local nm = short_name(S.selected) or fn.fnamemodify(cwd, ":t")
   local tik = (S.selected or ""):match("%a+%-%d+")
   local ctx = cockpit_ctx_registered(cwd)
   local root = ctx == "main" -- the orchestrator (main checkout) → a fleet dashboard
 
-  -- masthead: accent bar + session name, worktree path beneath
-  push(""); push("")
-  hl(push("  ▍ " .. nm .. (root and "  ·  orchestrator" or "")), "HeidrAccent")
-  hl(push(file_row(W - 2, "    ", fn.fnamemodify(cwd, ":~"))), "HeidrMuted")
-  push("")
+  -- masthead: the inline HEIDR banner IS the header — reserve its rows, nothing else.
+  -- The session identity lives in the PLAN card title (Electric); no path, no id line.
+  local br = banner_rows()
+  local topN = math.max(2, br) -- banner-reserved rows preserved across re-renders (no image re-place)
+  for _ = 1, topN do push("") end
+  for _ = 1, 3 do push("") end -- breathing room between the banner image and the HUD card
 
-
-  -- PLAN — only if the session has a plan
+  -- PLAN + CHANGES share one tabbed HUD card, rendered in the non-root branch below
+  -- (after the action box is sized so the file list can be capped). pl is loaded here
+  -- because the action row needs it too.
   local pl = load_plan(cwd)
-  if pl and pl.progress then
-    local pg = pl.progress
-    local done, total = 0, 0
-    for _, s in ipairs(pg.flow or {}) do total = total + 1; if s.status == "done" then done = done + 1 end end
-    section("PLAN", pl.key .. " · " .. (pg.phase or "?") .. (total > 0 and ("   ◆ " .. done .. "/" .. total) or ""))
-    -- #18-style flow gauge: a big progress bar under the header, count on the left.
-    if total > 0 then
-      local label = "      " .. done .. "/" .. total .. " "
-      local barw = math.max(10, math.min(56, (W - 2) - #label))
-      local btext, bsegs = progress_bar(done, total, barw, "HeidrStream", "HeidrDivider")
-      local ln = push(label .. btext)
-      hl(ln, "HeidrMuted", 0, #label)
-      for _, sg in ipairs(bsegs) do hl(ln, sg[3], sg[1] + #label, sg[2] + #label) end
-    end
-    local savail = math.max(12, (W - 2) - 8)
-    for _, s in ipairs(pg.flow or {}) do
-      local g = s.status == "done" and "●" or (s.status == "active" and "◐" or "○")
-      local grp = s.status == "done" and "HeidrStream" or (s.status == "active" and "HeidrAccent" or "HeidrIdle")
-      local step = s.step or ""
-      if #step > savail then step = step:sub(1, savail - 1) .. "…" end
-      local ln = push("      " .. g .. " " .. step)
-      hl(ln, "HeidrFile"); hl(ln, grp, 6, 6 + #g)
-    end
-    push("")
-  end
+  if _d then _d[#_d + 1] = vim.loop.hrtime() end -- [2]: after banner_rows + load_plan (git)
 
   -- ACTIONS — built BEFORE the changes list so the box height is known and the
   -- list can be capped to leave room. (A long diff used to push the box off the
@@ -3314,65 +3826,54 @@ local function show_scratch(win, cwd)
   if root then
     act("n", "session", function() if open_picker then open_picker() end end) -- start/pick a session
   end
-  if tik then
-    act("l", tik:upper(), function()
+  -- l: the session's external link. A review worktree (review/pr-<n>) opens the PR;
+  -- a ticket session opens Linear. Reviews have no Linear ticket, so never try one.
+  -- review worktree cwd is ~/work/lovable.review-<n>-<slug>; session name is review-pr-<n>.
+  -- Match either (the old `review-pr-` cwd pattern never hit → reviews wrongly said "linear").
+  local pr = (cwd or ""):match("lovable%.review%-(%d+)") or (S.selected or ""):match("^review%-pr%-(%d+)")
+  if pr then
+    act("l", "open PR", function()
+      fn.jobstart({ "gh", "pr", "view", pr, "--web" }, { cwd = cwd, detach = true })
+    end)
+    -- r: reopen the review-pr artifact (the skill writes ~/…/reviews/pr-<n>.md). Set it as
+    -- the session's editor file so reflect_context restores it on every switch back — the
+    -- review IS a review session's deliverable, so it should stick, not vanish to the dash.
+    local rv = (os.getenv("HOME") or "") .. "/personal/notes/storage/reviews/pr-" .. pr .. ".md"
+    if fn.filereadable(rv) == 1 then
+      act("r", "review", function()
+        S.editor = S.editor or {}
+        if S.selected then S.editor[S.selected] = rv end
+        open_in_editor(cwd, rv, nil)
+      end)
+    end
+  elseif tik then
+    act("l", "linear", function()
       local u = "https://linear.app/lovable/issue/" .. tik:upper()
       if vim.ui.open then vim.ui.open(u) else fn.jobstart({ "xdg-open", u }, { detach = true }) end
     end)
   end
-  act("c", "changes", function()
-    -- flip the rail's middle pane to the Changes view: the buffer must be SWAPPED
-    -- into the window (render_changes only fills changesbuf), then focus + top.
-    S.view = "changes"
-    if S.chatwin and api.nvim_win_is_valid(S.chatwin) and S.changesbuf then
-      api.nvim_win_set_buf(S.chatwin, S.changesbuf)
-      if render_changes then render_changes() end
-      pcall(api.nvim_set_current_win, S.chatwin)
-      pcall(api.nvim_win_set_cursor, S.chatwin, { 1, 0 })
-    end
-  end)
-  act("r", "refresh", function() show_scratch(win, cwd) end)
-  local boxh = #acts + 2 -- ┌ … ┘ rows the box will occupy at the bottom
+  -- (no `c`/`r`: <Tab> swaps to the CHANGES view in the card, and the resize
+  -- autocmd re-renders automatically — so a manual changes/refresh hint is dead weight.)
+  local FOOTER_H = 1 -- the horizontal hint row pinned to the bottom
 
   local openmap, expand_ln, sessmap, ticketmap, teardownmap = {}, nil, {}, {}, {} -- file/toggle/session/ticket/teardown rows
+  local dash_views -- the HUD card's tab order (non-root), exposed to <Tab> via S.dash
   if root then
-    -- ORCHESTRATOR fleet: the other sessions it coordinates, selectable (<CR>/o).
-    local others = {}
-    for _, a in ipairs(S.roster) do if a.id ~= S.selected then others[#others + 1] = a end end
-    section("SESSIONS", #others == 0 and "none active" or (#others .. " active"))
-    local nw = 0
-    for _, a in ipairs(others) do nw = math.max(nw, #short_name(a.name)) end
-    for _, a in ipairs(others) do
-      local ss = session_state(a)
-      local nm2 = short_name(a.name)
-      local pl2 = S.plan[a.id]
-      local prog = (pl2 and pl2.total and pl2.total > 0) and ("  ◆ " .. pl2.done .. "/" .. pl2.total) or ""
-      -- STATIC status dot, not the animated spinner glyph: the dashboard is a
-      -- snapshot (not re-rendered per frame), so a spinner frame would sit frozen
-      -- and read as broken. The live spinner lives in the roster; here ● = working.
-      local dot = ({ streaming = "●", needs_input = "◆", error = "✕" })[ss.key] or "○"
-      local line = "  " .. dot .. " " .. nm2 .. string.rep(" ", nw - #nm2) .. "   " .. ss.label .. prog
-      local ln = push(line)
-      sessmap[ln] = { id = a.id, cwd = a.cwd }
-      hl(ln, "HeidrFile")                        -- name, neutral base
-      hl(ln, ss.name, 2, 2 + #dot)               -- status dot, coloured
-      hl(ln, "HeidrMuted", 6 + #dot + nw, -1)    -- state + plan progress, muted
-    end
-    if #others == 0 then hl(push("      no other sessions · n starts one"), "HeidrMuted") end
-    push("")
+    -- ORCHESTRATOR dashboard — the cycle's tickets in the same centered bordered cards
+    -- as the worktree HUD (card()/box()), so both dashboards read as one system. Live
+    -- sessions are NOT listed here (the rail roster shows them permanently); a ticket
+    -- being worked on is flagged "in progress" in the list below instead.
 
-    -- CYCLE + TICKETS from the agent-cached cycle.json. Tickets in priority order;
-    -- <CR>/o on one confirms + cockpit-adds a session for it. Sessions already
-    -- running for a ticket are marked ●.
+    -- CYCLE + TICKETS from the agent-cached cycle.json, in the same card chrome. Tickets
+    -- in priority order; <CR>/o confirms + cockpit-adds a session. Live ones flagged.
     local cyc = read_cycle()
     if cyc and cyc.cycle then
       local cy = cyc.cycle
       local span = (cy.starts and cy.ends) and (" · " .. cy.starts .. "–" .. cy.ends) or ""
       local cprog = (cy.progress and cy.progress.total and cy.progress.total > 0)
-        and ("   ◆ " .. (cy.progress.done or 0) .. "/" .. cy.progress.total) or ""
-      section("CYCLE", (cy.name or "current") .. span .. cprog)
-      -- split OPEN (actionable) from DONE — a finished ticket isn't something you
-      -- kick off, so it goes in a dim group below, not mixed into the priority list.
+        and ("  ◆ " .. (cy.progress.done or 0) .. "/" .. cy.progress.total) or ""
+      -- split OPEN (actionable) from DONE — a finished ticket isn't something you kick
+      -- off, so it goes in a dim group below, not mixed into the priority list.
       local open, done = {}, {}
       for _, t in ipairs(cyc.tickets or {}) do
         if t.done then done[#done + 1] = t else open[#open + 1] = t end
@@ -3383,124 +3884,280 @@ local function show_scratch(win, cwd)
         if px ~= py then return px < py end
         return (x.id or "") < (y.id or "") -- stable tiebreak within a priority
       end)
-      local have = {} -- ticket id → its live roster session entry (for ●-marker + teardown)
+      local have = {} -- ticket id → its live roster session entry (●-marker + teardown)
       for _, a in ipairs(S.roster) do
         local t = (a.name or ""):match("%a+%-%d+"); if t then have[t:upper()] = a end
       end
-      local prigrp = { [1] = "HeidrErr", [2] = "HeidrAccent", [3] = "HeidrFile", [4] = "HeidrMuted" }
+      local prigrp = { [1] = "HeidrErr", [2] = "HeidrElectric", [3] = "HeidrFile", [4] = "HeidrMuted" }
       local idw = 0
       for _, t in ipairs(open) do idw = math.max(idw, #(t.id or "")) end
-      section("TICKETS", #open .. " open · ⏎ starts a session")
-      local fit = math.max(1, math.min(#open, H - #lines - boxh - (#done > 0 and 4 or 3)))
+      -- cap the open list to the room left, reserving for this card's head+tail chrome
+      -- and the DONE card below (each card adds borders/pad the flat layout didn't).
+      local reserve = 7 + ((#done > 0) and (4 + math.min(#done, 5)) or 0)
+      local fit = math.max(1, math.min(#open, H - #lines - FOOTER_H - br - reserve))
       local cap = S.dash_expand and #open or fit
-      for i = 1, cap do
-        local t = open[i]
-        local id = t.id or "?"
-        local live = have[id:upper()]
-        local mark = live and "●" or "○" -- ● = a session already exists for it
-        local avail = math.max(10, (W - 2) - (4 + idw + 3 + 8))
-        local title = t.title or ""
-        if #title > avail then title = title:sub(1, avail - 1) .. "…" end
-        local line = "  " .. mark .. " " .. id .. string.rep(" ", idw - #id) .. "   " .. title
-        local ln = push(line)
-        ticketmap[ln] = { id = id, slug = t.slug, live = live, title = t.title }
-        hl(ln, "HeidrFile")                                       -- id + title, neutral
-        hl(ln, prigrp[t.priority] or "HeidrMuted", 2, 2 + #mark)  -- priority-coloured marker
-      end
-      if #open > fit then
-        expand_ln = push("      " .. (S.dash_expand and "⏶ show less" or ("… " .. (#open - fit) .. " more")) .. "   ⏎")
-        hl(expand_ln, "HeidrMuted")
-      end
+      card(nil, "TICKETS", function(add)
+        local cd = (cy.name or "current") .. span .. cprog
+        add(cd, { { 0, #cd, "HeidrMuted" } })
+        local od = #open .. " open · ⏎ starts a session"
+        add(od, { { 0, #od, "HeidrMuted" } })
+        add("")
+        for i = 1, cap do
+          local t = open[i]
+          local id = t.id or "?"
+          local live = have[id:upper()]
+          local mark = live and "●" or "○" -- ● = a session already exists for it
+          local badge = live and "  · in progress" or "" -- a worktree/session is open for it
+          local avail = math.max(10, CARD_INNER - (#mark + 1 + idw + 3) - #badge)
+          local title = t.title or ""
+          if #title > avail then title = title:sub(1, avail - 1) .. "…" end
+          local text = mark .. " " .. id .. string.rep(" ", idw - #id) .. "   " .. title .. badge
+          local segs = {
+            { 0, #text, "HeidrFile" },                         -- id + title, neutral
+            { 0, #mark, prigrp[t.priority] or "HeidrMuted" },  -- priority-coloured marker
+          }
+          if live then segs[#segs + 1] = { #text - #badge, #text, "HeidrElectric" } end -- in-progress flag
+          ticketmap[add(text, segs)] = { id = id, slug = t.slug, live = live, title = t.title }
+        end
+        if #open > fit then
+          local more = S.dash_expand and "⏶ show less   ⏎" or ("… " .. (#open - fit) .. " more   ⏎")
+          expand_ln = add(more, { { 0, #more, "HeidrMuted" } })
+        end
+      end)
+
       -- DONE — dim. A done ticket that STILL has a session/worktree is offered for
       -- teardown (⊘ + ⏎); the rest are just ✓. Teardown-able ones sort first.
       if #done > 0 then
+        push("")
         table.sort(done, function(x, y)
           local hx = have[(x.id or ""):upper()] and 0 or 1
           local hy = have[(y.id or ""):upper()] and 0 or 1
           if hx ~= hy then return hx < hy end
           return (x.id or "") < (y.id or "")
         end)
-        push("")
-        section("DONE", tostring(#done))
-        for i = 1, math.min(#done, 5) do
-          local t = done[i]
-          local sess = have[(t.id or ""):upper()]
-          local mark = sess and "⊘" or ICON.check
-          local suffix = sess and "   ⏎ teardown" or ""
-          local ln = push("  " .. mark .. " " .. (t.id or "?") .. "  " .. (t.title or "") .. suffix)
-          hl(ln, "HeidrMuted")
-          if sess then
-            hl(ln, "HeidrErr", 2, 2 + #mark) -- ⊘ flags a lingering session to clean up
-            teardownmap[ln] = { id = sess.id, cwd = sess.cwd, ticket = t.id }
+        card(nil, "DONE", function(add)
+          for i = 1, math.min(#done, 5) do
+            local t = done[i]
+            local sess = have[(t.id or ""):upper()]
+            local mark = sess and "⊘" or ICON.check
+            local suffix = sess and "   ⏎ teardown" or ""
+            local text = mark .. " " .. (t.id or "?") .. "  " .. (t.title or "") .. suffix
+            local segs = { { 0, #text, "HeidrMuted" } }
+            if sess then segs[#segs + 1] = { 0, #mark, "HeidrErr" } end -- ⊘ = lingering session
+            local ln = add(text, segs)
+            if sess then teardownmap[ln] = { id = sess.id, cwd = sess.cwd, ticket = t.id } end
           end
-        end
-        if #done > 5 then hl(push("      … " .. (#done - 5) .. " more"), "HeidrMuted") end
+          if #done > 5 then local m = "… " .. (#done - 5) .. " more"; add(m, { { 0, #m, "HeidrMuted" } }) end
+        end)
       end
-      push("")
     end
   else
-  -- CHANGES — the session worktree's diff (empty on main; "clean" for a known ctx).
-  -- File rows are openable (<CR>/o); the list is capped to the rows left above the
-  -- action box so the box stays on-screen, with a toggle line to expand/collapse.
-  local ch = git_changes(cwd)
-  if #ch > 0 then
-    local ta, td = 0, 0
-    for _, c in ipairs(ch) do ta = ta + c.add; td = td + c.del end
-    section("CHANGES", #ch .. (#ch == 1 and " file · +" or " files · +") .. ta .. " -" .. td)
-    local aw, dw = 0, 0
-    for _, c in ipairs(ch) do aw = math.max(aw, #("+" .. c.add)); dw = math.max(dw, #("-" .. c.del)) end
-    local fitcap = math.max(1, math.min(#ch, H - #lines - boxh - 3)) -- what fits above the box
-    local cap = S.dash_expand and #ch or fitcap
-    for i = 1, cap do
-      local c = ch[i]
-      local acol = string.rep(" ", aw - #("+" .. c.add)) .. "+" .. c.add
-      local dcol = string.rep(" ", dw - #("-" .. c.del)) .. "-" .. c.del
-      local line = file_row(W - 2, "      • ", c.path, acol, dcol)
-      local ln = push(line)
-      openmap[ln] = c.path -- <CR>/o opens it
-      hl(ln, "HeidrFile")
-      hl(ln, "HeidrMuted", 6, 9) -- the • bullet
-      local ps, pe = line:find("%+%d+"); if ps then hl(ln, "HeidrStream", ps - 1, pe) end
-      local ms, me = line:find("%-%d+", (pe or 0) + 1); if ms then hl(ln, "HeidrErr", ms - 1, me) end
+    -- Unified HUD card: PLAN and CHANGES in ONE card; <Tab> swaps the active view.
+    -- Only the views that exist become tabs (a plan-less session shows just CHANGES).
+    local ch = git_changes(cwd)
+    -- manual (MT#) checks from review.json = the tests YOU run by hand (no `command`).
+    local tests = {}
+    if pl and pl.review and type(pl.review.verification) == "table" then
+      for _, v in ipairs(pl.review.verification) do
+        if not (v.command and v.command ~= "") then tests[#tests + 1] = v end
+      end
     end
-    if not S.dash_expand and #ch > fitcap then
-      expand_ln = push("      … " .. (#ch - fitcap) .. " more   ⏎")
-      hl(expand_ln, "HeidrMuted")
-    elseif S.dash_expand and #ch > fitcap then
-      expand_ln = push("      ⏶ show less   ⏎")
-      hl(expand_ln, "HeidrMuted")
+    local pending_tests = 0
+    for _, v in ipairs(tests) do if (v.result or "pending") ~= "pass" then pending_tests = pending_tests + 1 end end
+    local has_plan = pl and pl.progress
+    local has_tests = #tests > 0
+    local has_changes = ctx or #ch > 0
+    local views = {}
+    if has_plan then views[#views + 1] = "plan" end
+    if has_tests then views[#views + 1] = "tests" end
+    if has_changes then views[#views + 1] = "changes" end
+    dash_views = views
+    if #views > 0 then
+      -- auto-switch to TESTS the moment manual tests first appear (the testing stage),
+      -- once per session so you can still Tab away afterward.
+      S.dash_tests_seen = S.dash_tests_seen or {}
+      local sid = S.selected
+      if sid and pending_tests > 0 and not S.dash_tests_seen[sid] then
+        S.dash_view = "tests"; S.dash_tests_seen[sid] = true
+      elseif sid and pending_tests == 0 then
+        S.dash_tests_seen[sid] = nil
+      end
+      local view = S.dash_view
+      if not vim.tbl_contains(views, view) then view = views[1] end
+      S.dash_view = view
+      -- title layout: PLAN · TESTS · CHANGES (white, box() titles them) with a ` ⇥ `
+      -- keycap so it's obvious Tab swaps them; the ticket key is spliced to the
+      -- RIGHTMOST edge of the border (Electric) as the session's identity.
+      local parts = {}
+      if has_plan then parts[#parts + 1] = ICON.plan .. " PLAN" end
+      if has_tests then parts[#parts + 1] = ICON.tests .. " TESTS" end
+      if has_changes then parts[#parts + 1] = ICON.changes .. " CHANGES" end
+      local title = table.concat(parts, "    ")
+      if #views >= 2 then title = title .. "    ⇥ " end -- Tab-swap hint (keycap-styled below)
+      local topln = card(nil, title, function(add)
+        if view == "plan" then
+          local pg = pl.progress
+          local done, total = 0, 0
+          for _, s in ipairs(pg.flow or {}) do total = total + 1; if s.status == "done" then done = done + 1 end end
+          add(pg.phase or "?", { { 0, #(pg.phase or "?"), "HeidrMuted" } }) -- key is in the border now
+          if total > 0 then
+            local label = done .. "/" .. total .. " "
+            local barw = math.max(8, math.min(CARD_INNER - #label, 48))
+            local btext, bsegs = progress_bar(done, total, barw, "HeidrElectric", "HeidrDivider")
+            local segs = { { 0, #label, "HeidrMuted" } }
+            for _, sg in ipairs(bsegs) do segs[#segs + 1] = { sg[1] + #label, sg[2] + #label, sg[3] } end
+            add(label .. btext, segs)
+            add("") -- margin between the gauge and the step list
+          end
+          local savail = math.max(12, CARD_INNER - 3)
+          for _, s in ipairs(pg.flow or {}) do
+            local g = s.status == "done" and ICON.step_done or (s.status == "active" and ICON.step_active or ICON.step_todo)
+            local grp = s.status == "done" and "HeidrStream" or (s.status == "active" and "HeidrTitle" or "HeidrIdle")
+            local step = s.step or ""
+            if #step > savail then step = step:sub(1, savail - 1) .. "…" end
+            local row = g .. " " .. step
+            add(row, { { 0, #row, "HeidrFile" }, { 0, #g, grp } })
+          end
+        elseif view == "tests" then
+          local detail = pending_tests .. " to run"
+            .. (#tests > pending_tests and ("  ·  " .. (#tests - pending_tests) .. " done") or "")
+          add(detail, { { 0, #detail, "HeidrMuted" } })
+          add("")
+          local savail = math.max(12, CARD_INNER - 3)
+          for _, v in ipairs(tests) do
+            local res = v.result or "pending"
+            local g = res == "pass" and ICON.step_done or (res == "fail" and ICON.xmark or ICON.step_todo)
+            local grp = res == "pass" and "HeidrStream" or (res == "fail" and "HeidrErr" or "HeidrIdle")
+            local txt = v.check or v.name or "(test)"
+            if #txt > savail then txt = txt:sub(1, savail - 1) .. "…" end
+            local row = g .. " " .. txt
+            add(row, { { 0, #row, "HeidrFile" }, { 0, #g, grp } })
+          end
+        else
+          if #ch == 0 then
+            add("working tree clean", { { 0, 18, "HeidrMuted" } })
+          else
+            local ta, td = 0, 0
+            for _, c in ipairs(ch) do ta = ta + c.add; td = td + c.del end
+            local detail = #ch .. (#ch == 1 and " file  ·  +" or " files  ·  +") .. ta .. " -" .. td
+            add(detail, { { 0, #detail, "HeidrMuted" } })
+            local aw, dw = 0, 0
+            for _, c in ipairs(ch) do aw = math.max(aw, #("+" .. c.add)); dw = math.max(dw, #("-" .. c.del)) end
+            local fitcap = math.max(1, math.min(#ch, H - FOOTER_H - br - #lines - 4)) -- rows left above the footer
+            local cap = S.dash_expand and #ch or fitcap
+            for i = 1, cap do
+              local c = ch[i]
+              local acol = string.rep(" ", aw - #("+" .. c.add)) .. "+" .. c.add
+              local dcol = string.rep(" ", dw - #("-" .. c.del)) .. "-" .. c.del
+              local line = file_row(CARD_INNER, "• ", c.path, acol, dcol)
+              local segs = { { 0, #line, "HeidrFile" }, { 0, 3, "HeidrMuted" } } -- • bullet muted
+              local ps, pe = line:find("%+%d+"); if ps then segs[#segs + 1] = { ps - 1, pe, "HeidrStream" } end
+              local ms, me = line:find("%-%d+", (pe or 0) + 1); if ms then segs[#segs + 1] = { ms - 1, me, "HeidrErr" } end
+              openmap[add(line, segs)] = c.path -- <CR>/o opens it
+            end
+            if #ch > fitcap then
+              local more = S.dash_expand and "⏶ show less   ⏎" or ("… " .. (#ch - fitcap) .. " more   ⏎")
+              expand_ln = add(more, { { 0, #more, "HeidrMuted" } })
+            end
+          end
+        end
+      end)
+      if topln then
+        -- active tab reads as an Electric pill; the others dim, so the selected view is
+        -- obvious. Located by plain-find on the top-border line (robust to the LM/prefix
+        -- offset), overriding box()'s uniform HeidrTitle for each tab's span.
+        local tabmap = {}
+        if has_plan then tabmap.plan = ICON.plan .. " PLAN" end
+        if has_tests then tabmap.tests = ICON.tests .. " TESTS" end
+        if has_changes then tabmap.changes = ICON.changes .. " CHANGES" end
+        local tbl = lines[topln + 1] or ""
+        for v, lbl in pairs(tabmap) do
+          local s, e = tbl:find(lbl, 1, true)
+          if s then
+            -- active tab gets a padded pill (extend the bg one space each side, into the
+            -- separator/border spaces); inactive tabs just dim, no bg.
+            if v == view then hl(topln, "HeidrTabActive", s - 2, e + 1)
+            else hl(topln, "HeidrMuted", s - 1, e) end
+          end
+        end
+        -- splice the ticket key onto the RIGHT edge of the top border (replace the
+        -- trailing dashes with " KEY ─┐"), coloured Electric. Same display width in,
+        -- same out, so the border stays a perfect rectangle.
+        if has_plan and pl.key then
+          local ln, key = lines[topln + 1] or "", pl.key
+          local strip = 3 + (#key + 3) * 3 -- ┐ (3B) + (kw+3) dashes (3B each)
+          if #ln > strip + 30 then
+            local base = ln:sub(1, #ln - strip)
+            lines[topln + 1] = base .. " " .. key .. " ─┐"
+            hl(topln, "HeidrElectric", #base + 1, #base + 1 + #key)
+          end
+        end
+        -- the ` ⇥ ` Tab-swap hint reads as a keycap pill (shown when there's >1 tab).
+        if #views >= 2 then
+          local hs, he = (lines[topln + 1] or ""):find(" ⇥ ", 1, true)
+          if hs then hl(topln, "HeidrKeyCap", hs - 1, he) end
+        end
+      end
     end
-    push("")
-  elseif ctx then
-    section("CHANGES", "working tree clean")
-    push("")
-  end
   end
 
-  local labels, inner = {}, 0
-  for _, a in ipairs(acts) do
-    local s = "  " .. a.key .. "   " .. a.label .. "  "; labels[#labels + 1] = s; inner = math.max(inner, #s)
+  -- horizontal hint footer, pinned to the bottom row so a long changes list fills the
+  -- space above without ever shoving the hints. Roster-style: ` k ` HeidrKeyCap pill +
+  -- muted label, laid out left-to-right and centered.
+  local ftext, fsegs = "", {}
+  for i, a in ipairs(acts) do
+    if i > 1 then ftext = ftext .. "      " end
+    local cap = " " .. a.key .. " "
+    local cs = #ftext; ftext = ftext .. cap; fsegs[#fsegs + 1] = { cs, #ftext, "HeidrKeyCap" }
+    ftext = ftext .. " "
+    local ls = #ftext; ftext = ftext .. a.label; fsegs[#fsegs + 1] = { ls, #ftext, "HeidrMuted" }
   end
-  local box = { "┌" .. string.rep("─", inner) .. "┐" }
-  for _, s in ipairs(labels) do box[#box + 1] = "│" .. s .. string.rep(" ", inner - #s) .. "│" end
-  box[#box + 1] = "└" .. string.rep("─", inner) .. "┘"
-  local leftpad = math.max(1, W - (inner + 2) - 2)
-  local target = math.max(#lines + 1, H - #box - 1)
+  local fpad = math.max(0, math.floor((W - fn.strdisplaywidth(ftext)) / 2))
+  -- pin to one row above the bottom edge (matching the composer's 1-row bottom pad). The
+  -- old `- br` wrongly subtracted the TOP banner reservation here, floating it rows high.
+  local target = math.max(#lines + 1, H - FOOTER_H - 1)
   while #lines < target do push("") end
-  for bi, bl in ipairs(box) do
-    local ln = push(string.rep(" ", leftpad) .. bl)
-    hl(ln, "HeidrMuted")
-    if bi > 1 and bi <= #labels + 1 then hl(ln, "HeidrAccent", leftpad + 5, leftpad + 6) end
-  end
+  local fln = push(string.rep(" ", fpad) .. ftext)
+  for _, s in ipairs(fsegs) do hl(fln, s[3], fpad + s[1], fpad + s[2]) end
 
+  -- Full render every time + re-place the banner. (An earlier optimization preserved
+  -- the top banner rows on same-width re-renders to avoid a Tab-swap flicker, but a
+  -- STALE inline-image placement offset the rows below and left the card border
+  -- jagged — "tab away and back" fixed it because that forced a full re-place. A
+  -- correct card beats dodging a tiny flicker.)
+  if _d then _d[#_d + 1] = vim.loop.hrtime() end -- [3]: after the dashboard body build
   vim.bo[buf].modifiable = true
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
   api.nvim_buf_clear_namespace(buf, S.ns, 0, -1)
   for _, d in ipairs(decor) do pcall(api.nvim_buf_add_highlight, buf, S.ns, d.grp, d.ln, d.cs, d.ce) end
-  S.dash = { open = openmap, sessions = sessmap, tickets = ticketmap, teardown = teardownmap, expand_ln = expand_ln, cwd = cwd, win = win } -- <CR>/o targets
+  S.dash = { open = openmap, sessions = sessmap, tickets = ticketmap, teardown = teardownmap, expand_ln = expand_ln, cwd = cwd, win = win, views = dash_views } -- <CR>/o targets; views = the card's tab order
   dash_keys(buf, acts)
   pcall(api.nvim_win_set_buf, win, buf)
+  editor_gutter(win, false) -- clean resting view: no number/sign/fold columns
+  if _d then _d[#_d + 1] = vim.loop.hrtime() end -- [4]: before place_banner
+  pcall(place_banner, buf, win)
+  if _d then
+    local ms = function(a, b) return (_d[b] - _d[a]) / 1e6 end
+    pcall(fn.writefile, { string.format("  show_scratch(%s): pre+loadplan=%.1fms body=%.1fms commit=%.1fms place_banner=%.1fms",
+      root and "root" or "worktree", ms(1, 2), ms(2, 3), ms(3, 4), (vim.loop.hrtime() - _d[4]) / 1e6) },
+      "/tmp/heidr-switch-timing.log", "a")
+  end
+  S.dash_w = (win and api.nvim_win_is_valid(win)) and api.nvim_win_get_width(win) or nil -- for the resize guard
+end
+
+-- Re-render the dashboard if it's the editor's current view — called on turn-end so
+-- the CHANGES/TESTS tabs update live and the Tests auto-switch fires when the agent
+-- reaches the testing stage. No-op if a real file is open instead.
+refresh_dashboard = function()
+  if not (S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf)) then return end
+  for _, w in ipairs(api.nvim_list_wins()) do
+    if api.nvim_win_is_valid(w) and api.nvim_win_get_buf(w) == S.scratchbuf then
+      local cwd = S.selected and session_cwd(S.selected)
+      if cwd then pcall(show_scratch, w, cwd) end
+      return
+    end
+  end
 end
 
 -- Bind the dashboard's action keys buffer-locally. Clear the full known set first
@@ -3508,9 +4165,20 @@ end
 -- can't leave a stale keymap behind. <CR>/o are context-sensitive: open the file
 -- row under the cursor, toggle the …more/less line, else run the first action.
 dash_keys = function(buf, acts)
-  for _, k in ipairs({ "p", "d", "a", "l", "n", "c", "r", "<CR>", "o" }) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
+  for _, k in ipairs({ "p", "d", "a", "l", "n", "c", "r", "<CR>", "o", "<Tab>" }) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
   local function map(lhs, f) vim.keymap.set("n", lhs, f, { buffer = buf, nowait = true, silent = true }) end
   for _, a in ipairs(acts) do map(a.key, a.fn) end
+  -- <Tab> cycles the HUD card through its available views (PLAN · TESTS · CHANGES).
+  map("<Tab>", function()
+    local d = S.dash or {}
+    local vs = d.views or {}
+    if #vs > 1 then
+      local i = 1
+      for k, v in ipairs(vs) do if v == S.dash_view then i = k; break end end
+      S.dash_view = vs[(i % #vs) + 1]
+      if d.win and api.nvim_win_is_valid(d.win) then show_scratch(d.win, d.cwd) end
+    end
+  end)
   local function enter()
     local d = S.dash or {}
     local ln0 = api.nvim_win_get_cursor(0)[1] - 1
@@ -3522,20 +4190,21 @@ dash_keys = function(buf, acts)
       local t = d.tickets[ln0]
       if t.live then
         vim.notify("agent: " .. t.id .. " already has a session")
-      elseif t.slug and t.slug ~= "" then
-        -- cockpit-spawn = the full ticket kickoff in one command (same script any
-        -- agent can call): cockpit context (worktree + devenv + nvim tab, registered,
-        -- no focus steal) AND a seeded roster agent. One source of truth for "spawn a
-        -- ticket", so the button and an agent's `cockpit-spawn` do the exact same thing.
+      elseif t.id and t.id ~= "" then
+        -- name the worktree JUST the ticket id (lowercase, e.g. "every-2662") — no
+        -- title slug. Linear still auto-links (it matches the identifier in the branch
+        -- daphen/every-2662, case-insensitive) and GitHub closes from the PR body.
+        -- cockpit-spawn = the full kickoff: worktree + devenv + nvim tab + seeded agent.
+        local name = t.id:lower()
         local seed = "Work " .. t.id .. (t.title and t.title ~= "" and (": " .. t.title) or "")
           .. "\n\nStart with /plan-ticket " .. t.id .. " to scope it, then implement."
-        if vim.fn.confirm("Spawn a session for " .. t.id .. "?  (" .. t.slug .. ")", "&Yes\n&No", 2) == 1 then
+        if vim.fn.confirm("Spawn a session for " .. t.id .. "?", "&Yes\n&No", 2) == 1 then
           local home = os.getenv("HOME") or ""
-          fn.jobstart({ home .. "/.local/bin/cockpit-spawn", t.slug, seed }, { detach = true })
-          vim.notify("agent: spawning session · " .. t.slug)
+          fn.jobstart({ home .. "/.local/bin/cockpit-spawn", name, seed }, { detach = true })
+          vim.notify("agent: spawning session · " .. name)
         end
       else
-        vim.notify("agent: " .. t.id .. " has no slug in cycle.json")
+        vim.notify("agent: ticket has no id in cycle.json")
       end
     elseif d.sessions and d.sessions[ln0] then
       local s = d.sessions[ln0]; view_session(s.id, s.cwd) -- switch to the session under the cursor
@@ -3582,6 +4251,8 @@ reflect_context = function(cwd)
     if fn.fnamemodify(api.nvim_buf_get_name(api.nvim_win_get_buf(ed)), ":p") ~= fn.fnamemodify(want, ":p") then
       api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(want)) end)
     end
+    editor_gutter(ed, true)
+    if hide_banner then hide_banner() end -- restored a file → hide the banner float
   else
     show_scratch(ed, cwd)
   end
@@ -3665,7 +4336,7 @@ on_cockpit_active = function()
 end
 -- Super+i jump-by-NAME: a notification names a session (short_name), which the
 -- dispatch drops into cockpit/agent-jump. Selecting it here — rather than via a
--- context switch — reaches sessions with NO cockpit tab too (wt-spawned agents,
+-- context switch — reaches sessions with NO cockpit tab too (agent-spawned agents,
 -- sub-agents): the roster is cross-context, so any tab's rail can show any session.
 -- view_session's cockpit_sync switches context when the cwd IS a registered one,
 -- and no-ops otherwise, so both tabbed and tab-less sessions land correctly.
@@ -3676,12 +4347,19 @@ on_agent_jump = function()
   local want = vim.trim(lines[1])
   if want == "" then return end
   for _, a in ipairs(S.roster) do
-    if a.id == want or short_name(a.name) == want then
+    -- Match EVERY identity form `want` can arrive as: the full session id/name
+    -- (lovable.daphen-<slug>), the collapsed ticket (short_name → every-2662), the
+    -- cockpit CONTEXT name (the <slug> a notification's cockpit-context hint carries),
+    -- and the bare prefix-stripped name. The notification path sends the context slug,
+    -- which matched NONE of the old two forms — the long-standing Super+i miss.
+    local nm = a.name or a.id or ""
+    local ctxname = (a.cwd and a.cwd ~= "") and cockpit_context(a.cwd) or nil
+    local bare = nm:gsub("^lovable%.daphen%-", ""):gsub("^lovable%.", "")
+    if a.id == want or nm == want or short_name(nm) == want or ctxname == want or bare == want then
       if a.id ~= S.selected then view_session(a.id, a.cwd) end
-      -- land IN the rail: focus the chat pane so the turn is right there to read
-      if S.chatwin and api.nvim_win_is_valid(S.chatwin) then
-        pcall(api.nvim_set_current_win, S.chatwin)
-      end
+      -- land in the COMPOSER (like <CR> on the roster): ready to reply, and it doesn't
+      -- yank you into the read-only chat pane while you were typing.
+      if focus_composer then focus_composer() end
       return
     end
   end
@@ -3708,7 +4386,7 @@ local function start_cockpit_watch()
   end)
 end
 
-local function parse_git_diff(lines)
+parse_git_diff = function(lines)
   local files, bypath, current, oldpath, hunk = {}, {}, nil, nil, nil
   local function file(path)
     if not bypath[path] then
@@ -3784,6 +4462,10 @@ refresh_git_changes = function(cwd, path)
         end
         if S.selected and session_cwd(S.selected) == cwd then
           if S.view == "changes" then render_changes() else render_chat(false) end
+          -- the DASHBOARD's CHANGES card is gated on git_changes; without this it renders
+          -- once with a cold (empty) cache and never updates when the async diff lands —
+          -- why a freshly-opened review session showed an empty dash despite a real diff.
+          if refresh_dashboard then refresh_dashboard() end
         end
       end)
     end,
@@ -3832,7 +4514,7 @@ end
 refresh_plan_one = function(a)
   -- Sub-agents share the parent's worktree, so load_plan would hand them the ticket's
   -- plan too — but the plan belongs to the MAIN agent. Subs get none.
-  if is_subagent(a.name) then
+  if is_subagent(a) then
     S.plan[a.id] = false
   elseif a.cwd and a.cwd ~= "" then
     local plan = load_plan(a.cwd)
@@ -3997,7 +4679,7 @@ render_changes = function()
           local done = 0
           for _, s in ipairs(flow) do if s.status == "done" then done = done + 1 end end
           local label = done .. "/" .. #flow .. " "
-          local btext, bsegs = progress_bar(done, #flow, math.max(8, inner - #label - 1))
+          local btext, bsegs = progress_bar(done, #flow, math.max(8, inner - #label - 1), "HeidrElectric", "HeidrDivider")
           local text = label .. btext
           local segs = { { 0, #label, "HeidrMuted" } }
           for _, sg in ipairs(bsegs) do segs[#segs + 1] = { sg[1] + #label, sg[2] + #label, sg[3] } end
@@ -4246,7 +4928,7 @@ function M.help()
     "          j/k move · <CR> open · ]a/[a next needing you · n new · . cwd",
     "          x stop · a abort · <C-r> restart pi (reload MCP) · p peek · <Esc> clear filter",
     " chat     <Tab> changes · ]m/[m message · za/zM/zR fold · yr reply · yc convo",
-    "          gf open ref (hunk · fence · inline path:line) · gx open url · i compose",
+    "          gf open ref · gx open url/link · yl yank link url · i compose",
     " changes  <CR> open file · ]f/[f next file · <Tab> back to chat · r refresh",
     " composer <CR> send · <C-s> send(insert) · <C-f> attach · <C-↑/↓> scroll chat",
     "          <C-x> drop attachments · q roster · / commands",
@@ -4285,8 +4967,31 @@ ensure_buf = function()
   S.chatbuf = api.nvim_create_buf(false, true)
   vim.bo[S.chatbuf].buftype = "nofile"; vim.bo[S.chatbuf].bufhidden = "hide"; vim.bo[S.chatbuf].modifiable = false
   pcall(api.nvim_buf_set_name, S.chatbuf, "agent-chat")
+  -- ft=markdown so markview attaches and renders the structure (headings / bold / inline
+  -- code / fenced-block backgrounds) off its OWN parser. We don't start nvim's treesitter
+  -- highlighter on the chat, but markview STILL syntax-highlights code fences itself (chat
+  -- AND plans) via get_visual_text, which lazily loads a parser per fence language on first
+  -- render — the ~230ms first-focus hitch.
   vim.bo[S.chatbuf].filetype = "markdown"
-  pcall(vim.treesitter.start, S.chatbuf, "markdown")
+  -- Pre-warm markview's WHOLE pipeline during idle startup: its first render in a process
+  -- costs ~340ms (module + query + per-fence-language parser loads), which is the lag you
+  -- feel the first time you focus the chat. Run one full render on a throwaway sample (with
+  -- fences in every language the chat/plans use) so that cost is paid once, off the
+  -- interaction — the first real chat/plan render is then ~30ms.
+  vim.defer_fn(function()
+    local ok, cmd = pcall(require, "markview.commands")
+    if not ok then return end
+    local sample = { "# h", "`inline` **bold** _it_ [x](http://y)" }
+    for _, l in ipairs({ "ts", "typescript", "tsx", "javascript", "json", "jsonc", "toml",
+      "yaml", "rust", "bash", "sh", "python", "lua", "go", "diff", "html", "css" }) do
+      sample[#sample + 1] = "```" .. l; sample[#sample + 1] = "const x = 1"; sample[#sample + 1] = "```"
+    end
+    local b = api.nvim_create_buf(false, true)
+    vim.bo[b].filetype = "markdown" -- markview attaches on FileType
+    api.nvim_buf_set_lines(b, 0, -1, false, sample)
+    pcall(cmd.render, b)
+    pcall(api.nvim_buf_delete, b, { force = true })
+  end, 500)
 
   -- changes buffer (plan/git overview, shown in the middle pane on <Tab>)
   S.changesbuf = api.nvim_create_buf(false, true)
@@ -4306,10 +5011,11 @@ ensure_buf = function()
   S.composerbuf = api.nvim_create_buf(false, true)
   vim.bo[S.composerbuf].buftype = "nofile"; vim.bo[S.composerbuf].bufhidden = "hide"; vim.bo[S.composerbuf].swapfile = false
   pcall(api.nvim_buf_set_name, S.composerbuf, "agent-composer")
-  -- right margin for the input: typed text auto-wraps 2 cols short of the edge
-  -- (inserts a real break at word boundaries — accepted tradeoff)
+  -- no auto-formatting: wrapmargin/textwidth insert REAL newlines into the typed
+  -- text (they leak into the sent+stored message as hard breaks). Visual wrapping
+  -- is the window's `wrap=true` — display-only, never mutates the buffer text.
   vim.bo[S.composerbuf].textwidth = 0
-  vim.bo[S.composerbuf].wrapmargin = 2
+  vim.bo[S.composerbuf].wrapmargin = 0
 
   -- chat keymaps
   local function cmap(lhs, fn_) vim.keymap.set("n", lhs, fn_, { buffer = S.chatbuf, nowait = true, silent = true }) end
@@ -4321,12 +5027,19 @@ ensure_buf = function()
   cmap("za", function() chat_fold_toggle() end) -- fold the message under cursor
   cmap("zM", function() chat_fold_all(true) end)  -- collapse every message
   cmap("zR", function() chat_fold_all(false) end) -- expand every message
+  cmap("zo", function() -- load the full (uncapped) history for this session
+    if not S.selected then return end
+    S.chat_full = S.chat_full or {}
+    S.chat_full[S.selected] = true
+    send({ type = "get_entries", session = S.selected })
+  end)
   cmap("Y", function() chat_yank_code() end)
   cmap("yy", function() chat_yank_line() end)  -- yank the single line you see (skips ``` fences)
   cmap("yr", function() chat_yank_reply() end) -- yank (copy) the last agent reply
   cmap("yc", function() chat_yank_convo() end) -- yank the whole conversation as md
   cmap("gf", function() chat_open() end)
-  cmap("gx", function() chat_open_url() end) -- open the URL under the cursor
+  cmap("gx", function() chat_open_url() end) -- open the URL/link under the cursor
+  cmap("yl", function() chat_yank_url() end) -- yank the URL of the link under the cursor
   cmap("<C-o>", function() nav_session(-1) end) -- session jumplist: back
   cmap("<C-i>", function() nav_session(1) end)  -- session jumplist: forward
   cmap("<CR>", function() chat_open() end)
@@ -4338,23 +5051,49 @@ ensure_buf = function()
   -- y/n/digit answer keys are bound only while an approval card is up (see
   -- sync_approval_keys) so they don't swallow count prefixes (22k) or yank (y)
 
-  -- The chat gutter is ALWAYS a fixed 2-col statuscolumn — the width never changes,
-  -- so chat text stays put (col 5 inner, aligned with the composer input) regardless
-  -- of focus. Within those 2 cols we paint the RELATIVE line number when the chat
-  -- window is focused (for count-motions like 12j) and blanks when it isn't — so the
-  -- numbers appear on focus without ever shifting the text. (The old native
-  -- relativenumber toggle changed numberwidth and shifted the text col 2↔3.)
+  -- Copying from the chat: markview CONCEALS markdown delimiters, but they stay in the
+  -- buffer — so a plain yank grabs raw `backticks`/**bold**. Strip the common inline
+  -- markers from the yanked register (and the clipboard, when unnamed(plus) is in effect)
+  -- so what you paste matches what you saw. setreg doesn't re-fire TextYankPost → no loop.
+  api.nvim_create_autocmd("TextYankPost", {
+    buffer = S.chatbuf,
+    callback = function()
+      local ev = vim.v.event
+      if ev.operator ~= "y" or type(ev.regcontents) ~= "table" then return end
+      local out, changed = {}, false
+      for _, l in ipairs(ev.regcontents) do
+        local s = l:gsub("`", ""):gsub("%*%*(.-)%*%*", "%1"):gsub("~~(.-)~~", "%1")
+        if s ~= l then changed = true end
+        out[#out + 1] = s
+      end
+      if not changed then return end
+      local reg = (ev.regname == nil or ev.regname == "") and '"' or ev.regname
+      pcall(vim.fn.setreg, reg, out, ev.regtype)
+      if reg == '"' then
+        local cb = vim.o.clipboard or ""
+        if cb:find("unnamedplus", 1, true) then pcall(vim.fn.setreg, "+", out, ev.regtype) end
+        if cb:find("unnamed", 1, true) then pcall(vim.fn.setreg, "*", out, ev.regtype) end
+      end
+    end,
+  })
+
+  -- The chat gutter tracks focus: 2 blank cols when unfocused (text tight to the
+  -- left, aligned with the composer input), and 3 cols when focused — the RELATIVE
+  -- line number (for count-motions like 12j) plus a trailing space so the number
+  -- never butts against the text. So focusing the chat grows the left text margin by
+  -- one col (numbers get their own gutter with a gap), and blurring it shrinks back.
+  -- Width is uniform within each focus state, so text doesn't jitter row-to-row.
   -- relnum for a VISIBLE line ≤ window height, so 2 digits always fit; the cursor
-  -- line (relnum 0) stays blank. g:statusline_winid is the window being drawn.
+  -- line (relnum 0) stays blank but keeps the focused width so it aligns.
   _G.__HeidrChatStc = function()
     -- focused = the chat window is the actually-current window. (Don't use
     -- g:statusline_winid — it isn't set during 'statuscolumn' eval, only statusline/
     -- winbar, so the old check always failed and the gutter was permanently blank.)
     if not (S.chatwin and api.nvim_get_current_win() == S.chatwin) then return "  " end
     local r = vim.v.relnum
-    if r == 0 then return "  " end
-    if r > 99 then return "99" end
-    return string.format("%2d", r)
+    if r == 0 then return "   " end
+    if r > 99 then return "99 " end
+    return string.format("%2d ", r)
   end
   local CHAT_STC = "%!v:lua.__HeidrChatStc()"
   local chatnum = api.nvim_create_augroup("HeidrChatNum", { clear = true })
@@ -4448,28 +5187,28 @@ ensure_buf = function()
     return false
   end
   local function esc_action()
-    -- Esc while the agent is working: interrupt the turn AND immediately send any
-    -- queued message — so BOTH your messages land in context (the interrupted
-    -- turn + the queued follow-up), like Claude Code. Idle → rewind.
+    local sid = S.selected
+    -- 1) a QUEUED message (sent mid-turn, NOT yet delivered / worked on) → pull it BACK
+    --    into the composer to edit or resend, Claude-style. The running turn is untouched.
+    local q = sid and S.queued and S.queued[sid]
+    if q and q ~= "" then
+      S.queued[sid] = nil
+      api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, vim.split(q, "\n", { plain = true }))
+      render_chips(); composer_placeholder(); render_chat(false) -- drop the queued indicator
+      if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
+        api.nvim_set_current_win(S.composerwin)
+        pcall(api.nvim_win_set_cursor, S.composerwin, { api.nvim_buf_line_count(S.composerbuf), 0 })
+        vim.cmd("startinsert!")
+      end
+      vim.notify("queued message returned to the composer")
+      return true
+    end
+    -- 2) the agent is working, nothing queued → interrupt the turn.
     if is_working() then
-      local sid = S.selected
       send({ type = "abort", session = sid })
       S.stream[sid] = nil
       if S.turn_active then S.turn_active[sid] = nil end
-      local q = sid and S.queued and S.queued[sid]
-      if q and q ~= "" then
-        S.queued[sid] = nil
-        local c = S.chat[sid] or { msgs = {} }
-        c.msgs[#c.msgs + 1] = { role = "user", text = q }
-        S.chat[sid] = c
-        -- Send AFTER the abort settles: firing the prompt in the same tick races
-        -- pi's turn teardown and the prompt gets dropped (the bug — it interrupted
-        -- but never sent the queued item). A short defer lands it on a ready pi.
-        vim.defer_fn(function() send({ type = "prompt", session = sid, message = q }) end, 450)
-        vim.notify("interrupted — sending your queued message")
-      else
-        vim.notify("agent: interrupted")
-      end
+      vim.notify("agent: interrupted")
       render_chat(false)
       return true
     end
@@ -4477,6 +5216,20 @@ ensure_buf = function()
     -- turn and respawns pi; the "rewound" event brings the removed message back
     -- into the composer (see handle). Falls back to a local restore if offline.
     if S.selected and S.connected then
+      -- Guard: a session whose ONLY user turn is the seed prompt would be wiped
+      -- entirely by a rewind (truncateLastUserTurn drops the last user turn + all
+      -- after it) — that's the "empty chat after rewind" data loss. Refuse when we
+      -- can see there's ≤1 user turn; if the transcript isn't loaded, defer to
+      -- agentd's own refuse-to-empty guard.
+      local c = S.chat[S.selected]
+      if c and c.msgs then
+        local users = 0
+        for _, m in ipairs(c.msgs) do if m.role == "user" then users = users + 1 end end
+        if users <= 1 then
+          vim.notify("heidr: nothing to rewind — only the opening turn", vim.log.levels.WARN)
+          return true
+        end
+      end
       send({ type = "rewind", session = S.selected })
       return true
     end
@@ -4514,6 +5267,52 @@ ensure_buf = function()
   vim.keymap.set("i", "<Tab>", function() if not sl_move(1) then toggle_view() end end, { buffer = S.composerbuf, nowait = true })
   vim.keymap.set("n", "<Tab>", function() toggle_view() end, { buffer = S.composerbuf, nowait = true, silent = true })
   vim.keymap.set("i", "<S-Tab>", function() if not sl_move(-1) then passthru("<S-Tab>") end end, { buffer = S.composerbuf, nowait = true })
+
+  -- ↑/↓ recall sent-message history (shell / Claude-style). ↑ on the FIRST line loads the
+  -- previous sent message (older each press); ↓ steps back toward your live draft. Off the
+  -- first line ↑ is a normal cursor move, so multi-line editing still works. A live slash
+  -- picker takes the arrows first.
+  local function _set_composer(text)
+    api.nvim_buf_set_lines(S.composerbuf, 0, -1, false, vim.split(text or "", "\n", { plain = true }))
+    render_chips(); composer_placeholder()
+    local n = api.nvim_buf_line_count(S.composerbuf)
+    pcall(api.nvim_win_set_cursor, 0, { n, #(api.nvim_buf_get_lines(S.composerbuf, n - 1, n, false)[1] or "") })
+  end
+  local function hist_recall(dir)
+    local sid = S.selected
+    local h = sid and S.history and S.history[sid]
+    if not (h and #h > 0) then return false end
+    S.histpos = S.histpos or {}
+    local b = S.histpos[sid]
+    if dir < 0 then -- older
+      if not b then
+        b = { idx = #h + 1, draft = table.concat(api.nvim_buf_get_lines(S.composerbuf, 0, -1, false), "\n") }
+        S.histpos[sid] = b
+      end
+      if b.idx <= 1 then return true end -- already at the oldest; swallow the key
+      b.idx = b.idx - 1
+      _set_composer(h[b.idx])
+    else -- newer
+      if not b then return false end
+      b.idx = b.idx + 1
+      if b.idx > #h then S.histpos[sid] = nil; _set_composer(b.draft) else _set_composer(h[b.idx]) end
+    end
+    return true
+  end
+  vim.keymap.set({ "n", "i" }, "<Up>", function()
+    if sl_move(-1) then return end -- slash picker open → navigate it
+    -- recall only when the input is BLANK (else ↑ is a normal cursor move), or when you're
+    -- already stepping through history (so repeated ↑ keeps going older).
+    local blank = table.concat(api.nvim_buf_get_lines(S.composerbuf, 0, -1, false), ""):match("%S") == nil
+    local browsing = S.histpos and S.histpos[S.selected]
+    if (blank or browsing) and hist_recall(-1) then return end
+    passthru("<Up>")
+  end, { buffer = S.composerbuf, nowait = true })
+  vim.keymap.set({ "n", "i" }, "<Down>", function()
+    if sl_move(1) then return end
+    if S.histpos and S.histpos[S.selected] and hist_recall(1) then return end
+    passthru("<Down>")
+  end, { buffer = S.composerbuf, nowait = true })
 
   -- roster keymaps
   local function map(lhs, fn_) vim.keymap.set("n", lhs, fn_, { buffer = S.buf, nowait = true, silent = true }) end
@@ -4609,35 +5408,39 @@ ensure_buf = function()
 
   -- hide the cursor while in the roster (focus ring stands in for it)
   local grp = api.nvim_create_augroup("HeidrRailCursor", { clear = true })
+  -- ONE coalesced, deferred roster render per focus change. Both enter and leave
+  -- fire on TWO events each (Buf* + Win*); rendering per-event set the buffer twice
+  -- and flashed the wrong expand/highlight state mid-transition. Deferring lets focus
+  -- settle first (render_roster self-computes roster_active from the current window),
+  -- and the pending-guard collapses a burst of events into a single repaint.
+  local roster_refresh_pending = false
+  local function refresh_roster_soon()
+    if roster_refresh_pending or not S.built then return end
+    roster_refresh_pending = true
+    vim.schedule(function()
+      roster_refresh_pending = false
+      if S.built and render_roster then render_roster() end
+    end)
+  end
   api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     group = grp, buffer = S.buf,
     callback = function()
       if not S.saved_gcr then S.saved_gcr = vim.o.guicursor end
       vim.o.guicursor = "a:HeidrCursorRoster"
-      -- (S.roster_active is computed in render_roster from the current window)
       -- focusing the roster to switch sessions → show them all (collapses on leave).
-      -- Gated on S.built: nvim_win_set_buf during M.open fires BufEnter here before
-      -- the chat/composer windows exist — render_roster then shrinks the roster to
-      -- fit its (empty) content, and the next `belowright split` dies with E36
-      -- "not enough room", aborting the rail half-built. Only render once the rail
-      -- is fully constructed (i.e. a real user focus, not construction).
-      if S.built then
-        if not S.roster_pinned_open then S.show_all = true end -- auto-expand (pinned already shows all)
-        if render_roster then render_roster() end
-      end
+      -- Gated on S.built inside refresh_roster_soon: nvim_win_set_buf during M.open
+      -- fires BufEnter here before the chat/composer windows exist — an early render
+      -- would shrink the roster and the next split dies E36 "not enough room".
+      if S.built and not S.roster_pinned_open then S.show_all = true end -- pinned already shows all
+      refresh_roster_soon()
     end,
   })
   api.nvim_create_autocmd({ "BufLeave", "WinLeave" }, {
     group = grp, buffer = S.buf,
     callback = function()
       if S.saved_gcr then vim.o.guicursor = S.saved_gcr end
-      if S.built then
-        if not S.roster_pinned_open then S.show_all = false end -- collapse on blur UNLESS pinned open
-        -- deferred: at WinLeave the roster is STILL the current window, so a
-        -- synchronous render would recompute roster_active=true and flash the
-        -- highlight back on. Schedule it so focus has settled to the new window.
-        if render_roster then vim.schedule(render_roster) end
-      end
+      if S.built and not S.roster_pinned_open then S.show_all = false end -- collapse on blur UNLESS pinned
+      refresh_roster_soon()
     end,
   })
 
@@ -4701,6 +5504,14 @@ function M.open()
   ensure_buf()
   if S.win and api.nvim_win_is_valid(S.win) then api.nvim_set_current_win(S.win); return end
 
+  -- Chat + composer own custom statuscolumns (chat = focus-aware relnum gutter;
+  -- composer = the › prompt + input margin). They're reasserted from these constants
+  -- by the gutter autocmd, so a transient clear (file-open, husk cleanup, layout
+  -- event) self-heals on the next window event instead of stripping them for good.
+  local CHATWIN_STC = "%!v:lua.__HeidrChatStc()"
+  local COMPOSER_STC = "%#HeidrAccent#%{v:lnum==1&&v:virtnum==0?'  ›  ':'     '}"
+  local ROSTER_STC = "  " -- roster's 2-col left margin; reasserted alongside the other two
+
   vim.cmd("botright vsplit") -- rail on the right (more reading whitespace there)
   S.win = api.nvim_get_current_win()
   api.nvim_win_set_buf(S.win, S.buf)
@@ -4732,7 +5543,7 @@ function M.open()
   vim.wo[S.chatwin].breakindent = true
   vim.wo[S.chatwin].breakindentopt = "list:-1"
   vim.bo[S.chatbuf].formatlistpat = [[^\s*\%(\d\+[.)]\|[-*+•]\)\s\+]]
-  vim.wo[S.chatwin].statuscolumn = "%!v:lua.__HeidrChatStc()" -- 2-col gutter; relnum on focus, blank off (see __HeidrChatStc)
+  vim.wo[S.chatwin].statuscolumn = CHATWIN_STC -- 2-col gutter; relnum on focus, blank off (see __HeidrChatStc)
   vim.wo[S.chatwin].fillchars = "eob: "
   -- MDNS scopes the rail's markdown styling to this window AND carries WinSeparator
   -- (see set_hl) — it supersedes winhighlight, so we don't set winhighlight here.
@@ -4755,7 +5566,7 @@ function M.open()
   -- 5-col gutter: the › prompt sits at col 2 (the box-border column) and the input
   -- starts at col 5 (the box-content column), so the composer lines up with the chat
   -- text + box content above it, and the input gets left padding.
-  vim.wo[S.composerwin].statuscolumn = "%#HeidrAccent#%{v:lnum==1&&v:virtnum==0?'  ›  ':'     '}"
+  vim.wo[S.composerwin].statuscolumn = COMPOSER_STC
   vim.wo[S.composerwin].fillchars = "eob: " -- blank bottom pad row (no hairline)
   vim.wo[S.composerwin].winhighlight = "Normal:Normal,WinSeparator:HeidrDivider"
   render_chips(); composer_placeholder(); render_chips()
@@ -4888,6 +5699,7 @@ function M.setup(opts)
   S.ns = api.nvim_create_namespace("agent_nvim")
   S.composer_ns = api.nvim_create_namespace("agent_nvim_composer")
   S.chip_ns = api.nvim_create_namespace("agent_nvim_chips")
+  S.pad_ns = api.nvim_create_namespace("agent_nvim_chatpad")
   set_hl()
   vim.defer_fn(set_hl, 200) -- win over markview's own group setup on load
   api.nvim_create_autocmd("ColorScheme", {
@@ -4951,6 +5763,12 @@ function M.setup(opts)
   end, {})
   api.nvim_create_user_command("HeidrReroot", function(o) reroot(o.args) end, { nargs = 1 })
   api.nvim_create_user_command("HeidrDash", to_dashboard, {}) -- editor back to the session dashboard
+  -- Swap the masthead banner light/dark when the theme flips, if it's showing.
+  api.nvim_create_autocmd("ColorScheme", {
+    callback = function()
+      if S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf) then pcall(place_banner, S.scratchbuf, S.dash and S.dash.win) end
+    end,
+  })
   -- global: jump the editor to the active session's dashboard from ANY buffer
   -- (no-ops when there's no session, so it's a safe always-on binding). <leader>D
   -- rather than gd — bare gd is LSP go-to-definition.
@@ -5014,6 +5832,79 @@ function M.setup(opts)
       if rail_set()[api.nvim_get_current_win()] then
         S.last_rail_win = api.nvim_get_current_win()
       end
+    end,
+  })
+  -- The banner is a float anchored over the editor window and belongs to the DASHBOARD
+  -- only. If that window switches to any real buffer (a file the agent or you opened via
+  -- a path that skips hide_banner), close it so it never draws over code — a catch-all
+  -- for the open paths the explicit hide_banner calls miss.
+  api.nvim_create_autocmd({ "BufWinEnter", "BufEnter", "WinEnter", "WinClosed" }, {
+    callback = function()
+      if not (S.banner_win and api.nvim_win_is_valid(S.banner_win)) then return end
+      -- if the dashboard buffer isn't visible in ANY window, the banner has nothing to
+      -- sit over → close it (catch-all for every path that leaves a real file showing).
+      local shown = false
+      for _, w in ipairs(api.nvim_list_wins()) do
+        if api.nvim_win_is_valid(w) and api.nvim_win_get_buf(w) == S.scratchbuf then shown = true break end
+      end
+      if not shown and hide_banner then hide_banner() end
+    end,
+  })
+  -- Line gutter is DEFAULT-IN: driven off the buffer a window shows, not off each file-open
+  -- path (so none can forget it — that was the follow_edit bug). Only the dashboard scratch
+  -- opts OUT. Rail panes are separate windows that stay gutterless via their own setup, and
+  -- floats manage themselves, so we touch only normal, non-rail windows here.
+  api.nvim_create_autocmd({ "BufWinEnter", "BufEnter", "WinEnter" }, {
+    callback = function()
+      local rs = rail_set()
+      for _, w in ipairs(api.nvim_list_wins()) do
+        local cfg = api.nvim_win_get_config(w)
+        if cfg.relative == nil or cfg.relative == "" then
+          if rs[w] then
+            -- heidr rail pane → hide the gutter (the opt-out). The chat AND composer own
+            -- custom statuscolumns; REASSERT them here (don't just skip) so a transient
+            -- clear from a file-open/layout event self-heals on the next window event
+            -- instead of leaving the composer without its › prompt + margin.
+            vim.wo[w].number = false; vim.wo[w].relativenumber = false
+            vim.wo[w].signcolumn = "no"; vim.wo[w].foldcolumn = "0"
+            if w == S.chatwin then
+              vim.wo[w].statuscolumn = CHATWIN_STC
+            elseif w == S.composerwin then
+              vim.wo[w].statuscolumn = COMPOSER_STC
+            elseif w == S.win then
+              vim.wo[w].statuscolumn = ROSTER_STC
+            else
+              vim.wo[w].statuscolumn = ""
+            end
+          else
+            editor_gutter(w, api.nvim_win_get_buf(w) ~= S.scratchbuf)
+          end
+        end
+      end
+    end,
+  })
+  -- Auto-reflow the dashboard only when the editor pane's WIDTH actually changes.
+  -- The dashboard layout depends on width, not height — and toggling the roster (a
+  -- DIFFERENT pane) fires WinResized too. Re-rendering + re-placing the banner on
+  -- those unrelated resizes was what broke the card (and flickered). Gate on a real
+  -- width change so a roster toggle / height-only resize leaves the dashboard alone.
+  local dash_reflow_pending = false
+  api.nvim_create_autocmd({ "WinResized", "VimResized" }, {
+    callback = function()
+      if dash_reflow_pending then return end
+      if not (S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf)) then return end
+      dash_reflow_pending = true
+      vim.schedule(function()
+        dash_reflow_pending = false
+        for _, w in ipairs(api.nvim_list_wins()) do
+          if api.nvim_win_is_valid(w) and api.nvim_win_get_buf(w) == S.scratchbuf then
+            if api.nvim_win_get_width(w) ~= S.dash_w then -- width changed → reflow; else no-op
+              local cwd = (S.dash and S.dash.cwd) or (S.selected and session_cwd(S.selected))
+              if cwd then pcall(show_scratch, w, cwd) end
+            end
+          end
+        end
+      end)
     end,
   })
   -- Rail-aware window motion: if a directional move lands you IN the rail from the
