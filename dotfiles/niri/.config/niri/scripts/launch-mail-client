@@ -3,7 +3,11 @@
 # the mlqs daemon is running, then opens the Quickshell UI from the Nix store.
 # niri-jump-or-exec focuses an existing window instead of calling this.
 export QML2_IMPORT_PATH="$HOME/.local/share/qml"
+# Route Qt file dialogs (Save-as for attachment downloads) through the
+# xdg portal, where termfilechooser serves them as yazi-in-kitty.
+export QT_QPA_PLATFORMTHEME=xdgdesktopportal
 export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
+
 
 # Replace a stale daemon: after a rebuild the running mlqs may be an older
 # store build. pgrep by name — a full /proc sweep costs ~2s of forks.
@@ -27,6 +31,38 @@ for pid in $KILLED; do
 done
 
 
+# Every quickshell process serving the mlqs UI, oldest first. The -p argument may
+# be RELATIVE (`qs -p ui` run from the repo), so resolve it against the process's
+# cwd: matching the cmdline string alone silently misses those, which is how a pair
+# of stray dev instances survived every reap here for hours.
+_mlqs_ui_pids() {
+  for p in /proc/[0-9]*; do
+    exe=$(readlink "$p/exe" 2>/dev/null) || continue
+    case "$exe" in *quickshell*) ;; *) continue ;; esac
+    pid=${p#/proc/}
+    cfg="" prev=""
+    while IFS= read -r -d '' a; do
+      if [ "$prev" = "-p" ]; then cfg="$a"; break; fi
+      prev="$a"
+    done < "/proc/$pid/cmdline" 2>/dev/null
+    [ -n "$cfg" ] || continue
+    case "$cfg" in
+      /*) ;;
+      *) cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue; cfg="$cwd/$cfg" ;;
+    esac
+    case "${cfg%/}" in *mlqs/ui) echo "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) $pid" ;; esac
+  done | sort -n | awk '{print $2}'
+}
+
+# Collapse to ONE warm UI *before* summoning. summonui is a BROADCAST: every
+# connected client maps a window, so N stray UIs mean N windows on one keypress.
+# The orphan reap further down cannot help — the summon path exits as soon as the
+# first window maps and never reaches it. Keep the newest, kill the rest.
+mapfile -t MLQS_UIS < <(_mlqs_ui_pids)
+if [ "${#MLQS_UIS[@]}" -gt 1 ]; then
+  for pid in "${MLQS_UIS[@]::${#MLQS_UIS[@]}-1}"; do kill "$pid" 2>/dev/null; done
+fi
+
 # Warm summon: q hides the UI (the process stays warm) — poke the daemon,
 # which broadcasts to the hidden window; it remaps in ~100ms. Fall through
 # to a cold start only when no window appears.
@@ -48,11 +84,7 @@ fi
 # Reap windowless mlqs UI orphans (failed config load leaves quickshell alive
 # without a window, blocking niri-jump-or-exec).
 WIN_PIDS=" $(niri msg --json windows 2>/dev/null | python3 -c 'import json,sys;[print(w.get("pid")) for w in json.load(sys.stdin)]' 2>/dev/null | tr "\n" " ") "
-for p in /proc/[0-9]*; do
-    exe=$(readlink "$p/exe" 2>/dev/null) || continue
-    case "$exe" in *quickshell*) ;; *) continue ;; esac
-    case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in *mlqs/ui*) ;; *) continue ;; esac
-    pid=${p#/proc/}
+for pid in $(_mlqs_ui_pids); do
     case "$WIN_PIDS" in *" $pid "*) ;; *) kill "$pid" 2>/dev/null ;; esac
 done
 
