@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# cockpit-add-lovbox-heidr <name>
+#
+# Stand up a REMOTE cockpit context: a lovbox running agentd (lean `devenv deps` +
+# per-ticket `devenv wt`) with local Heidr connecting over an SSH tunnel. Offloads the
+# devenv dev-stack + the agent fleet OFF the laptop onto a 48 GB sandbox; the laptop
+# runs only Heidr (nvim) + a browser (previews via the box's service URLs).
+#
+# Verified by the 2026-08-10 POC (see ~/personal/notes/storage/references/
+# heidr-lovbox-remote-setup.md): the box is arm64/48 GB, the auto-`up` is cleanly
+# stoppable (30 GB -> 5.9 GB), agentd builds in-box with CGO_ENABLED=0, pi installs via
+# npm. The ONE piece still to finalize on first run is the SSH tunnel (step 5) — lovbox
+# has no `-L`; the recipe to resolve it is inline below.
+set -euo pipefail
+
+name="${1:?usage: cockpit-add-lovbox-heidr <name>}"
+box="lovbox-${name}"
+lb="$HOME/work/lovable/bin/lovbox"
+port=8790
+say() { printf '\033[36m[heidr-lovbox]\033[0m %s\n' "$*"; }
+
+# ── 1. claim / resume the box ────────────────────────────────────────────────
+say "claiming box $box (paid) …"
+"$lb" create "$box" --if-exists reuse >/dev/null
+
+# ── 2. provision agentd + pi + gcc in-box (idempotent) ───────────────────────
+# gcc: fresh-worktree cgo builds need it. pi: the agent runtime. agentd: built in-box
+# (arm64) with CGO disabled — the source is shipped base64-clean over exec stdin.
+say "provisioning gcc + pi + agentd in-box …"
+tar czf - -C "$HOME/personal/agentd" --exclude=.git . | base64 -w0 | "$lb" exec "$box" -- bash -lc '
+  command -v gcc >/dev/null 2>&1 || nix profile install nixpkgs#gcc
+  command -v pi  >/dev/null 2>&1 || npm i -g @earendil-works/pi-coding-agent
+  mkdir -p ~/.local/bin ~/agentd-src
+  base64 -d | tar xzf - -C ~/agentd-src
+  cd ~/agentd-src && CGO_ENABLED=0 go build -o ~/.local/bin/agentd .
+  echo "agentd: $(~/.local/bin/agentd --help 2>&1 | grep -c listen) (listen flag present)"
+'
+
+# ── 3. reshape: stop the heavy auto-`up`, boot lean `deps` ────────────────────
+# The box auto-boots the FULL stack (`devenv up`, ~30 GB = deps + one app). Tear it down
+# (frees ~24 GB) and boot only the shared backing services so per-ticket `wt` slices fit.
+# NOTE (POC open item): an ad-hoc `devenv deps` stuck on "waiting for process 7" — it must
+# be booted with the SAME env the box entrypoint uses (grep it from `ps -eo args` for the
+# `process-compose up` line, or source the box's direnv) or a service never reaches ready.
+say "reshaping box: stop auto-up, boot lean deps …"
+"$lb" exec "$box" -- bash -lc '
+  cd ~/lovable
+  process-compose down -p 8080 2>/dev/null || true   # 30 GB -> ~6 GB, box stays alive
+  # TODO(first-run): confirm this reaches ready; replicate the entrypoint env if it stalls.
+  nohup env TERM=dumb devenv deps --tui=false </dev/null >~/deps.log 2>&1 & disown
+'
+
+# ── 4. start agentd --listen inside the box ──────────────────────────────────
+# Binds 127.0.0.1 ONLY — the SSH tunnel (step 5) is the sole way in, which is also the
+# auth story: no token-auth on the TCP leg needed. Per-ticket work = git worktrees in
+# ~/lovable + `devenv wt` per worktree + agentd sessions (one roster, full coordination).
+say "starting agentd --listen 127.0.0.1:$port in-box …"
+key=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY')
+"$lb" exec "$box" -- bash -lc "pkill -f 'agentd --scope work' 2>/dev/null || true
+  OPENAI_API_KEY='$key' nohup ~/.local/bin/agentd --scope work --repo ~/lovable --listen 127.0.0.1:$port >~/agentd.log 2>&1 & disown
+  sleep 2; (ss -tlnp 2>/dev/null||true) | grep -q $port && echo 'agentd listening' || echo 'agentd: check ~/agentd.log'"
+
+# ── 5. SSH tunnel  laptop → box   (THE ONE PIECE TO FINALIZE) ────────────────
+# lovbox exposes no `-L`. Resolve once by tracing the ssh command lovbox constructs:
+#     lovbox ssh -v "$box" 2>&1 | grep -iE 'executing|proxycommand|connecting to'
+# That reveals: <box-host>:2222, the key (~/.ssh/id_ed25519), and any ProxyCommand/Jump
+# through the sandcastle gateway. Then replicate it with autossh + -L (auto-reconnect):
+#     autossh -M 0 -f -N -L "$port:localhost:$port" \
+#       -o ProxyCommand="<the gateway proxycmd lovbox used>" \
+#       -p 2222 lovable@<box-host>
+# Until traced, print the manual step:
+say "TUNNEL — run (finalize from 'lovbox ssh -v $box'):"
+echo "    autossh -M 0 -f -N -L $port:localhost:$port <lovbox ssh connection args for $box>"
+
+# ── 6. launch local Heidr pointed at the tunnel ──────────────────────────────
+# Once the tunnel is up, Heidr talks to the in-box agentd as if local:
+say "then launch Heidr:  HEIDR_AGENTD_ADDR=127.0.0.1:$port heidr"
+# (In the cockpit this becomes a rail tab; previews open from the box's
+#  https://${box}--<port>.<gateway> service URLs in the work browser.)
