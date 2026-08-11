@@ -41,7 +41,9 @@ _mlqs_ui_pids() {
     # Shortlist on comm with a BUILTIN read — no fork. Doing readlink/tr for every
     # /proc entry costs ~2.5s on this box (≈700 procs), and this runs before every
     # summon, so it has to stay in the millisecond range.
-    read -r comm < "$p/comm" 2>/dev/null || continue
+    # 2>/dev/null on the redirect itself: a process exiting mid-sweep makes the
+    # open fail, and bash reports that on stderr before `|| continue` is reached
+    { read -r comm < "$p/comm"; } 2>/dev/null || continue
     case "$comm" in *quickshell*) ;; *) continue ;; esac
     pid=${p#/proc/}
     # the -p argument may be RELATIVE (`qs -p ui` from the repo, as a QML load test
