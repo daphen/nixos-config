@@ -121,6 +121,26 @@
         "type": "github"
       }
     },
+    "heidr": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "quickshell": [
+          "quickshell"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786533051,
+        "narHash": "sha256-drv5e+wJhgLawS3Y8Ui+sk0EiebXO5Fw0iN8i+dUTjk=",
+        "path": "/home/daphen/personal/heidr/libghostty-spike",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/daphen/personal/heidr/libghostty-spike",
+        "type": "path"
+      }
+    },
     "helium-nix": {
       "inputs": {
         "flake-compat": "flake-compat",
@@ -170,11 +190,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786464454,
-        "narHash": "sha256-8JGh69K2xT2Oej5uK1fvjLrYZ3dkso0JvivrHLNmcog=",
+        "lastModified": 1786541209,
+        "narHash": "sha256-Mmk+P2H0ZhG7W+mF6yXo2FwE4t90JQ2NZgC98umK9SQ=",
         "ref": "refs/heads/main",
-        "rev": "9c058259b2a4e574b25f3460f56e415df969d83d",
-        "revCount": 230,
+        "rev": "8fbd9e9e89b3c7d22cc03a3d5d9b1c1ef9b98069",
+        "revCount": 235,
         "type": "git",
         "url": "ssh://git@github.com/daphen/mlqs"
       },
@@ -414,6 +434,7 @@
       "inputs": {
         "agentd": "agentd",
         "dsqrd": "dsqrd",
+        "heidr": "heidr",
         "helium-nix": "helium-nix",
         "home-manager": "home-manager",
         "mlqs": "mlqs",
