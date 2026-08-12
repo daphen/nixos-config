@@ -31,12 +31,27 @@ for pid in $KILLED; do
 done
 
 
-# Every quickshell process serving the mlqs UI, oldest first. The -p argument may
-# be RELATIVE (`qs -p ui` run from the repo), so resolve it against the process's
-# cwd: matching the cmdline string alone silently misses those, which is how a pair
-# of stray dev instances survived every reap here for hours.
+# The -p config dir of one process, absolute. May be RELATIVE on the command line
+# (`qs -p ui` from the repo, as a QML load test does) — such a process has no "mlqs"
+# anywhere in argv, so resolve against its cwd or the strays a dev session leaves
+# behind stay invisible to every reap here.
+_mlqs_ui_cfg() {
+  local pid="$1" cfg="" prev="" a cwd
+  while IFS= read -r -d '' a; do
+    if [ "$prev" = "-p" ]; then cfg="$a"; break; fi
+    prev="$a"
+  done < "/proc/$pid/cmdline" 2>/dev/null
+  [ -n "$cfg" ] || return 1
+  case "$cfg" in
+    /*) ;;
+    *) cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || return 1; cfg="$cwd/$cfg" ;;
+  esac
+  printf '%s' "$cfg"
+}
+
+# Every quickshell process serving the mlqs UI, oldest first.
 _mlqs_ui_pids() {
-  local p pid comm cfg prev a cwd
+  local p pid comm cfg
   for p in /proc/[0-9]*; do
     # Shortlist on comm with a BUILTIN read — no fork. Doing readlink/tr for every
     # /proc entry costs ~2.5s on this box (≈700 procs), and this runs before every
@@ -46,19 +61,8 @@ _mlqs_ui_pids() {
     { read -r comm < "$p/comm"; } 2>/dev/null || continue
     case "$comm" in *quickshell*) ;; *) continue ;; esac
     pid=${p#/proc/}
-    # the -p argument may be RELATIVE (`qs -p ui` from the repo, as a QML load test
-    # does) — such a process has no "mlqs" anywhere in argv, so resolve against cwd
-    # or the strays a dev session leaves behind stay invisible to every reap here
-    cfg="" prev=""
-    while IFS= read -r -d '' a; do
-      if [ "$prev" = "-p" ]; then cfg="$a"; break; fi
-      prev="$a"
-    done < "$p/cmdline" 2>/dev/null
+    cfg=$(_mlqs_ui_cfg "$pid")
     [ -n "$cfg" ] || continue
-    case "$cfg" in
-      /*) ;;
-      *) cwd=$(readlink "$p/cwd" 2>/dev/null) || continue; cfg="$cwd/$cfg" ;;
-    esac
     case "${cfg%/}" in *mlqs/ui) echo "$(awk '{print $22}' "$p/stat" 2>/dev/null) $pid" ;; esac
   done | sort -n | awk '{print $2}'
 }
@@ -66,11 +70,30 @@ _mlqs_ui_pids() {
 # Collapse to ONE warm UI *before* summoning. summonui is a BROADCAST: every
 # connected client maps a window, so N stray UIs mean N windows on one keypress.
 # The orphan reap further down cannot help — the summon path exits as soon as the
-# first window maps and never reaches it. Keep the newest, kill the rest.
+# first window maps and never reaches it.
+#
+# Kill by BUILD, not by age: after a rebuild a stale-build UI is still connected and
+# will map on the next summon, and "newest process" is not "current build" — a
+# lingering old one that happened to start later would survive and the fresh one
+# would be killed. Same test the daemon replacement above uses.
+CUR_UI=""
+if [ -n "$CURRENT" ]; then CUR_UI="${CURRENT%/bin/mlqs}/share/mlqs/ui"; fi
 mapfile -t MLQS_UIS < <(_mlqs_ui_pids)
-if [ "${#MLQS_UIS[@]}" -gt 1 ]; then
-  for pid in "${MLQS_UIS[@]::${#MLQS_UIS[@]}-1}"; do kill "$pid" 2>/dev/null; done
-fi
+KEEP=""
+for pid in "${MLQS_UIS[@]}"; do
+  cfg=$(_mlqs_ui_cfg "$pid")
+  if [ -n "$CUR_UI" ] && [ "${cfg%/}" != "$CUR_UI" ]; then
+    kill "$pid" 2>/dev/null       # a different build (or a working copy) — never summon it
+  else
+    KEEP="$pid"                   # newest match wins; earlier ones killed below
+  fi
+done
+for pid in "${MLQS_UIS[@]}"; do
+  cfg=$(_mlqs_ui_cfg "$pid")
+  if [ -n "$CUR_UI" ] && [ "${cfg%/}" = "$CUR_UI" ] && [ "$pid" != "$KEEP" ]; then
+    kill "$pid" 2>/dev/null
+  fi
+done
 
 # Warm summon: q hides the UI (the process stays warm) — poke the daemon,
 # which broadcasts to the hidden window; it remaps in ~100ms. Fall through
