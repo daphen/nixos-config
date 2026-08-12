@@ -67,6 +67,21 @@ _mlqs_ui_pids() {
   done | sort -n | awk '{print $2}'
 }
 
+# Pids that currently own a window titled "mlqs". A crashed quickshell re-execs
+# WITHOUT its -p arguments but keeps its window mapped, so the config-path lookup
+# below cannot see it — and such an orphan then maps a second window on every
+# summon. niri knows who owns the window, so ask it.
+_mlqs_win_pids() {
+  niri msg --json windows 2>/dev/null | python3 -c '
+import json, sys
+try: ws = json.load(sys.stdin)
+except Exception: sys.exit(0)
+for w in ws:
+    if (w.get("title") or "") == "mlqs" and w.get("pid"):
+        print(w["pid"])
+' 2>/dev/null
+}
+
 # Collapse to ONE warm UI *before* summoning. summonui is a BROADCAST: every
 # connected client maps a window, so N stray UIs mean N windows on one keypress.
 # The orphan reap further down cannot help — the summon path exits as soon as the
@@ -78,21 +93,21 @@ _mlqs_ui_pids() {
 # would be killed. Same test the daemon replacement above uses.
 CUR_UI=""
 if [ -n "$CURRENT" ]; then CUR_UI="${CURRENT%/bin/mlqs}/share/mlqs/ui"; fi
-mapfile -t MLQS_UIS < <(_mlqs_ui_pids)
+# Union of both views: processes serving the current UI dir, AND anything holding an
+# mlqs window (which catches crash orphans that lost their -p).
+mapfile -t MLQS_UIS < <({ _mlqs_ui_pids; _mlqs_win_pids; } | awk '!seen[$0]++')
 KEEP=""
 for pid in "${MLQS_UIS[@]}"; do
-  cfg=$(_mlqs_ui_cfg "$pid")
-  if [ -n "$CUR_UI" ] && [ "${cfg%/}" != "$CUR_UI" ]; then
-    kill "$pid" 2>/dev/null       # a different build (or a working copy) — never summon it
-  else
-    KEEP="$pid"                   # newest match wins; earlier ones killed below
+  [ -d "/proc/$pid" ] || continue
+  if [ -n "$CUR_UI" ] && [ "$(_mlqs_ui_cfg "$pid")" = "$CUR_UI" ]; then
+    KEEP="$pid"                   # a current-build UI; last one wins
   fi
 done
 for pid in "${MLQS_UIS[@]}"; do
-  cfg=$(_mlqs_ui_cfg "$pid")
-  if [ -n "$CUR_UI" ] && [ "${cfg%/}" = "$CUR_UI" ] && [ "$pid" != "$KEEP" ]; then
-    kill "$pid" 2>/dev/null
-  fi
+  [ -d "/proc/$pid" ] || continue
+  # anything that is not THE kept current-build UI must not survive to be summoned:
+  # a stale build, a working copy, or a crash orphan with no -p at all
+  [ "$pid" = "$KEEP" ] || kill "$pid" 2>/dev/null
 done
 
 # Warm summon: q hides the UI (the process stays warm) — poke the daemon,
