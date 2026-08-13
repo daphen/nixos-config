@@ -38,11 +38,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786617109,
-        "narHash": "sha256-3dTz7vqQwxhI+seX1ecJKzOHBLRz38uItrsiacwwLP8=",
+        "lastModified": 1786620897,
+        "narHash": "sha256-EDz4b3/acv1jRoVguD2eO30TVoX3xTkcBuNmrbScP+8=",
         "ref": "refs/heads/main",
-        "rev": "4ab4278a42868bc0f4fa37201acd1c6d46c080e9",
-        "revCount": 252,
+        "rev": "2e930b9a0eb2a1ea32419f1ca0d2831148177088",
+        "revCount": 253,
         "type": "git",
         "url": "ssh://git@github.com/daphen/dsqrd"
       },
