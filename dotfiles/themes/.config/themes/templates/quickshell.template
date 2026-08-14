@@ -44,6 +44,7 @@ Singleton {
             "sky":         "{{light.accent.sky}}",
             "purple":      "{{light.accent.purple}}",
             "pink":        "{{light.accent.pink}}",
+            "electric":    "{{light.accent.electric}}",
             "cursor":      "{{light.semantic.cursor}}",
             "hairlineAlpha": {{light.semantic.hairpin_alpha}},
             "dimmedFgAlpha": 0.55
@@ -77,6 +78,7 @@ Singleton {
             "sky":         "{{dark.accent.sky}}",
             "purple":      "{{dark.accent.purple}}",
             "pink":        "{{dark.accent.pink}}",
+            "electric":    "{{dark.accent.electric}}",
             "cursor":      "{{dark.semantic.cursor}}",
             "hairlineAlpha": {{dark.semantic.hairpin_alpha}},
             "dimmedFgAlpha": 0.7
@@ -112,6 +114,7 @@ Singleton {
     readonly property color sky:          palettes[mode].sky
     readonly property color purple:       palettes[mode].purple
     readonly property color pink:         palettes[mode].pink
+    readonly property color electric:     palettes[mode].electric
     readonly property color cursor:       palettes[mode].cursor
 
     readonly property real hairlineAlpha: palettes[mode].hairlineAlpha

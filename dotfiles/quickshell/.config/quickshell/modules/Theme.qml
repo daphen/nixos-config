@@ -38,12 +38,13 @@ Singleton {
             "red":         "#7c3438",
             "orange":      "#e16511",
             "yellow":      "#df9001",
-            "green":       "#5E7270",
+            "green":       "#587969",
             "cyan":        "#243560",
             "blue":        "#396171",
             "sky":         "#0284C7",
             "purple":      "#2a618d",
             "pink":        "#516088",
+            "electric":    "#0000f2",
             "cursor":      "#FF570D",
             "hairlineAlpha": 0.12,
             "dimmedFgAlpha": 0.55
@@ -77,6 +78,7 @@ Singleton {
             "sky":         "#7DD3FC",
             "purple":      "#8A92A7",
             "pink":        "#8A92A7",
+            "electric":    "#5566ff",
             "cursor":      "#FF570D",
             "hairlineAlpha": 0.15,
             "dimmedFgAlpha": 0.7
@@ -112,6 +114,7 @@ Singleton {
     readonly property color sky:          palettes[mode].sky
     readonly property color purple:       palettes[mode].purple
     readonly property color pink:         palettes[mode].pink
+    readonly property color electric:     palettes[mode].electric
     readonly property color cursor:       palettes[mode].cursor
 
     readonly property real hairlineAlpha: palettes[mode].hairlineAlpha

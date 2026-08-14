@@ -35,6 +35,7 @@ Singleton {
             "yellow":      "{{light.accent.yellow}}",
             "green":       "{{light.accent.green}}",
             "sky":         "{{light.accent.sky}}",
+            "electric":    "{{light.accent.electric}}",
             "cursor":      "{{light.semantic.cursor}}",
             "ink":         "{{light.terminal.black}}",
             "warning":     "{{light.background.warning}}",
@@ -61,6 +62,7 @@ Singleton {
             "yellow":      "{{dark.accent.yellow}}",
             "green":       "{{dark.accent.green}}",
             "sky":         "{{dark.accent.sky}}",
+            "electric":    "{{dark.accent.electric}}",
             "cursor":      "{{dark.semantic.cursor}}",
             "ink":         "{{dark.terminal.black}}",
             "warning":     "{{dark.background.warning}}",
@@ -89,6 +91,7 @@ Singleton {
     readonly property color yellow:       palettes[mode].yellow
     readonly property color green:        palettes[mode].green
     readonly property color sky:          palettes[mode].sky
+    readonly property color electric:     palettes[mode].electric
     readonly property color cursor:       palettes[mode].cursor
     // Exposed existing palette colors (no new colors.json entries): near-black for
     // text on bright accents/badges + the modal scrim, the warning bg + yellow for

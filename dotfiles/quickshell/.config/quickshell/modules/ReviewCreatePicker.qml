@@ -52,10 +52,10 @@ Picker {
                           : buildItems(ReviewCreatePickerState.requestedNodes,
                                        ReviewCreatePickerState.reviewedNodes, root.query)
 
-    // Enter — reviews tab: spin up a background review in the cockpit nvim
-    // agent rail (agent-review checks out the PR on a review/pr-<n> worktree and
-    // starts a rail session seeded "review this PR"). It lands in the roster —
-    // no focus steal. my-PRs tab: open the PR on GitHub in the work browser.
+    // Enter — reviews tab: spin up a background review via `agent review` (the unified
+    // Pi-native entry point shared with the agent_review tool): it checks out the PR on a
+    // review/pr-<n> worktree and starts a rail session seeded with /review-pr. Lands in the
+    // roster — no focus steal. my-PRs tab: open the PR on GitHub in the work browser.
     onEnter: item => {
         if (!item) return
         ReviewCreatePickerState.open = false
@@ -65,7 +65,7 @@ Picker {
             return
         }
         if (!item.number) return
-        Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/agent-review", item.number])
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/agent", "review", String(item.number)])
     }
 
     // Ctrl+Enter: same rail review, plus boot devenv for the worktree — for PRs
@@ -73,7 +73,7 @@ Picker {
     onAltAction: item => {
         if (!item || !item.number) return
         ReviewCreatePickerState.open = false
-        Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/agent-review", item.number, "--devenv"])
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/agent", "review", String(item.number), "--devenv"])
     }
 
     Process {

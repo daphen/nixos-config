@@ -14,6 +14,9 @@ QtObject {
 
     function colorLinks(html) {
         if (!html) return ""
-        return html.replace(/<a href=/g, '<a style="color:' + cssHex(Theme.sky) + '" href=')
+        // Electric blue on the light ground (reads well on white); on the dark
+        // ground #0000f2 is too dark, so keep the lighter sky there.
+        var link = Theme.mode === "light" ? Theme.electric : Theme.sky
+        return html.replace(/<a href=/g, '<a style="color:' + cssHex(link) + '" href=')
     }
 }

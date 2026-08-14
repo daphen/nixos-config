@@ -76,9 +76,17 @@ PanelWindow {
         // NAME (mlqs sends mail-unread / x-office-calendar) can't be loaded and
         // would just fail-blank the same way for every mlqs notif — drop it so
         // the mapped brand/calendar glyph (appIconFor) always shows instead.
-        const img = n.image || ""
-        const realImg = img.startsWith("/") || img.startsWith("file://") || img.startsWith("http")
-        nImage = realImg ? (img.startsWith("/") ? "file://" + img : img) : ""
+        // The avatar (slqs/dsqrd image-path hint) arrives as an
+        // image://icon/<abs-path> quickshell provider URL — use it as-is (a
+        // file:// of the same path doesn't render here). Only a wrapped ABSOLUTE
+        // path is a real avatar; a bare freedesktop icon name (mlqs mail-unread)
+        // is dropped so the mapped brand/calendar glyph shows instead.
+        const raw = n.image || ""
+        let src = ""
+        if (raw.startsWith("image://icon/")) src = raw.slice(13).startsWith("/") ? raw : ""
+        else if (raw.startsWith("image://") || raw.startsWith("file://") || raw.startsWith("http")) src = raw
+        else if (raw.startsWith("/")) src = "file://" + raw
+        nImage = src
         nIsCalendar = Notifications.isCalNotif(n)
         nAppIcon = nIsCalendar ? Notifications.calendarIcon : Notifications.appIconFor(n.appName, n.appIcon)
         nWindowId = (n.hints && n.hints["niri-window"] !== undefined)

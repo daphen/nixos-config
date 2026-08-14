@@ -53,7 +53,7 @@ Two mechanisms deliver config to the running system:
   entry points straight at the repo working tree. Edit → reload/restart the app.
   **No `nixos-rebuild`.** Covers most app config: fish, kitty, git, yazi, qutebrowser,
   quickshell, niri (`config.kdl` + scripts), themes, starship, kanata, opencode,
-  `~/.claude` (skills/commands → `dotfiles/claude`), `~/.local/bin/{wt-send,wt-plan}`.
+  `~/.claude` (skills/commands → `dotfiles/claude`), `~/.local/bin/agent` (agentd coordination CLI).
 - **Baked** (copied into the Nix store) — needs `nixos-rebuild`. Packages + the system:
   `home.packages`, module definitions, `configuration.nix`, flake inputs, and the Rust
   daemons (palette/wpm — rebuild + restart the service).

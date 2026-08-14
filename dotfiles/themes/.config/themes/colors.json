@@ -91,7 +91,8 @@
         "blue": "#CCD5E4",
         "sky": "#7DD3FC",
         "purple": "#8A92A7",
-        "pink": "#8A92A7"
+        "pink": "#8A92A7",
+        "electric": "#5566ff"
       },
       "semantic": {
         "error": "accent.red",
@@ -169,12 +170,13 @@
         "red": "#7c3438",
         "orange": "#e16511",
         "yellow": "#df9001",
-        "green": "#5E7270",
+        "green": "#587969",
         "cyan": "#243560",
         "blue": "#396171",
         "sky": "#0284C7",
         "purple": "#2a618d",
-        "pink": "#516088"
+        "pink": "#516088",
+        "electric": "#0000f2"
       },
       "semantic": {
         "error": "accent.red",
