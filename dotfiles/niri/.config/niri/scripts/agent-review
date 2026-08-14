@@ -136,7 +136,8 @@ def start_rail_session(sid: str, cwd: Path, prompt: str) -> None:
     s = agentd_connect()
     try:
         s.sendall((json.dumps({"type": "spawn", "session": sid,
-                               "cwd": str(cwd), "prompt": prompt}) + "\n").encode())
+                               "cwd": str(cwd), "profile": "lovable-reviewer",
+                               "prompt": prompt}) + "\n").encode())
         try:
             s.shutdown(socket.SHUT_WR)
         except OSError:

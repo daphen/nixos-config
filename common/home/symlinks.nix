@@ -75,6 +75,7 @@ in {
     # directory symlink (CLAUDE.md inside is a symlink to ai/instructions.md).
     # Codex's AGENTS.md points directly at the same neutral file here.
     ".codex/AGENTS.md".source = link "${dotfiles}/ai/instructions.md";
+    ".pi/agent/roles".source = link "${dotfiles}/ai/roles";
     # xclip shim → wl-paste fallback. Lives ahead of the real xclip in
     # PATH so apps that hardcode xclip (Claude Code's image paste, etc.)
     # keep working when niri's Wayland↔X11 selection bridge wedges after
@@ -84,6 +85,7 @@ in {
     # send/spawn), the one command replacing the wt-* scripts. Pi agents use the
     # native agent_* tools (pi-extensions/agents) instead; both speak agentd's socket.
     ".local/bin/agent".source = link "${dotfiles}/bin/.local/bin/agent";
+    ".local/bin/orchestrator-seed".source = link "${dotfiles}/bin/.local/bin/orchestrator-seed";
     # cockpit-spawn: the full ticket kickoff (cockpit context + devenv + nvim rail tab
     # + seeded roster agent) — callable by any agent, and by the rail's Enter-on-ticket.
     ".local/bin/cockpit-spawn".source = link "${dotfiles}/bin/.local/bin/cockpit-spawn";

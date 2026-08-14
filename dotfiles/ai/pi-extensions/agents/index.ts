@@ -1,8 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { execFile } from "node:child_process";
 
-import { allSessions, readTurns, resolveSession, sendPrompt, spawnSession, steerSession } from "./agentd.ts";
+import { allSessions, readTurns, resolveSession, scheduleSelf, sendPrompt, spawnSession, steerSession, stopSelf } from "./agentd.ts";
 
 // Native coordination tools for pi agents driven by the Heidr rail / agentd.
 // The desktop (niri pickers, nvim keybinds, cockpit scripts) uses the sibling
@@ -32,7 +33,7 @@ export default function (pi: ExtensionAPI) {
       const sessions = await allSessions();
       if (sessions.length === 0) return say("No active agent sessions.");
       const rows = sessions.map(
-        (s) => `${(s.scope ?? "?").padEnd(8)} ${String(s.status ?? "?").padEnd(10)} ${String(s.name ?? "?").padEnd(36)} ${s.cwd ?? ""}`,
+        (s) => `${(s.scope ?? "?").padEnd(8)} ${String(s.status ?? "?").padEnd(10)} ${String(s.profile ?? "?").padEnd(22)} ${String(s.name ?? "?").padEnd(36)} ${s.cwd ?? ""}`,
       );
       return say(rows.join("\n"));
     },
@@ -123,16 +124,47 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "agent_schedule_self",
+    label: "Schedule watcher check",
+    description: "Watcher-only: schedule this same watcher to receive one check prompt in about three minutes, persist the timer in agentd, and end the current turn idle.",
+    parameters: Type.Object({}),
+    async execute() {
+      try {
+        await scheduleSelf();
+        return say("Next watcher check scheduled in about three minutes. End this turn now; do not sleep or poll.");
+      } catch (e) {
+        return say(String((e as Error).message ?? e));
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "agent_stop_self",
+    label: "Stop watcher",
+    description: "Watcher-only: stop this watcher and cancel its persisted timer after its final parent report.",
+    parameters: Type.Object({}),
+    async execute() {
+      try {
+        await stopSelf();
+        return say("Watcher stopped.");
+      } catch (e) {
+        return say(String((e as Error).message ?? e));
+      }
+    },
+  });
+
+  pi.registerTool({
     name: "agent_spawn",
     label: "Spawn agent",
     description:
-      "Start a NEW agent session in an existing directory (a fresh roster item). Optionally seed it with a prompt and mark it oneshot (runs once, reports, exits). Does NOT create worktrees — pass a real dir.",
+      "Start a NEW agent session in an existing directory (a fresh roster item). Children inherit the caller's profile server-side unless profile is supplied; the only permitted transition is lovable-worker to lovable-watcher. Does NOT create worktrees — pass a real dir.",
     promptSnippet: "agent_spawn: start a new agent session in a dir",
     parameters: Type.Object({
       dir: Type.String({ description: "existing directory to run the session in" }),
       prompt: Type.Optional(Type.String({ description: "seed prompt delivered on spawn" })),
       name: Type.Optional(Type.String({ description: "session name (default: dir basename)" })),
-      scope: Type.Optional(Type.String({ description: "agentd scope (default: inferred from dir)" })),
+      scope: Type.Optional(Type.String({ description: "agentd scope (default: caller's scope, then inferred from dir)" })),
+      profile: Type.Optional(StringEnum(["lovable-orchestrator", "lovable-worker", "lovable-reviewer", "lovable-watcher", "coding", "chat"] as const, { description: "validated profile; omit to inherit server-side" })),
       oneshot: Type.Optional(Type.Boolean({ description: "ephemeral: run the seed once then exit" })),
     }),
     async execute(_id, params: any) {
@@ -141,13 +173,14 @@ export default function (pi: ExtensionAPI) {
           prompt: params.prompt,
           name: params.name,
           scope: params.scope,
+          profile: params.profile,
           oneshot: params.oneshot,
         });
         return say(
           `Spawned '${r.name}' in the ${r.scope} rail (cwd ${r.dir})` +
             (params.prompt ? " + seeded prompt" : "") +
             (params.oneshot ? " [oneshot]" : "") +
-            ".",
+            ` · profile ${params.profile ?? "inherited"}.`,
         );
       } catch (e) {
         return say(String((e as Error).message ?? e));

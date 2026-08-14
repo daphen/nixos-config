@@ -8,14 +8,14 @@ speak the same agentd protocol and replace the retired wt-* scripts. Nothing
 here is worktree-coupled — `spawn` takes a real directory.
 
 Subcommands:
-  agent roster                      list live sessions (scope · status · name · cwd)
+  agent roster                      list sessions (scope · status · profile · name · cwd)
   agent read <ref> [N]              print another agent's last N turns (default 6)
   agent send <ref> [text...]        dispatch a prompt (text args, or stdin if omitted)
   agent send --cwd PATH [text...]   target the session driving PATH
   agent steer <ref> [text...]       redirect a RUNNING agent mid-turn (idle → normal prompt)
   agent review <pr> [--devenv]      review a PR: own review/pr-<n> worktree + rail session seeded /review-pr
   agent spawn <dir> [prompt...]     start a NEW session in dir
-        [--name N] [--scope S] [--oneshot]
+        [--name N] [--scope S] [--profile P] [--oneshot]
 
 <ref> is a session name, id, or cwd (matched against every scope's roster).
 
@@ -125,7 +125,25 @@ def send_line(sock_path: str, obj: dict, flush: float) -> None:
     c.connect(sock_path)
     try:
         c.sendall((json.dumps(obj) + "\n").encode())
-        time.sleep(flush)  # let agentd flush to pi's stdin before we close
+        deadline = time.time() + flush
+        buf = b""
+        while time.time() < deadline:
+            c.settimeout(max(0.01, deadline - time.time()))
+            try:
+                chunk = c.recv(65536)
+            except (TimeoutError, socket.timeout):
+                break
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if event.get("type") == "error" and (not event.get("session") or event.get("session") == obj.get("session")):
+                    raise SystemExit(f"agentd refused: {event.get('error', 'unknown error')}")
     finally:
         c.close()
 
@@ -135,8 +153,9 @@ def cmd_roster(_a) -> int:
     found = False
     for sc, _sp, s in all_sessions():
         found = True
-        print("{:8} {:10} {:36} {}".format(
-            sc, str(s.get("status", "?")), str(s.get("name", "?")), str(s.get("cwd", ""))))
+        print("{:8} {:10} {:22} {:36} {}".format(
+            sc, str(s.get("status", "?")), str(s.get("profile", "?")),
+            str(s.get("name", "?")), str(s.get("cwd", ""))))
     if not found:
         print("no active agent sessions", file=sys.stderr)
         return 1
@@ -259,9 +278,13 @@ def cmd_spawn(a) -> int:
         msg["prompt"] = prompt
     if a.oneshot:
         msg["oneshot"] = True
+    if a.profile:
+        msg["profile"] = a.profile
     send_line(agentd_connect(scope), msg, 0.5)
+    selected_profile = a.profile or ("lovable-worker" if scope == "work" else "chat" if scope == "chat" else "coding")
     print(f"agent spawn: '{name}' in the {scope} rail (cwd {d})"
-          + (" + seeded prompt" if prompt else "") + (" [oneshot]" if a.oneshot else ""))
+          + (" + seeded prompt" if prompt else "") + (" [oneshot]" if a.oneshot else "")
+          + f" · profile {selected_profile}")
     return 0
 
 
@@ -306,6 +329,7 @@ def main() -> int:
     p_spawn.add_argument("prompt", nargs="*", help="optional seed prompt")
     p_spawn.add_argument("--name", help="session name (default: dir basename)")
     p_spawn.add_argument("--scope", help="agentd scope (default: inferred)")
+    p_spawn.add_argument("--profile", choices=("lovable-orchestrator", "lovable-worker", "lovable-reviewer", "lovable-watcher", "coding", "chat"), help="validated agent profile (default: daemon default)")
     p_spawn.add_argument("--oneshot", action="store_true", help="ephemeral: run seed once then exit")
     p_spawn.set_defaults(fn=cmd_spawn)
 

@@ -28,6 +28,8 @@ say() { printf '\033[36m[vm-wt]\033[0m %s\n' "$*"; }
 SSH=(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25 "$u@$host")
 
 [ -S "$sock" ] || { echo "✗ $sock missing — run vm-cockpit first"; exit 1; }
+restart_marker="${XDG_RUNTIME_DIR}/heidr-role-bundle-work.restart-required"
+[ ! -e "$restart_marker" ] || { echo "✗ role bundle updated, agentd restart required — do not spawn ticket sessions"; exit 1; }
 
 # ── 1. worktree on the VM (full clone, so branch off origin/main) ─────────────
 say "worktree $vmwt on $branch …"
@@ -81,8 +83,10 @@ while b"\n" not in buf:
     if not d: break
     buf += d
 sessions = json.loads(buf.split(b"\n", 1)[0]).get("sessions", [])
-names = [x.get("name") for x in sessions]
-if name in names:
+by_name = {x.get("name"): x for x in sessions}
+if name in by_name:
+    if by_name[name].get("profile") != "lovable-worker":
+        raise SystemExit(f"session '{name}' has profile {by_name[name].get('profile')!r}, expected 'lovable-worker'")
     # Already in the roster — but a session spawned before seeding existed (or one
     # whose pi never got a turn) sits there with an empty history looking idle, which
     # reads as "the workflow is broken". Seed it if it has nothing.
@@ -104,7 +108,7 @@ if name in names:
         print(f"  session '{name}' existed but was empty — seeded")
 else:
     s.sendall((json.dumps({"type": "spawn", "session": name, "cwd": cwd,
-                           "prompt": seed}) + "\n").encode())
+                           "profile": "lovable-worker", "prompt": seed}) + "\n").encode())
     print(f"  spawned '{name}' with the plan seed")
 time.sleep(3); s.close()
 PY

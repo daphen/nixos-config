@@ -13,6 +13,7 @@ export interface Session {
   cwd?: string;
   status?: string;
   scope?: string;
+  profile?: string;
 }
 
 const HOME = os.homedir();
@@ -128,6 +129,7 @@ export async function resolveSession(ref: string): Promise<Resolved | null> {
 // (see registry.isLineage). Empty when the caller isn't a registered session
 // (then agentd treats it as human and doesn't gate).
 async function selfName(): Promise<string> {
+  if (process.env.HEIDR_AGENT_NAME) return process.env.HEIDR_AGENT_NAME;
   try {
     const s = await resolveSession(process.cwd());
     return s ? String(s.session.name ?? s.session.id ?? "") : "";
@@ -180,11 +182,44 @@ function writeThenClose(sockPath: string, obj: { session?: unknown } & Record<st
   });
 }
 
+async function resolveSelf(): Promise<Resolved> {
+  const name = await selfName();
+  const cwd = expandPath(process.env.HEIDR_AGENT_CWD || process.cwd());
+  for (const scope of scopeSocks()) {
+    for (const session of await readRoster(scope.path)) {
+      if ((session.name === name || session.id === name) && (!cwd || expandPath(session.cwd || "") === cwd)) {
+        return { session: { ...session, scope: scope.scope }, scope: scope.scope, sockPath: scope.path, cwd: session.cwd || "" };
+      }
+    }
+  }
+  throw new Error(`current agent session ${JSON.stringify(name)} is not registered`);
+}
+
+export async function scheduleSelf(): Promise<void> {
+  if (process.env.HEIDR_AGENT_PROFILE !== "lovable-watcher") throw new Error("agent_schedule_self is watcher-only");
+  const self = await resolveSelf();
+  const name = String(self.session.name || self.session.id || "");
+  await writeThenClose(self.sockPath, { type: "schedule_self", session: name, from: name }, 500);
+}
+
+export async function stopSelf(): Promise<void> {
+  if (process.env.HEIDR_AGENT_PROFILE !== "lovable-watcher") throw new Error("agent_stop_self is watcher-only");
+  const self = await resolveSelf();
+  const name = String(self.session.name || self.session.id || "");
+  await writeThenClose(self.sockPath, { type: "stop_self", session: name, from: name }, 300);
+}
+
+function callerIdentity(from: string): Record<string, string> {
+  const profile = process.env.HEIDR_AGENT_PROFILE || "";
+  const parent = process.env.HEIDR_AGENT_PARENT || "";
+  return { from, ...(profile ? { fromProfile: profile } : {}), ...(parent ? { fromParent: parent } : {}) };
+}
+
 export async function sendPrompt(ref: string, text: string): Promise<Resolved> {
   const r = await resolveSession(ref);
   if (!r) throw new Error(`no agent session matching ${JSON.stringify(ref)}`);
   const sid = r.session.id || r.session.name;
-  await writeThenClose(r.sockPath, { type: "prompt", session: sid, message: text, from: await selfName() }, 800);
+  await writeThenClose(r.sockPath, { type: "prompt", session: sid, message: text, ...callerIdentity(await selfName()) }, 800);
   return r;
 }
 
@@ -197,7 +232,7 @@ export async function steerSession(ref: string, text: string): Promise<{ resolve
   const sid = r.session.id || r.session.name;
   const running = /stream|work|run|busy|think/i.test(String(r.session.status ?? ""));
   const delivered = running ? "steer" : "prompt";
-  await writeThenClose(r.sockPath, { type: delivered, session: sid, message: text, from: await selfName() }, 800);
+  await writeThenClose(r.sockPath, { type: delivered, session: sid, message: text, ...callerIdentity(await selfName()) }, 800);
   return { resolved: r, delivered };
 }
 
@@ -216,6 +251,16 @@ export interface SpawnOpts {
   oneshot?: boolean;
   name?: string;
   scope?: string;
+  profile?: string;
+}
+
+export function spawnMessage(name: string, dir: string, opts: SpawnOpts, from = ""): Record<string, unknown> {
+  const msg: Record<string, unknown> = { type: "spawn", session: name, cwd: dir };
+  if (opts.prompt) msg.prompt = opts.prompt;
+  if (opts.oneshot) msg.oneshot = true;
+  if (opts.profile) msg.profile = opts.profile;
+  if (from) msg.from = from;
+  return msg;
 }
 
 // Start a NEW session in an existing dir. Worktree creation is NOT our job — the
@@ -240,11 +285,8 @@ export async function spawnSession(dir: string, opts: SpawnOpts = {}): Promise<{
   if (!scope) scope = scopeForDir(abs);
   const name = opts.name || path.basename(abs);
   const sockPath = path.join(runtimeDir(), `agentd-${scope}.sock`);
-  const msg: Record<string, unknown> = { type: "spawn", session: name, cwd: abs };
-  if (opts.prompt) msg.prompt = opts.prompt;
-  if (opts.oneshot) msg.oneshot = true;
   const from = await selfName(); // record spawn lineage: this session becomes the child's parent
-  if (from) msg.from = from;
+  const msg = spawnMessage(name, abs, opts, from);
   await writeThenClose(sockPath, msg, 500);
   return { name, scope, dir: abs };
 }

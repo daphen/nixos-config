@@ -24,6 +24,87 @@ sock="${XDG_RUNTIME_DIR}/agentd-work.sock"
 krpw="${HEIDR_KEYRING_PW:-heidr-vm}"
 say() { printf '\033[36m[vm-cockpit]\033[0m %s\n' "$*"; }
 SSH=(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25 "$u@$host")
+ai="$HOME/nixos/dotfiles/ai"
+restart_marker="${XDG_RUNTIME_DIR}/heidr-role-bundle-work.restart-required"
+role_files=(
+  roles prompts/plan-ticket.md prompts/review-pr.md
+  pi-extensions/role-policy pi-extensions/agents pi-extensions/ask pi-extensions/tool-compress
+  skills/i-have-adhd skills/notes skills/cycle skills/daily skills/standup
+  skills/plan-ticket skills/watch-pr skills/review-pr
+)
+
+bundle_hash() {
+  python3 - "$1" "${role_files[@]}" <<'PY'
+import hashlib, os, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+files = []
+for rel in sys.argv[2:]:
+    target = root / rel
+    if target.is_dir(): files.extend(p for p in target.rglob('*') if p.is_file())
+    elif target.is_file(): files.append(target)
+h = hashlib.sha256()
+for p in sorted(files, key=lambda item: str(item.relative_to(root))):
+    h.update(str(p.relative_to(root)).encode() + b'\0')
+    h.update(hashlib.sha256(p.read_bytes()).digest())
+print(h.hexdigest())
+PY
+}
+
+remote_bundle_hash() {
+  "${SSH[@]}" python3 - "${role_files[@]}" <<'PY'
+import hashlib, pathlib, sys
+root = pathlib.Path.home() / '.pi' / 'agent'
+files = []
+for rel in sys.argv[1:]:
+    target = root / rel
+    if target.is_dir(): files.extend(p for p in target.rglob('*') if p.is_file())
+    elif target.is_file(): files.append(target)
+h = hashlib.sha256()
+for p in sorted(files, key=lambda item: str(item.relative_to(root))):
+    h.update(str(p.relative_to(root)).encode() + b'\0')
+    h.update(hashlib.sha256(p.read_bytes()).digest())
+print(h.hexdigest())
+PY
+}
+
+[ -d "$ai/roles" ] || { say "sync failed, do not spawn ticket sessions: $ai/roles missing"; exit 1; }
+local_hash=$(bundle_hash "$ai")
+remote_hash=$(remote_bundle_hash 2>/dev/null || true)
+was_running=$("${SSH[@]}" 'pgrep -x agentd >/dev/null && echo yes || echo no' 2>/dev/null || echo no)
+if [ "$remote_hash" = "$local_hash" ]; then
+  say "role bundle current ($local_hash)"
+  rm -f "$restart_marker"
+else
+  say "role bundle differs — syncing versioned resources …"
+  sync_failed=0
+  for rel in "${role_files[@]}"; do
+    if [ -d "$ai/$rel" ]; then
+      "${SSH[@]}" "mkdir -p \$HOME/.pi/agent/'$rel'" || { sync_failed=1; break; }
+      rsync -az --delete -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25' "$ai/$rel/" "$u@$host:.pi/agent/$rel/" || { sync_failed=1; break; }
+    else
+      "${SSH[@]}" "mkdir -p \$HOME/.pi/agent/'$(dirname "$rel")'" || { sync_failed=1; break; }
+      rsync -az -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25' "$ai/$rel" "$u@$host:.pi/agent/$rel" || { sync_failed=1; break; }
+    fi
+  done
+  if [ "$sync_failed" -ne 0 ]; then
+    say "sync failed, do not spawn ticket sessions"
+    touch "$restart_marker"
+    exit 1
+  fi
+  verified_hash=$(remote_bundle_hash 2>/dev/null || true)
+  if [ "$verified_hash" != "$local_hash" ]; then
+    say "sync failed, do not spawn ticket sessions (local $local_hash, remote ${verified_hash:-missing})"
+    touch "$restart_marker"
+    exit 1
+  fi
+  if [ "$was_running" = yes ]; then
+    touch "$restart_marker"
+    say "role bundle updated, agentd restart required ($local_hash)"
+  else
+    rm -f "$restart_marker"
+    say "role bundle updated and verified ($local_hash); agentd will start with it"
+  fi
+fi
 
 # Secrets are resolved HERE (this session has fish's secrets file and a 1Password
 # agent) and handed to agentd as process env. They never touch the VM's disk.
