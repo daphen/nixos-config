@@ -136,21 +136,47 @@ async function selfName(): Promise<string> {
   }
 }
 
-function writeThenClose(sockPath: string, obj: unknown, flushMs: number): Promise<void> {
+// Write one command, then LISTEN for the daemon's verdict before dropping the socket.
+// agentd answers a refused or failed delivery with an {type:"error"} event on this same
+// connection; the old fire-and-forget version discarded it unread, which is how a
+// lineage-refused agent_send got reported as "Delivered" — twice, to the user's face.
+// Silence within the window means the daemon forwarded the line to pi.
+function writeThenClose(sockPath: string, obj: { session?: unknown } & Record<string, unknown>, flushMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const c = net.connect(sockPath);
+    let buf = "";
+    let done = false;
+    const finish = (err?: Error) => {
+      if (done) return;
+      done = true;
+      try {
+        c.destroy();
+      } catch {}
+      if (err) reject(err);
+      else resolve();
+    };
     c.on("connect", () => {
       c.write(JSON.stringify(obj) + "\n", () => {
-        // give agentd a beat to flush to pi's stdin before we drop the socket
-        setTimeout(() => {
-          try {
-            c.destroy();
-          } catch {}
-          resolve();
-        }, flushMs);
+        setTimeout(() => finish(), flushMs);
       });
     });
-    c.on("error", (e) => reject(e));
+    c.on("data", (d) => {
+      buf += d.toString();
+      let i: number;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i);
+        buf = buf.slice(i + 1);
+        if (!line.trim()) continue;
+        try {
+          const m = JSON.parse(line);
+          if (m && m.type === "error" && (!m.session || m.session === obj.session)) {
+            finish(new Error(`agentd refused: ${m.error ?? "unknown error"}`));
+            return;
+          }
+        } catch {}
+      }
+    });
+    c.on("error", (e) => finish(e as Error));
   });
 }
 
@@ -158,7 +184,7 @@ export async function sendPrompt(ref: string, text: string): Promise<Resolved> {
   const r = await resolveSession(ref);
   if (!r) throw new Error(`no agent session matching ${JSON.stringify(ref)}`);
   const sid = r.session.id || r.session.name;
-  await writeThenClose(r.sockPath, { type: "prompt", session: sid, message: text, from: await selfName() }, 300);
+  await writeThenClose(r.sockPath, { type: "prompt", session: sid, message: text, from: await selfName() }, 800);
   return r;
 }
 
@@ -171,7 +197,7 @@ export async function steerSession(ref: string, text: string): Promise<{ resolve
   const sid = r.session.id || r.session.name;
   const running = /stream|work|run|busy|think/i.test(String(r.session.status ?? ""));
   const delivered = running ? "steer" : "prompt";
-  await writeThenClose(r.sockPath, { type: delivered, session: sid, message: text, from: await selfName() }, 300);
+  await writeThenClose(r.sockPath, { type: delivered, session: sid, message: text, from: await selfName() }, 800);
   return { resolved: r, delivered };
 }
 
