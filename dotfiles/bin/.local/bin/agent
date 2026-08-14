@@ -1,0 +1,322 @@
+#!/usr/bin/env python3
+"""
+agent — coordinate pi agent sessions through the agentd socket(s).
+
+The desktop-side client (niri pickers, nvim keybinds, cockpit scripts). Pi
+agents themselves use the native agent_* tools (pi-extensions/agents); both
+speak the same agentd protocol and replace the retired wt-* scripts. Nothing
+here is worktree-coupled — `spawn` takes a real directory.
+
+Subcommands:
+  agent roster                      list live sessions (scope · status · name · cwd)
+  agent read <ref> [N]              print another agent's last N turns (default 6)
+  agent send <ref> [text...]        dispatch a prompt (text args, or stdin if omitted)
+  agent send --cwd PATH [text...]   target the session driving PATH
+  agent steer <ref> [text...]       redirect a RUNNING agent mid-turn (idle → normal prompt)
+  agent review <pr> [--devenv]      review a PR: own review/pr-<n> worktree + rail session seeded /review-pr
+  agent spawn <dir> [prompt...]     start a NEW session in dir
+        [--name N] [--scope S] [--oneshot]
+
+<ref> is a session name, id, or cwd (matched against every scope's roster).
+
+Exit codes: 0 ok · 1 nothing matched / unreachable · 2 usage error.
+"""
+from __future__ import annotations
+import argparse
+import glob
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path(os.environ["HOME"])
+LOVABLE = HOME / "work" / "lovable"
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+
+
+def socks() -> list[str]:
+    return sorted(glob.glob(os.path.join(RUNTIME, "agentd-*.sock")))
+
+
+def scope_of(sock_path: str) -> str:
+    return os.path.basename(sock_path)[len("agentd-"):-len(".sock")]
+
+
+# 8s, not 2s: a TUNNELLED agentd (a lovbox reached over ssh -L) answers in anywhere
+# from 0.1s to >2s, so a 2s cap made the remote scope appear and disappear at random —
+# `agent roster` silently dropped the box's sessions. This returns as soon as the
+# roster line arrives, so a generous cap costs nothing when the daemon is local.
+ROSTER_TIMEOUT = float(os.environ.get("AGENT_ROSTER_TIMEOUT", "8"))
+
+
+def roster(sock_path: str, timeout: float = ROSTER_TIMEOUT) -> list[dict]:
+    """Read agentd's greeting roster from one socket. [] on any failure."""
+    try:
+        c = socket.socket(socket.AF_UNIX)
+        c.settimeout(timeout)
+        c.connect(sock_path)
+    except OSError:
+        return []
+    try:
+        buf = b""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                chunk = c.recv(65536)
+            except OSError:
+                break
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    continue
+                if obj.get("type") == "roster":
+                    return obj.get("sessions", [])
+        return []
+    finally:
+        c.close()
+
+
+def all_sessions() -> list[tuple[str, str, dict]]:
+    """[(scope, sock_path, session), ...] across every scope."""
+    out = []
+    for sp in socks():
+        sc = scope_of(sp)
+        for s in roster(sp):
+            out.append((sc, sp, s))
+    return out
+
+
+def resolve(ref: str, cwd_path: str | None = None):
+    """Match a ref (name/id/cwd) — or an explicit --cwd path — to one session.
+    Returns (scope, sock_path, session) or None."""
+    abs_target = str(Path(cwd_path or ref).expanduser().resolve()) if (cwd_path or _looks_pathy(ref)) else None
+    by_cwd = None
+    by_sub = None
+    for sc, sp, s in all_sessions():
+        sid = str(s.get("id", "") or "")
+        name = str(s.get("name", "") or "")
+        cwd = str(s.get("cwd", "") or "")
+        if not cwd_path and (sid == ref or name == ref):
+            return (sc, sp, s)
+        if abs_target and cwd and (cwd == abs_target
+                                   or abs_target.startswith(cwd + "/")
+                                   or cwd.startswith(abs_target + "/")):
+            by_cwd = by_cwd or (sc, sp, s)
+        if not cwd_path and ((name and ref in name) or (cwd and ref in cwd) or (sid and sid.startswith(ref))):
+            by_sub = by_sub or (sc, sp, s)
+    return by_cwd or by_sub
+
+
+def _looks_pathy(ref: str) -> bool:
+    return ref.startswith(("/", "~", ".")) or Path(ref).expanduser().is_dir()
+
+
+def send_line(sock_path: str, obj: dict, flush: float) -> None:
+    c = socket.socket(socket.AF_UNIX)
+    c.settimeout(6.0)
+    c.connect(sock_path)
+    try:
+        c.sendall((json.dumps(obj) + "\n").encode())
+        time.sleep(flush)  # let agentd flush to pi's stdin before we close
+    finally:
+        c.close()
+
+
+# ── subcommands ──────────────────────────────────────────────────────────────
+def cmd_roster(_a) -> int:
+    found = False
+    for sc, _sp, s in all_sessions():
+        found = True
+        print("{:8} {:10} {:36} {}".format(
+            sc, str(s.get("status", "?")), str(s.get("name", "?")), str(s.get("cwd", ""))))
+    if not found:
+        print("no active agent sessions", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_read(a) -> int:
+    hit = resolve(a.ref)
+    if not hit:
+        print(f"agent read: no session matching {a.ref!r}", file=sys.stderr)
+        return 1
+    _sc, _sp, s = hit
+    cwd = str(s.get("cwd", "") or "")
+    enc = "--" + cwd.strip("/").replace("/", "-") + "--"
+    d = HOME / ".pi" / "agent" / "sessions" / enc
+    files = sorted(d.glob("*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True) if d.is_dir() else []
+    if not files:
+        print(f"agent read: no pi session for {cwd}", file=sys.stderr)
+        return 1
+    turns = []
+    for line in open(files[0]):
+        try:
+            o = json.loads(line)
+        except ValueError:
+            continue
+        m = o.get("message") or {}
+        if m.get("role") in ("user", "assistant"):
+            c = m.get("content")
+            if isinstance(c, str):
+                t = c
+            elif isinstance(c, list):
+                t = "\n".join(b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
+            else:
+                t = ""
+            if t.strip():
+                turns.append((m["role"], t.strip()))
+    print(f"# {s.get('name') or cwd}  ·  {files[0].name}  ·  last {min(a.n, len(turns))} of {len(turns)}\n")
+    for role, t in turns[-a.n:]:
+        print(("▶ you:" if role == "user" else "◀ agent:") + "\n" + t + "\n")
+    return 0
+
+
+def cmd_send(a) -> int:
+    text = " ".join(a.text) if a.text else sys.stdin.read().rstrip("\n")
+    if not text:
+        print("agent send: empty message", file=sys.stderr)
+        return 2
+    deadline = time.time() + (a.wait or 0.0)
+    hit = resolve(a.ref or "", cwd_path=a.cwd) if (a.ref or a.cwd) else None
+    while hit is None and time.time() < deadline:
+        time.sleep(0.5)
+        hit = resolve(a.ref or "", cwd_path=a.cwd)
+    if hit is None:
+        who = a.cwd if a.cwd else repr(a.ref)
+        print(f"agent send: no session driving {who}", file=sys.stderr)
+        return 1
+    _sc, sp, s = hit
+    send_line(sp, {"type": "prompt", "session": s.get("id") or s.get("name"), "message": text}, 0.3)
+    print(f"agent send: delivered to {s.get('name') or s.get('cwd')}")
+    return 0
+
+
+def cmd_steer(a) -> int:
+    text = " ".join(a.text) if a.text else sys.stdin.read().rstrip("\n")
+    if not text:
+        print("agent steer: empty message", file=sys.stderr)
+        return 2
+    hit = resolve(a.ref or "", cwd_path=a.cwd) if (a.ref or a.cwd) else None
+    if hit is None:
+        who = a.cwd if a.cwd else repr(a.ref)
+        print(f"agent steer: no session driving {who}", file=sys.stderr)
+        return 1
+    _sc, sp, s = hit
+    # steer into the running turn if the target is working; else a normal prompt so the
+    # message is never dropped (mirrors the agent_steer tool).
+    running = any(k in str(s.get("status", "")).lower() for k in ("stream", "work", "run", "busy", "think"))
+    kind = "steer" if running else "prompt"
+    send_line(sp, {"type": kind, "session": s.get("id") or s.get("name"), "message": text}, 0.3)
+    print(f"agent steer: {'steered' if running else 'sent (idle → prompt) to'} {s.get('name') or s.get('cwd')}")
+    return 0
+
+
+def agentd_connect(scope: str) -> str:
+    """Return the scope's socket path, cold-starting the daemon if needed."""
+    path = os.path.join(RUNTIME, f"agentd-{scope}.sock")
+    for attempt in range(30):
+        try:
+            c = socket.socket(socket.AF_UNIX)
+            c.settimeout(6)
+            c.connect(path)
+            c.close()
+            return path
+        except OSError:
+            if attempt == 0:
+                repo = str(LOVABLE) if scope == "lovable" else str(HOME / "personal")
+                subprocess.Popen(
+                    ["agentd", "--scope", scope, "--repo", repo],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, start_new_session=True)
+            time.sleep(0.2)
+    raise SystemExit(f"agent spawn: could not reach agentd ({scope}) at {path}")
+
+
+def cmd_spawn(a) -> int:
+    d = Path(a.dir).expanduser()
+    if not d.is_dir():
+        print(f"agent spawn: not a directory: {a.dir} "
+              f"(worktree creation belongs in cockpit-add/cockpit-spawn)", file=sys.stderr)
+        return 1
+    d = d.resolve()
+    scope = a.scope or os.environ.get("HEIDR_SCOPE") or os.environ.get("AGENT_SCOPE")
+    if not scope:
+        s = str(d)
+        scope = ("lovable" if s == str(LOVABLE) or s.startswith(str(LOVABLE) + ".") or s.startswith(str(LOVABLE) + "/")
+                 else "personal" if s.startswith(str(HOME / "personal")) else "lovable")
+    name = a.name or d.name
+    prompt = " ".join(a.prompt).strip()
+    msg = {"type": "spawn", "session": name, "cwd": str(d)}
+    if prompt:
+        msg["prompt"] = prompt
+    if a.oneshot:
+        msg["oneshot"] = True
+    send_line(agentd_connect(scope), msg, 0.5)
+    print(f"agent spawn: '{name}' in the {scope} rail (cwd {d})"
+          + (" + seeded prompt" if prompt else "") + (" [oneshot]" if a.oneshot else ""))
+    return 0
+
+
+def cmd_review(a) -> int:
+    # Pi-native PR review = the tested agent-review flow: fetch the PR onto its own
+    # review/pr-<n> worktree and start a rail session there seeded with /review-pr. The
+    # Super+r picker and the agent_review tool route through here, so there's one path.
+    script = str(HOME / ".config" / "niri" / "scripts" / "agent-review")
+    if not os.path.exists(script):
+        print(f"agent review: {script} not found", file=sys.stderr)
+        return 1
+    argv = [script, str(a.pr)] + (["--devenv"] if a.devenv else [])
+    os.execv(script, argv)  # replace: agent-review owns the rest (fetch/worktree/spawn)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="agent")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("roster", help="list live sessions").set_defaults(fn=cmd_roster)
+
+    p_read = sub.add_parser("read", help="read an agent's recent turns")
+    p_read.add_argument("ref", help="session name, id, or cwd")
+    p_read.add_argument("n", nargs="?", type=int, default=6, help="turns (default 6)")
+    p_read.set_defaults(fn=cmd_read)
+
+    p_send = sub.add_parser("send", help="dispatch a prompt")
+    p_send.add_argument("ref", nargs="?", help="session name, id, or cwd")
+    p_send.add_argument("text", nargs="*", help="prompt text (stdin if omitted)")
+    p_send.add_argument("--cwd", help="target the session driving PATH")
+    p_send.add_argument("--wait", type=float, default=0.0, help="retry until a session appears, up to SEC")
+    p_send.set_defaults(fn=cmd_send)
+
+    p_steer = sub.add_parser("steer", help="redirect a running agent mid-turn (idle → normal prompt)")
+    p_steer.add_argument("ref", nargs="?", help="session name, id, or cwd")
+    p_steer.add_argument("text", nargs="*", help="steering text (stdin if omitted)")
+    p_steer.add_argument("--cwd", help="target the session driving PATH")
+    p_steer.set_defaults(fn=cmd_steer)
+
+    p_spawn = sub.add_parser("spawn", help="start a new session in a dir")
+    p_spawn.add_argument("dir", help="existing directory")
+    p_spawn.add_argument("prompt", nargs="*", help="optional seed prompt")
+    p_spawn.add_argument("--name", help="session name (default: dir basename)")
+    p_spawn.add_argument("--scope", help="agentd scope (default: inferred)")
+    p_spawn.add_argument("--oneshot", action="store_true", help="ephemeral: run seed once then exit")
+    p_spawn.set_defaults(fn=cmd_spawn)
+
+    p_review = sub.add_parser("review", help="review a PR: own worktree + rail session seeded with /review-pr")
+    p_review.add_argument("pr", help="PR number or GitHub PR URL")
+    p_review.add_argument("--devenv", action="store_true", help="also boot devenv for the review worktree")
+    p_review.set_defaults(fn=cmd_review)
+
+    a = ap.parse_args()
+    return a.fn(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -27,13 +27,13 @@ No workspace is claimed and no windows spawn, so no confirmation needed —
 but the cockpit windows must exist (`cockpit-open` is idempotent;
 `cockpit-restore` rebuilds everything after a crash).
 
-Naming: the context name IS the branch short-name and KEEPS the team
-prefix (Linear auto-link needs the full ticket id). Given only a ticket
-number ("add 2542 to the cockpit"), fetch the ticket via the Linear MCP
-and derive a short kebab slug from its title. For EVERY-1234 about
-"fix button overflow":
-- context name / worktree: `every-1234-fix-button-overflow`
-- git branch: `daphen/every-1234-fix-button-overflow`
+Naming: the context name IS the branch short-name and is JUST the ticket
+id, lowercased — no title slug. The full ticket id must be present (Linear
+auto-links on the identifier in the branch name, case-insensitive, and
+GitHub closes the issue from the PR body — the title slug was only ever for
+human readability and is dropped). For EVERY-1234:
+- context name / worktree: `every-1234`
+- git branch: `daphen/every-1234`
 - `main` is a special context: the primary checkout, runs `devenv deps`.
 
 Switching: `cockpit-switch <name>` (users press Super+T). Closing: Ctrl+W
@@ -180,13 +180,28 @@ For anything touching the desktop, look here before guessing:
   scripts / quickshell are live symlinks (nvim needs a restart to reload Lua;
   quickshell hot-reloads); agentd is Go (build + restart the daemon, which is
   disruptive to a live session).
-  - **Coordinating with other agents** (agentd is the hub): `wt-agents` lists
-    active sessions; `wt-send <name|cwd> "…"` dispatches a prompt to an existing
-    agent; `wt-read <name|cwd> [N]` reads another agent's last N turns;
-    `wt-spawn <dir|name> [prompt] [--create]` stands up a NEW roster agent (the
-    orchestrator's way to launch per-ticket agents). Shared knowledge = the
-    notes vault. Root/orchestrator role + topology (orchestrator-mediated, no
-    agent→agent ping-pong): see the rail reference + `inbox/orchestrator-bootstrap.md`.
+  - **Coordinating with other agents** (agentd is the hub) — use the native
+    `agent_*` tools: `agent_roster` lists active sessions; `agent_send <ref>
+    <message>` dispatches a prompt to an existing agent (lands at its next idle);
+    `agent_steer <ref> <message>` REDIRECTS a running agent IN REAL TIME — the
+    message is injected into its live turn at the next tool boundary (before its
+    next LLM call), not queued to turn-end (idle target → falls back to a normal
+    prompt); `agent_read <ref> [N]` reads another agent's last N turns;
+    `agent_spawn <dir> [prompt]` stands up a NEW roster agent in an existing dir
+    (the orchestrator's way to launch per-ticket agents); `agent_review <pr>`
+    reviews a PR the Pi-native way — it fetches the PR onto its OWN review/pr-<n>
+    worktree and starts a rail session seeded with `/review-pr` (use THIS for PR
+    reviews, never `agent_spawn` into the current checkout — that has no worktree
+    or PR checkout, so the review has nothing to look at); `agent_whoami` is your
+    own session name. `<ref>` is a session name, id, or cwd. (The desktop — niri
+    pickers incl. the Super+r review picker, nvim keybinds, cockpit scripts — uses
+    the sibling `agent` CLI: `agent roster|read|send|steer|spawn|review`, same
+    protocol.) Steering is
+    orchestrator → worker only — never wire up agent↔agent ping-pong. Spawning is NOT worktree-related — a full ticket kickoff with a
+    worktree + devenv + rail tabs is `cockpit-spawn <name> [prompt]`. Shared
+    knowledge = the notes vault. Root/orchestrator role + topology
+    (orchestrator-mediated, no agent→agent ping-pong): see the rail reference +
+    `inbox/orchestrator-bootstrap.md`.
 
 # Memory routing
 
@@ -230,6 +245,46 @@ the bulk lives in the vault.
 
 The filesystem auto-memory at `~/.claude/projects/-home-daphen/memory/` is
 deprecated — the vault is canonical.
+
+# Agentic execution — do the work, don't narrate intent
+
+When you say you'll do something, DO IT in the same turn — make the tool calls
+before you stop. Never end a turn with "I'll fix X / next I'll run Y / then I'll
+update the plan" and then yield. That announces intent without acting: the
+session goes idle, and the user has to manually poke "go ahead" for work they
+already asked for. Announcing is not doing.
+
+End a turn ONLY when one of these is true:
+- the work you described is actually done, or
+- you're blocked on a decision that is genuinely the user's to make (then ask
+  the specific question — don't stall silently), or
+- a command/tool failed and you need direction.
+
+If you commit to a multi-step sequence (fix → rerun tests → update the plan),
+carry it all the way through in the turn; don't stop after step one or after
+merely planning the steps. A confirmed-needed fix (e.g. a release-blocking test
+failure) is work to do now, not a status to report and yield on. Prefer
+finishing over checking in — you already have permission for what was asked.
+
+## Never a bare status — always end with the next action
+
+Whenever you DO surface something short of done — a status update, a blocker, a
+failed command, a "here's where we are" — it MUST end with the concrete NEXT STEP
+in plain, unambiguous wording. Never leave David holding a status with no clear
+action point. Until the task is actually finished, every message answers "so what
+do I / you do now?"
+
+- Not "CI is still running." → "CI is still running (~8 min left); I'll report the
+  result when it lands — nothing for you to do yet."
+- Not "The build failed." → "The build failed on X; I'm fixing X now" (then do it),
+  or if it's genuinely your call: "The build failed on X — do you want A or B?"
+- Not "Done, 3 files changed." → state what changed + the single next action, if any
+  ("…restart heidr to load it", "…ready to push when you say go").
+
+The next step is a real, specific action (a command, a decision to make, a thing to
+restart/run/review) — not a vague "let me know" or "we could look into it." If the
+task is truly complete, say so plainly and say there's nothing left to do. One
+clear action point per message; no menu of possibilities.
 
 # Output style — always apply (ADHD)
 

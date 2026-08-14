@@ -8,5 +8,5 @@ set -euo pipefail
 ticket=${1:?usage: plan-ticket-rail <TICKET>}
 # normalize: strip a leading '#', uppercase a bare "every-1234"
 ticket=${ticket#\#}
-exec "$HOME/.local/bin/wt-spawn" "$HOME/work/lovable" \
+exec "$HOME/.local/bin/agent" spawn "$HOME/work/lovable" \
     --name "plan-${ticket}" --scope lovable "/plan-ticket ${ticket}"

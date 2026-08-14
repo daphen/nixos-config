@@ -35,8 +35,8 @@ done
 [ "$found" = 0 ] && echo "  (no worktree activity in window)"
 echo
 
-echo "### active worktrees (in-flight; each running claude session = a ticket being worked)"
-wt-send --list 2>/dev/null | sed 's/^/  /' || echo "  (wt-send unavailable)"
+echo "### active agent sessions (in-flight; each = a ticket being worked)"
+agent roster 2>/dev/null | sed 's/^/  /' || echo "  (agent CLI unavailable)"
 echo
 
 echo "### GitHub PRs you touched (opened / merged / reviewed) updated since ${SINCE_DATE}"
@@ -51,7 +51,26 @@ except Exception as e: print(f"  (gh parse failed: {e})")' 2>/dev/null \
   || echo "  (gh search unavailable)"
 echo
 
-echo "### NEXT (do in the skill, not this script):"
-echo "### query Linear (all states, NOT just Done) for issues assigned to you updated in the window,"
-echo "### dedupe by ticket across all signals above, weight by effort (commit count + uncommitted line count"
-echo "### + 'most of the day' hands-on), then curate per the async-standup format. Biggest-effort item leads y:."
+echo "### Linear — issues assigned to you, updated since ${SINCE_DATE} (all states, NOT just Done)"
+if [ -n "${LINEAR_API_KEY:-}" ]; then
+  resp=$(curl -s -X POST https://api.linear.app/graphql \
+    -H "Authorization: ${LINEAR_API_KEY}" -H "Content-Type: application/json" \
+    --data '{"query":"{ viewer { assignedIssues(first: 50, filter: {updatedAt: {gte: \"'"${SINCE_DATE}"'\"}}) { nodes { identifier title state { name } updatedAt } } } }"}' 2>/dev/null)
+  printf '%s' "$resp" | python3 -c 'import sys,json
+try:
+    d=json.load(sys.stdin)
+    if d.get("errors"): print("  (Linear API error:", d["errors"][0].get("message","?"), ")")
+    else:
+        ns=d.get("data",{}).get("viewer",{}).get("assignedIssues",{}).get("nodes",[])
+        ns.sort(key=lambda n: n.get("updatedAt",""), reverse=True)
+        for n in ns: print("  "+n["identifier"]+" ["+n["state"]["name"]+"] "+n["title"])
+        if not ns: print("  (none assigned updated in window)")
+except Exception as e: print("  (Linear query unavailable:", e, ")")'
+else
+  echo "  (LINEAR_API_KEY not set — skipping Linear)"
+fi
+echo
+
+echo "### NEXT (for the summarizer — pi or claude, no MCP needed): dedupe by ticket across all signals above,"
+echo "### weight by effort (commit count + uncommitted line count + 'most of the day' hands-on), then curate per"
+echo "### the async-standup format. Biggest-effort item leads y:."

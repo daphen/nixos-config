@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 # cockpit-spawn <name> [prompt...] — the FULL ticket kickoff, in one command, callable
-# by any agent (or the rail's Enter-on-ticket). It does the two halves that were
-# separate:
-#   1. cockpit-add --no-switch <name>  → the cockpit CONTEXT: creates the worktree,
-#      opens the devenv tab (runs `devenv wt`) + the nvim rail tab, registers the
-#      context (so Super+T / the picker see it), WITHOUT stealing your focus.
-#   2. wt-spawn <name> [prompt]         → a ROSTER AGENT seeded with the prompt, in
-#      that same worktree, so it shows up in the rail and starts working.
-#
-# Bare `wt-spawn` only does step 2 (agent, no devenv/tabs); `cockpit-add` only does
-# step 1 (context, no agent). This is both — what "spawn a full ticket" actually needs.
+# by any agent (or the rail's Enter-on-ticket). Three halves, ordered by essentialness:
+#   1. worktree  — cockpit_context_create (idempotent): the branch+worktree off fresh
+#      origin/main. The one worktree-coupled step; it lives in the cockpit layer, not
+#      the agent layer (`agent spawn` just takes a real dir).
+#   2. rail agent — `agent spawn <dir>` seeds a ROSTER AGENT in that worktree so it
+#      shows up in the rail and starts working. The essential half.
+#   3. tabs      — cockpit-add --no-switch opens the devenv (`devenv wt`) + nvim rail
+#      tabs. BEST-EFFORT: a tab hiccup must never cost you the agent. Focus stays put.
 #
 # <name> is the context/worktree short-name (keeps the ticket prefix, e.g.
 # every-1234-fix-thing). Pass --oneshot to make the agent ephemeral (run once, report,
@@ -27,16 +25,20 @@ name=${1:?usage: cockpit-spawn <name> [prompt...] [--oneshot]}
 shift || true
 prompt="$*"
 
-DIR=$(dirname "$(readlink -f "$0")")
 SCRIPTS="$HOME/.config/niri/scripts"
+CONFIG="${COCKPIT_CONFIG:-$HOME/.config/cockpit/config}"
+# shellcheck source=/dev/null
+source "$CONFIG"
 
-# 1) rail agent FIRST — the essential half. --create makes the worktree if missing.
-#    This must not depend on step 2: a hiccup in cockpit-add (a down window, a tab
-#    clash) previously aborted the whole thing under `set -e` and no session appeared.
-wt-spawn "$name" ${prompt:+"$prompt"} --create $oneshot
+# 1) worktree (idempotent — the helper no-ops if the dir already exists).
+cockpit_context_create "$name"
+dir=$(cockpit_context_dir "$name")
+[ -d "$dir" ] || { echo "cockpit-spawn: no worktree dir for '$name' ($dir)" >&2; exit 1; }
 
-# 2) cockpit context (devenv + nvim tabs) for that worktree — BEST-EFFORT, so a tab
-#    problem never costs you the agent. Focus stays put (--no-switch).
+# 2) rail agent in that worktree — the essential half.
+agent spawn "$dir" ${prompt:+"$prompt"} --name "$name" $oneshot
+
+# 3) cockpit tabs — BEST-EFFORT (worktree already exists, so this just adds tabs).
 "$SCRIPTS/cockpit-add" --no-switch "$name" \
   || echo "cockpit-spawn: context/tabs step had issues — the rail agent is still up" >&2
 

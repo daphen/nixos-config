@@ -80,7 +80,10 @@ the plan; elsewhere, pass the key to `--finalize`/`--go`/`--reconcile` or open t
   and referenceable across cycles — it outlives the worktree, and the `/cycle` skill
   reads it. `mkdir -p` it.
 - Otherwise (lovbox sandbox, no vault) → **`<repo-root>/.plans/`**, gitignored via
-  `.git/info/exclude` (local-only, never committed).
+  `"$(git rev-parse --git-common-dir)"/info/exclude` (local-only, never committed).
+  Use `--git-common-dir`, NOT a literal `.git/info/exclude`: in a git WORKTREE
+  `.git` is a *file* pointing at the real gitdir, so the literal path does not
+  exist and the write fails. Lovbox work is always in a worktree.
 
 Surface-area paths in the plan stay repo-relative; `--go`/`--reconcile` run from the
 worktree and resolve them against the current checkout, wherever the plan lives.
@@ -275,8 +278,19 @@ new scope to add; also honor any manual edits the user already made to the artif
 4. Keep `<plandir>/<key>.progress.json` current as you work: `phase: "implementing"`,
    and drive BOTH axes:
    - **`flow[]` (the headline)** — flip each step `pending → active → done` as you start
-     and finish it. `active` when you're working it, `done` when that conceptual step is
-     complete. This is what the panel counts (steps done / total).
+     and finish it. This is what the panel counts (steps done / total), so it MUST track
+     reality tightly — a stale or scrambled `flow[]` makes the dashboard lie. Rules,
+     non-negotiable:
+       - **Exactly ONE step is `active` at any time.** Before you mark the next step
+         `active`, flip the current one to `done`. Never leave two steps `active`.
+       - **Write the file at each transition, immediately** — the moment you finish a
+         step and the moment you start the next. NOT batched at the end of the turn;
+         batching is exactly what makes the panel sit at 1/7 while you're really on 4.
+       - **Monotonic**: never mark a later step `done` while an earlier one is still
+         `pending`/`active`. Work and complete steps in flow order; if you genuinely
+         must do them out of order, still keep at most one `active` and don't skip the
+         earlier ones' `done` flips.
+       - On the final step, flip it `done` (not left `active`) before you finish.
    - **`planned[]` (containment)** — flip each file `pending → touched → done` with a
      one-line `note` (what you changed, or why a planned file needed no change — it stays
      `pending` with the note, rendered as a deliberate skip).

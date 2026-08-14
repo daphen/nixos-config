@@ -4,9 +4,8 @@
 # curates the standup + filters Slack) and agent MCPs (calendar via Company Brain,
 # Slack), so this drives `pi` rather than a plain API fetch.
 #
-# Runs pi off the LOVABLE OpenAI key (which has credits), mirroring how agentd
-# spawns the rail's pi: swap OPENAI_API_KEY for OPENAI_LOVABLE_KEY. Reads it from
-# ~/.config/fish/secrets.fish — a systemd user unit isn't a fish shell. `-p`
+# Runs pi off OPENAI_API_KEY, read from ~/.config/fish/secrets.fish — a systemd
+# user unit isn't a fish shell, so it can't inherit the exported var. `-p`
 # auto-runs tools (no interactive approval), `-a` trusts local files.
 set -euo pipefail
 
@@ -19,9 +18,12 @@ getsec() { # robust: `set -gx NAME 'v'` | "v" | v
     | sed -E "s/^set -[a-zA-Z]+ $1[[:space:]]+//; s/^['\"]//; s/['\"][[:space:]]*\$//"
 }
 
-key=$(getsec OPENAI_LOVABLE_KEY)
-[ -n "$key" ] || { echo "daily-sync: no OPENAI_LOVABLE_KEY in $SECRETS" >&2; exit 1; }
+key=$(getsec OPENAI_API_KEY)
+[ -n "$key" ] || { echo "daily-sync: no OPENAI_API_KEY in $SECRETS" >&2; exit 1; }
+# gather.sh (run inside /daily) queries Linear directly — a user unit can't
+# inherit the fish-exported var, so source it too. Empty is fine (Linear skips).
+linear=$(getsec LINEAR_API_KEY)
 
 cd "$HOME"
-echo "daily-sync: running /daily via pi (lovable key)…"
-OPENAI_API_KEY="$key" exec pi -a -p "/daily"
+echo "daily-sync: running /daily via pi…"
+OPENAI_API_KEY="$key" LINEAR_API_KEY="$linear" exec pi -a -p "/daily"
