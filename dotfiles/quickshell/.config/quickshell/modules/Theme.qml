@@ -144,7 +144,7 @@ Singleton {
     readonly property int spacing:       0
     readonly property int fontSize:      14
 
-    readonly property string fontFamily:     "JetBrainsMono Nerd Font"
+    readonly property string fontFamily:     "BerkeleyMono Nerd Font"
     readonly property string iconFontFamily: "JetBrainsMono Nerd Font"
     readonly property int fontWeight: 500
 

@@ -120,7 +120,7 @@ Singleton {
     readonly property int padding:   12
     readonly property int paddingSm: 6
     readonly property int fontSize:  14
-    readonly property string fontFamily: "GeistMono Nerd Font"
+    readonly property string fontFamily: "BerkeleyMono Nerd Font"
     // 400 under NativeRendering ≈ the old 500 under distance fields
     readonly property int fontWeight: 400
 

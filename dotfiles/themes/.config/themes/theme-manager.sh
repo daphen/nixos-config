@@ -402,38 +402,6 @@ PYEOF
                 log_success "Applied kitty theme ($label, OS-following)"
             fi
             ;;
-        "eww")
-            local target_dir is_managed
-            if get_tool_target "$tool"; then
-                mkdir -p "$target_dir"
-                mkdir -p "$target_dir/assets"
-                cp "$generated_file" "$target_dir/eww.scss"
-                # Generate SVG corners from templates
-                local bg_color=$(jq -r ".themes.${theme_mode}.background.primary" "$COLORS_FILE")
-                local border_color=$(jq -r ".themes.${theme_mode}.background.overlay" "$COLORS_FILE")
-                local svg_templates_dir="$TEMPLATES_DIR/eww-assets"
-                if [[ -d "$svg_templates_dir" ]]; then
-                    for svg_template in "$svg_templates_dir"/*.svg.template; do
-                        if [[ -f "$svg_template" ]]; then
-                            local svg_name=$(basename "$svg_template" .template)
-                            local output_svg="$target_dir/assets/$svg_name"
-                            sed -e "s|{{background.primary}}|${bg_color}|g" \
-                                -e "s|{{background.overlay}}|${border_color}|g" \
-                                "$svg_template" > "$output_svg"
-                        fi
-                    done
-                    log_info "Generated eww SVG assets"
-                fi
-                local label=$([[ "$is_managed" == true ]] && echo "managed" || echo "local")
-                # Reload eww if running
-                if pgrep eww > /dev/null; then
-                    eww reload
-                    log_success "Applied and reloaded eww theme ($label)"
-                else
-                    log_success "Applied eww theme ($label, not running)"
-                fi
-            fi
-            ;;
         "pi")
             local pi_dir="$HOME/.pi/agent/themes"
             mkdir -p "$pi_dir"
@@ -495,7 +463,7 @@ gtk-application-prefer-dark-theme=${dark_pref}
 gtk-cursor-theme-name=Adwaita
 gtk-cursor-theme-size=24
 gtk-theme-name=${gtk_theme_name}
-gtk-font-name=GeistMono Nerd Font 11
+gtk-font-name=BerkeleyMono Nerd Font 11
 EOF
             done
             log_success "Applied GTK theme (gtk-3.0 + gtk-4.0)"

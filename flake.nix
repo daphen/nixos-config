@@ -133,7 +133,6 @@
       # Enable Widevine DRM on browsers that need it
       widevineOverlay = final: prev: {
         chromium = prev.chromium.override { enableWideVine = true; };
-        qutebrowser = prev.qutebrowser.override { enableWideVine = true; };
       };
 
       # Add H7606WW (ProArt Studiobook 16) to asusctl's aura_support.ron.
@@ -183,7 +182,6 @@
             # Compositor-adjacent
             # Browsers (security updates matter)
             chromium
-            qutebrowser
             vivaldi
             google-chrome
             # Desktop apps

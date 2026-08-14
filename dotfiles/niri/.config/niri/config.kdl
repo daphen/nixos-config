@@ -597,7 +597,7 @@ window-rule {
     opacity 1.0
 }
 
-// Disable corner radius for eww bar (it handles its own corners)
+// gtk-layer-shell surfaces handle their own corners
 layer-rule {
     match namespace="^gtk-layer-shell$"
     geometry-corner-radius 0
@@ -639,13 +639,6 @@ window-rule {
 window-rule {
     match app-id="browser-work"
     default-column-width { fixed 1500; }
-}
-
-// Qutebrowser - fixed size
-window-rule {
-    match app-id=r#"^qutebrowser"#
-    default-column-width { fixed 1500; }
-    default-window-height { proportion 1.0; }
 }
 
 // Native chat clients (slqs/dsqrd) — same fixed width as the kitty

@@ -117,7 +117,6 @@
     # Browsers
     google-chrome
     chromium
-    qutebrowser
     vivaldi
 
     # Wayland Tools
