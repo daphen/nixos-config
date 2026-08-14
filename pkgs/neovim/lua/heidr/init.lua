@@ -3339,7 +3339,7 @@ end
 -- plan while other files were edited). Only fires when focus is in the rail (an
 -- agent-* window): if you've clicked into the code to read/edit, it leaves you
 -- alone. Skips when the target buffer has unsaved changes. Toggle: S.follow_edits.
-follow_edit = function(cwd, path, line)
+follow_edit = function(cwd, path, line, external)
   if not path or S.follow_edits == false then return end
   -- Never follow into plan machinery sidecars: a /plan-ticket turn writes the
   -- reviewable .md and THEN its progress.json, so following the last edit would
@@ -3348,7 +3348,10 @@ follow_edit = function(cwd, path, line)
   if path:match("%.progress%.json$") or path:match("%.review%.json$")
     or path:match("/plans/.*%.diagram%.html$") then return end
   local cur = api.nvim_get_current_win()
-  if not api.nvim_buf_get_name(api.nvim_win_get_buf(cur)):match("agent%-") then return end -- you're in the code
+  -- "You're in the code" gate — only for the in-nvim rail, where browsing the rail is
+  -- what current-buffer==agent-* means. An EXTERNAL driver (the cockpit rail) has no
+  -- agent buffers at all; its equivalent gate lives in M.follow_remote.
+  if not external and not api.nvim_buf_get_name(api.nvim_win_get_buf(cur)):match("agent%-") then return end
   local file = fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
   if fn.filereadable(file) ~= 1 then return end
   -- Avante-style reveal: pi's edit tool carries NO line numbers, so resolve the
@@ -4314,6 +4317,21 @@ end
 -- Public: render the session dashboard for an explicit absolute cwd, independent
 -- of S.selected. For external drivers (the Quickshell cockpit rail) that pick the
 -- session themselves and drive this nvim over the RPC socket.
+-- Public: live-follow one agent edit, driven from OUTSIDE (the Quickshell rail). The
+-- rail is the only component that sees every scope's events AND maps a remote session's
+-- paths onto the local mirror — this nvim's own client spans one scope, so cockpit
+-- live-follow cannot originate in here. Both args are LOCAL absolute paths.
+function M.follow_remote(cwd, path)
+  local ed = target_editor_win()
+  if not ed then return "" end
+  local bn = api.nvim_buf_get_name(api.nvim_win_get_buf(ed))
+  -- Follow only while the editor rests on the dashboard (unnamed scratch) or inside
+  -- this session's worktree — never yank the user out of their own unrelated file.
+  if bn ~= "" and not (cwd and cwd ~= "" and bn:sub(1, #cwd) == cwd) then return "" end
+  follow_edit(cwd, path, nil, true)
+  return ""
+end
+
 function M.dashboard(cwd)
   -- Adopt the session being shown. The rail picked it and drives us over RPC, but the
   -- selection is what this nvim keys its own per-session state off (the editor file it
