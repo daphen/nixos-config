@@ -22,11 +22,22 @@ probe_id() {
 }
 
 resolve_id() {
-  local i
-  # newest first: the instance you just launched is the one you mean
+  local i t focused fallback=""
+  # With per-mode cockpits (work + private simultaneously), the instance you mean is
+  # the one whose window is FOCUSED — match its title to each instance's `title` fn.
+  # Fallback: newest live instance, the pre-multi behavior.
+  focused=$(niri msg --json windows 2>/dev/null | python3 -c '
+import json, sys
+for w in json.load(sys.stdin):
+    if w.get("is_focused"):
+        print(w.get("title") or ""); break' 2>/dev/null || true)
   for i in $(ls -1t "$reg" 2>/dev/null); do
-    if probe_id "$i"; then echo "$i"; return 0; fi
+    t=$(timeout 2 qs ipc -i "$i" call heidr title 2>/dev/null) || continue
+    case "$t" in heidr-qs*) ;; *) continue;; esac
+    [ -z "$fallback" ] && fallback="$i"
+    if [ -n "${focused:-}" ] && [ "$t" = "$focused" ]; then echo "$i"; return 0; fi
   done
+  [ -n "$fallback" ] && { echo "$fallback"; return 0; }
   return 1
 }
 
@@ -44,7 +55,11 @@ call_id() {   # call_id <id> <fn> [args…] — echoes the reply, non-zero if no
   printf '%s\n' "$out"
 }
 
-if [ -r "$cache" ]; then
+# The cache only short-circuits when a SINGLE heidr window exists: with two cockpits
+# the right target depends on which window is focused, so we must resolve every time
+# (resolve is one title probe per live instance — still fast).
+nwin=$(niri msg --json windows 2>/dev/null | grep -c '"title": *"heidr-qs' || true)
+if [ "${nwin:-0}" -le 1 ] && [ -r "$cache" ]; then
   cid=$(cat "$cache" 2>/dev/null || true)
   if [ -n "${cid:-}" ] && call_id "$cid" "$@"; then exit 0; fi
 fi

@@ -801,6 +801,7 @@ binds {
     // Heidr cockpit (nvim + agentd rail). Coexists with the kitty cockpit; the
     // `heidr` launcher focuses an existing window or opens one.
     Super+y hotkey-overlay-title="Heidr cockpit" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:heidr-qs heidr-qs"; }
+    Super+Shift+y hotkey-overlay-title="New Heidr (mode by workspace)" { spawn-sh "HEIDR_FORCE_NEW=1 heidr-qs"; }
     // Super+Ctrl+M: rebuild/repair the cockpit (windows + registered
     // contexts). Idempotent — replaces the old ws-startmain bind.
     Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/cockpit-restore"; }
