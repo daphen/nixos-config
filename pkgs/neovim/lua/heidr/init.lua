@@ -3835,15 +3835,31 @@ local function show_scratch(win, cwd)
       fn.jobstart({ home .. "/.config/niri/scripts/cockpit-devenv", ctx }, { detach = true })
       vim.defer_fn(function() if refresh_devenv then refresh_devenv() end end, 1500)
     end)
-    -- open the context's dev-preview URL in the work browser (+ focus it), via the
-    -- cockpit config's cockpit_open_app hook — which computes the wt-proxy preview URL.
-    -- The old action only launched browser-work, so it focused Helium but loaded nothing.
-    -- heidr-app asks AGENTD for the session's webPort and routes accordingly: local
-    -- sessions go through the wt-proxy as before, remote ones get an ssh -L for their
-    -- port first. The old call computed a local URL from the branch slug, so "open the
-    -- app" for a worktree living on a remote box opened nothing.
+  end
+  -- a: open the session's dev preview. heidr-app takes the SESSION name, asks agentd for
+  -- its webPort and routes accordingly — local sessions via the wt-proxy, remote ones get
+  -- an ssh -L first. NOT gated on a registered cockpit context like devenv above: a VM
+  -- ticket's mirror is never cockpit-add'ed, so that gate hid the action on exactly the
+  -- sessions whose app you cannot reach any other way.
+  -- The session's name, derived without a roster: this nvim's roster only spans its own
+  -- scope, so a VM session (work scope) is invisible here — but ticket sessions are NAMED
+  -- their ticket id and review sessions review-pr-<n>, and heidr-app searches every agentd
+  -- socket by name. A live roster hit still wins (covers ad-hoc session names).
+  local apr = (cwd or ""):match("lovable%.review%-(%d+)") or (S.selected or ""):match("^review%-pr%-(%d+)")
+  local target = apr and ("review-pr-" .. apr) or (tik and tik:lower()) or (ctx and ctx ~= "main" and ctx or nil)
+  for _, a in ipairs(S.roster) do if a.id == S.selected then target = a.name; break end end
+  if target then
     act("a", "app", function()
-      fn.jobstart({ home .. "/.config/niri/scripts/heidr-app", ctx }, { detach = true })
+      fn.jobstart({ home .. "/.config/niri/scripts/heidr-app", target }, {
+        detach = true,
+        -- heidr-app fails fast when the session isn't live or has no devenv port; a
+        -- detached silent exit read as "the button does nothing".
+        on_exit = function(_, code)
+          if code ~= 0 then
+            vim.schedule(function() vim.notify("app: no live session/port for " .. target) end)
+          end
+        end,
+      })
     end)
   end
   if root then
