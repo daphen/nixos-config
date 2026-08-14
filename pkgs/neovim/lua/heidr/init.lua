@@ -2039,8 +2039,8 @@ handle = function(obj)
       S.gitdiff[cwd] = parse_git_diff(vim.split(obj.diff, "\n", { plain = true }))
       if S.selected and session_cwd(S.selected) == cwd then
         if S.view == "changes" then render_changes() else render_chat(false) end
-        refresh_dashboard()
       end
+      if S.dash and S.dash.cwd == cwd then refresh_dashboard() end
     end
   elseif t == "agent_end" and obj.session then
     -- the ENTIRE turn is complete (fires once, after every round).
@@ -3609,34 +3609,49 @@ end
 -- changes view: plan (progress.json) first, git diff as fallback/overlay
 --------------------------------------------------------------------------------
 -- the vault plans dir if present, else the worktree's local .plans
-local function plandir(cwd)
+-- Both plan locations, in preference order. Not "vault if it exists, else the repo": a
+-- session that ran on a box had no vault THERE, so plan-ticket wrote into the worktree,
+-- and its plan is invisible from here — the dashboard showed no PLAN tab for every
+-- remote ticket. The vault still wins when both hold a match.
+local function plandirs(cwd)
+  local out = {}
   local vault = fn.expand("~/personal/notes/storage/plans")
-  if fn.isdirectory(vault) == 1 then return vault end
-  local local_ = (cwd or fn.getcwd()) .. "/.plans"
-  return fn.isdirectory(local_) == 1 and local_ or nil
+  if fn.isdirectory(vault) == 1 then out[#out + 1] = vault end
+  local inrepo = (cwd or fn.getcwd()) .. "/.plans"
+  if fn.isdirectory(inrepo) == 1 then out[#out + 1] = inrepo end
+  return out
 end
 
--- find the plan whose progress.json branch matches the session's branch
+-- find the plan for a session's worktree: by the branch its progress.json recorded,
+-- else by the ticket id in the worktree's own name
 load_plan = function(cwd)
   if not cwd or cwd == "" then return nil end -- nil cwd → malformed `git -C` call
-  local dir = plandir(cwd)
-  if not dir then return nil end
   local branch = fn.system({ "git", "-C", cwd, "branch", "--show-current" }):gsub("%s+$", "")
   -- A plan belongs to a ticket/feature branch. `main`/`master` is shared across
   -- repos and many old progress.json files recorded branch:"main", so matching on
   -- it leaks a stray plan onto every main-checkout session (e.g. the orchestrator).
-  if branch == "" or branch == "main" or branch == "master" then return nil end
-  for _, f in ipairs(fn.globpath(dir, "*.progress.json", false, true)) do
-    local ok, data = pcall(function() return vim.json.decode(table.concat(fn.readfile(f), "\n")) end)
-    if ok and type(data) == "table" and data.branch == branch then
+  if branch == "main" or branch == "master" then branch = "" end
+  -- Fallback key: a worktree realigned to a remote HEAD sits DETACHED, where
+  -- --show-current is empty and branch matching can never hit. The worktree is named
+  -- lovable.daphen-<ticket>, which identifies the plan just as well. Safe against the
+  -- main-checkout leak above: the main checkout carries no ticket in its name.
+  local tik = fn.fnamemodify(cwd, ":t"):match("%a+%-%d+")
+  if branch == "" and not tik then return nil end
+  for _, dir in ipairs(plandirs(cwd)) do
+    for _, f in ipairs(fn.globpath(dir, "*.progress.json", false, true)) do
+      local ok, data = pcall(function() return vim.json.decode(table.concat(fn.readfile(f), "\n")) end)
       local key = fn.fnamemodify(f, ":t"):gsub("%.progress%.json$", "")
-      local review
-      local rf = dir .. "/" .. key .. ".review.json"
-      if fn.filereadable(rf) == 1 then
-        local rok, rdata = pcall(function() return vim.json.decode(table.concat(fn.readfile(rf), "\n")) end)
-        if rok and type(rdata) == "table" then review = rdata end
+      local hit = ok and type(data) == "table"
+        and ((branch ~= "" and data.branch == branch) or (tik and key:upper() == tik:upper()))
+      if hit then
+        local review
+        local rf = dir .. "/" .. key .. ".review.json"
+        if fn.filereadable(rf) == 1 then
+          local rok, rdata = pcall(function() return vim.json.decode(table.concat(fn.readfile(rf), "\n")) end)
+          if rok and type(rdata) == "table" then review = rdata end
+        end
+        return { progress = data, key = key, review = review }
       end
-      return { progress = data, key = key, review = review }
     end
   end
   return nil
@@ -3784,7 +3799,9 @@ local function show_scratch(win, cwd)
   end
   local CARD_INNER = CW - 6 -- box()'s content width (W minus "│  " + "  │")
   local nm = short_name(S.selected) or fn.fnamemodify(cwd, ":t")
-  local tik = (S.selected or ""):match("%a+%-%d+")
+  -- the worktree name carries the ticket too, which is what keeps the identity (and the
+  -- `l` linear action) when an external driver renders a session this nvim never selected
+  local tik = (S.selected or ""):match("%a+%-%d+") or fn.fnamemodify(cwd or "", ":t"):match("%a+%-%d+")
   local ctx = cockpit_ctx_registered(cwd)
   local root = ctx == "main" -- the orchestrator (main checkout) → a fleet dashboard
 
@@ -4159,7 +4176,11 @@ refresh_dashboard = function()
   if not (S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf)) then return end
   for _, w in ipairs(api.nvim_list_wins()) do
     if api.nvim_win_is_valid(w) and api.nvim_win_get_buf(w) == S.scratchbuf then
-      local cwd = S.selected and session_cwd(S.selected)
+      -- The cwd ALREADY on screen wins over S.selected's: when the cockpit rail drives this
+      -- nvim it renders a session's LOCAL mirror path, which is not what agentd reports as
+      -- that session's cwd — resolving through S.selected re-rendered a different worktree
+      -- (or nothing at all, when nothing is selected in this nvim).
+      local cwd = (S.dash and S.dash.cwd) or (S.selected and session_cwd(S.selected))
       if cwd then pcall(show_scratch, w, cwd) end
       return
     end
@@ -4277,7 +4298,24 @@ end
 -- Public: render the session dashboard for an explicit absolute cwd, independent
 -- of S.selected. For external drivers (the Quickshell cockpit rail) that pick the
 -- session themselves and drive this nvim over the RPC socket.
-function M.dashboard(cwd) reflect_context(cwd) end
+function M.dashboard(cwd)
+  -- Adopt the session being shown. The rail picked it and drives us over RPC, but the
+  -- selection is what this nvim keys its own per-session state off (the editor file it
+  -- restores, the tests auto-switch), so leaving it unset made every externally-driven
+  -- dashboard sessionless. Match on the worktree's NAME, not the path: agentd reports a
+  -- remote session's cwd as the box sees it, while we are handed the local mirror.
+  if cwd and cwd ~= "" then
+    local want = fn.fnamemodify(cwd, ":t")
+    for _, a in ipairs(S.roster or {}) do
+      if a.cwd and fn.fnamemodify(a.cwd, ":t") == want then S.selected = a.id; break end
+    end
+  end
+  -- show_scratch, not reflect_context: adopting the session above would otherwise let the
+  -- per-session editor-restore divert this to a remembered FILE, and where the rail lands
+  -- is the rail's call — it asked for the dashboard.
+  local ed = target_editor_win()
+  if ed then show_scratch(ed, cwd) end
+end
 
 -- Map a session cwd to its cockpit context name (~/work/lovable → "main";
 -- ~/work/lovable.daphen-<ctx> → "<ctx>"). nil if it isn't a lovable worktree.
@@ -4473,11 +4511,13 @@ refresh_git_changes = function(cwd, path)
         end
         if S.selected and session_cwd(S.selected) == cwd then
           if S.view == "changes" then render_changes() else render_chat(false) end
-          -- the DASHBOARD's CHANGES card is gated on git_changes; without this it renders
-          -- once with a cold (empty) cache and never updates when the async diff lands —
-          -- why a freshly-opened review session showed an empty dash despite a real diff.
-          if refresh_dashboard then refresh_dashboard() end
         end
+        -- the DASHBOARD's CHANGES card is gated on git_changes; without this it renders
+        -- once with a cold (empty) cache and never updates when the async diff lands —
+        -- why a freshly-opened session showed an empty dash despite a real diff. Keyed on
+        -- the dash's OWN cwd, not the selection: the cockpit rail renders dashboards for
+        -- sessions this nvim has never selected, and gating on S.selected skipped them all.
+        if refresh_dashboard and S.dash and S.dash.cwd == cwd then refresh_dashboard() end
       end)
     end,
   })
