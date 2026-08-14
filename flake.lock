@@ -131,8 +131,8 @@
         ]
       },
       "locked": {
-        "lastModified": 1786715834,
-        "narHash": "sha256-4iVgkxoNQVZkre9u8pF1EugKss0SgEwiXQM5p9MkmIo=",
+        "lastModified": 1786717615,
+        "narHash": "sha256-AtYMnCQruOTQnYbS82FSI7Rk2h5C5evNcJLg2lg+ZSs=",
         "path": "/home/daphen/personal/heidr/libghostty-spike",
         "type": "path"
       },
