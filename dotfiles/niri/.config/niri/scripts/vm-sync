@@ -91,7 +91,11 @@ IGN=(--ignore=.git --ignore=node_modules --ignore=.devenv --ignore=.direnv
      # LFS-tracked binaries: syncing them only produces permanent phantom modifications
      --ignore='*.png' --ignore='*.jpg' --ignore='*.jpeg' --ignore='*.gif' --ignore='*.webp'
      --ignore='*.ico' --ignore='*.icns' --ignore='*.pdf' --ignore='*.mp4'
-     --ignore='*.woff' --ignore='*.woff2' --ignore='*.ttf')
+     --ignore='*.woff' --ignore='*.woff2' --ignore='*.ttf'
+     # …but pasted rail screenshots MUST cross: the blanket *.png above swallowed every
+     # @.heidr-pastes reference, so the agent on the box saw a path with no file. Last
+     # match wins in mutagen's ignore syntax, so this re-include takes precedence.
+     --ignore='!.heidr-pastes/**')
 
 vmhead=$("${SSH[@]}" "git -C '$vmwt' rev-parse HEAD" 2>/dev/null | tr -d '[:space:]')
 [ -n "$vmhead" ] || { echo "✗ no worktree at $vmwt on $vm — run vm-wt $raw first"; exit 1; }
