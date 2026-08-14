@@ -3,4 +3,7 @@
 # fallback). Called by nvim's <C-l> when it has no split to the right.
 dir="${1:-right}"
 fn="focusRight"; [ "$dir" = left ] && fn="focusLeft"
+# Called from inside the pane's nvim: its listen address is unique to the heidr that
+# spawned it, so the crossing binds to its PARENT instance — no window-focus lookup.
+[ -n "${NVIM_LISTEN_ADDRESS:-}" ] && export HEIDR_NVIM_SOCK="$NVIM_LISTEN_ADDRESS"
 exec "$(dirname "$0")/heidr-ipc" "$fn"

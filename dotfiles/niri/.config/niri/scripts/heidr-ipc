@@ -23,6 +23,14 @@ probe_id() {
 
 resolve_id() {
   local i t focused="$1" fallback=""
+  # Parent binding wins outright: a caller inside a cockpit's nvim passes that nvim's
+  # socket (heidr-cross), which exactly one instance owns — no niri, no title heuristics.
+  if [ -n "${HEIDR_NVIM_SOCK:-}" ]; then
+    for i in $(ls -1t "$reg" 2>/dev/null); do
+      t=$(timeout 2 qs ipc -i "$i" call heidr nvimSock 2>/dev/null) || continue
+      if [ "$t" = "$HEIDR_NVIM_SOCK" ]; then echo "$i"; return 0; fi
+    done
+  fi
   # With per-mode cockpits (work + private simultaneously), the instance you mean is
   # the one whose window is FOCUSED — match its title to each instance's `title` fn.
   # Fallback: newest live instance, the pre-multi behavior.
@@ -66,7 +74,7 @@ fi
 # The cache only short-circuits when a SINGLE heidr window exists: with two cockpits
 # the right target depends on which window is focused, so resolve every time (one
 # title probe per live instance — still fast).
-if [ "${nwin:-0}" -le 1 ] && [ -r "$cache" ]; then
+if [ -z "${HEIDR_NVIM_SOCK:-}" ] && [ "${nwin:-0}" -le 1 ] && [ -r "$cache" ]; then
   cid=$(cat "$cache" 2>/dev/null || true)
   if [ -n "${cid:-}" ] && call_id "$cid" "$@"; then exit 0; fi
 fi
