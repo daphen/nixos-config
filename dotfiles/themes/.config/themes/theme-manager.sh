@@ -408,20 +408,6 @@ PYEOF
             cp "$generated_file" "$pi_dir/${theme_mode}.json"
             log_success "Applied Pi coding agent ${theme_mode} theme"
             ;;
-        "qutebrowser")
-            local target_dir is_managed
-            if get_tool_target "$tool"; then
-                mkdir -p "$target_dir"
-                cp "$generated_file" "$target_dir/theme.py"
-                local label=$([[ "$is_managed" == true ]] && echo "managed" || echo "local")
-                if pgrep qutebrowser > /dev/null; then
-                    qutebrowser --target auto ':config-source' 2>/dev/null || true
-                    log_success "Applied and reloaded qutebrowser theme ($label)"
-                else
-                    log_success "Applied qutebrowser theme ($label, not running)"
-                fi
-            fi
-            ;;
         "qutebrowser-userstyles")
             # Special case: uses qutebrowser's directory
             local target_dir is_managed
