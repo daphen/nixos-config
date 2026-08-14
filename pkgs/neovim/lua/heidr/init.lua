@@ -567,6 +567,17 @@ end
 
 -- Session display name: prefer the ticket id (every-1234) embedded in the
 -- cwd-derived session name, else the raw name — keeps header/roster readable.
+local function profile_label(profile)
+  return ({
+    ["lovable-orchestrator"] = "ORCH",
+    ["lovable-worker"] = "WORK",
+    ["lovable-reviewer"] = "REVIEW",
+    ["lovable-watcher"] = "WATCH",
+    chat = "CHAT",
+    coding = "CODE",
+  })[profile] or "?"
+end
+
 local function short_name(n)
   if not n then return "?" end
   -- Primary worktree sessions are named after the worktree dir (lovable.daphen-<slug>):
@@ -790,7 +801,8 @@ local function active_winbar()
   local gl = (ss.key == "streaming") and ss.glyph or ICON.swatch
   -- swatch at col 2 (= the composer's › below), label at col 5 (= the composer input),
   -- so the winbar and the input line align column-for-column.
-  local parts = { "%#" .. (ss.swatch or ss.name) .. "#  " .. gl .. "%#" .. ss.name .. "#  " .. ss.label }
+  local parts = { "%#" .. (ss.swatch or ss.name) .. "#  " .. gl .. "%#" .. ss.name .. "#  " .. ss.label,
+    "%#HeidrMuted#  · " .. profile_label(a.profile) }
   -- live "doing" line: the agent's current action (latest thinking summary or
   -- tool call in the in-flight stream) so a long tool-heavy turn isn't opaque —
   -- you always see WHAT it's on, not just "working". (Claude-Code style.)
@@ -1053,6 +1065,10 @@ render_roster = function()
         { #lead, #lead + #gl, sstate.swatch or sstate.name },
         { #lead + #gl, #left, namecol },
       }
+      local role = profile_label(a.profile)
+      local role_start = #left
+      left = left .. "  " .. role
+      segs[#segs + 1] = { role_start + 2, #left, "HeidrMuted" }
       local pl = S.plan[a.id]
       if pl and pl.total and pl.total > 0 then
         local chip = "   " .. ICON.plan .. " " .. pl.done .. "/" .. pl.total
@@ -1843,6 +1859,24 @@ handle = function(obj)
       return (a.name or "") < (b.name or "")
     end)
     render_roster()
+    -- Fresh cockpit nvim: land on the ORCHESTRATOR's heidr dashboard instead of the
+    -- stock splash. Once, first roster only, and only when nvim was started bare (no
+    -- file args, untouched empty buffer) — a restarted pane otherwise sat on the NVIM
+    -- splash until the first session switch re-landed it.
+    if vim.env.HEIDR_COCKPIT == "1" and not S._landed_default then
+      S._landed_default = true
+      vim.schedule(function()
+        if fn.argc() ~= 0 then return end
+        local b = api.nvim_get_current_buf()
+        if api.nvim_buf_get_name(b) ~= "" or vim.bo[b].modified then return end
+        if api.nvim_buf_line_count(b) > 1 or (api.nvim_buf_get_lines(b, 0, 1, false)[1] or "") ~= "" then return end
+        local d = default_session()
+        if not d then return end
+        S.selected = d.id
+        local ed = target_editor_win()
+        if ed and d.cwd and d.cwd ~= "" then show_scratch(ed, d.cwd) end
+      end)
+    end
     -- reconcile with the cockpit active context: adopts the persisted active on
     -- startup and picks up a session that appears after a context switch, so the
     -- two can't drift apart (no-op once already in sync).
@@ -4306,8 +4340,23 @@ end
 
 -- Return the editor to the active session's dashboard (forget the open file so
 -- the director stops restoring it). The way back after opening a file.
+-- The orchestrator when present (the main-checkout session), else the first roster
+-- entry — what a fresh cockpit nvim (or <leader>D with nothing selected) should land on.
+local function default_session()
+  local main = (os.getenv("HOME") or "") .. "/work/lovable"
+  for _, a in ipairs(S.roster) do if a.cwd == main then return a end end
+  return S.roster[1]
+end
+
 local function to_dashboard()
-  if not S.selected then return end
+  -- Nothing selected happens in a FRESH cockpit nvim (only the QML rail selects, and it
+  -- only drives this nvim on a switch): fall back to the orchestrator instead of a
+  -- silent no-op — that silent return was "<leader>D stopped opening the dash".
+  if not S.selected then
+    local d = default_session()
+    if not d then return end
+    S.selected = d.id
+  end
   S.editor = S.editor or {}
   S.editor[S.selected] = nil
   local cwd = session_cwd(S.selected)
