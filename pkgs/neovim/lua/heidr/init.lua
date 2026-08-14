@@ -4245,9 +4245,14 @@ end
 -- can't leave a stale keymap behind. <CR>/o are context-sensitive: open the file
 -- row under the cursor, toggle the …more/less line, else run the first action.
 dash_keys = function(buf, acts)
-  for _, k in ipairs({ "p", "d", "a", "l", "n", "c", "r", "<CR>", "o", "<Tab>" }) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
+  for _, k in ipairs({ "p", "d", "a", "l", "n", "c", "r", "i", "<CR>", "o", "<Tab>" }) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
   local function map(lhs, f) vim.keymap.set("n", lhs, f, { buffer = buf, nowait = true, silent = true }) end
   for _, a in ipairs(acts) do map(a.key, a.fn) end
+  -- `i` on the read-only dash means "talk to the agent": focus the rail composer.
+  map("i", function()
+    vim.fn.jobstart({ vim.fn.expand("~/.config/niri/scripts/heidr-ipc"), "focusComposer" },
+      { env = { HEIDR_NVIM_SOCK = vim.env.NVIM_LISTEN_ADDRESS or "" }, detach = true })
+  end)
   -- <Tab> cycles the HUD card through its available views (PLAN · TESTS · CHANGES).
   map("<Tab>", function()
     local d = S.dash or {}
