@@ -39,16 +39,30 @@ case "$focused" in
   heidr-qs*)
     id=$(id_for_title "$focused") || exit 1
     pane=$(timeout 3 qs ipc -i "$id" call heidr pane 2>/dev/null || echo "")
-    if [ "$pane" != "rail" ]; then
+    on_roster=no
+    if [ "$pane" = "rail" ]; then
+      # The roster is a CURSOR POSITION, not a pane: rail focus with the cursor in the
+      # chat must still land on the roster — treating any rail focus as "already there"
+      # made Super+T a silent no-op with a single cockpit.
+      st=$(timeout 3 qs ipc -i "$id" call heidr railState 2>/dev/null || echo "")
+      on_roster=$(printf '%s' "$st" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print("yes" if d.get("cur", 99) < d.get("rSize", 0) else "no")
+except Exception:
+    print("no")' 2>/dev/null || echo no)
+    fi
+    if [ "$on_roster" != "yes" ]; then
       timeout 3 qs ipc -i "$id" call heidr focusRoster >/dev/null 2>&1
       exit 0
     fi
-    # already on this cockpit's rail → hop to the next OTHER heidr window's roster
+    # truly parked on this cockpit's roster → hop to the next OTHER cockpit's roster
     for t in "${heidrs[@]}"; do
       [ "$t" = "$focused" ] && continue
       focus_roster_of "$t" && exit 0
     done
-    exit 0   # only one cockpit: stay put (already on its roster)
+    exit 0   # only one cockpit: already on its roster, nothing to hop to
     ;;
   *)
     "$HOME/.config/niri/scripts/niri-jump-or-exec" title:heidr-qs heidr-qs
