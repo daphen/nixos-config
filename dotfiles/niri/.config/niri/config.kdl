@@ -264,13 +264,13 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#EDEDED"
+        active-color "#6F6F6E"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#3A3A3A"
+        inactive-color "#E2E2E1"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -294,13 +294,13 @@ layout {
         // If you enable the border, you probably want to disable the focus ring.
 
         width 4
-        active-color "#EDEDED"
+        active-color "#6F6F6E"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
-        active-gradient from="#EDEDED" to="#EDEDED" angle=180
+        active-gradient from="#6F6F6E" to="#6F6F6E" angle=180
         // Matches waybar-notch light theme hairline
         // (foreground.primary @ 50% alpha).
-        inactive-color "#3A3A3A"
+        inactive-color "#E2E2E1"
 
         // Color of the border around windows that request your attention.
         urgent-color "#9b0000"
@@ -382,16 +382,19 @@ blur {
 
 spawn-at-startup "qs"
 
-// Native Slack client daemon — serves data and fires desktop notifications
-// even when the window is closed.
-spawn-sh-at-startup "slqs >/tmp/slqs.log 2>&1"
+// Native Slack client daemon — RETIRED: lovable-dev (enterprise) signs out any
+// third-party token client on connect, so Slack now runs in the official app
+// (Super+s → Slack, both workspaces). Re-enable this + revert the Super+s bind
+// to bring slqs back for WAG.
+// spawn-sh-at-startup "slqs >/tmp/slqs.log 2>&1"
 
 // Agent-rail daemons, one per scope. Started here so their persisted session
 // sets restore at login (before the cockpit's nvim rail connects). --repo is
 // the source root list_sources offers; personal must be set or it defaults to
 // the lovable worktree root.
-spawn-sh-at-startup "OPENAI_LOVABLE_KEY=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_LOVABLE_KEY') agentd --scope lovable --repo $HOME/work/lovable >/tmp/agentd-lovable.log 2>&1"
-spawn-sh-at-startup "OPENAI_LOVABLE_KEY=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_LOVABLE_KEY') agentd --scope personal --repo $HOME/personal >/tmp/agentd-personal.log 2>&1"
+spawn-sh-at-startup "OPENAI_API_KEY=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY') agentd --scope lovable --repo $HOME/work/lovable >/tmp/agentd-lovable.log 2>&1"
+spawn-sh-at-startup "OPENAI_API_KEY=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY') agentd --scope personal --repo $HOME/personal >/tmp/agentd-personal.log 2>&1"
+spawn-sh-at-startup "mkdir -p $HOME/.local/share/agentd/chat && OPENAI_API_KEY=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY') agentd --scope chat --repo $HOME/.local/share/agentd/chat --http 17830 >/tmp/agentd-chat.log 2>&1"
 
 // Auto-restore wallpaper on startup with waypaper
 spawn-at-startup "waypaper" "--restore"
@@ -780,7 +783,7 @@ binds {
     Super+g { spawn-sh "$HOME/.config/niri/scripts/cockpit-focus nvim"; }
     Super+d { spawn-sh "$HOME/.config/niri/scripts/focus-kitty-cycle"; }
     Super+Shift+d { spawn-sh "SHOW_FASTFETCH=1 kitty"; }
-    Super+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:slqs $HOME/.config/niri/scripts/launch-slack-client"; }
+    Super+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
     Super+Shift+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
     Super+a { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 'spotify_player' 'kitty --class spotify_player /home/daphen/.config/niri/scripts/spotify-player-launch'"; }
     // Browser keybinds. Browser binary lives in browser-config.sh —
@@ -800,6 +803,9 @@ binds {
     Super+f hotkey-overlay-title="Toggle Command Palette" { spawn-sh "$HOME/.config/niri/scripts/palette-toggle"; }
     Super+Shift+m hotkey-overlay-title="Add Quickmark" { spawn "palette-ipc" "add-quickmark"; }
     Super+m hotkey-overlay-title="Mail" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:mlqs $HOME/.config/niri/scripts/launch-mail-client"; }
+    // Heidr cockpit (nvim + agentd rail). Coexists with the kitty cockpit; the
+    // `heidr` launcher focuses an existing window or opens one.
+    Super+y hotkey-overlay-title="Heidr cockpit" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:heidr-qs heidr-qs"; }
     // Super+Ctrl+M: rebuild/repair the cockpit (windows + registered
     // contexts). Idempotent — replaces the old ws-startmain bind.
     Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/cockpit-restore"; }
@@ -807,7 +813,7 @@ binds {
     // Super+T — jump to the cockpit nvim rail and focus the roster (focuses the
     // roster in place when already there). Super+Ctrl+T opens the context picker
     // (Enter switch, Ctrl+N new, Ctrl+W close); Super+O flips to the last context.
-    Super+t hotkey-overlay-title="Focus rail roster" { spawn-sh "$HOME/.config/niri/scripts/cockpit-roster"; }
+    Super+t hotkey-overlay-title="Focus rail roster" { spawn-sh "$HOME/.config/niri/scripts/heidr-roster"; }
     Super+Ctrl+t hotkey-overlay-title="Cockpit contexts" { spawn "qs" "ipc" "call" "cockpit" "toggle"; }
     // Super+O: flip to the previously used cockpit context (vim ctrl-o style).
     Super+o hotkey-overlay-title="Previous context" { spawn-sh "$HOME/.config/niri/scripts/cockpit-toggle"; }
@@ -852,7 +858,8 @@ binds {
     XF86AudioNext allow-when-locked=true { spawn "playerctl" "next"; }
     XF86AudioPrev allow-when-locked=true { spawn "playerctl" "previous"; }
 
-    // Window navigation with Super+hl — stays on the current monitor.
+    // Window navigation with Super+hl — plain column focus (the cockpit uses
+    // Ctrl+h/l to cross nvim<->rail now, so no heidr bridge here).
     Super+h { focus-column-left; }
     Super+l { focus-column-right; }
     // Toggle focus to the other monitor. Super+hl no longer crosses, and
@@ -935,8 +942,6 @@ binds {
     Super+Ctrl+w { close-window; }
 
     // Screenshot keybinds
-    Print { screenshot; }                    // Interactive screenshot UI (select area)
-    Super+Print { screenshot-screen; }       // Screenshot entire screen
     // Focused window straight to clipboard + Screenshots dir, no UI.
     Super+Shift+e hotkey-overlay-title="Screenshot window" { screenshot-window; }
     Super+Ctrl+e { screenshot-screen; }      // Screenshot active monitor

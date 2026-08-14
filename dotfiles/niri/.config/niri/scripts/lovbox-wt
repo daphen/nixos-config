@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# lovbox-wt <ticket> — per-ticket work INSIDE the remote lovbox, driven from heidr.
+#
+#   1. git worktree in the box            ~/lovable-<ticket>  on branch daphen/<ticket>
+#   2. its `devenv wt` slice in tmux      (survives `lovbox exec`; tmux double-forks)
+#   3. a mutagen sync for that worktree   → ~/lovbox/heidr/lovable-<ticket> (local nvim)
+#   4. an agentd session rooted at it     → shows in the rail, live-follow works
+#
+# Prereqs: `cockpit-add-lovbox-heidr <name>` has run (tunnel + agentd + gcc + mutagen).
+# Notes learned the hard way:
+#   * `lovbox exec` REAPS anything backgrounded → long-lived services must run under
+#     tmux (or as an ssh remote command, which is how agentd runs).
+#   * `devenv wt` needs gcc (cgo) on PATH and shared deps running; the box's
+#     entrypoint `process-compose up` already provides deps — do NOT tear it down.
+#   * The box repo is a SHALLOW clone: branch off HEAD, not origin/main.
+set -euo pipefail
+
+raw="${1:?usage: lovbox-wt <ticket>   e.g. lovbox-wt EVERY-2740}"
+t=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
+box="${LOVBOX_NAME:-lovbox-heidr}"
+lb="$HOME/work/lovable/bin/lovbox"
+sock="${XDG_RUNTIME_DIR}/agentd-work.sock"
+boxwt="/home/lovable/lovable-$t"
+mirror="$HOME/lovbox/heidr/lovable-$t"
+branch="daphen/$t"
+say() { printf '\033[36m[lovbox-wt]\033[0m %s\n' "$*"; }
+
+[ -S "$sock" ] || { echo "✗ $sock missing — run cockpit-add-lovbox-heidr first"; exit 1; }
+
+# ── 1. worktree in the box (shallow repo → branch off HEAD) ───────────────────
+say "worktree $boxwt on $branch …"
+"$lb" exec "$box" -- bash -lc "
+  export PATH=\"\$HOME/.nix-profile/bin:\$PATH\"
+  cd ~/lovable
+  if [ -d '$boxwt' ]; then echo '  exists — reusing'
+  else git worktree add '$boxwt' -b '$branch' HEAD 2>&1 | tail -1; fi" 2>&1 | grep -viE "^warning|Permanently" || true
+
+# ── 2. devenv wt slice under tmux (auto-allocated ports) ─────────────────────
+# --tui=false is REQUIRED: process-compose tries to start its TUI and dies with
+# "FTL TUI startup error error=EOF" when stdout is not a terminal (which it isn't
+# under tmux+redirect), leaving the tmux session alive but no services listening.
+say "boot devenv wt in tmux session wt-$t …"
+"$lb" exec "$box" -- bash -lc "
+  export PATH=\"\$HOME/.nix-profile/bin:\$PATH\"
+  if tmux has-session -t 'wt-$t' 2>/dev/null; then echo '  tmux wt-$t already running'
+  else
+    tmux new-session -d -s 'wt-$t' -c '$boxwt' \\
+      'export PATH=\$HOME/.nix-profile/bin:\$PATH; devenv wt --no-meticulous --tui=false 2>&1 | tee ~/wt-$t.log'
+    echo '  started (logs: ~/wt-$t.log in-box, or tmux attach -t wt-$t)'
+  fi
+  tmux ls 2>/dev/null | sed 's/^/  /'" 2>&1 | grep -viE "^warning|Permanently" || true
+
+# ── 3. mutagen sync for the worktree → local mirror ──────────────────────────
+say "mutagen sync $boxwt ↔ $mirror …"
+mkdir -p "$mirror"
+mut=$(command -v mutagen || true)
+[ -z "$mut" ] && mut="$(nix build --no-link --print-out-paths nixpkgs#mutagen 2>/dev/null)/bin/mutagen"
+direct=""
+for _ in 1 2 3 4 5; do
+  direct=$("$lb" ssh --name "$box" --no-ssh 2>/dev/null \
+    | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | awk '/ssh -p 2222 lovable@/ {print $NF; exit}' || true)
+  [ -n "$direct" ] && break; sleep 2
+done
+if [ -x "$mut" ] && [ -n "$direct" ]; then
+  ssh-keyscan -p 2222 -H "${direct#*@}" 2>/dev/null >> "$HOME/.ssh/known_hosts" || true
+  if "$mut" sync list "wt-$t" >/dev/null 2>&1; then
+    say "  sync exists — resuming"; "$mut" sync resume "wt-$t" >/dev/null 2>&1 || true
+  else
+    # --ignore=.git EXPLICITLY: in a git WORKTREE `.git` is a FILE containing
+    # `gitdir: /home/lovable/...`, and --ignore-vcs only skips .git DIRECTORIES. That
+    # file synced into the mirror and pointed local git at a box-absolute path, so
+    # every git call in nvim failed ("not a git repository") and broke live-follow.
+    "$mut" sync create --name="wt-$t" --ignore-vcs \
+      --ignore=.git --ignore=.wrangler --ignore='*.sqlite' --ignore='*.sqlite-shm' \
+      --ignore='*.sqlite-wal' --ignore=.devenv --ignore=.direnv --ignore=node_modules --ignore=.next --ignore=.turbo \
+      --ignore=target --ignore=dist --ignore=__pycache__ --ignore=.venv --ignore='bazel-*' \
+      --ignore='*.log' --ignore=.wrangler --ignore='*.sqlite-shm' --ignore='*.sqlite-wal' \
+      "${direct}:2222:lovable-$t" "$mirror" >/dev/null 2>&1 \
+      && say "  sync created (first pass ~1-2 min)" || say "  ✗ sync create failed"
+  fi
+else
+  say "  ✗ mutagen or ssh host unavailable — skipping file sync"
+fi
+
+# ── 4. agentd session rooted at the box worktree ─────────────────────────────
+say "spawn rail session '$t' at $boxwt …"
+python3 - "$sock" "$t" "$boxwt" <<'PY'
+import socket, sys, json, time
+sock, name, cwd = sys.argv[1], sys.argv[2], sys.argv[3]
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(8); s.connect(sock)
+buf = b""
+while b"\n" not in buf:
+    d = s.recv(65536)
+    if not d: break
+    buf += d
+names = [x.get("name") for x in json.loads(buf.split(b"\n", 1)[0]).get("sessions", [])]
+if name in names:
+    print(f"  session '{name}' already in the roster")
+else:
+    s.sendall((json.dumps({"type": "spawn", "session": name, "cwd": cwd}) + "\n").encode())
+    print(f"  spawned '{name}'")
+time.sleep(3); s.close()
+PY
+
+say "done — select '$t' in the rail; nvim lands in $mirror"

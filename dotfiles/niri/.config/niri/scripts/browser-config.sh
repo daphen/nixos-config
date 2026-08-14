@@ -67,7 +67,15 @@ BROWSER_FLAGS=(
     # your work degrades to ~480p. Keep unfocused windows first-class.
     --disable-backgrounding-occluded-windows
     --disable-renderer-backgrounding
-    --disable-background-timer-throttling
+    # NOTE: --disable-background-timer-throttling was REMOVED. With it, a hidden/
+    # unfocused tab's timers (incl. video decode) ran full-tilt — a background YouTube
+    # tab silently software-decoded VP9 at ~90% of a core (the ~1%/min battery drain).
+    # Background tabs now throttle normally. The two flags above still keep *visible*
+    # unfocused windows first-class for Netflix-style adaptive bitrate.
+    #
+    # (HW video decode via VA-API isn't enabled here: on this hybrid NVIDIA+AMD + ANGLE
+    # + Wayland setup the VA-API→GL frame import silently falls back to software, and
+    # flags alone didn't fix it — revisit as its own task if it matters.)
 )
 
 # Point GLib at gsettings-desktop-schemas so Chromium's GTK theme code

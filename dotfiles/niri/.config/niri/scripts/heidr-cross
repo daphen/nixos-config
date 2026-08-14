@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Cross focus between the cockpit's nvim pane and the rail, IPC-only (no niri
+# fallback). Called by nvim's <C-l> when it has no split to the right.
+dir="${1:-right}"
+fn="focusRight"; [ "$dir" = left ] && fn="focusLeft"
+exec "$(dirname "$0")/heidr-ipc" "$fn"

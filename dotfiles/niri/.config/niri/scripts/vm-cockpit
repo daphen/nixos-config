@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# vm-cockpit — bring the remote dev VM up as heidr's `work` scope.
+#
+#   1. agentd on the VM, detached, inside a dbus+keyring session
+#   2. a pure `-L` tunnel presenting it as $XDG_RUNTIME_DIR/agentd-work.sock
+#
+# Idempotent: safe to re-run after a reboot, a dropped tunnel, or a VM restart.
+# Per-ticket work is `vm-wt <ticket>`. Replaces cockpit-add-lovbox-heidr, whose box
+# fought us on three fronts the VM does not: a process-compose entrypoint that
+# restarted whatever we stopped, a shallow clone, and no working credential store.
+#
+# Provisioning (one-time, already done for dev-heidr-2a39) — see the notes reference:
+#   nix profile add nixpkgs#nodejs_22 nixpkgs#go nixpkgs#gnome-keyring nixpkgs#libsecret
+#   npm config set prefix ~/.npm-global && npm i -g @earendil-works/pi-coding-agent
+#   nix profile add --no-write-lock-file github:daphen/nixos-config#dev-env
+#   plus a static agentd (CGO_ENABLED=0) and ~/.pi/agent/{skills,prompts,extensions}
+set -euo pipefail
+
+vm="${HEIDR_VM:-dev-heidr-2a39}"
+host="${HEIDR_VM_HOST:-$vm.workstation.lovable.net}"
+u="${HEIDR_VM_USER:-david_karlsson_lovable_dev}"
+port="${HEIDR_VM_AGENTD_PORT:-17840}"
+sock="${XDG_RUNTIME_DIR}/agentd-work.sock"
+krpw="${HEIDR_KEYRING_PW:-heidr-vm}"
+say() { printf '\033[36m[vm-cockpit]\033[0m %s\n' "$*"; }
+SSH=(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25 "$u@$host")
+
+# Secrets are resolved HERE (this session has fish's secrets file and a 1Password
+# agent) and handed to agentd as process env. They never touch the VM's disk.
+key=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY' 2>/dev/null || true)
+[ -n "$key" ] || say "  ⚠ no OPENAI_API_KEY — pi will not start"
+slack=$(op read 'op://Private/Slack MCP/text' 2>/dev/null || true)
+[ -n "$slack" ] || say "  (no Slack secret — run 'op signin' if you want the slack mcp)"
+
+say "agentd on $vm (dbus + unlocked keyring) …"
+"${SSH[@]}" "
+  export PATH=\$HOME/.nix-profile/bin:\$HOME/.npm-global/bin:\$HOME/.local/bin:\$PATH
+  # dbus finds org.freedesktop.secrets through XDG_DATA_DIRS; without the nix profile
+  # in there activation fails and pi-mcp-adapter — which fails CLOSED with no
+  # credential store — re-authenticates every MCP server on every session.
+  export XDG_DATA_DIRS=\"\$HOME/.nix-profile/share:/run/current-system/sw/share:/usr/local/share:/usr/share\"
+  if ! pgrep -x agentd >/dev/null 2>&1; then
+    _cfg=\$(ls /nix/store/*dbus-1*/share/dbus-1/session.conf 2>/dev/null | head -1)
+    export DBUS_SESSION_BUS_ADDRESS=\$(dbus-daemon --config-file=\"\$_cfg\" --print-address --fork 2>/dev/null)
+    mkdir -p ~/.local/share/keyrings
+    eval \"\$(printf %s '$krpw' | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null)\" || true
+    setsid env OPENAI_API_KEY='$key' SLACK_MCP_CLIENT_SECRET='$slack' \
+      DBUS_SESSION_BUS_ADDRESS=\"\$DBUS_SESSION_BUS_ADDRESS\" XDG_DATA_DIRS=\"\$XDG_DATA_DIRS\" \
+      PATH=\"\$PATH\" \$HOME/.local/bin/agentd --scope work --repo \$HOME/src/lovable \
+      --listen 127.0.0.1:$port >\$HOME/agentd.log 2>&1 </dev/null &
+    sleep 4
+  else echo '  already running'; fi
+  # pgrep -x, not -f: an -f pattern also matches this very bash -lc wrapper, so the
+  # guard read as true while agentd was dead and the tunnel forwarded to nothing.
+  (ss -tln 2>/dev/null || netstat -tln) | grep -q :$port && echo '  listening ✓' || tail -4 \$HOME/agentd.log
+" 2>&1 | grep -viE "^Warning: Permanently"
+
+# Keep the tunnel a PURE forward. When agentd ran AS the ssh command, every dropped
+# connection took the daemon (and its pi sessions) with it.
+if [ -S "$sock" ] && timeout 4 python3 -c "
+import socket,sys
+s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); s.settimeout(3)
+s.connect('$sock'); s.recv(64)" >/dev/null 2>&1; then
+  say "tunnel already healthy → $sock"
+else
+  say "tunnel $sock → $vm:$port …"
+  rm -f "$sock"
+  setsid ssh -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+    -L "$sock:127.0.0.1:$port" "$u@$host" >/dev/null 2>&1 &
+  for _ in 1 2 3 4 5 6 7 8; do [ -S "$sock" ] && break; sleep 1; done
+  [ -S "$sock" ] && say "  up ✓" || { say "  ✗ tunnel failed"; exit 1; }
+fi
+
+say "done — launch heidr (./run-qs.sh picks up lovable + work automatically)"

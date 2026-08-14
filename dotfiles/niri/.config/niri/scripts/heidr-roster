@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Super+T: focus the qs heidr cockpit window and land on its roster.
+"$HOME/.config/niri/scripts/niri-jump-or-exec" title:heidr-qs heidr-qs
+# give a just-launched instance a moment, then focus its roster (best-effort)
+"$(dirname "$0")/heidr-ipc" focusRoster 2>/dev/null || true

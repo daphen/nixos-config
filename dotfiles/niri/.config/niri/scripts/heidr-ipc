@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# qs ipc to the running heidr-qs instance (dev run-qs.sh OR installed Super+y).
+#   heidr-ipc <fn> [args…]   → qs ipc -i <instance> call heidr <fn> …
+#
+# Resolve by INSTANCE ID, not config path. Every relaunch leaves its registry dir
+# behind under by-id/, so one config path can map to several instances (mostly dead);
+# `qs ipc -p <path>` then picks one at random and blocks on a dead socket, which
+# silently wedges whichever keybind called us — the symptom is "Ctrl+l stopped
+# working". Probing `call heidr pane` per id is self-validating: only a LIVE heidr
+# answers it, so dead entries and the bar both fail fast.
+set -uo pipefail
+
+reg="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell/by-id"
+
+# `qs ipc` exits 0 even when it prints "Target not found." — so the exit status alone
+# accepts ANY live instance, including the bar, and the focus call then no-ops. Judge
+# by the reply: a real heidr answers pane with nvim|rail.
+probe_id() {
+  local out
+  out=$(timeout 2 qs ipc -i "$1" call heidr pane 2>&1) || return 1
+  case "$out" in nvim|rail) return 0;; *) return 1;; esac
+}
+
+resolve_id() {
+  local i
+  # newest first: the instance you just launched is the one you mean
+  for i in $(ls -1t "$reg" 2>/dev/null); do
+    if probe_id "$i"; then echo "$i"; return 0; fi
+  done
+  return 1
+}
+
+# Cache the winning id. Probing before EVERY call cost two round-trips per keypress
+# (~100ms for what a single call does in ~40), and every relaunch adds another dead
+# by-id dir to walk. A stale cache costs one failed call, not a wedged keybind — and the
+# reply is validated the same way, so a dead id or the bar can never be mistaken for heidr.
+cache="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/heidr-ipc.id"
+
+call_id() {   # call_id <id> <fn> [args…] — echoes the reply, non-zero if not a live heidr
+  local i="$1"; shift
+  local out
+  out=$(timeout 5 qs ipc -i "$i" call heidr "$@" 2>&1) || return 1
+  case "$out" in *"not found"*|"") return 1;; esac
+  printf '%s\n' "$out"
+}
+
+if [ -r "$cache" ]; then
+  cid=$(cat "$cache" 2>/dev/null || true)
+  if [ -n "${cid:-}" ] && call_id "$cid" "$@"; then exit 0; fi
+fi
+
+id=$(resolve_id) || { echo "heidr-ipc: no live heidr instance" >&2; exit 1; }
+printf '%s' "$id" > "$cache" 2>/dev/null || true
+call_id "$id" "$@"

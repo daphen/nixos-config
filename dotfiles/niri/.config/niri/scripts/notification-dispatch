@@ -23,11 +23,11 @@ focus_app_window() {
 # rail). Returns 1 when the summary isn't a cockpit context (callers fall through).
 focus_cockpit_context() {
     local ctx sock
-    # "Claude · <label>" — label is the context name (strip the old
-    # lovable.daphen- prefix if present). Validate against the NVIM cockpit's tabs
-    # (the agent CLI window is retired — everything's the rail now), match exact or
-    # prefix, switch the cockpit to it, and focus nvim so you land in its rail.
-    ctx=$(printf '%s' "$1" | sed -n 's/^Claude · //p' | sed 's|^lovable\.daphen-||')
+    # "<brand> · <label>" — brand is Heidr (pi agents) or Claude (standalone); label
+    # is the context name (strip the old lovable.daphen- prefix if present). Validate
+    # against the NVIM cockpit's tabs (the agent CLI window is retired — everything's
+    # the rail now), match exact or prefix, switch the cockpit to it, focus nvim.
+    ctx=$(printf '%s' "$1" | sed -n -E 's/^(Heidr|Claude) · //p' | sed 's|^lovable\.daphen-||')
     sock=${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-nvim
     [ -n "$ctx" ] && [ -S "$sock" ] || return 1
     kitty @ --to "unix:$sock" ls 2>/dev/null \
@@ -55,15 +55,25 @@ if [ "$1" = "--past" ]; then
     case "$app" in
         endcord|Discord|discord)     exec "$DIR/niri-jump-or-exec" "title:dsqrd" "$DIR/launch-discord-client" ;;
         kitty)
+            # Super+i on a single toast lands HERE (--past). Route cockpit contexts to the
+            # nvim rail: a live cockpit tab first, else a by-NAME rail jump (agent-jump —
+            # reaches tab-less sessions, the common case since most contexts share one nvim
+            # tab), else the window hint / worktree fallback.
+            ctx=$(printf '%s' "$summary" | sed -n -E 's/^(Heidr|Claude) · //p' | sed 's|^lovable\.daphen-||')
             if focus_cockpit_context "$summary"; then
                 :
+            elif [ -n "$ctx" ]; then
+                jf="$HOME/.local/state/cockpit/agent-jump"
+                mkdir -p "$(dirname "$jf")"
+                printf '%s\n' "$ctx" > "$jf.tmp" && mv "$jf.tmp" "$jf"
+                "$DIR/cockpit-focus" nvim >/dev/null 2>&1 || true
             elif [ -n "$winid" ] && [ "$winid" != "null" ]; then
                 niri msg action focus-window --id "$winid" >/dev/null 2>&1 || true
             else
                 focus_worktree_from_summary "$summary"
             fi
             exit 0 ;;
-        Slack|slack|slk) exec "$DIR/niri-jump-or-exec" "title:slqs" "$DIR/launch-slack-client" ;;
+        Slack|slack|slk) exec "$DIR/niri-jump-or-exec" Slack slack ;;
         mlqs)        exec "$DIR/niri-jump-or-exec" "title:mlqs" "$DIR/launch-mail-client" ;;
         agent-rail)
             # In-nvim rail notification: summary is "agent · <name>". Jump by NAME,
@@ -102,16 +112,32 @@ case "$app" in
         exec "$DIR/niri-jump-or-exec" "title:dsqrd" "$DIR/launch-discord-client"
         ;;
     Slack|slack|slk)
-        # Native client (slqs): its notification's default action opens the
-        # channel/thread and raises its org.quickshell window. Invoke, then
-        # focus by TITLE — org.quickshell is shared with dsqrd/mlqs, so a
-        # title-blind focus grabbed the wrong client (was landing on dsqrd).
+        # slqs is RETIRED (lovable-dev enterprise signs out third-party token clients),
+        # so Slack runs in the OFFICIAL app now. Invoke the notification (Slack navigates
+        # to the thread), then focus/launch the official client — same target as Super+s.
         qs ipc call notifications invoke "$id" >/dev/null 2>&1 || true
         qs ipc call notifications dismiss "$id" >/dev/null 2>&1 || true
-        exec "$DIR/niri-jump-or-exec" "title:slqs" "$DIR/launch-slack-client"
+        exec "$DIR/niri-jump-or-exec" Slack slack
         ;;
     kitty)
-        exec "$DIR/kitty-osc-jump" "$id"
+        # Heidr/Claude toasts are app_name=kitty with a "<brand> · <ctx>" summary. Route
+        # cockpit contexts to the NVIM rail first (kitty-osc-jump's own cockpit path still
+        # targeted the retired agent window). Order: live cockpit tab → by-NAME rail jump
+        # (reaches tab-less sessions) → plain kitty-osc-jump for non-cockpit sessions.
+        summary=$(printf '%s' "$data" | jq -r '.summary // empty')
+        ctx=$(printf '%s' "$data" | jq -r '.hints["cockpit-context"] // empty')
+        [ -z "$ctx" ] && ctx=$(printf '%s' "$summary" | sed -n -E 's/^(Heidr|Claude) · //p' | sed 's|^lovable\.daphen-||')
+        if focus_cockpit_context "$summary"; then
+            qs ipc call notifications dismiss "$id" >/dev/null 2>&1 || true
+        elif [ -n "$ctx" ]; then
+            jf="$HOME/.local/state/cockpit/agent-jump"
+            mkdir -p "$(dirname "$jf")"
+            printf '%s\n' "$ctx" > "$jf.tmp" && mv "$jf.tmp" "$jf"
+            "$DIR/cockpit-focus" nvim >/dev/null 2>&1 || true
+            qs ipc call notifications dismiss "$id" >/dev/null 2>&1 || true
+        else
+            exec "$DIR/kitty-osc-jump" "$id"
+        fi
         ;;
     mlqs)
         # invoke → the daemon's default action opens the conversation; then focus

@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# heidr-app <session> — open a session's dev preview, wherever that session runs.
+#
+# The port comes from AGENTD, not from a slug computed here: only the machine running
+# the worktree can read its own .devenv/state/wt-base-port, and the daemon there
+# reports it as `webPort` on the roster. The cockpit used to derive
+# http://<branch-slug>.localhost:2015 locally, which for a worktree on a remote box
+# pointed at this machine and opened nothing.
+#
+#   local session  → the local wt-proxy URL (cockpit_open_app, unchanged)
+#   remote session → ensure an ssh -L for its port, then http://localhost:<port>
+set -uo pipefail
+
+sess="${1:?usage: heidr-app <session-name>}"
+u="${HEIDR_VM_USER:-david_karlsson_lovable_dev}"
+vm="${HEIDR_VM:-dev-heidr-2a39}"
+host="${HEIDR_VM_HOST:-$vm.workstation.lovable.net}"
+
+# Ask every agentd we can see; first match wins (same order the rail uses).
+read -r cwd port < <(python3 - "$sess" <<'PY'
+import glob, json, os, socket, sys
+want = sys.argv[1]
+for p in sorted(glob.glob(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"),
+                                       "agentd-*.sock"))):
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(5); s.connect(p)
+        buf = b""
+        while b"\n" not in buf:
+            d = s.recv(65536)
+            if not d: break
+            buf += d
+        s.close()
+        for x in json.loads(buf.split(b"\n", 1)[0]).get("sessions", []):
+            if x.get("name") == want:
+                print(x.get("cwd", ""), x.get("webPort", 0)); raise SystemExit
+    except SystemExit:
+        raise
+    except Exception:
+        continue
+print("", 0)
+PY
+)
+
+[ -n "${cwd:-}" ] || { echo "heidr-app: no session '$sess' in any roster" >&2; exit 1; }
+
+# Remote iff the cwd is not under our own home — the daemon reports cwd as the machine
+# running pi sees it, so this holds for any box without hardcoding its paths.
+case "$cwd" in
+  "$HOME"|"$HOME"/*) remote=0 ;;
+  *)                 remote=1 ;;
+esac
+
+if [ "$remote" = 0 ]; then
+  source "$HOME/.config/cockpit/config" 2>/dev/null && cockpit_open_app "$sess"
+  exit 0
+fi
+
+if [ "${port:-0}" -le 0 ]; then
+  echo "heidr-app: '$sess' has no devenv port yet — its wt slice hasn't started" >&2
+  exit 1
+fi
+
+# Idempotent forward. Checked by connecting, not by pgrep: a dead ssh can leave its
+# pattern in the process table, and a listening-but-unroutable port is worse than none.
+if ! timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/$port" 2>/dev/null; then
+  setsid ssh -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+    -L "$port:127.0.0.1:$port" "$u@$host" >/dev/null 2>&1 &
+  for _ in 1 2 3 4 5 6 7 8; do
+    timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/$port" 2>/dev/null && break
+    sleep 1
+  done
+fi
+
+url="http://localhost:$port"
+"$HOME/.config/niri/scripts/browser-dispatch" --profile=work "$url" >/dev/null 2>&1 || true
+bid=$(niri msg --json windows 2>/dev/null \
+  | jq -r '[.[]|select(.app_id=="browser-work")][0].id // empty')
+[ -n "$bid" ] && niri msg action focus-window --id "$bid" >/dev/null 2>&1
+echo "heidr-app: $sess → $url (forwarded from $vm)"

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# heidr-lovbox <name>
+#
+# Connect the LOCAL qs heidr cockpit to a REMOTE lovbox agentd. Reuses the proven
+# remote-agentd transport (agentd --listen TCP over SSH, verified 2026-08-10) but
+# bridges it to a LOCAL UNIX SOCKET, because the qs rail's Quickshell.Socket only
+# speaks unix sockets (HEIDR_AGENTD_SOCK), not TCP like the nvim rail.
+#
+#   remote:  agentd --listen 127.0.0.1:PORT   (bound to loopback; SSH tunnel = the auth)
+#   bridge:  ssh -L <local.sock>:localhost:PORT <box>     (unix-sock local bind → remote TCP)
+#   local:   HEIDR_AGENTD_SOCK=<local.sock> heidr-qs
+#
+# The one piece that needs a LIVE box to finalize: the exact ssh target/ProxyCommand
+# through the sandcastle gateway (traced from `lovbox ssh -v`). Resolved best-effort below.
+set -euo pipefail
+
+name="${1:?usage: heidr-lovbox <name>}"
+box="lovbox-${name}"
+lb="$HOME/work/lovable/bin/lovbox"
+port=8790
+scope=work
+sock="${XDG_RUNTIME_DIR}/agentd-${scope}.sock"
+say() { printf '\033[36m[heidr-lovbox]\033[0m %s\n' "$*"; }
+
+# ── 1. claim/resume box + provision & start agentd --listen in-box ───────────
+say "claim/resume $box + provision agentd …"
+"$lb" create "$box" --if-exists reuse >/dev/null
+key=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY')
+tar czf - -C "$HOME/personal/agentd" --exclude=.git . | base64 -w0 | "$lb" exec "$box" -- bash -lc '
+  command -v gcc >/dev/null 2>&1 || nix profile install nixpkgs#gcc
+  command -v pi  >/dev/null 2>&1 || npm i -g @earendil-works/pi-coding-agent
+  mkdir -p ~/.local/bin ~/agentd-src; base64 -d | tar xzf - -C ~/agentd-src
+  cd ~/agentd-src && CGO_ENABLED=0 go build -o ~/.local/bin/agentd .' >/dev/null
+say "starting agentd --listen 127.0.0.1:$port (scope=$scope) …"
+"$lb" exec "$box" -- bash -lc "pkill -f 'agentd --scope ${scope}' 2>/dev/null || true
+  OPENAI_API_KEY='$key' nohup ~/.local/bin/agentd --scope ${scope} --repo ~/lovable --listen 127.0.0.1:${port} >~/agentd.log 2>&1 & disown
+  sleep 2; (ss -tlnp 2>/dev/null || true) | grep -q ${port} && echo '  agentd listening' || echo '  agentd: check ~/agentd.log'"
+
+# ── 2. resolve the ssh target (direct then gateway), like lovssh ─────────────
+raw=$("$lb" ssh --name "$box" --no-ssh 2>&1 || true)
+info=$(printf '%s\n' "$raw" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+target=$(printf '%s\n' "$info" | awk '/ssh -p 2222/ { print $NF; exit }')
+[ -z "$target" ] && { echo "✗ could not resolve ssh target from: lovbox ssh --name $box --no-ssh"; echo "  trace it: lovbox ssh -v $box 2>&1 | grep -iE 'executing|proxycommand|connecting'"; exit 1; }
+say "ssh target: $target"
+
+# ── 3. tunnel: local unix socket → remote agentd TCP (autossh, auto-reconnect) ─
+rm -f "$sock"
+say "tunnel: $sock → (box) localhost:${port}"
+autossh -M 0 -f -N \
+  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes \
+  -L "${sock}:localhost:${port}" -p 2222 "$target"
+
+# wait for the forwarded socket to appear (ssh handshake + gateway proxy)
+for _ in $(seq 1 20); do [ -S "$sock" ] && break; sleep 0.5; done
+[ -S "$sock" ] || { echo "✗ socket $sock never appeared — tunnel failed (see 'ssh -v' trace above)"; exit 1; }
+say "socket up ✓"
+
+# ── 4. launch local qs heidr pointed at the tunneled socket ──────────────────
+say "launching qs heidr → HEIDR_AGENTD_SOCK=$sock"
+HEIDR_AGENTD_SOCK="$sock" exec heidr-qs

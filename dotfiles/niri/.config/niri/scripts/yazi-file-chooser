@@ -27,7 +27,7 @@ fi
 [ -n "$path" ] && cmd+=("$path")
 
 if [ -n "$chooser_cfg" ]; then
-    YAZI_CONFIG_HOME="$chooser_cfg" kitty --class=file-chooser --title "Select file" -- "${cmd[@]}"
+    YAZI_SAVE_NAME="$(basename "${path%_}")" YAZI_CONFIG_HOME="$chooser_cfg" kitty --class=file-chooser --title "Save file" -- "${cmd[@]}"
 else
     kitty --class=file-chooser --title "Select file" -- "${cmd[@]}"
 fi
@@ -40,7 +40,16 @@ if [ "$save" = "1" ] && [ -n "$path" ]; then
     if [ ! -s "$out" ] && [ -s "$out.cwd" ]; then
         dir=$(head -n1 "$out.cwd")
         if [ -d "$dir" ]; then
-            target="$dir/$(basename "$path")"
+            # Drop the backend's anti-overwrite "_" marker, then dodge a real
+            # collision with a familiar " (n)" suffix instead of a bare "_".
+            base=$(basename "$path"); base=${base%_}
+            target="$dir/$base"
+            if [ -e "$target" ]; then
+                stem=${base%.*}; ext=${base##*.}
+                if [ "$stem" = "$base" ]; then ext=""; else ext=".$ext"; fi
+                n=1; while [ -e "$dir/$stem ($n)$ext" ]; do n=$((n + 1)); done
+                target="$dir/$stem ($n)$ext"
+            fi
             # backend rejects nonexistent picks — materialize the target
             touch "$target"
             printf '%s' "$target" > "$out"

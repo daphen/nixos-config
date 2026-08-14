@@ -5,6 +5,9 @@
 # niri-jump-or-exec focuses an existing window instead of calling this when one
 # is already open.
 export QML2_IMPORT_PATH="$HOME/.local/share/qml"
+# Route Qt file dialogs (Save-as for attachment downloads) through the
+# xdg portal, where termfilechooser serves them as yazi-in-kitty.
+export QT_QPA_PLATFORMTHEME=xdgdesktopportal
 export PATH="/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
 
 # Replace a stale daemon: after a rebuild the running slqs may be an older
