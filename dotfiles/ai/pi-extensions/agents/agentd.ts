@@ -225,7 +225,19 @@ export async function spawnSession(dir: string, opts: SpawnOpts = {}): Promise<{
   if (!abs || !fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
     throw new Error(`spawn target is not a directory: ${dir}`);
   }
-  const scope = scopeForDir(abs, opts.scope);
+  // SPAWNER-OWNED scope: an agent's spawns live on ITS OWN daemon, whatever dir they
+  // work in — cwd is just a working directory. Inferring scope from the dir put
+  // work-commissioned infra sessions (cwd under ~/personal) on the PRIVATE daemon,
+  // invisible from the cockpit that spawned them. Explicit opts.scope still wins;
+  // dir inference remains the fallback for callers with no session of their own.
+  let scope = opts.scope || "";
+  if (!scope) {
+    try {
+      const self = await resolveSession(process.cwd());
+      if (self) scope = self.scope;
+    } catch {}
+  }
+  if (!scope) scope = scopeForDir(abs);
   const name = opts.name || path.basename(abs);
   const sockPath = path.join(runtimeDir(), `agentd-${scope}.sock`);
   const msg: Record<string, unknown> = { type: "spawn", session: name, cwd: abs };
