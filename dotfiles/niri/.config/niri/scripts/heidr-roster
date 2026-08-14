@@ -37,29 +37,23 @@ for w in json.load(sys.stdin):
 
 case "$focused" in
   heidr-qs*)
-    id=$(id_for_title "$focused") || exit 1
-    pane=$(timeout 3 qs ipc -i "$id" call heidr pane 2>/dev/null || echo "")
-    on_roster=no
-    if [ "$pane" = "rail" ]; then
-      # The roster is a CURSOR POSITION, not a pane: rail focus with the cursor in the
-      # chat must still land on the roster — treating any rail focus as "already there"
-      # made Super+T a silent no-op with a single cockpit.
-      st=$(timeout 3 qs ipc -i "$id" call heidr railState 2>/dev/null || echo "")
-      on_roster=$(printf '%s' "$st" | python3 -c '
-import json, sys
-try:
-    d = json.load(sys.stdin)
-    # insert means the composer owns the keyboard — the cursor row it left behind
-    # does not count as "parked on the roster"
-    print("yes" if (not d.get("ins")) and d.get("cur", 99) < d.get("rSize", 0) else "no")
-except Exception:
-    print("no")' 2>/dev/null || echo no)
+    # One IPC does the whole in-window decision (land vs parked); the id comes from a
+    # per-title cache validated by that same call, so the common path is a single qs
+    # spawn — Super+T used to chain four and felt sluggish next to the in-app keys.
+    cachef="${XDG_RUNTIME_DIR:-/tmp}/heidr-roster.$(printf '%s' "$focused" | tr -c 'A-Za-z0-9' _)"
+    hop=""
+    if [ -r "$cachef" ]; then
+      cid=$(cat "$cachef" 2>/dev/null || true)
+      [ -n "${cid:-}" ] && hop=$(timeout 3 qs ipc -i "$cid" call heidr rosterHop 2>/dev/null || true)
+      case "$hop" in landed|parked) id="$cid";; *) hop="";; esac
     fi
-    if [ "$on_roster" != "yes" ]; then
-      timeout 3 qs ipc -i "$id" call heidr focusRoster >/dev/null 2>&1
-      exit 0
+    if [ -z "$hop" ]; then
+      id=$(id_for_title "$focused") || exit 1
+      printf '%s' "$id" > "$cachef" 2>/dev/null || true
+      hop=$(timeout 3 qs ipc -i "$id" call heidr rosterHop 2>/dev/null || true)
     fi
-    # truly parked on this cockpit's roster → hop to the next OTHER cockpit's roster
+    [ "$hop" = "landed" ] && exit 0
+    # genuinely parked on this cockpit's roster → hop to the next OTHER cockpit's roster
     for t in "${heidrs[@]}"; do
       [ "$t" = "$focused" ] && continue
       focus_roster_of "$t" && exit 0
