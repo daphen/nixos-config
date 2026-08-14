@@ -36,14 +36,22 @@ if [ "${1:-}" = "--align" ]; then
   host="${HEIDR_VM_HOST:-$vm.workstation.lovable.net}"
   local_wt="$HOME/work/lovable.daphen-$t"
   [ -d "$local_wt" ] || exit 0
-  # Cheap LOCAL gate before any network. Routine agent work is small: uncommitted edits
-  # show as a handful of files (correct, and what you want to see), and a plain agent
-  # commit leaves the tree untouched. Only the BASE moving explodes the diff — a rebase
-  # brings down every file the upstream commits touched, with no local history for any of
-  # it, which is what read as 5376 files / -142555. So unless the diff is pathological,
-  # there is nothing to repair and we never touch the box.
-  changed=$(git -C "$local_wt" diff --name-only 2>/dev/null | wc -l)
+  # Cheap LOCAL gate before any network. Routine agent work is small, so unless the diff is
+  # pathological there is nothing to repair and we never touch the box.
+  #
+  # Measured against the FORK POINT, not HEAD. What the editor shows you (lualine, the
+  # dashboard, hunk signs) is `git diff <merge-base with origin/main>`, and that is what
+  # explodes: the box rebases the ticket onto a newer main, so every upstream commit that
+  # came down counts as your work. Gating on `diff HEAD` missed it entirely — HEAD can be
+  # perfectly aligned (1 file) while the editor reports 4612 files, +74252 -32174, which is
+  # exactly the state this was supposed to catch.
+  base=$(git -C "$local_wt" merge-base HEAD origin/main 2>/dev/null)
+  changed=$(git -C "$local_wt" diff --name-only ${base:+"$base"} 2>/dev/null | wc -l)
   [ "${changed:-0}" -le 150 ] && exit 0
+  # A stale trunk ref is half the problem: the fork point can only move forward once the
+  # local origin/main knows about the commits the box rebased onto. Refresh it first — if
+  # that alone fixes the base, the HEAD realign below is a no-op.
+  git -C "$local_wt" fetch -q --no-tags origin main 2>/dev/null || true
   # Multiplex: a cold ssh costs 0.85-1.9s, far too much to hang off an interaction.
   # One persistent control socket takes the same check to ~0.04s.
   cm="${XDG_RUNTIME_DIR:-/tmp}/heidr-vm-cm"
