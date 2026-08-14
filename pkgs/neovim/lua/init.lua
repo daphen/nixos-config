@@ -1,26 +1,3 @@
--- Runs at STARTUP, not from the heidr module: that module is only loaded on demand,
--- so the bind never happened for an nvim nobody had opened the rail in yet.
--- Make sure THIS nvim is reachable on the cockpit's RPC socket, however it was started.
--- heidr's launch command passes --listen, but an nvim started by hand in the pane (the
--- original exited, you typed `nvim`) only inherits NVIM_LISTEN_ADDRESS — and 0.12 does not
--- bind that on its own. The rail then fires every session-switch RPC at a path with no
--- listener and the editor silently never moves.
-do
-  local addr = vim.env.NVIM_LISTEN_ADDRESS
-  if addr and addr ~= "" then
-    local bound = false
-    for _, s in ipairs(vim.fn.serverlist()) do
-      if s == addr then bound = true break end
-    end
-    if not bound then
-      -- A leftover file from a dead nvim blocks the bind; it is safe to clear because a
-      -- live one would have answered above.
-      if vim.uv.fs_stat(addr) then pcall(vim.uv.fs_unlink, addr) end
-      pcall(vim.fn.serverstart, addr)
-    end
-  end
-end
-
 require("core.keymaps")
 require("core.options")
 require("notes-sync")
