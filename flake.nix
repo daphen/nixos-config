@@ -174,6 +174,12 @@
           #     via an overrideAttrs to 0.24.1 while the channel lagged — nixpkgs-latest now
           #     ships 0.24.1 natively, so the override is dropped (its own TODO).
           inherit (latest) pi-coding-agent spotify-player;
+          #   • goLatest: the lovable monorepo's go.work requires >= 1.26.2; the base
+          #     channel ships 1.26.1, which made gopls fail workspace load in every
+          #     mirror worktree. A NEW attr rather than overriding pkgs.go: replacing
+          #     the toolchain rebuilds every go-built package from source (gopls et al,
+          #     none of it cached) — the alias swaps only the CLI on PATH.
+          goLatest = latest.go;
           inherit (apps)
             # AI CLIs (ship daily)
             claude-code
