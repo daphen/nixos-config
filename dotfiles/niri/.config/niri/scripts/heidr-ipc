@@ -22,15 +22,10 @@ probe_id() {
 }
 
 resolve_id() {
-  local i t focused fallback=""
+  local i t focused="$1" fallback=""
   # With per-mode cockpits (work + private simultaneously), the instance you mean is
   # the one whose window is FOCUSED — match its title to each instance's `title` fn.
   # Fallback: newest live instance, the pre-multi behavior.
-  focused=$(niri msg --json windows 2>/dev/null | python3 -c '
-import json, sys
-for w in json.load(sys.stdin):
-    if w.get("is_focused"):
-        print(w.get("title") or ""); break' 2>/dev/null || true)
   for i in $(ls -1t "$reg" 2>/dev/null); do
     t=$(timeout 2 qs ipc -i "$i" call heidr title 2>/dev/null) || continue
     case "$t" in heidr-qs*) ;; *) continue;; esac
@@ -55,15 +50,27 @@ call_id() {   # call_id <id> <fn> [args…] — echoes the reply, non-zero if no
   printf '%s\n' "$out"
 }
 
+# One niri round-trip: how many heidr windows exist, and which title is focused.
+# grep -c was WRONG here — niri prints single-line JSON, so it counted 1 forever and
+# the cache short-circuited every call: all crossings went to whichever instance was
+# cached, focus ignored (Ctrl+l dead in exactly one cockpit, randomly).
+nwin=0; focused=""
+if out=$(niri msg --json windows 2>/dev/null | python3 -c '
+import json, sys
+ws = json.load(sys.stdin)
+hs = [w for w in ws if str(w.get("title") or "").startswith("heidr-qs")]
+foc = next((str(w.get("title") or "") for w in ws if w.get("is_focused")), "")
+print(len(hs), foc)' 2>/dev/null); then
+  nwin="${out%% *}"; focused="${out#* }"
+fi
 # The cache only short-circuits when a SINGLE heidr window exists: with two cockpits
-# the right target depends on which window is focused, so we must resolve every time
-# (resolve is one title probe per live instance — still fast).
-nwin=$(niri msg --json windows 2>/dev/null | grep -c '"title": *"heidr-qs' || true)
+# the right target depends on which window is focused, so resolve every time (one
+# title probe per live instance — still fast).
 if [ "${nwin:-0}" -le 1 ] && [ -r "$cache" ]; then
   cid=$(cat "$cache" 2>/dev/null || true)
   if [ -n "${cid:-}" ] && call_id "$cid" "$@"; then exit 0; fi
 fi
 
-id=$(resolve_id) || { echo "heidr-ipc: no live heidr instance" >&2; exit 1; }
+id=$(resolve_id "$focused") || { echo "heidr-ipc: no live heidr instance" >&2; exit 1; }
 printf '%s' "$id" > "$cache" 2>/dev/null || true
 call_id "$id" "$@"
