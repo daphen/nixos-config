@@ -18,6 +18,7 @@ Singleton {
     readonly property var palettes: ({
         "light": {
             "bg":          "{{light.background.primary}}",
+            "bg_dim":      "{{light.background.dim}}",
             "bg_alt":      "{{light.background.secondary}}",
             "selection":   "{{light.background.selection}}",
             "surface":     "{{light.background.surface}}",
@@ -45,6 +46,7 @@ Singleton {
         },
         "dark": {
             "bg":          "{{dark.background.primary}}",
+            "bg_dim":      "{{dark.background.dim}}",
             "bg_alt":      "{{dark.background.secondary}}",
             "selection":   "{{dark.background.selection}}",
             "surface":     "{{dark.background.surface}}",
@@ -73,6 +75,7 @@ Singleton {
     })
 
     readonly property color bg:           palettes[mode].bg
+    readonly property color bgDim:        palettes[mode].bg_dim   // rail ground, darker than the editor
     readonly property color bg_alt:       palettes[mode].bg_alt
     readonly property color selection:    palettes[mode].selection
     readonly property color surface:      palettes[mode].surface

@@ -63,7 +63,7 @@
   "themes": {
     "dark": {
       "background": {
-        "primary": "#181818",
+        "primary": "#171717",
         "secondary": "#1B1B1B",
         "tertiary": "#1B1B1B",
         "selection": "#2E2E2E",
@@ -72,7 +72,8 @@
         "success": "#313734",
         "error": "#462B2A",
         "warning": "#462415",
-        "info": "#45474B"
+        "info": "#45474B",
+        "dim": "#101010"
       },
       "foreground": {
         "primary": "#EDEDED",
@@ -156,7 +157,8 @@
         "success": "#DDDBCC",
         "error": "#F9CFC1",
         "warning": "#F5DECE",
-        "info": "#D2D9CF"
+        "info": "#D2D9CF",
+        "dim": "#EDEDEA"
       },
       "foreground": {
         "primary": "#10100E",
