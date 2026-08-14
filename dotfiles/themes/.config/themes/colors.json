@@ -158,7 +158,7 @@
         "error": "#F9CFC1",
         "warning": "#F5DECE",
         "info": "#D2D9CF",
-        "dim": "#EDEDEA"
+        "dim": "#F5F5F7"
       },
       "foreground": {
         "primary": "#10100E",
