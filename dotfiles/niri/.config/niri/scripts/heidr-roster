@@ -49,7 +49,9 @@ case "$focused" in
 import json, sys
 try:
     d = json.load(sys.stdin)
-    print("yes" if d.get("cur", 99) < d.get("rSize", 0) else "no")
+    # insert means the composer owns the keyboard — the cursor row it left behind
+    # does not count as "parked on the roster"
+    print("yes" if (not d.get("ins")) and d.get("cur", 99) < d.get("rSize", 0) else "no")
 except Exception:
     print("no")' 2>/dev/null || echo no)
     fi
