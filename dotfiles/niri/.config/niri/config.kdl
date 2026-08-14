@@ -800,8 +800,11 @@ binds {
     Super+m hotkey-overlay-title="Mail" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:mlqs $HOME/.config/niri/scripts/launch-mail-client"; }
     // Heidr cockpit (nvim + agentd rail). Coexists with the kitty cockpit; the
     // `heidr` launcher focuses an existing window or opens one.
-    Super+y hotkey-overlay-title="Heidr cockpit" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:heidr-qs heidr-qs"; }
-    Super+Shift+y hotkey-overlay-title="New Heidr (mode by workspace)" { spawn-sh "HEIDR_FORCE_NEW=1 heidr-qs"; }
+    // Both launch the DEV TREE (run-qs.sh): per-workspace mode, per-mode identity, and
+    // always the latest code — the packaged heidr-qs lags behind until a flake rebuild
+    // and kept skewing against the working tree while heidr is under heavy iteration.
+    Super+y hotkey-overlay-title="Heidr cockpit" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:heidr-qs $HOME/personal/heidr/libghostty-spike/run-qs.sh"; }
+    Super+Shift+y hotkey-overlay-title="Heidr for this workspace (mode-scoped relaunch)" { spawn-sh "$HOME/personal/heidr/libghostty-spike/run-qs.sh"; }
     // Super+Ctrl+M: rebuild/repair the cockpit (windows + registered
     // contexts). Idempotent — replaces the old ws-startmain bind.
     Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/cockpit-restore"; }

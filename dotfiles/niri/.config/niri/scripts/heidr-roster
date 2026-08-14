@@ -61,7 +61,7 @@ case "$focused" in
     exit 0   # only one cockpit: already on its roster, nothing to hop to
     ;;
   *)
-    "$HOME/.config/niri/scripts/niri-jump-or-exec" title:heidr-qs heidr-qs
+    "$HOME/.config/niri/scripts/niri-jump-or-exec" title:heidr-qs "$HOME/personal/heidr/libghostty-spike/run-qs.sh"
     "$IPC" focusRoster 2>/dev/null || true
     ;;
 esac
