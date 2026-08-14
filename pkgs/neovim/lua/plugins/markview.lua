@@ -3,7 +3,15 @@ return {
 	lazy = false,
 	after = function()
 		require("markview").setup({
-			-- Your custom configuration here if needed
+			-- Give inline [text](url) links a visible affordance: a 󰌷 icon + underlined
+			-- link colour, so a link reads AS a link (before this it rendered as plain
+			-- concealed text and you couldn't tell). Applies in chat + plans.
+			markdown_inline = {
+				hyperlinks = {
+					enable = true,
+					default = { icon = "󰌷 ", hl = "MarkviewHyperlink" },
+				},
+			},
 		})
 
 		-- A language-less ``` block renders as "󰡯 Unknown", which reads like a warning.
@@ -35,6 +43,8 @@ return {
 			vim.api.nvim_set_hl(0, "MarkviewCodeFg", { fg = hbg.bg, bg = hbg.bg })
 			vim.api.nvim_set_hl(0, "MarkviewCodeInfo", { fg = get("Comment").fg, bg = code.bg })
 			vim.api.nvim_set_hl(0, "MarkviewInlineCode", { fg = inline.fg, bg = inline.bg })
+			-- links: electric + underline so they read as links (see the hyperlinks config above)
+			vim.api.nvim_set_hl(0, "MarkviewHyperlink", { fg = "#5566ff", underline = true })
 			for i = 1, 6 do
 				local h = get("@markup.heading." .. i .. ".markdown")
 				vim.api.nvim_set_hl(0, "MarkviewHeading" .. i, { fg = h.fg, bg = hbg.bg })

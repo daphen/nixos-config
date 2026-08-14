@@ -81,19 +81,17 @@ in {
     # keep working when niri's Wayland↔X11 selection bridge wedges after
     # suspend/wake. No-op when the bridge is healthy.
     ".local/bin/xclip".source = link "${dotfiles}/bin/.local/bin/xclip-shim";
-    # Worktree plan-dispatch tooling. wt-send injects a prompt into a worktree's
-    # running claude TUI; wt-plan chains ws-createwt --plan + wt-send to spawn a
-    # plan-mode stack and fire /plan-ticket once claude is up.
-    ".local/bin/wt-send".source = link "${dotfiles}/bin/.local/bin/wt-send";
-    ".local/bin/wt-agents".source = link "${dotfiles}/bin/.local/bin/wt-agents";
-    ".local/bin/wt-read".source = link "${dotfiles}/bin/.local/bin/wt-read";
-    ".local/bin/wt-spawn".source = link "${dotfiles}/bin/.local/bin/wt-spawn";
+    # `agent` — desktop-side client for agentd session coordination (roster/read/
+    # send/spawn), the one command replacing the wt-* scripts. Pi agents use the
+    # native agent_* tools (pi-extensions/agents) instead; both speak agentd's socket.
+    ".local/bin/agent".source = link "${dotfiles}/bin/.local/bin/agent";
     # cockpit-spawn: the full ticket kickoff (cockpit context + devenv + nvim rail tab
     # + seeded roster agent) — callable by any agent, and by the rail's Enter-on-ticket.
     ".local/bin/cockpit-spawn".source = link "${dotfiles}/bin/.local/bin/cockpit-spawn";
     ".local/bin/pi-to-vault".source = link "${dotfiles}/bin/.local/bin/pi-to-vault";
+    ".local/bin/daily-sync".source = link "${dotfiles}/bin/.local/bin/daily-sync";
+    ".local/bin/cycle-sync".source = link "${dotfiles}/bin/.local/bin/cycle-sync";
     ".local/bin/plan-ticket-rail".source = link "${dotfiles}/bin/.local/bin/plan-ticket-rail";
-    ".local/bin/wt-plan".source = link "${dotfiles}/bin/.local/bin/wt-plan";
     # plan-open: the plan-ticket skill runs this after PLAN to open the plan in nvim
     # (no-ops if an nvim is already in the repo, e.g. the worktree stack's pane).
     ".local/bin/plan-open".source = link "${dotfiles}/bin/.local/bin/plan-open";

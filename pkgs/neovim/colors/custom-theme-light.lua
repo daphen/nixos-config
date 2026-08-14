@@ -36,7 +36,7 @@ local c = {
   red = "#7c3438",
   orange = "#e16511",
   yellow = "#df9001",
-  green = "#5E7270",
+  green = "#587969",
   cyan = "#243560",
   blue = "#396171",
   sky = "#0284C7",
@@ -46,7 +46,7 @@ local c = {
   -- Semantic colors
   error = "#7c3438",
   warning = "#df9001",
-  success = "#5E7270",
+  success = "#587969",
   info = "#243560",
   keyword = "#396171",
   command = "#396171",

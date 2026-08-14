@@ -13,7 +13,33 @@ keymap.set("n", "x", '"_x')
 keymap.set("n", "<C-h>", "<C-w>h")
 keymap.set("n", "<C-j>", "<C-w>j")
 keymap.set("n", "<C-k>", "<C-w>k")
-keymap.set("n", "<C-l>", "<C-w>l")
+-- In the Heidr cockpit, <C-l> crosses into the rail when there's no split to the
+-- right (vim-tmux-navigator style); otherwise it's a plain window move. Bound in
+-- EVERY mode: focus is leaving nvim entirely, so waiting for normal mode first is
+-- friction — each mode just drops back to normal on the way out (otherwise you'd
+-- return mid-insert / with a stale visual selection).
+if vim.env.HEIDR_COCKPIT == "1" then
+  local function cross_right()
+    local prev = vim.fn.winnr()
+    vim.cmd("wincmd l")
+    if vim.fn.winnr() == prev then
+      vim.system({ vim.fn.expand("~/.config/niri/scripts/heidr-cross"), "right" })
+    end
+  end
+  keymap.set("n", "<C-l>", cross_right)
+  keymap.set({ "i", "v", "x", "s" }, "<C-l>", function()
+    vim.cmd("stopinsert")
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "n", false)
+    vim.schedule(cross_right)
+  end)
+  -- Terminal buffers need an explicit hop out of terminal-insert first.
+  keymap.set("t", "<C-l>", function()
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<C-\\><C-n>", true, false, true), "n", false)
+    vim.schedule(cross_right)
+  end)
+else
+  keymap.set("n", "<C-l>", "<C-w>l")
+end
 
 -- split screen actions
 keymap.set("n", "<leader>sv", "<C-w>v") -- split vertically

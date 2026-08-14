@@ -7,6 +7,17 @@ vim.g.loaded_netrwPlugin = 1
 -- line number
 opt.relativenumber = true
 opt.number = true
+-- Something in the plugin/loader path resets these to off AFTER options.lua runs (the
+-- global lands `nonumber` despite the above). Re-assert once startup fully settles so the
+-- global default genuinely sticks — heidr reads vim.go.number off this.
+vim.api.nvim_create_autocmd("VimEnter", {
+  callback = function()
+    vim.schedule(function()
+      vim.go.number = true
+      vim.go.relativenumber = true
+    end)
+  end,
+})
 
 opt.scrolloff = 5
 opt.sidescrolloff = 15

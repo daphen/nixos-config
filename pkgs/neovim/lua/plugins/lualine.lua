@@ -191,7 +191,7 @@ return {
 				},
 				lualine_x = {
 					{ "filetype", padding = { left = 1, right = 2 } },
-					{ "fancy_diff", source = function() return git_cache.diff end },
+					{ "fancy_diff", source = function() return git_cache.diff end, diff_color = { added = { fg = (vim.g.theme_palette or {}).green or "#5fca8b" }, removed = { fg = (vim.g.theme_palette or {}).red or "#e5675f" } } },
 				},
 				lualine_y = {
 					-- work items (plan progress ◆ N/N) for the active rail session; the
@@ -212,11 +212,11 @@ return {
 				lualine_z = {
 					{
 						get_scrollbar,
-						-- fg only (no custom bg): a distinct bg fills the rounded corner
-						-- cell and leaks past the border. Orange marker reads on the bar.
+						-- the special scroll-timeline red. fg only (no custom bg): a bg fills the
+						-- rounded corner cell and leaks past the border — THAT was the reason this
+						-- briefly went orange; the leak is the bg, so red fg-only is fine.
 						color = function()
-							local pal = vim.g.theme_palette or {}
-							return { fg = pal.orange or "#ff8a3d" }
+							return { fg = "#ED333B" }
 						end,
 						padding = { left = 1, right = 0 },
 						separator = "",
@@ -268,7 +268,7 @@ return {
 							},
 							lualine_x = {
 								{ "filetype", padding = { left = 1, right = 2 } },
-								{ "fancy_diff", source = function() return git_cache.diff end },
+								{ "fancy_diff", source = function() return git_cache.diff end, diff_color = { added = { fg = (vim.g.theme_palette or {}).green or "#5fca8b" }, removed = { fg = (vim.g.theme_palette or {}).red or "#e5675f" } } },
 							},
 							lualine_y = {
 								-- work items (plan progress ◆ N/N) for the active rail session
@@ -287,9 +287,9 @@ return {
 							lualine_z = {
 								{
 									get_scrollbar,
+									-- special scroll-timeline red (fg only; a bg leaks past the corner)
 									color = function()
-										local pal = vim.g.theme_palette or {}
-										return { fg = pal.orange or "#ff8a3d" }
+										return { fg = "#ED333B" }
 									end,
 									padding = { left = 1, right = 0 },
 									separator = "",

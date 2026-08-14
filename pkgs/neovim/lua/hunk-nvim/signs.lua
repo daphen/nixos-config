@@ -172,11 +172,11 @@ function M.base_for(repo_root)
 	return c.base
 end
 
-local function fetch_diff(relpath)
-	if not state.base_sha then return nil end
+local function fetch_diff(root, base, relpath)
+	if not (root and base) then return nil end
 	local lines = vim.fn.systemlist({
-		"git", "-C", state.repo_root, "diff", "--no-color",
-		state.base_sha, "--", relpath,
+		"git", "-C", root, "diff", "--no-color",
+		base, "--", relpath,
 	})
 	if vim.v.shell_error ~= 0 then return nil end
 	if #lines == 0 then
@@ -184,11 +184,11 @@ local function fetch_diff(relpath)
 		-- fully-added so the gutter matches the changed-files picker, which
 		-- lists them. --no-index exits 1 on difference, which is expected.
 		local tracked = vim.fn.systemlist({
-			"git", "-C", state.repo_root, "ls-files", "--", relpath,
+			"git", "-C", root, "ls-files", "--", relpath,
 		})
 		if vim.v.shell_error == 0 and #tracked == 0 then
 			lines = vim.fn.systemlist({
-				"git", "-C", state.repo_root, "diff", "--no-color",
+				"git", "-C", root, "diff", "--no-color",
 				"--no-index", "--", "/dev/null", relpath,
 			})
 		end
@@ -332,21 +332,30 @@ local function draw(bufnr, marks, ghosts)
 	end
 end
 
-local function buf_relpath(bufnr)
+-- Resolve the buffer's OWN repo root, not a single global one fixed at setup.
+-- The cockpit runs one nvim across many worktrees (contexts) — a file in any
+-- worktree other than the startup cwd would otherwise fail to match state.repo_root
+-- and get no signs. Mirrors lualine's per-root base_for; cached one rev-parse deep.
+local function buf_repo(bufnr)
 	local abs = vim.api.nvim_buf_get_name(bufnr)
-	if abs == "" or not state.repo_root then return nil end
-	local prefix = state.repo_root .. "/"
-	if abs:sub(1, #prefix) ~= prefix then return nil end
-	return abs:sub(#prefix + 1)
+	if abs == "" then return nil end
+	local dir = vim.fn.fnamemodify(abs, ":h")
+	local out = git_exec({ "git", "-C", dir, "rev-parse", "--show-toplevel" })
+	if not out or #out == 0 then return nil end
+	return out[1], abs
 end
 
 function M.refresh(bufnr)
 	if not state.enabled then return end
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 	if not vim.api.nvim_buf_is_loaded(bufnr) then return end
-	local relpath = buf_relpath(bufnr)
-	if not relpath then return end
-	local patch = fetch_diff(relpath)
+	local root, abs = buf_repo(bufnr)
+	if not root then return end
+	local prefix = root .. "/"
+	if abs:sub(1, #prefix) ~= prefix then return end
+	local relpath = abs:sub(#prefix + 1)
+	local base = M.base_for(root)
+	local patch = fetch_diff(root, base, relpath)
 	if not patch then
 		vim.api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
 		return

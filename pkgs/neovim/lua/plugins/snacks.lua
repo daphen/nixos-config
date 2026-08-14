@@ -114,6 +114,10 @@ return {
 
 		require("snacks").setup({
 			bigfile = { enabled = true },
+			-- Inline images via the kitty graphics protocol (we run in kitty;
+			-- ImageMagick is the rasterizer). Renders images in markdown/html and
+			-- opening image files directly.
+			image = { enabled = true },
 			-- off: the agent-rail renders its own session dashboard in the editor pane,
 			-- so the snacks greeter only flashed for a beat on boot before being
 			-- replaced. Let the rail own the start view.

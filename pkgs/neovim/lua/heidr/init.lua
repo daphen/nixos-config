@@ -3821,10 +3821,12 @@ local function show_scratch(win, cwd)
     -- open the context's dev-preview URL in the work browser (+ focus it), via the
     -- cockpit config's cockpit_open_app hook — which computes the wt-proxy preview URL.
     -- The old action only launched browser-work, so it focused Helium but loaded nothing.
+    -- heidr-app asks AGENTD for the session's webPort and routes accordingly: local
+    -- sessions go through the wt-proxy as before, remote ones get an ssh -L for their
+    -- port first. The old call computed a local URL from the branch slug, so "open the
+    -- app" for a worktree living on a remote box opened nothing.
     act("a", "app", function()
-      fn.jobstart({ "bash", "-c",
-        'source "$HOME/.config/cockpit/config" 2>/dev/null && cockpit_open_app "$1"',
-        "cockpit-app", ctx }, { detach = true })
+      fn.jobstart({ home .. "/.config/niri/scripts/heidr-app", ctx }, { detach = true })
     end)
   end
   if root then
@@ -4271,6 +4273,11 @@ local function to_dashboard()
   local cwd = session_cwd(S.selected)
   if cwd and cwd ~= "" then reflect_context(cwd) end
 end
+
+-- Public: render the session dashboard for an explicit absolute cwd, independent
+-- of S.selected. For external drivers (the Quickshell cockpit rail) that pick the
+-- session themselves and drive this nvim over the RPC socket.
+function M.dashboard(cwd) reflect_context(cwd) end
 
 -- Map a session cwd to its cockpit context name (~/work/lovable → "main";
 -- ~/work/lovable.daphen-<ctx> → "<ctx>"). nil if it isn't a lovable worktree.
@@ -5930,11 +5937,15 @@ function M.setup(opts)
       api.nvim_set_current_win(remembered)
     end
   end
-  for _, d in ipairs({ "h", "l" }) do
-    vim.keymap.set("n", "<C-" .. d .. ">", function() wincmd_rail_aware(d) end,
-      { desc = "Window " .. d .. " (rail-aware)" })
-    vim.keymap.set("n", "<C-w>" .. d, function() wincmd_rail_aware(d) end,
-      { desc = "Window " .. d .. " (rail-aware)" })
+  -- In the Heidr cockpit the standalone rail isn't used; keymaps.lua owns <C-l>
+  -- (cross into the Quickshell rail) and <C-h>, so don't override them here.
+  if vim.env.HEIDR_COCKPIT ~= "1" then
+    for _, d in ipairs({ "h", "l" }) do
+      vim.keymap.set("n", "<C-" .. d .. ">", function() wincmd_rail_aware(d) end,
+        { desc = "Window " .. d .. " (rail-aware)" })
+      vim.keymap.set("n", "<C-w>" .. d, function() wincmd_rail_aware(d) end,
+        { desc = "Window " .. d .. " (rail-aware)" })
+    end
   end
   vim.keymap.set("n", "<leader>a", function() M.toggle() end, { desc = "Toggle agent rail" })
   vim.keymap.set("n", "<leader>A", function() M.send_message() end, { desc = "Quick-message the active agent" })

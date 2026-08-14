@@ -50,6 +50,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # heidr — cockpit: nvim (libghostty terminal) + agentd rail in one Quickshell
+    # window. Local path (actively developed); follows the system nixpkgs +
+    # quickshell so the C++ plugin's Qt matches the running qs.
+    heidr = {
+      url = "path:/home/daphen/personal/heidr/libghostty-spike";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.quickshell.follows = "quickshell";
+    };
+
     # agentd — Go daemon supervising pi --mode rpc children for the nvim agent
     # rail. flake=false: the repo has no flake.nix (pure-stdlib Go), so it's
     # consumed as a raw source tree and built in-repo via pkgs/agentd.
@@ -157,33 +166,15 @@
             config.allowUnfree = true;
           };
         in {
-          # 0.24.1 pinned ahead of the channel: fixes the recurring
-          # "Token is not valid" breakage from Spotify's 2026-06-18 refresh
-          # token expiration policy change (upstream #1040). Hashes lifted
-          # from nixpkgs master. Drop the override once nixpkgs-latest ≥ 0.24.1.
-          spotify-player = latest.spotify-player.overrideAttrs (old: rec {
-            version = "0.24.1";
-            src = final.fetchFromGitHub {
-              owner = "aome510";
-              repo = "spotify-player";
-              rev = "v0.24.1";
-              hash = "sha256-+GADmRl4XMwV8TfYZjEeyKDDfda3bDPzeerhYryX6vA=";
-            };
-            # Vendor via nixpkgs-latest's fetcher, NOT system nixpkgs (`final`):
-            # the old fetcher hits crates.io/api/v1 with a default python-requests
-            # UA, which crates.io now 403s; latest's fetcher uses static.crates.io
-            # + a descriptive UA. It also matches the vendor layout the master hash
-            # below was taken from.
-            cargoDeps = latest.rustPlatform.fetchCargoVendor {
-              inherit src;
-              name = "spotify-player-${version}-vendor";
-              hash = "sha256-CSZ5sZ+d7Jhi43ipaWXKupYPFgWCbCx4RMTQN8emu9o=";
-            };
-          });
-          # From nixpkgs-latest, not `apps`: pi <0.79 predates the
-          # earendil-works rename, and pi-mcp-adapter peer-depends on the
-          # post-rename @earendil-works/pi-ai + typebox that only 0.79+ ships.
-          inherit (latest) pi-coding-agent;
+          # From nixpkgs-latest, not `apps`:
+          #   • pi-coding-agent: pi <0.79 predates the earendil-works rename, and
+          #     pi-mcp-adapter peer-depends on @earendil-works/pi-ai + typebox that only
+          #     0.79+ ships.
+          #   • spotify-player: 0.24+ fixes the hourly "Token is not valid" refresh-token
+          #     death (Spotify's 2026-06-18 policy change; 0.23 can't refresh). Was pinned
+          #     via an overrideAttrs to 0.24.1 while the channel lagged — nixpkgs-latest now
+          #     ships 0.24.1 natively, so the override is dropped (its own TODO).
+          inherit (latest) pi-coding-agent spotify-player;
           inherit (apps)
             # AI CLIs (ship daily)
             claude-code

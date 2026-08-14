@@ -116,6 +116,7 @@ let
         ripgrep
         fd
         git
+        mermaid-cli   # mmdc — snacks.image renders ```mermaid code blocks to images (pulls a headless chromium)
       ] ++ lintAndFormat;
 
       specs = {

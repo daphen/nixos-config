@@ -95,6 +95,24 @@ in
     Install.WantedBy = [ "default.target" ];
   };
 
+  # The LOCAL orchestrator's daemon. Per-ticket work runs remotely (lovbox `devenv wt`
+  # sessions in the `work` scope); this scope holds the orchestrator at the repo root
+  # plus the review sessions `agent review` spawns — neither needs a devenv. It was
+  # hand-started until now, so it vanished on every reboot.
+  systemd.user.services.agentd-lovable = {
+    Unit = {
+      Description = "agentd (lovable scope) — local orchestrator + PR reviewers";
+      After = [ "network-online.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "%h/.local/bin/agentd --scope lovable --repo %h/work/lovable";
+      Restart = "on-failure";
+      RestartSec = "10s";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+
   systemd.user.services.claude-transcript-backup = {
     Unit.Description = "Append-only mirror of Claude Code transcripts";
     Service = {

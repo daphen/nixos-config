@@ -577,15 +577,15 @@ local function insert_after(row, lines)
 end
 
 -- Send a /plan-ticket prompt to the agent driving the plan's repo
--- (state.root) — repo-targeted via `wt-send --cwd`, which routes to the pi rail session
--- kicked the plan off in, worktree or not. Prompt goes on stdin to avoid arg-quoting.
+-- (state.root) — repo-targeted via `agent send --cwd`, which routes to the pi rail
+-- session kicked the plan off in, worktree or not. Prompt goes on stdin to avoid arg-quoting.
 local function dispatch(prompt, wait, cwd)
 	local root = cwd or state.root or git_root()
 	if not root then
 		vim.notify("plan: no repo bound — open the plan from inside its repo", vim.log.levels.WARN)
 		return false
 	end
-	vim.system({ "wt-send", "--cwd", root, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
+	vim.system({ "agent", "send", "--cwd", root, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
 		if res.code ~= 0 then
 			vim.schedule(function()
 				vim.notify("plan: no agent driving " .. root .. " — open the rail / start a session there",

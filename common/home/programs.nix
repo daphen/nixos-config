@@ -13,6 +13,9 @@ let
   dsqrdClient = inputs.dsqrd.packages.${pkgs.system}.dsqrd-client;
   mlqsDaemon = inputs.mlqs.packages.${pkgs.system}.mlqs;
   mlqsClient = inputs.mlqs.packages.${pkgs.system}.mlqs-client;
+  # heidr — cockpit launcher (bundles the libghostty terminal plugin; connects to
+  # the running agentd). `heidr` opens/focuses the Quickshell cockpit window.
+  heidrClient = inputs.heidr.packages.${pkgs.system}.heidr-qs;
   # agentd — built in-repo from the flake=false source input (no flake.nix in
   # the repo). Lands `agentd` on PATH; the nvim rail + niri startup use it.
   agentd = import ../../pkgs/agentd { inherit pkgs; src = inputs.agentd; };
@@ -66,6 +69,13 @@ in
     # mpv — used by the media-viewer.sh (in ~/.config/qs-chat-clients/) that the native
     # QML chat clients (slqs/dsqrd) call to play gif-as-mp4 attachments.
     mpv
+    # autossh — supervises the heidr↔lovbox tunnel (cockpit-add-lovbox-heidr). Plain
+    # `ssh -f` dies on any network blip and takes the remote agentd with it, leaving a
+    # stale socket and a rail that silently shows nothing; autossh reconnects.
+    autossh
+    # sshfs/mutagen — mutagen syncs the lovbox worktree to the local mirror so the
+    # local nvim edits the box's files at native speed (sshfs hung on the monorepo).
+    mutagen
   ]) ++ [
     # Helium browser via the upstream auto-bumped flake. Ships its own
     # .desktop and icon, so no xdg.desktopEntries needed.
@@ -80,6 +90,8 @@ in
     dsqrdClient
     mlqsDaemon
     mlqsClient
+    # heidr — the cockpit (nvim + agentd rail in one qs window).
+    heidrClient
     # agentd — nvim agent-rail daemon (one instance per scope, started at login).
     agentd
   ];
