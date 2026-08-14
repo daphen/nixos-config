@@ -408,16 +408,6 @@ PYEOF
             cp "$generated_file" "$pi_dir/${theme_mode}.json"
             log_success "Applied Pi coding agent ${theme_mode} theme"
             ;;
-        "qutebrowser-userstyles")
-            # Special case: uses qutebrowser's directory
-            local target_dir is_managed
-            if get_tool_target "qutebrowser"; then
-                mkdir -p "$target_dir"
-                cp "$generated_file" "$target_dir/userstyles.css"
-                local label=$([[ "$is_managed" == true ]] && echo "managed" || echo "local")
-                log_success "Applied qutebrowser userstyles ($label)"
-            fi
-            ;;
         "swaylock")
             local target_dir is_managed
             if get_tool_target "$tool"; then
