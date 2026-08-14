@@ -113,6 +113,26 @@ in
     Install.WantedBy = [ "default.target" ];
   };
 
+  # The VM work-scope daemon reaches this machine as a unix-socket forward over ssh.
+  # It was a bare hand-started `ssh -L`, so every suspend/network change killed it and
+  # left a corpse socket refusing connections — the rail then re-dialed it every 2s,
+  # flooding the log, and the work cockpit went blind until someone remembered the
+  # incantation. Supervised now: restart on ANY exit, StreamLocalBindUnlink clears the
+  # stale socket file on rebind, keepalives detect a dead path in ~60s.
+  systemd.user.services.agentd-work-tunnel = {
+    Unit = {
+      Description = "agentd work-scope tunnel (VM unix-socket forward)";
+      After = [ "network-online.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "${pkgs.openssh}/bin/ssh -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ExitOnForwardFailure=yes -o StreamLocalBindUnlink=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=15 -L %t/agentd-work.sock:127.0.0.1:17840 david_karlsson_lovable_dev@dev-heidr-2a39.workstation.lovable.net";
+      Restart = "always";
+      RestartSec = "5s";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+
   systemd.user.services.claude-transcript-backup = {
     Unit.Description = "Append-only mirror of Claude Code transcripts";
     Service = {
