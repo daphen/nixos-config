@@ -393,8 +393,10 @@ spawn-at-startup "qs"
 // the source root list_sources offers; personal must be set or it defaults to
 // the lovable worktree root.
 spawn-sh-at-startup "OPENAI_API_KEY=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY') agentd --scope lovable --repo $HOME/work/lovable >/tmp/agentd-lovable.log 2>&1"
-spawn-sh-at-startup "OPENAI_API_KEY=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY') agentd --scope personal --repo $HOME/personal >/tmp/agentd-personal.log 2>&1"
-spawn-sh-at-startup "mkdir -p $HOME/.local/share/agentd/chat && OPENAI_API_KEY=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY') agentd --scope chat --repo $HOME/.local/share/agentd/chat --http 17830 >/tmp/agentd-chat.log 2>&1"
+spawn-sh-at-startup "$HOME/.config/niri/scripts/launch-agentd-scope personal"
+// Key handling lives in the script: the inline $(fish …) expansion left the key in
+// the wrapper's argv, world-readable via ps for the daemon's whole lifetime.
+spawn-sh-at-startup "$HOME/.config/niri/scripts/launch-agentd-scope chat"
 
 // Auto-restore wallpaper on startup with waypaper
 spawn-at-startup "waypaper" "--restore"
