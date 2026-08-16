@@ -4570,6 +4570,11 @@ refresh_git_changes = function(cwd, path)
   local ok, signs = pcall(require, "hunk-nvim.signs")
   local base = ok and signs.base_for and signs.base_for(cwd) or "HEAD"
   if not base or base == "" then base = "HEAD" end
+  -- A repo with no commits has no HEAD: diff against the empty tree so a brand-new
+  -- project shows everything as added instead of an empty CHANGES view.
+  if base == "HEAD" and fn.systemlist({ "git", "-C", cwd, "rev-parse", "-q", "--verify", "HEAD" })[1] == nil then
+    base = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+  end
   local args = { "git", "-C", cwd, "diff", "--no-color", "--no-ext-diff", "--unified=0", base }
   if path and path ~= "" then args[#args + 1] = "--"; args[#args + 1] = path end
   local previous = S.diff_jobs[cwd]
