@@ -4379,9 +4379,16 @@ function M.follow_remote(cwd, path)
   local ed = target_editor_win()
   if not ed then return "" end
   local bn = api.nvim_buf_get_name(api.nvim_win_get_buf(ed))
-  -- Follow only while the editor rests on the dashboard (unnamed scratch) or inside
-  -- this session's worktree — never yank the user out of their own unrelated file.
-  if bn ~= "" and not (cwd and cwd ~= "" and bn:sub(1, #cwd) == cwd) then return "" end
+  -- Follow only while the editor rests on session context — never yank the user out
+  -- of their own unrelated file. Session context is: the dashboard (unnamed scratch),
+  -- the session's worktree, a PLAN buffer (watching the plan of a working session is
+  -- the follow use-case, not a detour), or whatever file the follow itself opened
+  -- last (a multi-repo plan otherwise self-blocks after its first out-of-repo edit).
+  local plans = fn.expand("~/personal/notes/storage/plans/")
+  local ours = S._follow and S._follow:gsub(":%d+$", "")
+  if bn ~= "" and not (cwd and cwd ~= "" and bn:sub(1, #cwd) == cwd)
+     and bn:sub(1, #plans) ~= plans and not bn:find("/%.plans/")
+     and bn ~= ours then return "" end
   follow_edit(cwd, path, nil, true)
   return ""
 end
