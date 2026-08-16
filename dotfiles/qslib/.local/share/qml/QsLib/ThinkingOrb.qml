@@ -81,9 +81,7 @@ Item {
     radius: width / 2
     color: "transparent"
     border.width: Math.max(1.25, Math.min(width, height) * 0.065)
-    // L .70, not .82: at .82 every hue collapsed to "white-ish" on a dark
-    // ground — the ring must READ as its color from across the room.
-    border.color: Qt.hsla(orb.hu, Math.max(0.85, orb.sat), Theme.mode === "light" ? 0.34 : 0.70, 1)
+    border.color: Qt.hsla(orb.hu, orb.sat * 0.85, Theme.mode === "light" ? 0.34 : 0.82, 1)
     antialiasing: true
   }
 }
