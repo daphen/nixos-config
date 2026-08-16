@@ -79,7 +79,7 @@ Item {
       // Badge chrome: an animated gradient disc behind the mesh, ringed in white.
       // The gradient's axis rides the same wall-clock phase as the sphere, so the
       // light appears to orbit with it. The mesh insets inside the ring.
-      var ring = Math.max(1.5, Math.min(w, h) * 0.09)
+      var ring = Math.max(1.25, Math.min(w, h) * 0.065)
       var discR = Math.min(w, h) / 2 - ring / 2 - 1   // 1px in from the item edge (AA headroom)
       var g0 = orb.glow
       var hu = g0.hslHue < 0 ? 0 : g0.hslHue
@@ -121,12 +121,9 @@ Item {
       ctx.restore()
 
       ctx.lineWidth = ring
-      // The ring belongs to the duotone, not to black/white: the highlight hue,
-      // brightened — it frames without introducing a foreign color. Light mode
-      // deepens it instead so the badge still cuts against a pale ground.
-      // The ring stays NEUTRAL — white on dark, near-black on light. Color lives
-      // in the gradient only; a hued ring kept reading as "why is the outline X".
-      ctx.strokeStyle = Theme.mode === "light" ? "#1F1F1F" : "#FFFFFF"
+      // The ring rides the action hue — bright tint of it on dark, deep shade on
+      // light — so the frame belongs to the aurora instead of cutting against it.
+      ctx.strokeStyle = Qt.hsla(hu, sat * 0.85, Theme.mode === "light" ? 0.34 : 0.82, 1)
       ctx.beginPath(); ctx.arc(cx, cy, discR, 0, 2 * Math.PI); ctx.stroke()
 
       var R = (Math.min(w, h) / 2 - ring * 1.6) / 1.2
