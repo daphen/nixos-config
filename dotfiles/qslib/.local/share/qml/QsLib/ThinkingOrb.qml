@@ -85,64 +85,59 @@ Item {
       var hu = g0.hslHue < 0 ? 0 : g0.hslHue
       var sat = Math.min(1, Math.max(0.75, g0.hslSaturation))
 
-      // Aurora folds: silk-like ribbons instead of round blobs. Each ribbon is a
-      // cubic bezier swept across the disc and stroked in feathered passes (wide
-      // faint -> narrow bright), additively blended, so overlaps read as creases
-      // of folded light. Endpoints/controls all drift on wall-clock phases with
-      // prime-ish periods -- the folds slide and re-crease without ever looping.
+      // Aurora morph: filled amoeba shapes whose OUTLINES deform continuously.
+      // Each shape is a closed smooth curve through points whose radii breathe on
+      // two sine harmonics with independent wall-clock phases -- the silhouette
+      // itself morphs (ribbons before this just read as rotating lines). Overlaps
+      // blend additively into brighter creases that fold and unfold.
       ctx.save()
       ctx.beginPath(); ctx.arc(cx, cy, discR, 0, 2 * Math.PI); ctx.clip()
       ctx.fillStyle = Qt.hsla((hu + 0.94) % 1, sat, 0.10, 1)
       ctx.fillRect(cx - discR, cy - discR, discR * 2, discR * 2)
       var t = Date.now()
       function ph(P) { return (t % P) / P * 2 * Math.PI }
-      // dim core glow so the folds sit IN something, not on flat black
       var core = ctx.createRadialGradient(cx, cy, 0, cx, cy, discR)
-      core.addColorStop(0, Qt.hsla(hu, sat, 0.30, 0.5))
+      core.addColorStop(0, Qt.hsla(hu, sat, 0.28, 0.45))
       core.addColorStop(1, Qt.hsla(hu, sat, 0.12, 0))
       ctx.fillStyle = core
       ctx.fillRect(cx - discR, cy - discR, discR * 2, discR * 2)
       ctx.globalCompositeOperation = "lighter"
-      ctx.lineCap = "round"
-      // [angPeriod, wobblePeriod, foldPeriod, hue offset, lightness, base width]
-      var ribbons = [
-        [17300,  8300, 12700, 0.00, 0.55, 0.85],
-        [13100, 10900,  7900, 0.07, 0.62, 0.65],
-        [19700,  7300, 14900, -0.06, 0.48, 0.75]
+      // [driftPx, driftPy, morphP1, morphP2, base r, hue off, lightness, alpha]
+      var shapes = [
+        [16900, 12700,  8300, 11300, 0.62, 0.00, 0.55, 0.50],
+        [13100, 17900,  9700,  7300, 0.50, 0.07, 0.62, 0.45],
+        [19700, 14300, 10900,  8900, 0.44, -0.06, 0.48, 0.45]
       ]
-      for (var ri = 0; ri < ribbons.length; ri++) {
-        var R2 = ribbons[ri]
-        var ang = ph(R2[0]) + ri * 2.1
-        var wob = Math.sin(ph(R2[1]) + ri * 1.3) * 0.7
-        var fold = Math.sin(ph(R2[2]) + ri * 2.6)
-        // endpoints outside the disc so clipped ends never show round caps
-        var er = discR * 1.35
-        var x0 = cx + Math.cos(ang) * er,        y0 = cy + Math.sin(ang) * er
-        var x3 = cx + Math.cos(ang + Math.PI + wob) * er
-        var y3 = cy + Math.sin(ang + Math.PI + wob) * er
-        // controls pushed to opposite sides of the chord = S-curve = a crease
-        var px = -Math.sin(ang), py = Math.cos(ang)
-        var k = discR * (0.5 + 0.45 * fold)
-        var c1x = cx + px * k,  c1y = cy + py * k
-        var c2x = cx - px * k * 0.8, c2y = cy - py * k * 0.8
-        var bh = ((hu + R2[3]) % 1 + 1) % 1
-        var lg = ctx.createLinearGradient(x0, y0, x3, y3)
-        lg.addColorStop(0,   Qt.hsla(bh, sat, R2[4] * 0.7, 1))
-        lg.addColorStop(0.5, Qt.hsla((bh + 0.05) % 1, sat, R2[4], 1))
-        lg.addColorStop(1,   Qt.hsla(bh, sat, R2[4] * 0.6, 1))
-        ctx.strokeStyle = lg
-        // feathered passes: wide+faint underneath, narrow+bright crest on top
-        var passes = [[1.0, 0.10], [0.55, 0.16], [0.24, 0.30]]
-        for (var pi = 0; pi < passes.length; pi++) {
-          ctx.globalAlpha = passes[pi][1]
-          ctx.lineWidth = discR * R2[5] * passes[pi][0]
-          ctx.beginPath()
-          ctx.moveTo(x0, y0)
-          ctx.bezierCurveTo(c1x, c1y, c2x, c2y, x3, y3)
-          ctx.stroke()
+      var N = 9  // outline points per shape; smooth-closed via midpoint quadratics
+      for (var si = 0; si < shapes.length; si++) {
+        var S2 = shapes[si]
+        var scx = cx + Math.cos(ph(S2[0]) + si * 2.1) * discR * 0.38
+        var scy = cy + Math.sin(ph(S2[1]) + si * 1.4) * discR * 0.38
+        var base = discR * S2[4]
+        var m1 = ph(S2[2]), m2 = ph(S2[3])
+        var pts = []
+        for (var i = 0; i < N; i++) {
+          var a = i / N * 2 * Math.PI
+          // two harmonics (2 and 3 lobes) at different clocks = the morph
+          var rr = base * (1 + 0.38 * Math.sin(2 * a + m1 + si) + 0.26 * Math.sin(3 * a - m2 + si * 2))
+          pts.push([scx + Math.cos(a) * rr, scy + Math.sin(a) * rr])
         }
+        var bh = ((hu + S2[5]) % 1 + 1) % 1
+        var fg = ctx.createRadialGradient(scx, scy, 0, scx, scy, base * 1.6)
+        fg.addColorStop(0,   Qt.hsla(bh, sat, S2[6], S2[7]))
+        fg.addColorStop(0.7, Qt.hsla((bh + 0.04) % 1, sat, S2[6] * 0.75, S2[7] * 0.6))
+        fg.addColorStop(1,   Qt.hsla(bh, sat, S2[6] * 0.5, 0))
+        ctx.fillStyle = fg
+        ctx.beginPath()
+        var mx = (pts[0][0] + pts[1][0]) / 2, my = (pts[0][1] + pts[1][1]) / 2
+        ctx.moveTo(mx, my)
+        for (var j = 1; j <= N; j++) {
+          var p1 = pts[j % N], p2 = pts[(j + 1) % N]
+          ctx.quadraticCurveTo(p1[0], p1[1], (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2)
+        }
+        ctx.closePath()
+        ctx.fill()
       }
-      ctx.globalAlpha = 1
       ctx.globalCompositeOperation = "source-over"
       ctx.restore()
 
