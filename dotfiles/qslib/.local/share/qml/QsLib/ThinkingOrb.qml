@@ -37,13 +37,33 @@ Item {
     running: orb.running
     onTriggered: orb.t = (Date.now() % 86400000) / 1000
   }
+  // Big badge flows livelier; the small roster orbs stay calm. A constant
+  // multiplier on the wall clock keeps continuity (no resets, ever).
+  property real flow: width >= 40 ? 0.64 : 1.0
+
+  // Field shape knobs (shader uniforms). Defaults are the shipped look; the
+  // orb-tuner dev shell binds sliders to them.
+  property real angle: -0.76
+  property real bandX: 1.84
+  property real bandY: 5.03
+  property real warp: 6.37
+  property real grain: 0.45
+  property real feather: 0.74
+  property real bright: 0.25
 
   ShaderEffect {
     id: field
     anchors.fill: parent
     anchors.margins: ring.border.width / 2
     fragmentShader: Qt.resolvedUrl("aurora.frag.qsb")
-    property real time: orb.t
+    property real time: orb.t * orb.flow
+    property real angle: orb.angle
+    property real bandX: orb.bandX
+    property real bandY: orb.bandY
+    property real warp: orb.warp
+    property real gain: orb.grain
+    property real feather: orb.feather
+    property real bright: orb.bright
     // Bright-dominated palette: the field lives between mid and crest; the deep
     // tone only survives in the folds (the old near-black ground read as a pit).
     property color colA: Qt.hsla(orb.hu, orb.sat, 0.26, 1)
