@@ -313,6 +313,10 @@
   programs._1password.enable = true;
   programs._1password-gui.enable = true;
   programs._1password-gui.polkitPolicyOwners = [ "daphen" ];
+  environment.etc."1password/custom_allowed_browsers" = {
+    text = "helium\n";
+    mode = "0755";
+  };
 
   # Keyboard firmware (udev rules for Vial/QMK)
   hardware.keyboard.qmk.enable = true;

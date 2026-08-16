@@ -42,7 +42,9 @@ pkgs.stdenvNoCC.mkDerivation {
     mkdir -p $out/libexec/helium $out/bin $out/share/applications $out/share/icons
     cp -a . $out/libexec/helium/
     makeWrapper $out/libexec/helium/AppRun $out/bin/helium \
-      --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath libraries}
+      --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath libraries} \
+      --set FONTCONFIG_FILE ${pkgs.fontconfig.out}/etc/fonts/fonts.conf \
+      --set FONTCONFIG_PATH ${pkgs.fontconfig.out}/etc/fonts
     install -m 444 helium.desktop $out/share/applications/helium.desktop
     cp -a usr/share/icons/. $out/share/icons/
     runHook postInstall

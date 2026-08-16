@@ -43,7 +43,7 @@ Item {
   // multiplier on the wall clock keeps continuity (no resets, ever).
   // 0.64 was tuned against a 140px preview; at the real 44px badge apparent
   // motion scales down with size and it read as near-still. 1.3 restores life.
-  property real flow: width >= 40 ? 2.2 : 1.0
+  property real flow: width >= 40 ? 3.5 : 1.8
 
   // Field shape knobs (shader uniforms). Defaults are the shipped look; the
   // orb-tuner dev shell binds sliders to them.
