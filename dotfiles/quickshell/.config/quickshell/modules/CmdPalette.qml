@@ -7,7 +7,7 @@ import "../QsLib" as Lib
 // Command palette (Super+F) — THE palette UI; the old in-browser popup
 // (chromium-palette App.tsx) is retired, the extension is bridge-only.
 // Data + actions come from PaletteState (palette-daemon over the UI
-// socket). Visuals: 600×480, radius 14, strong fg-tinted outer border,
+// socket). Visuals: centered responsive panel, strong fg-tinted outer border,
 // full-width hairline section separators, borderless 17px input,
 // sans-serif type.
 PanelWindow {
@@ -25,8 +25,25 @@ PanelWindow {
             resetTransient()
             PaletteState.refresh()
             search.forceActiveFocus()
+            Qt.callLater(() => {
+                search.forceActiveFocus()
+                list.positionViewAtBeginning()
+                Qt.callLater(() => list.positionViewAtBeginning())
+            })
         } else {
             closeDelay.restart()
+            if (restoreTabOnClose) {
+                const original = sessionTabs.find(t => t.id === sessionCurrentTabId)
+                if (original && previewTabId !== original.id)
+                    PaletteState.activateTab(original.id, original.windowId)
+                ignoreRecencyUntil = Date.now() + 500
+                reconcileTabOrder(PaletteState.tabs || [], sessionCurrentTabId)
+            } else if (committedTabId != null) {
+                ignoreRecencyUntil = Date.now() + 500
+                reconcileTabOrder(PaletteState.tabs || [], committedTabId)
+            } else {
+                ignoreRecencyUntil = 0
+            }
             // Window switches made while cycling the chin happen UNDER this
             // layer; when the layer drops, niri returns keyboard focus to the
             // pre-palette window, silently undoing them. Re-assert the user's
@@ -35,6 +52,7 @@ PanelWindow {
         }
     }
     Timer { id: closeDelay; interval: 300; onTriggered: root.active = false }
+    Timer { id: closeScrollTimeout; interval: 1000; onTriggered: root.preservingCloseScroll = false }
     Timer {
         id: reassert
         interval: 420   // past closeDelay + unmap, before it reads as a second hop
@@ -50,6 +68,10 @@ PanelWindow {
         filterTab = 0
         scopedWindowId = null
         scopedWindowProfile = null
+        previewTabId = PaletteState.currentTabId
+        restoreTabOnClose = true
+        committedTabId = null
+        captureTabOrder()
         selectedIndex = 0
         list.positionViewAtBeginning()
     }
@@ -63,18 +85,93 @@ PanelWindow {
 
     // The old palette rendered in the system sans stack, not the
     // desktop's mono — part of what made it feel cleaner. Keep that.
-    readonly property string sans: "Geist"
+    readonly property string sans: Theme.fontFamily
     // Outer border: --app-container-border-color (fg @ .5 light / .1 dark).
     readonly property color panelBorder:
         Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
 
     // ── ranking / grouping ────────────────────────────────────────────
-    readonly property var filterTabs: ["All", "Tabs", "Quickmarks", "History", "Web", "?"]
+    readonly property var filterTabs: ["All", "Tabs", "Pinned items", "Quickmarks", "History", "Web", "?"]
     property int filterTab: 0
     property string query: search ? search.text : ""
     property var scopedWindowId: null
     property var scopedWindowProfile: null
     property int selectedIndex: 0
+    property bool preservingCloseScroll: false
+    property real closeScrollY: 0
+    property var tabOrder: []
+    property var previewTabId: null
+    property bool restoreTabOnClose: true
+    property var committedTabId: null
+    property double ignoreRecencyUntil: 0
+    property var pinnedItems: []
+    property var sessionTabs: []
+    property string sessionTabsKey: ""
+    property var sessionCurrentTabId: null
+    property var sessionQuickmarks: []
+    property string sessionQuickmarksKey: ""
+
+    function tabContentKey(tabs) {
+        return JSON.stringify(tabs.map(t => [
+            t.id, t.windowId, t.title, t.url, t.faviconPath
+        ]))
+    }
+
+    function reconcileTabOrder(tabs, curId) {
+        const liveIds = ({})
+        for (const tab of tabs) liveIds[tab.id] = true
+        if (tabOrder.length === 0) {
+            const sorted = tabs.slice()
+                .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))
+            tabOrder = sorted.filter(t => t.id === curId)
+                .concat(sorted.filter(t => t.id !== curId))
+                .map(t => t.id)
+            return
+        }
+        const previous = tabOrder.filter(id => liveIds[id] && id !== curId)
+        const knownIds = ({})
+        for (const id of previous) knownIds[id] = true
+        const newcomers = tabs.filter(t => t.id !== curId && !knownIds[t.id])
+            .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))
+            .map(t => t.id)
+        const current = liveIds[curId] ? [curId] : []
+        tabOrder = current.concat(newcomers, previous)
+    }
+
+    function captureTabOrder() {
+        const tabs = (PaletteState.tabs || []).slice()
+        sessionTabs = tabs
+        sessionTabsKey = tabContentKey(tabs)
+        sessionCurrentTabId = PaletteState.currentTabId
+        sessionQuickmarks = (PaletteState.quickmarks || []).slice()
+        sessionQuickmarksKey = JSON.stringify(sessionQuickmarks)
+        reconcileTabOrder(tabs, PaletteState.currentTabId)
+    }
+
+    function previewTab(entry) {
+        if (!open || !entry || entry.divider || entry.kind !== "tab") return
+        if (entry.tabId === previewTabId) return
+        previewTabId = entry.tabId
+        PaletteState.activateTab(entry.tabId, entry.windowId)
+    }
+
+    function togglePinned(entry) {
+        if (!entry || entry.divider || !entry.url) return
+        const index = pinnedItems.findIndex(item => item.url === entry.url)
+        if (index >= 0) {
+            pinnedItems = pinnedItems.filter((_, i) => i !== index)
+            markToast.show("unpinned")
+            return
+        }
+        pinnedItems = pinnedItems.concat([{
+            kind: "pinned",
+            title: entry.title || entry.url,
+            url: entry.url,
+            subtitle: entry.subtitle || niceUrl(entry.url),
+            faviconPath: entry.faviconPath || "",
+        }])
+        markToast.show("pinned")
+    }
 
     // History feeds the History tab always, and the All tab under a query
     // (empty-query All stays calm — recents live in the History tab).
@@ -105,6 +202,17 @@ PanelWindow {
     function niceUrl(u) {
         if (!u) return ""
         return u.length <= 80 ? u : u.slice(0, 40) + "..." + u.slice(-37)
+    }
+
+    function isRootUrlForQuery(url, rawQuery) {
+        const queryMatch = String(rawQuery || "").trim().match(
+            /^(?:https?:\/\/)?(?:www\.)?([^/?#]+\.[^/?#]+)\/?$/i)
+        const urlMatch = String(url || "").match(
+            /^https?:\/\/(?:www\.)?([^/?#]+)(\/[^?#]*)?(?:[?#].*)?$/i)
+        if (!queryMatch || !urlMatch) return false
+        const path = urlMatch[2] || "/"
+        return queryMatch[1].toLowerCase() === urlMatch[1].toLowerCase()
+            && path === "/"
     }
 
     // Token-prefix 10000 > substring ~1000 (boundary/position bonus) >
@@ -168,11 +276,10 @@ PanelWindow {
     property var searchMode: null
 
     // Flattened [divider, entry, entry, divider, ...] list, rebuilt on
-    // every state push / keystroke. Groups: Open URL → Current Tab →
-    // Open Tabs → Quickmarks → Web Search, ranked + reordered by best
-    // score under a query, cross-group URL dedupe, chin scope filter.
+    // every state push / keystroke. Groups: Open URL → Tabs → Quickmarks →
+    // Web Search, ranked + reordered by best score under a query,
+    // cross-group URL dedupe, chin scope filter.
     readonly property var entries: {
-        const _ = PaletteState.gen
         if (searchMode) {
             const qq = query.trim()
             return [
@@ -195,6 +302,7 @@ PanelWindow {
                 ["\u2303\u21e7h   \u2303\u21e7l", "window scope"],
                 ["\u2303w", "close tab"],
                 ["\u2303m", "quickmark tab"],
+                ["\u2303p", "pin / unpin item"],
                 ["tab", "web-search mode"],
                 ["\u2303/", "toggle this sheet"],
             ]
@@ -211,7 +319,9 @@ PanelWindow {
             // the filter, no local re-rank.
             const _h = PaletteState.historyGen
             const items = (PaletteState.historyEntries || []).slice()
-                .sort((a, b) => (b.lastVisitTime || 0) - (a.lastVisitTime || 0))
+                .sort((a, b) => Number(isRootUrlForQuery(b.url, query))
+                    - Number(isRootUrlForQuery(a.url, query))
+                    || (b.lastVisitTime || 0) - (a.lastVisitTime || 0))
                 .map(h => ({
                     kind: "history",
                     title: h.title || h.url || "Untitled",
@@ -226,9 +336,16 @@ PanelWindow {
             return out
         }
 
-        const tabs = (PaletteState.tabs || []).slice()
-        tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))
-        const curId = PaletteState.currentTabId
+        const tabs = (open ? sessionTabs : (PaletteState.tabs || [])).slice()
+        tabs.sort((a, b) => {
+            const ai = tabOrder.indexOf(a.id)
+            const bi = tabOrder.indexOf(b.id)
+            if (ai >= 0 && bi >= 0) return ai - bi
+            if (ai >= 0) return -1
+            if (bi >= 0) return 1
+            return (b.lastAccessed || 0) - (a.lastAccessed || 0)
+        })
+        const curId = open ? sessionCurrentTabId : PaletteState.currentTabId
         const scoped = scope == null ? tabs : tabs.filter(t => t.windowId === scope)
 
         const tabEntry = t => ({
@@ -236,12 +353,11 @@ PanelWindow {
             subtitle: niceUrl(t.url || ""), faviconPath: t.faviconPath || "",
             tabId: t.id, windowId: t.windowId,
         })
-        let currentItems = []
         const cur = scoped.find(t => t.id === curId)
-        if (cur) { const e = tabEntry(cur); e.isCurrent = true; currentItems = [e] }
-        const tabItems = scoped.filter(t => t.id !== curId).map(tabEntry)
+        const tabItems = scoped.map(tabEntry)
 
-        const qmItems = (PaletteState.quickmarks || []).map(m => ({
+        const quickmarks = open ? sessionQuickmarks : (PaletteState.quickmarks || [])
+        const qmItems = quickmarks.map(m => ({
             kind: "quickmark", title: m.name || "", url: m.url || "",
             subtitle: niceUrl(m.url || ""), faviconPath: m.faviconPath || "",
         }))
@@ -271,8 +387,9 @@ PanelWindow {
             return { items: scored.map(x => x.e), maxScore: scored.length ? scored[0].s : 0 }
         }
 
-        const rt = rank(q ? tabItems.concat(currentItems) : tabItems)
+        const rt = rank(tabItems)
         const rq = rank(qmItems)
+        const rp = rank(pinnedItems)
         // Address-bar Enter semantics: a URL-looking query navigates by
         // default — unless a tab/quickmark actually hits (substring or
         // better), in which case the hit stays on top. Weak fuzzy noise
@@ -288,7 +405,9 @@ PanelWindow {
             const _h = PaletteState.historyGen
             histItems = (PaletteState.historyEntries || [])
                 .filter(h => scoreMatch(q, matchText({ title: h.title || "", url: h.url || "" })) > 0)
-                .sort((a, b) => (b.visitCount || 0) - (a.visitCount || 0)
+                .sort((a, b) => Number(isRootUrlForQuery(b.url, query))
+                             - Number(isRootUrlForQuery(a.url, query))
+                             || (b.visitCount || 0) - (a.visitCount || 0)
                              || (b.lastVisitTime || 0) - (a.lastVisitTime || 0))
                 .slice(0, 8)
                 .map(h => ({
@@ -302,13 +421,15 @@ PanelWindow {
         }
 
         // Fixed hierarchy — groups never rank-shuffle past each other:
-        // Open URL (unless a tab/quickmark hit beats it) → Current Tab →
-        // Open Tabs → Quickmarks → History → Web Search → Actions.
+        // Open URL (unless a tab/quickmark hit beats it) → Tabs →
+        // Quickmarks → History → Web Search → Actions.
         // Array order doubles as cross-group dedupe priority.
         let groups = []
         if (urlItems.length && !hasHit) groups.push({ id: "url", heading: "Open URL", items: urlItems })
-        if (currentItems.length && !q) groups.push({ id: "tabs", heading: "Current Tab", items: currentItems })
-        groups.push({ id: "tabs", heading: "Open Tabs", items: rt.items })
+        if (ftab === "Pinned items")
+            groups.push({ id: "pinned", heading: "Pinned items", items: rp.items })
+        else
+            groups.push({ id: "tabs", heading: "Tabs", items: rt.items })
         groups.push({ id: "quickmarks", heading: "Quickmarks", items: rq.items })
         if (urlItems.length && hasHit) groups.push({ id: "url", heading: "Open URL", items: urlItems })
         groups.push({ id: "history", heading: "History", items: histItems })
@@ -318,7 +439,7 @@ PanelWindow {
         // once the tab's already marked; save-to-Synced always offered.
         if (cur) {
             const actionItems = []
-            if (!(PaletteState.quickmarks || []).some(m => m.url === cur.url)) {
+            if (!quickmarks.some(m => m.url === cur.url)) {
                 actionItems.push({
                     kind: "addqm", qmName: cur.title || cur.url, qmUrl: cur.url || "",
                     title: "Add current tab to quickmarks",
@@ -340,6 +461,10 @@ PanelWindow {
         for (let gi = 0; gi < groups.length; gi++) {
             groups[gi].items = groups[gi].items.filter(e => {
                 if (!e.url) return true
+                if (e.kind === "tab") {
+                    seen[e.url] = true
+                    return true
+                }
                 if (seen[e.url]) return false
                 seen[e.url] = true
                 return true
@@ -349,6 +474,7 @@ PanelWindow {
         let nonEmpty = groups.filter(g => g.items.length > 0)
 
         if (ftab === "Tabs") nonEmpty = nonEmpty.filter(g => g.id === "tabs")
+        else if (ftab === "Pinned items") nonEmpty = nonEmpty.filter(g => g.id === "pinned")
         else if (ftab === "Quickmarks") nonEmpty = nonEmpty.filter(g => g.id === "quickmarks")
         else if (ftab === "Web") nonEmpty = nonEmpty.filter(g => g.id === "websites")
 
@@ -361,7 +487,43 @@ PanelWindow {
         return out
     }
 
-    onEntriesChanged: if (selectedIndex >= entries.length) selectedIndex = firstSelectable()
+    onEntriesChanged: {
+        if (selectedIndex >= entries.length) selectedIndex = firstSelectable()
+        if (preservingCloseScroll) {
+            Qt.callLater(() => Qt.callLater(() => {
+                const minY = list.originY
+                const maxY = Math.max(minY, list.originY + list.contentHeight - list.height)
+                list.contentY = Math.max(minY, Math.min(maxY, closeScrollY))
+                preservingCloseScroll = false
+                closeScrollTimeout.stop()
+            }))
+        } else if (entries.length > 0) {
+            ensureSelectedVisible(selectedIndex)
+        }
+    }
+
+    function adjustSelectedMargin(index) {
+        const item = list.itemAtIndex(index)
+        if (!item) return false
+        const margin = list.navigationMargin
+        const viewTop = list.contentY
+        const viewBottom = viewTop + list.height
+        let target = viewTop
+        if (item.y < viewTop + margin)
+            target = item.y - margin
+        else if (item.y + item.height > viewBottom - margin)
+            target = item.y + item.height + margin - list.height
+        const minY = list.originY
+        const maxY = Math.max(minY, list.originY + list.contentHeight - list.height)
+        list.contentY = Math.max(minY, Math.min(maxY, target))
+        return true
+    }
+
+    function ensureSelectedVisible(index) {
+        if (adjustSelectedMargin(index)) return
+        list.positionViewAtIndex(index, ListView.Contain)
+        Qt.callLater(() => adjustSelectedMargin(index))
+    }
 
     function firstSelectable() {
         for (let i = 0; i < entries.length; i++)
@@ -376,16 +538,14 @@ PanelWindow {
         while (i >= 0 && i < n && entries[i] && entries[i].divider) i += dir
         if (i >= 0 && i < n) {
             selectedIndex = i
-            list.positionViewAtIndex(i, ListView.Contain)
-            // Contain stops at the row edge; at the ends, include the spacers
-            if (i <= firstSelectable()) list.positionViewAtBeginning()
-            else if (i === n - 1) list.positionViewAtEnd()
+            previewTab(entries[i])
+            ensureSelectedVisible(i)
         }
     }
 
-    // Enter = run: tab row activates the tab; URL rows navigate the
-    // current tab (Ctrl+Enter = new tab; on a tab row an intentional
-    // duplicate). Shift+Enter = DDG the raw query.
+    // Enter = run: tab rows always activate the existing tab; URL rows
+    // navigate the current tab (Ctrl+Enter = new tab). Shift+Enter = DDG
+    // the raw query.
     function runSelected(inNewTab) {
         if (entries.length === 0) return
         const idx = Math.max(0, Math.min(selectedIndex, entries.length - 1))
@@ -397,9 +557,12 @@ PanelWindow {
             PaletteState.saveSynced()
             markToast.show("saving…")
             return // keep the palette open so the result toast is visible
-        } else if (e.kind === "tab" && !inNewTab) {
-            if (!e.isCurrent) PaletteState.activateTab(e.tabId, e.windowId)
+        } else if (e.kind === "tab") {
+            restoreTabOnClose = false
+            committedTabId = e.tabId
+            if (e.tabId !== previewTabId) PaletteState.activateTab(e.tabId, e.windowId)
         } else if (e.url) {
+            restoreTabOnClose = false
             PaletteState.gotoUrl(e.url, inNewTab || !!e.forceNewTab)
         }
         PaletteState.hide()
@@ -410,6 +573,23 @@ PanelWindow {
     Connections {
         target: PaletteState
         function onGenChanged() {
+            const tabs = PaletteState.tabs || []
+            if (root.open) {
+                const tabsKey = root.tabContentKey(tabs)
+                if (tabsKey !== root.sessionTabsKey) {
+                    root.sessionTabs = tabs.slice()
+                    root.sessionTabsKey = tabsKey
+                }
+                const quickmarks = PaletteState.quickmarks || []
+                const quickmarksKey = JSON.stringify(quickmarks)
+                if (quickmarksKey !== root.sessionQuickmarksKey) {
+                    root.sessionQuickmarks = quickmarks.slice()
+                    root.sessionQuickmarksKey = quickmarksKey
+                }
+                if (root.tabOrder.length === 0 && tabs.length > 0) root.captureTabOrder()
+            } else if (Date.now() >= root.ignoreRecencyUntil) {
+                root.reconcileTabOrder(tabs, PaletteState.currentTabId)
+            }
             const sid = root.scopedWindowId
             if (sid == null) return
             const focused = (PaletteState.chin || []).find(w => w.focused)
@@ -455,6 +635,7 @@ PanelWindow {
             if (shift) {
                 const q = root.query.trim()
                 if (q.length > 0) {
+                    root.restoreTabOnClose = false
                     PaletteState.gotoUrl("https://duckduckgo.com/?q=" + encodeURIComponent(q), false)
                     PaletteState.hide()
                 }
@@ -477,11 +658,20 @@ PanelWindow {
             // ⌃w matches browser muscle memory; ⌃d kept as the original bind
             const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
             const e = root.entries[idx]
-            if (e && !e.divider && e.kind === "tab") PaletteState.closeTab(e.tabId)
+            if (e && !e.divider && e.kind === "tab") {
+                root.closeScrollY = list.contentY
+                root.preservingCloseScroll = true
+                closeScrollTimeout.restart()
+                PaletteState.closeTab(e.tabId)
+            }
             event.accepted = true
         } else if (event.key === Qt.Key_Slash && ctrl) {
             const helpIdx = root.filterTabs.length - 1
             root.filterTab = root.filterTab === helpIdx ? 0 : helpIdx
+            event.accepted = true
+        } else if (event.key === Qt.Key_P && ctrl) {
+            const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
+            root.togglePinned(root.entries[idx])
             event.accepted = true
         } else if (event.key === Qt.Key_M && ctrl) {
             const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
@@ -524,8 +714,8 @@ PanelWindow {
         id: panel
         anchors.horizontalCenter: parent.horizontalCenter
         y: Math.round((parent.height - height) / 2)
-        width: 660
-        height: 560
+        width: Math.min(780, parent.width - 96)
+        height: Math.min(680, parent.height - 96)
 
         color: Theme.bg
         // Radii measured off the reference palette: panel 24, field 15,
@@ -603,6 +793,7 @@ PanelWindow {
 
                 TextInput {
                     id: search
+                    focus: root.open
                     anchors.left: modeChip.visible ? modeChip.right : searchIcon.right
                     anchors.leftMargin: 12
                     anchors.right: escBadge.left
@@ -712,11 +903,9 @@ PanelWindow {
                 height: parent.height - inputWrap.height - tabsWrap.height - chinWrap.height
                 clip: true
                 model: root.entries
-                currentIndex: root.selectedIndex
-                // structural padding: header/footer are part of the content, so
-                // model resets and positionViewAt* respect them natively
-                header: Item { width: 1; height: 10 }
-                footer: Item { width: 1; height: 10 }
+                readonly property int navigationMargin: 24
+                header: Item { width: 1; height: list.navigationMargin }
+                footer: Item { width: 1; height: list.navigationMargin }
                 boundsBehavior: Flickable.StopAtBounds
 
                 Text {
@@ -736,6 +925,8 @@ PanelWindow {
                     required property int index
                     property bool isDivider: !!(modelData && modelData.divider)
                     readonly property bool hasSubtitle: !isDivider && String(modelData.subtitle || "").length > 0
+                    readonly property bool isPreviewedTab: !isDivider && modelData.kind === "tab"
+                        && modelData.tabId === root.previewTabId
                     width: list.width
                     height: isDivider ? 36 : (hasSubtitle ? 64 : 44)
 
@@ -782,10 +973,11 @@ PanelWindow {
                         anchors.rightMargin: 14
                         radius: 13
                         color: rowItem.index === root.selectedIndex ? Theme.selection
+                             : rowItem.isPreviewedTab ? Theme.surface2
                              : rowHover.hovered ? Theme.surface : "transparent"
                         border.width: 1
-                        border.color: rowItem.index === root.selectedIndex ? Theme.hairline : "transparent"
-                        opacity: (!rowItem.isDivider && rowItem.modelData.isCurrent) ? 0.6 : 1
+                        border.color: rowItem.index === root.selectedIndex || rowItem.isPreviewedTab
+                            ? Theme.hairline : "transparent"
 
                         Rectangle {
                             id: iconBox
@@ -850,7 +1042,14 @@ PanelWindow {
                             }
                         }
 
-                        HoverHandler { id: rowHover }
+                        HoverHandler {
+                            id: rowHover
+                            onPointChanged: {
+                                if (!hovered || rowItem.isDivider) return
+                                root.selectedIndex = rowItem.index
+                                root.previewTab(rowItem.modelData)
+                            }
+                        }
                         TapHandler {
                             onTapped: { root.selectedIndex = rowItem.index; root.runSelected(false) }
                         }
