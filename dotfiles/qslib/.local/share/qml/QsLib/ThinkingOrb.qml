@@ -113,39 +113,8 @@ Item {
       ctx.beginPath(); ctx.arc(cx, cy, discR, 0, 2 * Math.PI); ctx.stroke()
 
       var R = (Math.min(w, h) / 2 - ring * 1.6) / 1.2
-      var ca = Math.cos(orb.rot), sa = Math.sin(orb.rot)
-      var tilt = 0.45, ct = Math.cos(tilt), st = Math.sin(tilt)
-      var proj = []
-      for (var i = 0; i < orb._pts.length; i++) {
-        var p = orb._pts[i]
-        var x = p[0] * ca - p[2] * sa
-        var z = p[0] * sa + p[2] * ca
-        var y = p[1] * ct - z * st
-        var zz = p[1] * st + z * ct               // depth, -1 (back) … 1 (front)
-        proj.push([cx + x * R, cy - y * R, zz])
-      }
-      var g = orb.glow
-      for (var e = 0; e < orb._pts.length; e++)
-        for (var f = e + 1; f < orb._pts.length; f++) {
-          var dx = proj[e][0] - proj[f][0], dy = proj[e][1] - proj[f][1]
-          // Sparser meshes need a wider reach to connect at all; dense ones need a
-          // tighter one or every pair links.
-          var reach = R * (orb._pts.length > 16 ? 0.72 : 0.95)
-          if (dx * dx + dy * dy < reach * reach) {
-            var d = (proj[e][2] + proj[f][2]) / 2
-            ctx.strokeStyle = Qt.rgba(0, 0, 0, 0.22 + (d + 1) / 2 * 0.48)
-            ctx.lineWidth = Math.max(0.5, R * 0.07)
-            ctx.beginPath(); ctx.moveTo(proj[e][0], proj[e][1]); ctx.lineTo(proj[f][0], proj[f][1]); ctx.stroke()
-          }
-        }
-      for (var j = 0; j < proj.length; j++) {
-        var dd = proj[j][2]
-        ctx.fillStyle = Qt.rgba(0, 0, 0, 0.55 + (dd + 1) / 2 * 0.45)
-        // Radius as a FRACTION of R, not absolute px — 2px dots on a 5px radius are
-        // what made the small orb read as filled.
-        var rr = R * (0.10 + (dd + 1) / 2 * 0.10)
-        ctx.beginPath(); ctx.arc(proj[j][0], proj[j][1], rr, 0, 2 * Math.PI); ctx.fill()
-      }
+      // Mesh removed: at badge sizes the wireframe fought the gradient in any
+      // ink — the animated duotone + ring carry the whole signal.
     }
   }
 }
