@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -64,6 +65,23 @@ def gh_pr_title(num: int) -> str:
         return json.loads(out.stdout).get("title", "")
     except Exception:
         return ""
+
+
+def ensure_git_lfs() -> None:
+    if shutil.which("git-lfs"):
+        return
+    result = subprocess.run(
+        ["nix", "build", "--no-link", "--print-out-paths", "nixpkgs#git-lfs"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise SystemExit(f"could not provision git-lfs: {result.stderr.strip()}")
+    outputs = result.stdout.splitlines()
+    if not outputs:
+        raise SystemExit("could not provision git-lfs: nix returned no output path")
+    os.environ["PATH"] = f"{outputs[-1]}/bin:{os.environ.get('PATH', '')}"
+    if not shutil.which("git-lfs"):
+        raise SystemExit("could not provision git-lfs: executable missing from nix output")
 
 
 def ensure_worktree(num: int, slug: str) -> Path:
@@ -191,6 +209,7 @@ def main() -> int:
     a = ap.parse_args()
 
     num = parse_pr(a.pr)
+    ensure_git_lfs()
     notify(f"preparing PR #{num}…")
     slug = slugify(gh_pr_title(num))
     wt = ensure_worktree(num, slug)
