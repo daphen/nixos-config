@@ -82,27 +82,44 @@ Item {
       var ring = Math.max(1.5, Math.min(w, h) * 0.09)
       var discR = Math.min(w, h) / 2 - ring / 2 - 1   // 1px in from the item edge (AA headroom)
       var g0 = orb.glow
-      // Lit-sphere shading: a radial gradient whose HIGHLIGHT orbits with the
-      // phase — offset bright core → saturated glow mid → near-black rim. Big
-      // luminance range is what makes it read as a gradient at 20px.
-      // The highlight's own full-period clock: any (t%P)/P*2pi phase is continuous
-      // at the wrap — rot*0.7 wrapped mid-angle and snapped every 7 seconds.
-      var gphase = (Date.now() % 11000) / 11000 * 2 * Math.PI
-      var gx = Math.cos(gphase), gy = Math.sin(gphase)
-      var hx = cx + gx * discR * 0.45, hy = cy + gy * discR * 0.45
-      // Duotone, not color-plus-white: the highlight is the glow's HUE-SHIFTED
-      // sibling at full saturation (washing toward white read as pastel milk),
-      // and the rim is the opposite shift driven deep — a saturated sweep with
-      // real depth at every action color.
       var hu = g0.hslHue < 0 ? 0 : g0.hslHue
-      var hi = Qt.hsla((hu + 0.09) % 1, Math.min(1, Math.max(0.75, g0.hslSaturation)), 0.62, 1)
-      var rim = Qt.hsla((hu + 0.94) % 1, Math.min(1, Math.max(0.6, g0.hslSaturation)), 0.13, 1)
-      var grad = ctx.createRadialGradient(hx, hy, discR * 0.35, cx, cy, discR * 1.35)
-      grad.addColorStop(0.0, hi)
-      grad.addColorStop(0.55, Qt.rgba(g0.r, g0.g, g0.b, 1))
-      grad.addColorStop(1.0, rim)
-      ctx.beginPath(); ctx.arc(cx, cy, discR, 0, 2 * Math.PI)
-      ctx.fillStyle = grad; ctx.fill()
+      var sat = Math.min(1, Math.max(0.75, g0.hslSaturation))
+
+      // Aurora mesh: soft color blobs on independent Lissajous orbits, blended
+      // additively inside the disc. Every phase is a wall-clock (t%P)/P phase with
+      // PRIME-ish periods, so the composite pattern drifts without ever visibly
+      // looping or resetting — intricate at 44px, alive even at 20px.
+      ctx.save()
+      ctx.beginPath(); ctx.arc(cx, cy, discR, 0, 2 * Math.PI); ctx.clip()
+      // deep ground of the action hue so the blobs have something to glow out of
+      ctx.fillStyle = Qt.hsla((hu + 0.94) % 1, sat, 0.10, 1)
+      ctx.fillRect(cx - discR, cy - discR, discR * 2, discR * 2)
+      var t = Date.now()
+      function ph(P) { return (t % P) / P * 2 * Math.PI }
+      // [xPeriod ms, yPeriod ms, orbit xr, orbit yr, blob size, hue offset, lightness]
+      var blobs = [
+        [ 8300, 12700, 0.55, 0.35, 1.00, 0.00, 0.52],
+        [11900,  7300, 0.40, 0.60, 0.80, 0.07, 0.60],
+        [ 9700, 14300, 0.62, 0.50, 0.66, -0.06, 0.46],
+        [15100, 10100, 0.30, 0.45, 0.90, 0.13, 0.66]
+      ]
+      ctx.globalCompositeOperation = "lighter"
+      for (var bi = 0; bi < blobs.length; bi++) {
+        var B = blobs[bi]
+        var bx = cx + Math.cos(ph(B[0]) + bi * 1.7) * discR * B[2]
+        var by = cy + Math.sin(ph(B[1]) + bi * 2.3) * discR * B[3]
+        var br = discR * B[4]
+        var bh = ((hu + B[5]) % 1 + 1) % 1
+        var bg = ctx.createRadialGradient(bx, by, 0, bx, by, br)
+        bg.addColorStop(0.0, Qt.hsla(bh, sat, B[6], 0.85))
+        bg.addColorStop(0.55, Qt.hsla(bh, sat, B[6] * 0.8, 0.35))
+        bg.addColorStop(1.0, Qt.hsla(bh, sat, B[6] * 0.6, 0))
+        ctx.fillStyle = bg
+        ctx.beginPath(); ctx.arc(bx, by, br, 0, 2 * Math.PI); ctx.fill()
+      }
+      ctx.globalCompositeOperation = "source-over"
+      ctx.restore()
+
       ctx.lineWidth = ring
       // The ring belongs to the duotone, not to black/white: the highlight hue,
       // brightened — it frames without introducing a foreign color. Light mode
