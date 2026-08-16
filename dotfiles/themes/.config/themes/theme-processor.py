@@ -83,17 +83,22 @@ def _add_derived(themes, surfaces=None):
         bg['surface'] = bg.get('surface1', primary)
     return themes
 
+def _template_data(data, themes):
+    return {**themes, **{k: v for k, v in data.items() if k not in ('themes', 'surfaces')}}
+
 def load_colors(colors_file, theme_mode):
-    """Load colors from JSON file for specified theme mode."""
+    """Load colors and global tokens for the specified theme mode."""
     with open(colors_file, 'r') as f:
         data = json.load(f)
-    return _add_derived(data['themes'], data.get('surfaces'))[theme_mode]
+    themes = _add_derived(data['themes'], data.get('surfaces'))
+    return {**themes[theme_mode], **{k: v for k, v in data.items() if k not in ('themes', 'surfaces')}}
 
 def load_all_colors(colors_file):
-    """Load all colors from JSON file."""
+    """Load both palettes and global theme tokens."""
     with open(colors_file, 'r') as f:
         data = json.load(f)
-    return _add_derived(data['themes'], data.get('surfaces'))
+    themes = _add_derived(data['themes'], data.get('surfaces'))
+    return _template_data(data, themes)
 
 def get_nested_color(colors, path, max_depth=5, theme_context=None):
     """Get color value from nested path with recursive reference resolution."""

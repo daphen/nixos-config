@@ -20,6 +20,8 @@ PanelWindow {
     // Opt-in per-item subtitle color (item[subtitleColorField] = a color);
     // rows without it keep fg_muted.
     property string subtitleColorField: ""
+    property string detailField: ""
+    property int detailRowHeight: 220
     // Opt-in right-aligned trailing text on the row (keeps rows flat, unlike
     // subtitle which adds a second line). trailingColorField mirrors
     // subtitleColorField.
@@ -37,6 +39,7 @@ PanelWindow {
     property var onEnter: function(item) {}
     property var onEnterText: function(text) {}
     property bool freeText: false
+    property bool filterItemsWithQuery: true
     // Opt-in: Enter fires onEnter but keeps the picker open (toggle-style
     // pickers clearing a pile in one visit — todos).
     property bool enterKeepsOpen: false
@@ -105,6 +108,10 @@ PanelWindow {
     // Set by pickers whose items arrive asynchronously: shows a loading
     // indicator, and the list fades in once loading clears.
     property bool loading: false
+    property bool listVisible: true
+    property int tabsBottomPadding: 0
+    property bool animateHeight: false
+    property bool animatePlaceholder: false
     // Shown centered when the picker has nothing to list (and isn't loading).
     // Pickers override with their own flavor ("no networks found", …).
     property string emptyText: "nothing here"
@@ -160,6 +167,8 @@ PanelWindow {
         for (let i = 0; i < filtered.length; i++) {
             const it = filtered[i]
             if (it && it.divider) h += 36
+            else if (detailField.length > 0 && it && String(it[detailField] || "").length > 0)
+                h += detailRowHeight
             else if (previewField.length > 0 && it && String(it[previewField] || "").length > 0)
                 h += Math.max(60, thumbSize + 16)
             else if (subtitleFn && it && String(subtitleFn(it) || "").length > 0) h += 60
@@ -219,7 +228,7 @@ PanelWindow {
                 if (String(it[categoryField] || "") === key) base.push(it)
             }
         }
-        const q = query.trim().toLowerCase()
+        const q = root.filterItemsWithQuery ? query.trim().toLowerCase() : ""
         if (q.length === 0) return base
         // While searching, drop section dividers — they're only meaningful
         // in the unfiltered, grouped view.
@@ -313,11 +322,19 @@ PanelWindow {
         width: 760
         // Hug the content like the reference — footer sits right under the
         // last row; 480 caps long lists (the ListView scrolls past that).
-        // Tracks previewPane.height, which animates itself (Vaul) — so the notch
-        // grows in lockstep with the expanding box. No Behavior here: it would
-        // lag behind the pane's own animation and clip the box mid-reveal.
-        height: Math.min(480, inputWrap.height + tabsRow.height + root.listContentHeight + footer.height)
+        // Preview users leave animateHeight off because that pane owns its reveal;
+        // tabbed pickers can opt in when the list itself appears and disappears.
+        height: Math.min(480, inputWrap.height + tabsRow.height
+                         + (root.listVisible ? root.listContentHeight : 0) + footer.height)
                 + previewPane.height
+        Behavior on height {
+            enabled: root.animateHeight
+            NumberAnimation {
+                duration: 200
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: [0.165, 0.84, 0.44, 1.0, 1.0, 1.0]
+            }
+        }
 
         color: Theme.bg
         // Radii from the reference palette: panel 24, field 15, cards 13.
@@ -343,7 +360,7 @@ PanelWindow {
             }
         }
 
-        readonly property string sans: "Geist"
+        readonly property string sans: Theme.fontFamily
 
         Column {
             anchors.fill: parent
@@ -411,7 +428,7 @@ PanelWindow {
                 anchors.right: escCap.left
                 anchors.rightMargin: 12
                 anchors.verticalCenter: searchField.verticalCenter
-                placeholderText: root.placeholder
+                placeholderText: root.animatePlaceholder ? "" : root.placeholder
                 color: Theme.fg
                 placeholderTextColor: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.5)
                 font.family: notch.sans
@@ -482,6 +499,50 @@ PanelWindow {
                         event.accepted = true
                     }
                 }
+
+                Item {
+                    id: placeholderSwap
+                    visible: root.animatePlaceholder && !search.text
+                    anchors.left: parent.left
+                    anchors.leftMargin: search.leftPadding
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: placeholderSource.implicitHeight
+                    readonly property string targetText: root.placeholder
+                    property string shownText: targetText
+                    onTargetTextChanged: placeholderAnimation.restart()
+
+                    Text {
+                        id: placeholderSource
+                        visible: false
+                        text: placeholderSwap.shownText
+                        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.5)
+                        font: search.font
+                    }
+                    MultiEffect {
+                        id: placeholderEffect
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: placeholderSource.implicitWidth
+                        height: placeholderSource.implicitHeight
+                        source: placeholderSource
+                        blurEnabled: true
+                        blur: 0
+                        blurMax: 24
+                    }
+                    SequentialAnimation {
+                        id: placeholderAnimation
+                        ParallelAnimation {
+                            NumberAnimation { target: placeholderEffect; property: "blur"; to: 1; duration: 110; easing.type: Easing.OutQuad }
+                            NumberAnimation { target: placeholderEffect; property: "opacity"; to: 0.1; duration: 110 }
+                        }
+                        ScriptAction { script: placeholderSwap.shownText = placeholderSwap.targetText }
+                        ParallelAnimation {
+                            NumberAnimation { target: placeholderEffect; property: "blur"; to: 0; duration: 190; easing.type: Easing.OutQuad }
+                            NumberAnimation { target: placeholderEffect; property: "opacity"; to: 1; duration: 190 }
+                        }
+                    }
+                }
             }
             }
 
@@ -489,12 +550,13 @@ PanelWindow {
                 id: tabsRow
                 visible: root.tabs.length > 1
                 width: parent.width
-                height: visible ? 41 : 0
+                height: visible ? 41 + root.tabsBottomPadding : 0
 
                 Row {
                     anchors.left: parent.left
                     anchors.leftMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
+                    anchors.verticalCenterOffset: -root.tabsBottomPadding / 2
                     spacing: 4
                     Repeater {
                         model: root.tabs
@@ -565,8 +627,11 @@ PanelWindow {
                         : (root.subtitleField.length > 0 && String(modelData[root.subtitleField] || "").length > 0))
                     readonly property bool hasThumb: !isDivider && root.previewField.length > 0
                         && modelData && String(modelData[root.previewField] || "").length > 0
+                    readonly property bool hasDetail: !isDivider && root.detailField.length > 0
+                        && modelData && String(modelData[root.detailField] || "").length > 0
                     width: list.width
                     height: isDivider ? 36
+                          : hasDetail ? root.detailRowHeight
                           : hasThumb ? Math.max(60, root.thumbSize + 16)
                           : hasSub ? 60 : 44
 
@@ -689,7 +754,7 @@ PanelWindow {
                     }
 
                     Column {
-                        visible: !rowItem.isDivider
+                        visible: !rowItem.isDivider && !rowItem.hasDetail
                         anchors.left: rowGlyph.active ? rowGlyph.right : (hlDot.visible ? hlDot.left : parent.left)
                         anchors.leftMargin: rowGlyph.active ? 10 : (hlDot.visible ? 16 : 28)
                         // Thumbnail pickers reserve the thumb column on EVERY row so
@@ -718,6 +783,9 @@ PanelWindow {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: rowItem.hasSub
+                                width: parent.width - (subBadge.active ? subBadge.width + parent.spacing : 0)
+                                maximumLineCount: 1
+                                elide: Text.ElideRight
                                 text: !rowItem.modelData ? ""
                                     : root.subtitleFn ? String(root.subtitleFn(rowItem.modelData) || "")
                                     : root.subtitleField ? String(rowItem.modelData[root.subtitleField] || "") : ""
@@ -754,6 +822,30 @@ PanelWindow {
                         }
                     }
 
+                    Column {
+                        visible: rowItem.hasDetail
+                        anchors { fill: parent; leftMargin: 28; rightMargin: 28; topMargin: 16; bottomMargin: 16 }
+                        spacing: 8
+                        Text {
+                            text: rowItem.modelData ? String(rowItem.modelData.label || "Context") : "Context"
+                            color: Theme.fg
+                            font.family: notch.sans
+                            font.pixelSize: 15
+                            font.weight: 500
+                        }
+                        Text {
+                            width: parent.width
+                            text: rowItem.modelData ? String(rowItem.modelData[root.detailField] || "") : ""
+                            color: Theme.fg_muted
+                            font.family: notch.sans
+                            font.pixelSize: 12
+                            lineHeight: 1.3
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 11
+                            elide: Text.ElideRight
+                        }
+                    }
+
                     MouseArea {
                         anchors.fill: parent
                         enabled: !rowItem.isDivider
@@ -775,7 +867,7 @@ PanelWindow {
 
             Text {
                 anchors.centerIn: parent
-                visible: !root.loading && root.filtered.length === 0
+                visible: root.listVisible && !root.loading && root.filtered.length === 0
                 text: root.emptyText
                 color: Theme.fg_muted
                 font.family: Theme.fontFamily
@@ -785,7 +877,7 @@ PanelWindow {
 
             Item {
                 anchors.fill: parent
-                opacity: root.loading ? 1 : 0
+                opacity: root.listVisible && root.loading ? 1 : 0
                 visible: opacity > 0
                 Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                 Row {

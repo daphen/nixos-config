@@ -144,7 +144,7 @@ PanelWindow {
         Behavior on scale { NumberAnimation { duration: 190; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.26, 0.08, 0.25, 1.0, 1.0, 1.0] } }
         Behavior on opacity { NumberAnimation { duration: 190; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.26, 0.08, 0.25, 1.0, 1.0, 1.0] } }
 
-        readonly property string sans: "Geist"
+        readonly property string sans: Theme.fontFamily
 
         Column {
             anchors.fill: parent

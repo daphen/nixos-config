@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Seed the one local Lovable orchestrator session. Idempotent.
+set -euo pipefail
+
+sock="${XDG_RUNTIME_DIR}/agentd-lovable.sock"
+name="${1:-lovable}"
+cwd="${2:-$HOME/work/lovable}"
+harness="$HOME/personal/notes/storage/references/orchestrator-harness.md"
+
+[ -S "$sock" ] || { echo "✗ $sock missing — systemctl --user start agentd-lovable"; exit 1; }
+[ -f "$harness" ] || { echo "✗ harness missing: $harness"; exit 1; }
+
+python3 - "$sock" "$name" "$cwd" "$harness" <<'PY'
+import json, socket, sys, time
+sock, name, cwd, harness = sys.argv[1:5]
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(10)
+s.connect(sock)
+
+buf = b""
+while b"\n" not in buf:
+    chunk = s.recv(65536)
+    if not chunk:
+        break
+    buf += chunk
+sessions = json.loads(buf.split(b"\n", 1)[0]).get("sessions", [])
+existing = next((item for item in sessions if item.get("name") == name), None)
+if existing and existing.get("profile") != "lovable-orchestrator":
+    raise SystemExit(f"session {name!r} has profile {existing.get('profile')!r}; stop it before reseeding as orchestrator")
+
+if not existing:
+    s.sendall((json.dumps({
+        "type": "spawn", "session": name, "cwd": cwd,
+        "profile": "lovable-orchestrator",
+    }) + "\n").encode())
+    print(f"  spawned {name!r} at {cwd} as lovable-orchestrator")
+    time.sleep(2)
+else:
+    print(f"  session {name!r} already runs as lovable-orchestrator")
+
+prompt = (
+    f"Read {harness} now. It is the durable harness reference for your "
+    "lovable-orchestrator role and local/VM split. Confirm in at most four lines: "
+    "you do not implement ticket code or mutate GitHub; vm-wt starts ticket work; "
+    "agent_review starts local PR review."
+)
+s.sendall((json.dumps({"type": "prompt", "session": name, "message": prompt}) + "\n").encode())
+time.sleep(1)
+s.close()
+PY
+
+echo "✓ orchestrator profile seeded"

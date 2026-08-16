@@ -12,19 +12,20 @@ vim.o.background = "dark"
 -- Color palette
 local c = {
   -- Background colors
-  bg = "#181818",
+  bg = "#171717",
   bg_secondary = "#1B1B1B",
   bg_tertiary = "#1B1B1B",
   bg_selection = "#2E2E2E",
-  bg_surface = "#1B1B1B",
+  bg_surface = "#1A1A1A",
   bg_overlay = "#292826",
   bg_prompt = "#323A40",
   bg_info = "#45474B",
   bg_success = "#313734",
   -- elevation ladder (derived by theme-processor: fg over surface1)
-  bg_surface1 = "#1B1B1B",
-  bg_surface2 = "#2E2E2E",
-  bg_surface3 = "#3A3A3A",
+  bg_surface1 = "#1A1A1A",
+  bg_surface2 = "#2D2D2D",
+  bg_dim = "#101010",
+  bg_surface3 = "#393939",
 
   -- Foreground colors
   fg = "#EDEDED",

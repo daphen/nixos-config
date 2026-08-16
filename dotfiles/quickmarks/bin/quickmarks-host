@@ -35,6 +35,7 @@ from pathlib import Path
 ALLOWED_PROFILES = {"personal", "work"}
 QUICKMARKS_DIR = Path.home() / ".config/quickmarks"
 SPEND_SCRIPT = Path.home() / ".config/quickshell/scripts/claude-spend"
+QSTNS_RUN = Path.home() / "personal/qstns/run.sh"
 
 
 def claude_spend(window: str) -> float | None:
@@ -113,6 +114,31 @@ def main() -> int:
             "yesterday": claude_spend("yesterday"),
             "month": claude_spend("month"),
         })
+        return 0
+
+    if action_early == "open-chat-context":
+        context = (msg.get("context") or "").strip()
+        if not context:
+            send_message({"error": "empty context"})
+            return 0
+        try:
+            proc = subprocess.Popen(
+                [str(QSTNS_RUN), "--context", context],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            try:
+                code = proc.wait(timeout=1.5)
+            except subprocess.TimeoutExpired:
+                code = 0
+            if code != 0:
+                send_message({"error": f"qstns launcher exited {code}"})
+            else:
+                send_message({"opened": True})
+        except OSError as e:
+            send_message({"error": f"qstns launch failed: {e}"})
         return 0
 
     # Type a prompt into the cockpit's MAIN (orchestrator) Claude tab and

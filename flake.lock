@@ -395,11 +395,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786911405,
-        "narHash": "sha256-P5Y4XMVn9k220dcUgA/Z9wauXT1MQVobzVI0zH3HIH4=",
+        "lastModified": 1786912352,
+        "narHash": "sha256-+kXQR1Vn0teNoZ5KsJsYNcXBTT+t/KfGQUPUPIGhZI4=",
         "ref": "refs/heads/main",
-        "rev": "9ca73b252bdbc059bfa5cf242380b429a42436c8",
-        "revCount": 3,
+        "rev": "39c3bd1e0a02e02d877f4b51e0dffa288595ecad",
+        "revCount": 4,
         "type": "git",
         "url": "ssh://git@github.com/daphen/opqs"
       },

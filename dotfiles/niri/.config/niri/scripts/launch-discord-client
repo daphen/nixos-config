@@ -4,6 +4,7 @@
 # the Quickshell UI pointed at dsqrd's socket. niri-jump-or-exec focuses an
 # existing window instead of calling this when one is already open.
 export QML2_IMPORT_PATH="$HOME/.local/share/qml"
+export DSQRD_MESSAGE_ACTION="$HOME/personal/qstns/dsqrd-message-action"
 # Route Qt file dialogs (Save-as for attachment downloads) through the
 # xdg portal, where termfilechooser serves them as yazi-in-kitty.
 export QT_QPA_PLATFORMTHEME=xdgdesktopportal

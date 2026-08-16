@@ -5,6 +5,10 @@
     "version": "1.0.0",
     "author": "David Karlsson"
   },
+  "typography": {
+    "ui": "BerkeleyMono Nerd Font",
+    "icons": "JetBrainsMono Nerd Font"
+  },
   "surfaces": {
     "model": "oklch-delta",
     "dark": {

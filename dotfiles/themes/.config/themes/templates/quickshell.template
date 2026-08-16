@@ -144,8 +144,8 @@ Singleton {
     readonly property int spacing:       0
     readonly property int fontSize:      14
 
-    readonly property string fontFamily:     "BerkeleyMono Nerd Font"
-    readonly property string iconFontFamily: "JetBrainsMono Nerd Font"
+    readonly property string fontFamily:     "{{typography.ui}}"
+    readonly property string iconFontFamily: "{{typography.icons}}"
     readonly property int fontWeight: 500
 
     // FileView.text is a function; onLoaded fires on initial read and every

@@ -18,6 +18,7 @@ Singleton {
     readonly property var palettes: ({
         "light": {
             "bg":          "#FFFFFF",
+            "bg_dim":      "#F5F5F7",
             "bg_alt":      "#F6F7F4",
             "selection":   "#F4F5F2",
             "surface":     "#F7F7F7",
@@ -44,14 +45,15 @@ Singleton {
             "dimmedFgAlpha": 0.55
         },
         "dark": {
-            "bg":          "#181818",
+            "bg":          "#171717",
+            "bg_dim":      "#101010",
             "bg_alt":      "#1B1B1B",
             "selection":   "#2E2E2E",
-            "surface":     "#1B1B1B",
-            "surface0":    "#1A1A1A",
-            "surface1":    "#1B1B1B",
-            "surface2":    "#2E2E2E",
-            "surface3":    "#3A3A3A",
+            "surface":     "#1A1A1A",
+            "surface0":    "#191919",
+            "surface1":    "#1A1A1A",
+            "surface2":    "#2D2D2D",
+            "surface3":    "#393939",
             "overlay":     "#292826",
             "prompt":      "#323A40",
             "fg":          "#EDEDED",
@@ -73,6 +75,7 @@ Singleton {
     })
 
     readonly property color bg:           palettes[mode].bg
+    readonly property color bgDim:        palettes[mode].bg_dim   // rail ground, darker than the editor
     readonly property color bg_alt:       palettes[mode].bg_alt
     readonly property color selection:    palettes[mode].selection
     readonly property color surface:      palettes[mode].surface

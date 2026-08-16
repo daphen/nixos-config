@@ -124,7 +124,7 @@ in
   systemd.user.services.agentd-chat = mkAgentd {
     scope = "chat";
     description = "agentd (chat scope) — newtab + palette chat sessions";
-    extraArgs = "--repo %h/.local/share/agentd/chat --http 17830";
+    extraArgs = "--repo %h/.local/share/agentd/chat";
   };
   systemd.user.services.agentd-personal = mkAgentd {
     scope = "personal";

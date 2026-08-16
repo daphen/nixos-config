@@ -63,7 +63,7 @@ show-failed-attempts
 show-keyboard-layout
 
 # Font
-font=sans-serif
+font={{typography.ui}}
 font-size=24
 
 # Fade in effect (smooth)
