@@ -22,17 +22,13 @@ Item {
   visible: opacity > 0.01
   Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
   Behavior on scale   { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
-  // Hue/sat animate as NUMBERS, not via ColorAnimation on glow: RGB-lerped
-  // colors desaturate mid-path and their hslHue swings wildly there, which made
-  // tool-change transitions visibly hop instead of glide.
-  readonly property real _thu: glow.hslHue < 0 ? 0 : glow.hslHue
+  // Hue/sat are INSTANT; the derived colors animate in RGB below. Animating hue
+  // as a scalar walked the hue wheel — orange→azure visibly passed through
+  // green — where an RGB lerp goes straight to the target through a muted mid.
   // An achromatic glow (Theme.bg on cursor rows) must stay achromatic: hue -1
-  // maps to 0 = red, and the saturation floor was painting those orbs pink.
-  readonly property real _tsat: glow.hslSaturation < 0.05 ? 0 : Math.min(1, Math.max(0.75, glow.hslSaturation))
-  property real hu: _thu
-  property real sat: _tsat
-  Behavior on hu  { NumberAnimation { duration: 650; easing.type: Easing.InOutQuad } }
-  Behavior on sat { NumberAnimation { duration: 650; easing.type: Easing.InOutQuad } }
+  // maps to 0 = red, and the saturation floor would paint those orbs pink.
+  readonly property real hu: glow.hslHue < 0 ? 0 : glow.hslHue
+  readonly property real sat: glow.hslSaturation < 0.05 ? 0 : Math.min(1, Math.max(0.75, glow.hslSaturation))
 
   // Drift phases are WALL-CLOCK (never animation state, so nothing resets on
   // running flaps or delegate recreation) and BOUNDED (radians, so the shader
@@ -87,6 +83,9 @@ Item {
     property color colA: Qt.hsla(orb.hu, orb.sat, Theme.mode === "light" ? 0.68 : 0.26, 1)
     property color colB: Qt.hsla(orb.hu, orb.sat, Theme.mode === "light" ? 0.82 : 0.56, 1)
     property color colC: Qt.hsla((orb.hu + 0.05) % 1, orb.sat * 0.7, Theme.mode === "light" ? 0.95 : 0.88, 1)
+    Behavior on colA { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
+    Behavior on colB { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
+    Behavior on colC { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
   }
 
   // The ring rides the action hue — bright tint on dark, deep shade on light —
@@ -98,6 +97,7 @@ Item {
     color: "transparent"
     border.width: Math.max(1.25, Math.min(width, height) * 0.065)
     border.color: Qt.hsla(orb.hu, orb.sat * 0.5, (Theme.mode === "light") !== orb.invertRing ? 0.34 : 0.82, 1)
+    Behavior on border.color { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
     antialiasing: true
   }
 }
