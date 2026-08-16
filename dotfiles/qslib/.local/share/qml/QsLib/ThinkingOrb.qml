@@ -92,21 +92,24 @@ Item {
       // blend additively into brighter creases that fold and unfold.
       ctx.save()
       ctx.beginPath(); ctx.arc(cx, cy, discR, 0, 2 * Math.PI); ctx.clip()
-      ctx.fillStyle = Qt.hsla((hu + 0.94) % 1, sat, 0.10, 1)
+      // Bright ground: the disc is a luminous mid-tone of the action hue (the
+      // original orb's read) -- the morph shapes play as lighter folds on top,
+      // never a near-black pit.
+      ctx.fillStyle = Qt.hsla(hu, sat, 0.42, 1)
       ctx.fillRect(cx - discR, cy - discR, discR * 2, discR * 2)
       var t = Date.now()
       function ph(P) { return (t % P) / P * 2 * Math.PI }
       var core = ctx.createRadialGradient(cx, cy, 0, cx, cy, discR)
-      core.addColorStop(0, Qt.hsla(hu, sat, 0.28, 0.45))
-      core.addColorStop(1, Qt.hsla(hu, sat, 0.12, 0))
+      core.addColorStop(0, Qt.hsla(hu, sat, 0.58, 0.55))
+      core.addColorStop(1, Qt.hsla((hu + 0.97) % 1, sat, 0.30, 0.9))
       ctx.fillStyle = core
       ctx.fillRect(cx - discR, cy - discR, discR * 2, discR * 2)
       ctx.globalCompositeOperation = "lighter"
       // [driftPx, driftPy, morphP1, morphP2, base r, hue off, lightness, alpha]
       var shapes = [
-        [16900, 12700,  8300, 11300, 0.62, 0.00, 0.55, 0.50],
-        [13100, 17900,  9700,  7300, 0.50, 0.07, 0.62, 0.45],
-        [19700, 14300, 10900,  8900, 0.44, -0.06, 0.48, 0.45]
+        [16900, 12700,  8300, 11300, 0.62, 0.00, 0.74, 0.40],
+        [13100, 17900,  9700,  7300, 0.50, 0.07, 0.80, 0.35],
+        [19700, 14300, 10900,  8900, 0.44, -0.06, 0.68, 0.35]
       ]
       var N = 9  // outline points per shape; smooth-closed via midpoint quadratics
       for (var si = 0; si < shapes.length; si++) {
