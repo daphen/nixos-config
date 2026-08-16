@@ -16,6 +16,13 @@
 #   plus a static agentd (CGO_ENABLED=0) and ~/.pi/agent/{skills,prompts,extensions}
 set -euo pipefail
 
+restart_requested=no
+case "${1:-}" in
+  "") ;;
+  --restart) restart_requested=yes ;;
+  *) echo "usage: vm-cockpit [--restart]" >&2; exit 2 ;;
+esac
+
 vm="${HEIDR_VM:-dev-heidr-2a39}"
 host="${HEIDR_VM_HOST:-$vm.workstation.lovable.net}"
 u="${HEIDR_VM_USER:-david_karlsson_lovable_dev}"
@@ -120,6 +127,11 @@ say "agentd on $vm (dbus + unlocked keyring) …"
   # in there activation fails and pi-mcp-adapter — which fails CLOSED with no
   # credential store — re-authenticates every MCP server on every session.
   export XDG_DATA_DIRS=\"\$HOME/.nix-profile/share:/run/current-system/sw/share:/usr/local/share:/usr/share\"
+  if [ '$restart_requested' = yes ] && pgrep -x agentd >/dev/null 2>&1; then
+    kill -TERM \"\$(pgrep -x agentd)\"
+    for _ in \$(seq 1 30); do pgrep -x agentd >/dev/null 2>&1 || break; sleep 1; done
+    pgrep -x agentd >/dev/null 2>&1 && { echo '  agentd did not stop'; exit 1; }
+  fi
   if ! pgrep -x agentd >/dev/null 2>&1; then
     _cfg=\$(ls /nix/store/*dbus-1*/share/dbus-1/session.conf 2>/dev/null | head -1)
     export DBUS_SESSION_BUS_ADDRESS=\$(dbus-daemon --config-file=\"\$_cfg\" --print-address --fork 2>/dev/null)
