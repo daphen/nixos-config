@@ -4600,10 +4600,13 @@ refresh_git_changes = function(cwd, path)
       local unt = fn.systemlist({ "git", "-C", cwd, "ls-files", "--others", "--exclude-standard" })
       for _, f in ipairs(unt or {}) do
         if f ~= "" and not f:match("^%.heidr%-pastes/") then
+          local n = tonumber(fn.system({ "wc", "-l", cwd .. "/" .. f }):match("%d+") or "0") or 0
+          n = math.min(n, 500)
           output[#output + 1] = "diff --git a/" .. f .. " b/" .. f
           output[#output + 1] = "+++ b/" .. f
-          local n = tonumber(fn.system({ "wc", "-l", cwd .. "/" .. f }):match("%d+") or "0") or 0
-          for _ = 1, math.min(n, 500) do output[#output + 1] = "+x" end
+          -- the parser counts adds only inside @@ hunks — synthesize a real one
+          output[#output + 1] = "@@ -0,0 +1," .. n .. " @@"
+          for _ = 1, n do output[#output + 1] = "+x" end
         end
       end
       S.diff_jobs[cwd] = nil
