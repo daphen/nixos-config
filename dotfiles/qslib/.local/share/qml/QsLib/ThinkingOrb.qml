@@ -85,38 +85,64 @@ Item {
       var hu = g0.hslHue < 0 ? 0 : g0.hslHue
       var sat = Math.min(1, Math.max(0.75, g0.hslSaturation))
 
-      // Aurora mesh: soft color blobs on independent Lissajous orbits, blended
-      // additively inside the disc. Every phase is a wall-clock (t%P)/P phase with
-      // PRIME-ish periods, so the composite pattern drifts without ever visibly
-      // looping or resetting — intricate at 44px, alive even at 20px.
+      // Aurora folds: silk-like ribbons instead of round blobs. Each ribbon is a
+      // cubic bezier swept across the disc and stroked in feathered passes (wide
+      // faint -> narrow bright), additively blended, so overlaps read as creases
+      // of folded light. Endpoints/controls all drift on wall-clock phases with
+      // prime-ish periods -- the folds slide and re-crease without ever looping.
       ctx.save()
       ctx.beginPath(); ctx.arc(cx, cy, discR, 0, 2 * Math.PI); ctx.clip()
-      // deep ground of the action hue so the blobs have something to glow out of
       ctx.fillStyle = Qt.hsla((hu + 0.94) % 1, sat, 0.10, 1)
       ctx.fillRect(cx - discR, cy - discR, discR * 2, discR * 2)
       var t = Date.now()
       function ph(P) { return (t % P) / P * 2 * Math.PI }
-      // [xPeriod ms, yPeriod ms, orbit xr, orbit yr, blob size, hue offset, lightness]
-      var blobs = [
-        [ 8300, 12700, 0.55, 0.35, 1.00, 0.00, 0.52],
-        [11900,  7300, 0.40, 0.60, 0.80, 0.07, 0.60],
-        [ 9700, 14300, 0.62, 0.50, 0.66, -0.06, 0.46],
-        [15100, 10100, 0.30, 0.45, 0.90, 0.13, 0.66]
-      ]
+      // dim core glow so the folds sit IN something, not on flat black
+      var core = ctx.createRadialGradient(cx, cy, 0, cx, cy, discR)
+      core.addColorStop(0, Qt.hsla(hu, sat, 0.30, 0.5))
+      core.addColorStop(1, Qt.hsla(hu, sat, 0.12, 0))
+      ctx.fillStyle = core
+      ctx.fillRect(cx - discR, cy - discR, discR * 2, discR * 2)
       ctx.globalCompositeOperation = "lighter"
-      for (var bi = 0; bi < blobs.length; bi++) {
-        var B = blobs[bi]
-        var bx = cx + Math.cos(ph(B[0]) + bi * 1.7) * discR * B[2]
-        var by = cy + Math.sin(ph(B[1]) + bi * 2.3) * discR * B[3]
-        var br = discR * B[4]
-        var bh = ((hu + B[5]) % 1 + 1) % 1
-        var bg = ctx.createRadialGradient(bx, by, 0, bx, by, br)
-        bg.addColorStop(0.0, Qt.hsla(bh, sat, B[6], 0.85))
-        bg.addColorStop(0.55, Qt.hsla(bh, sat, B[6] * 0.8, 0.35))
-        bg.addColorStop(1.0, Qt.hsla(bh, sat, B[6] * 0.6, 0))
-        ctx.fillStyle = bg
-        ctx.beginPath(); ctx.arc(bx, by, br, 0, 2 * Math.PI); ctx.fill()
+      ctx.lineCap = "round"
+      // [angPeriod, wobblePeriod, foldPeriod, hue offset, lightness, base width]
+      var ribbons = [
+        [17300,  8300, 12700, 0.00, 0.55, 0.85],
+        [13100, 10900,  7900, 0.07, 0.62, 0.65],
+        [19700,  7300, 14900, -0.06, 0.48, 0.75]
+      ]
+      for (var ri = 0; ri < ribbons.length; ri++) {
+        var R2 = ribbons[ri]
+        var ang = ph(R2[0]) + ri * 2.1
+        var wob = Math.sin(ph(R2[1]) + ri * 1.3) * 0.7
+        var fold = Math.sin(ph(R2[2]) + ri * 2.6)
+        // endpoints outside the disc so clipped ends never show round caps
+        var er = discR * 1.35
+        var x0 = cx + Math.cos(ang) * er,        y0 = cy + Math.sin(ang) * er
+        var x3 = cx + Math.cos(ang + Math.PI + wob) * er
+        var y3 = cy + Math.sin(ang + Math.PI + wob) * er
+        // controls pushed to opposite sides of the chord = S-curve = a crease
+        var px = -Math.sin(ang), py = Math.cos(ang)
+        var k = discR * (0.5 + 0.45 * fold)
+        var c1x = cx + px * k,  c1y = cy + py * k
+        var c2x = cx - px * k * 0.8, c2y = cy - py * k * 0.8
+        var bh = ((hu + R2[3]) % 1 + 1) % 1
+        var lg = ctx.createLinearGradient(x0, y0, x3, y3)
+        lg.addColorStop(0,   Qt.hsla(bh, sat, R2[4] * 0.7, 1))
+        lg.addColorStop(0.5, Qt.hsla((bh + 0.05) % 1, sat, R2[4], 1))
+        lg.addColorStop(1,   Qt.hsla(bh, sat, R2[4] * 0.6, 1))
+        ctx.strokeStyle = lg
+        // feathered passes: wide+faint underneath, narrow+bright crest on top
+        var passes = [[1.0, 0.10], [0.55, 0.16], [0.24, 0.30]]
+        for (var pi = 0; pi < passes.length; pi++) {
+          ctx.globalAlpha = passes[pi][1]
+          ctx.lineWidth = discR * R2[5] * passes[pi][0]
+          ctx.beginPath()
+          ctx.moveTo(x0, y0)
+          ctx.bezierCurveTo(c1x, c1y, c2x, c2y, x3, y3)
+          ctx.stroke()
+        }
       }
+      ctx.globalAlpha = 1
       ctx.globalCompositeOperation = "source-over"
       ctx.restore()
 
