@@ -84,6 +84,33 @@ describe("GitHub mutation delegation", () => {
     ]) expect(grantsFromPrompt(prompt).has("push")).toBe(false);
   });
 
+  test("explicit Claude review requests grant post only", () => {
+    for (const prompt of [
+      "Can you trigger claude review once on the pr and then set up a pr-watcher for it?",
+      "Trigger Claude review on PR #83188.",
+      "Please request a Claude review now.",
+      "Go ahead and trigger Claude review once.",
+    ]) {
+      expect([...grantsFromPrompt(prompt)]).toEqual(["post"]);
+      expect(commandDecision("lovable-worker", "gh pr comment 83188 --body '@claude review once'", grantsFromPrompt(prompt))).toBeNull();
+      expect(commandDecision("lovable-worker", "git push origin HEAD", grantsFromPrompt(prompt))).toContain("push");
+      expect(commandDecision("lovable-worker", "gh pr merge 83188", grantsFromPrompt(prompt))).toContain("merge");
+    }
+  });
+
+  test("Claude review descriptions, questions, and negations grant nothing", () => {
+    for (const prompt of [
+      "Claude review was requested yesterday.",
+      "I requested Claude review on the previous head.",
+      "Who requested Claude review?",
+      "Why did you trigger Claude review?",
+      "Did the Claude review trigger?",
+      "Do not trigger Claude review.",
+      "Never request a Claude review without asking.",
+      "Can you check whether we should trigger Claude review?",
+    ]) expect(grantsFromPrompt(prompt).has("post")).toBe(false);
+  });
+
   test("reviewer gets one explicitly requested merge attempt without polling", () => {
     expect(commandDecision("lovable-reviewer", "gh pr merge 12 --auto", grantsFromPrompt("Merge then"))).toBeNull();
     expect(commandDecision("lovable-reviewer", "gh pr merge 12 --auto", new Set())).toContain("explicit merge request");

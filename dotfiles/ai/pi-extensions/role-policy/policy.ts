@@ -86,6 +86,8 @@ export function grantsFromPrompt(text: string): Set<MutationGrant> {
   }
   const pushApproval = /^\s*(?:(?:I|David)\s+)?(?:explicitly\s+|hereby\s+)?approve(?:d)?\s+pushing\b[^?\n]*$/im;
   if (pushApproval.test(text)) grants.add("push");
+  const claudeReviewRequest = /(?:^\s*|\b(?:please|can you|could you|go ahead and|you may)\s+|\b(?:and|then)\s+)(?:trigger|request)\s+(?:a\s+)?claude\s+review\b/im;
+  if (claudeReviewRequest.test(text) && !denied(text, claudeReviewRequest)) grants.add("post");
   return grants;
 }
 
