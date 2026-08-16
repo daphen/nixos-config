@@ -11,9 +11,11 @@ let
     cups
     dbus
     expat
+    fontconfig
     glib
     gtk3
     libdrm
+    libglvnd
     libgbm
     libxkbcommon
     mesa
