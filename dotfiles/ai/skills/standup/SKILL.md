@@ -7,6 +7,22 @@ description: Generate David's async standup (y:/t:) from REAL activity, not memo
 
 Generate the async standup from **actual activity**, never reconstructed from memory or a Done-filter. The recurring failure this fixes: work with no merge and no Linear "Done" — especially a ticket you built by hand all day but never committed/pushed (e.g. a UX redesign) — is invisible unless you look at git + worktrees directly.
 
+## Conversational mode (qstns / chat sessions)
+
+When this runs inside a chat session (qstns), the standup is a CONVERSATION, not a
+one-shot post:
+
+1. Gather everything first (steps 1–4 below) so every answer is grounded in real
+   activity — never answer standup questions from memory.
+2. While the user is asking or clarifying ("what did I do on X?", "drop that item",
+   "make the second bullet about the outage"), answer and revise conversationally.
+   Keep a working draft in mind; don't re-dump it after every exchange.
+3. When the discussion settles (the user says done/looks good/ship it, or asks for
+   the final), present the COMPLETE standup as a standalone message in the exact
+   format below — nothing before it, nothing after it, so it can be copied whole.
+4. Never post to Slack or write the sent-log from a chat session — presenting the
+   text is the deliverable; the user sends it themselves.
+
 ## Step 1 — gather (run the script)
 
 ```
