@@ -5870,6 +5870,7 @@ end
 -- open itself means "I'm reading this" — the agent's edits must not yank the view.
 -- Returning to the dashboard (scratch) or switching sessions resumes.
 vim.api.nvim_create_autocmd("BufEnter", {
+  group = vim.api.nvim_create_augroup("HeidrFollowPause", { clear = true }),
   callback = function(ev)
     if S._program_nav then return end
     local name = vim.api.nvim_buf_get_name(ev.buf)
