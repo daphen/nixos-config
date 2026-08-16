@@ -332,6 +332,7 @@ export interface SpawnOpts {
   name?: string;
   scope?: string;
   profile?: string;
+  detached?: boolean;
 }
 
 export function spawnMessage(name: string, dir: string, opts: SpawnOpts, from = ""): Record<string, unknown> {
@@ -365,7 +366,11 @@ export async function spawnSession(dir: string, opts: SpawnOpts = {}): Promise<{
   if (!scope) scope = scopeForDir(abs);
   const name = opts.name || path.basename(abs);
   const sockPath = path.join(runtimeDir(), `agentd-${scope}.sock`);
-  const from = await selfName(); // record spawn lineage: this session becomes the child's parent
+  // Lineage is carried by `from`: with it the spawn is a child in the caller's
+  // lineage (conversable via agent_send); detached omits it, so the daemon treats
+  // the spawn as top-level — independent roster item, no parent, but the caller
+  // can no longer message it afterward (unless it's the orchestrator).
+  const from = opts.detached ? "" : await selfName();
   const msg = spawnMessage(name, abs, opts, from);
   await writeThenClose(sockPath, msg, 500);
   return { name, scope, dir: abs };

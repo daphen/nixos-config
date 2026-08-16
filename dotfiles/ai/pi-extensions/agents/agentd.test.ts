@@ -29,6 +29,12 @@ describe("spawn profile payload", () => {
     });
   });
 
+  test("detached spawn carries no lineage", () => {
+    expect(spawnMessage("indie", "/repo", { prompt: "go" }, "")).toEqual({
+      type: "spawn", session: "indie", cwd: "/repo", prompt: "go",
+    });
+  });
+
   test("remote sessions use agentd entries without a local transcript lookup", async () => {
     const resolved: Resolved = {
       session: { name: "every-2741" }, scope: "work", sockPath: "/run/agentd-work.sock",
