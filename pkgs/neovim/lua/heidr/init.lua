@@ -4599,7 +4599,7 @@ refresh_git_changes = function(cwd, path)
       -- shows its files as added instead of an empty CHANGES view.
       local unt = fn.systemlist({ "git", "-C", cwd, "ls-files", "--others", "--exclude-standard" })
       for _, f in ipairs(unt or {}) do
-        if f ~= "" then
+        if f ~= "" and not f:match("^%.heidr%-pastes/") then
           output[#output + 1] = "diff --git a/" .. f .. " b/" .. f
           output[#output + 1] = "+++ b/" .. f
           local n = tonumber(fn.system({ "wc", "-l", cwd .. "/" .. f }):match("%d+") or "0") or 0
