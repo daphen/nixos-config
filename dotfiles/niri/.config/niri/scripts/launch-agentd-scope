@@ -1,21 +1,5 @@
 #!/usr/bin/env bash
-# Launch an agentd scope with the provider key in the ENVIRONMENT only.
-# The old spawn-sh-at-startup one-liners did OPENAI_API_KEY=$(fish -c …) inline, which
-# left the expanded key sitting in the wrapper's argv — readable by every process on
-# the machine via ps for as long as the daemon lived. Env vars are not in ps output.
-#   launch-agentd-scope chat|personal
-set -u
+# RETIRED — agentd scopes are systemd user units now (see launch-agentd + daemons.nix).
+# Kept as a shim for one prove-out day so stale callers keep working.
 scope="${1:?usage: launch-agentd-scope <chat|personal>}"
-key=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY')
-[ -n "$key" ] || { echo "no OPENAI_API_KEY in fish secrets" >&2; exit 1; }
-export OPENAI_API_KEY="$key"
-case "$scope" in
-  chat)
-    mkdir -p "$HOME/.local/share/agentd/chat"
-    exec agentd --scope chat --repo "$HOME/.local/share/agentd/chat" --http 17830 \
-      >> /tmp/agentd-chat.log 2>&1 ;;
-  personal)
-    exec agentd --scope personal --repo "$HOME/personal" \
-      >> /tmp/agentd-personal.log 2>&1 ;;
-  *) echo "unknown scope $scope" >&2; exit 1 ;;
-esac
+exec systemctl --user start "agentd-$scope"

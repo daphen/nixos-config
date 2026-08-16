@@ -5,6 +5,23 @@
 # would fire them on thinkpad and zenbook too.
 { pkgs, inputs, ... }:
 let
+  # One launch path for every local agentd scope: the wrapper pulls provider
+  # secrets keyring→env (see niri/scripts/launch-agentd) and execs the daemon —
+  # a unit restart can never again produce a keyless daemon.
+  mkAgentd = { scope, description, extraArgs }: {
+    Unit = {
+      Description = description;
+      After = [ "network-online.target" "graphical-session.target" ];
+    };
+    Service = {
+      Type = "simple";
+      Environment = "PATH=${pkgs.libsecret}/bin:/run/current-system/sw/bin";
+      ExecStart = "%h/.config/niri/scripts/launch-agentd ${scope} ${extraArgs}";
+      Restart = "on-failure";
+      RestartSec = "10s";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
   palette-daemon = inputs.palette-daemon.packages.${pkgs.system}.default;
   ancs4linux = import ../../pkgs/ancs4linux { inherit pkgs; };
 
@@ -95,22 +112,24 @@ in
     Install.WantedBy = [ "default.target" ];
   };
 
-  # The LOCAL orchestrator's daemon. Per-ticket work runs remotely (lovbox `devenv wt`
-  # sessions in the `work` scope); this scope holds the orchestrator at the repo root
-  # plus the review sessions `agent review` spawns — neither needs a devenv. It was
-  # hand-started until now, so it vanished on every reboot.
-  systemd.user.services.agentd-lovable = {
-    Unit = {
-      Description = "agentd (lovable scope) — local orchestrator + PR reviewers";
-      After = [ "network-online.target" ];
-    };
-    Service = {
-      Type = "simple";
-      ExecStart = "%h/.local/bin/agentd --scope lovable --repo %h/work/lovable";
-      Restart = "on-failure";
-      RestartSec = "10s";
-    };
-    Install.WantedBy = [ "default.target" ];
+  # The LOCAL orchestrator's daemon; per-ticket work runs remotely in the `work`
+  # scope. chat backs the newtab/palette AI; personal backs the private heidr.
+  # chat + personal were niri-spawned with stdin key injection until now — a
+  # restart outside that path made them keyless (the Aug-16 newtab outage).
+  systemd.user.services.agentd-lovable = mkAgentd {
+    scope = "lovable";
+    description = "agentd (lovable scope) — local orchestrator + PR reviewers";
+    extraArgs = "--repo %h/work/lovable";
+  };
+  systemd.user.services.agentd-chat = mkAgentd {
+    scope = "chat";
+    description = "agentd (chat scope) — newtab + palette chat sessions";
+    extraArgs = "--repo %h/.local/share/agentd/chat --http 17830";
+  };
+  systemd.user.services.agentd-personal = mkAgentd {
+    scope = "personal";
+    description = "agentd (personal scope) — private heidr sessions";
+    extraArgs = "--repo %h/personal";
   };
 
   # The VM work-scope daemon reaches this machine as a unix-socket forward over ssh.

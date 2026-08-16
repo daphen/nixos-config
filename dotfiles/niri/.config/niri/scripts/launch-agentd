@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# The ONE local agentd launch path: pull provider secrets keyring→env, exec agentd.
+# Secrets stay env-only — never argv, never disk. Units for every scope ExecStart
+# this; rotation = `secret-tool store` + restart the units (no stdin choreography).
+set -euo pipefail
+scope="${1:?usage: launch-agentd <scope> [agentd args…]}"; shift || true
+st=$(command -v secret-tool || echo /run/current-system/sw/bin/secret-tool)
+OPENAI_API_KEY=$("$st" lookup service agentd secret openai-api-key || true)
+SLACK_MCP_CLIENT_SECRET=$("$st" lookup service agentd secret slack-mcp || true)
+[ -n "$OPENAI_API_KEY" ] || echo "launch-agentd: WARNING no openai key in keyring — pi will fail its self-check" >&2
+export OPENAI_API_KEY SLACK_MCP_CLIENT_SECRET
+exec "$HOME/.local/bin/agentd" --scope "$scope" "$@"
