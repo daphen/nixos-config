@@ -93,6 +93,7 @@ describe("GitHub mutation delegation", () => {
   test("explicit Claude review requests grant post only", () => {
     for (const prompt of [
       "Can you trigger claude review once on the pr and then set up a pr-watcher for it?",
+      "Can you trigger a new claude review once?",
       "Can you trigger Claude review once on PR #83188? This is a dry-run only: do not contact GitHub and do not mutate git.",
       "Trigger Claude review on PR #83188.",
       "Please request a Claude review now.",
@@ -115,6 +116,9 @@ describe("GitHub mutation delegation", () => {
       "Do not trigger Claude review.",
       "Never request a Claude review without asking.",
       "Can you check whether we should trigger Claude review?",
+      "Was a new Claude review triggered?",
+      "We may request a new Claude review later.",
+      "Do not trigger a new Claude review.",
     ]) expect(grantsFromPrompt(prompt).has("post")).toBe(false);
   });
 

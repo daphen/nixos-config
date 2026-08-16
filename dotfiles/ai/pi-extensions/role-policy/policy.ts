@@ -83,8 +83,8 @@ const ACTION_LANGUAGE: Record<MutationGrant, ActionLanguage> = {
     approved: String.raw`(?:updat(?:e|ing)|edit(?:ing)?)\s+(?:(?:the|this)\s+)?(?:pr|pull request)\b`,
   },
   post: {
-    direct: String.raw`(?:(?:post|send|leave|add)\s+(?:\S+\s+){0,3}?(?:comment|review|reply)\b|(?:trigger|request)\s+(?:a\s+)?claude\s+review\b)`,
-    approved: String.raw`(?:(?:post(?:ing)?|send(?:ing)?|leave|leaving|add(?:ing)?)\s+(?:\S+\s+){0,3}?(?:comment|review|reply)\b|(?:trigger(?:ing)?|request(?:ing)?)\s+(?:a\s+)?claude\s+review\b)`,
+    direct: String.raw`(?:(?:post|send|leave|add)\s+(?:\S+\s+){0,3}?(?:comment|review|reply)\b|(?:trigger|request)\s+(?:a\s+)?(?:new\s+)?claude\s+review\b)`,
+    approved: String.raw`(?:(?:post(?:ing)?|send(?:ing)?|leave|leaving|add(?:ing)?)\s+(?:\S+\s+){0,3}?(?:comment|review|reply)\b|(?:trigger(?:ing)?|request(?:ing)?)\s+(?:a\s+)?(?:new\s+)?claude\s+review\b)`,
   },
   merge: {
     direct: String.raw`(?:merge|land)(?:\s+(?:(?:the|this|that)\s+)?(?:pr|pull request|branch|commit)|\s+it)?\b`,
