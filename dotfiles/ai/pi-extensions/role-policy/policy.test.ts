@@ -93,6 +93,7 @@ describe("GitHub mutation delegation", () => {
   test("explicit Claude review requests grant post only", () => {
     for (const prompt of [
       "Can you trigger claude review once on the pr and then set up a pr-watcher for it?",
+      "Can you trigger Claude review once on PR #83188? This is a dry-run only: do not contact GitHub and do not mutate git.",
       "Trigger Claude review on PR #83188.",
       "Please request a Claude review now.",
       "Go ahead and trigger Claude review once.",
@@ -115,6 +116,53 @@ describe("GitHub mutation delegation", () => {
       "Never request a Claude review without asking.",
       "Can you check whether we should trigger Claude review?",
     ]) expect(grantsFromPrompt(prompt).has("post")).toBe(false);
+  });
+
+  test("natural-language authorization stays action-specific", () => {
+    const cases: Array<[string, string, string]> = [
+      ["push", "Ship the commit now.", "git push origin HEAD"],
+      ["push", "Go ahead and push this branch.", "git push origin HEAD"],
+      ["push", "I approve pushing the validated commit.", "git push origin HEAD"],
+      ["pr-create", "You may open a PR for this commit.", "gh pr create --fill"],
+      ["pr-create", "I approve creating the PR.", "gh pr create --fill"],
+      ["pr-update", "Please edit the PR.", "gh pr edit 83188 --title fixed"],
+      ["pr-update", "Go ahead and update this pull request.", "gh pr edit 83188 --body fixed"],
+      ["post", "Leave a comment on the PR.", "gh pr comment 83188 --body done"],
+      ["post", "You may send the review now.", "gh pr review 83188 --approve"],
+      ["post", "Can you trigger Claude review once?", "gh pr comment 83188 --body '@claude review once'"],
+      ["post", "I approve requesting a Claude review.", "gh pr comment 83188 --body '@claude review once'"],
+      ["merge", "Land the PR.", "gh pr merge 83188"],
+      ["merge", "I approve merging this pull request.", "gh pr merge 83188"],
+    ];
+    for (const [expected, prompt, command] of cases) {
+      const grants = grantsFromPrompt(prompt);
+      expect([...grants], prompt).toEqual([expected]);
+      expect(commandDecision("lovable-worker", command, grants), prompt).toBeNull();
+    }
+  });
+
+  test("non-authorizing mutation language grants nothing", () => {
+    const prompts = [
+      "Did you push the commit?",
+      "Why didn't you open the PR?",
+      "Has the PR been updated?",
+      "Who posted the comment?",
+      "Should we merge the PR?",
+      "I approved pushing yesterday.",
+      "Previously, David approved opening the PR.",
+      "The PR was updated earlier.",
+      "I will approve pushing tomorrow.",
+      "Approval to merge is pending.",
+      "We can request Claude review later.",
+      "Do not push the commit.",
+      "You may not open a PR.",
+      "Never post that comment.",
+      "Merge approval is not yet granted.",
+      "Review the PR.",
+      "I approve reviewing the PR.",
+      "The Claude review request is ready.",
+    ];
+    for (const prompt of prompts) expect([...grantsFromPrompt(prompt)], prompt).toEqual([]);
   });
 
   test("reviewer gets one explicitly requested merge attempt without polling", () => {
@@ -151,6 +199,57 @@ describe("reviewer attempt consumption", () => {
     expect(handlers.tool_call({ toolName: "bash", input: { command: "gh pr merge 12 --auto" } }).reason).toContain("explicit merge request");
     if (oldProfile === undefined) delete process.env.HEIDR_AGENT_PROFILE; else process.env.HEIDR_AGENT_PROFILE = oldProfile;
     if (oldManifest === undefined) delete process.env.HEIDR_ROLE_MANIFEST; else process.env.HEIDR_ROLE_MANIFEST = oldManifest;
+  });
+});
+
+describe("approval-card grants", () => {
+  function workerHandlers() {
+    const oldProfile = process.env.HEIDR_AGENT_PROFILE;
+    const oldManifest = process.env.HEIDR_ROLE_MANIFEST;
+    process.env.HEIDR_AGENT_PROFILE = "lovable-worker";
+    process.env.HEIDR_ROLE_MANIFEST = path.join(AI, "roles/manifest.json");
+    const handlers: Record<string, (event: any) => any> = {};
+    const pi = {
+      setActiveTools: () => {},
+      getAllTools: () => [],
+      on: (name: string, handler: (event: any) => any) => { handlers[name] = handler; },
+    } as any;
+    rolePolicy(pi);
+    return {
+      handlers,
+      restore: () => {
+        if (oldProfile === undefined) delete process.env.HEIDR_AGENT_PROFILE; else process.env.HEIDR_AGENT_PROFILE = oldProfile;
+        if (oldManifest === undefined) delete process.env.HEIDR_ROLE_MANIFEST; else process.env.HEIDR_ROLE_MANIFEST = oldManifest;
+      },
+    };
+  }
+
+  test("approved confirmation grants its pending exact action for the current turn", () => {
+    const { handlers, restore } = workerHandlers();
+    handlers.input({ text: "CI is green." });
+    const card = { toolName: "ask_user", toolCallId: "approval-1", input: { kind: "confirm", title: "Push the commit?", message: "Approve pushing commit abc123 now?" } };
+    handlers.tool_call(card);
+    expect(handlers.tool_call({ toolName: "bash", toolCallId: "before", input: { command: "git push origin HEAD" } }).reason).toContain("push");
+    handlers.tool_result({ ...card, content: [{ type: "text", text: "approved" }], isError: false });
+    expect(handlers.tool_call({ toolName: "bash", toolCallId: "push", input: { command: "git push origin HEAD" } })).toBeUndefined();
+    expect(handlers.tool_call({ toolName: "bash", toolCallId: "merge", input: { command: "gh pr merge 83188" } }).reason).toContain("merge");
+    handlers.input({ text: "What is the status?" });
+    expect(handlers.tool_call({ toolName: "bash", toolCallId: "later", input: { command: "git push origin HEAD" } }).reason).toContain("push");
+    restore();
+  });
+
+  test("declined confirmation and ambiguous review cards grant nothing", () => {
+    const { handlers, restore } = workerHandlers();
+    handlers.input({ text: "Check status." });
+    const declined = { toolName: "ask_user", toolCallId: "approval-2", input: { kind: "confirm", title: "Open a PR?", message: "Create the PR now?" } };
+    handlers.tool_call(declined);
+    handlers.tool_result({ ...declined, content: [{ type: "text", text: "declined" }], isError: false });
+    expect(handlers.tool_call({ toolName: "bash", toolCallId: "create", input: { command: "gh pr create --fill" } }).reason).toContain("pr-create");
+    const ambiguous = { toolName: "ask_user", toolCallId: "approval-3", input: { kind: "confirm", title: "Review the PR?", message: "Should I review it?" } };
+    handlers.tool_call(ambiguous);
+    handlers.tool_result({ ...ambiguous, content: [{ type: "text", text: "approved" }], isError: false });
+    expect(handlers.tool_call({ toolName: "bash", toolCallId: "post", input: { command: "gh pr review 83188 --approve" } }).reason).toContain("post");
+    restore();
   });
 });
 

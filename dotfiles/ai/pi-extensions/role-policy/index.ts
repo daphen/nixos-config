@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  approvalResultIsApproved,
   commandDecision,
+  grantsFromApprovalCard,
   grantsFromPrompt,
   isRoleProfile,
   mayWrite,
@@ -55,6 +57,7 @@ export default function rolePolicy(pi: ExtensionAPI) {
   if (!Array.isArray(expectedTools) || expectedTools.length === 0) failClosed(pi, `manifest has no tools for ${profile}`);
 
   let grants = new Set<MutationGrant>();
+  const pendingApprovals = new Map<string, Set<MutationGrant>>();
 
   pi.on("session_start", () => {
     const available = new Set(pi.getAllTools().map((tool) => tool.name));
@@ -75,6 +78,11 @@ export default function rolePolicy(pi: ExtensionAPI) {
   }));
 
   pi.on("tool_call", (event) => {
+    if (event.toolName === "ask_user" && event.input.kind === "confirm") {
+      const cardText = [event.input.title, event.input.message].filter((value) => typeof value === "string").join("\n");
+      pendingApprovals.set(event.toolCallId, grantsFromApprovalCard(cardText));
+    }
+
     if ((event.toolName === "write" || event.toolName === "edit") && typeof event.input.path === "string") {
       if (!mayWrite(profile, event.input.path, cwd)) {
         return { block: true, reason: `${profile} may not write ${event.input.path}` };
@@ -94,6 +102,16 @@ export default function rolePolicy(pi: ExtensionAPI) {
       if (profile === "lovable-reviewer" && /\b(?:gh\s+pr|git\b[^;&|\n]*)\s+merge\b/i.test(event.input.command)) grants.delete("merge");
     }
 
+    return undefined;
+  });
+
+  pi.on("tool_result", (event) => {
+    if (event.toolName !== "ask_user") return undefined;
+    const approved = pendingApprovals.get(event.toolCallId);
+    pendingApprovals.delete(event.toolCallId);
+    if (!event.isError && approved && approvalResultIsApproved(event.content)) {
+      for (const grant of approved) grants.add(grant);
+    }
     return undefined;
   });
 }

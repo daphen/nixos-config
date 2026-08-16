@@ -64,33 +64,84 @@ export function mayWrite(profile: RoleProfile, target: string, cwd: string, home
     .some((root) => under(candidate, root));
 }
 
-function denied(text: string, phrase: RegExp): boolean {
-  const match = phrase.exec(text);
-  if (!match || match.index < 0) return false;
-  const prefix = text.slice(Math.max(0, match.index - 24), match.index);
-  return /(?:do\s+not|don't|dont|never|without|no)\s*$/i.test(prefix);
+type ActionLanguage = {
+  direct: string;
+  approved: string;
+};
+
+const ACTION_LANGUAGE: Record<MutationGrant, ActionLanguage> = {
+  push: {
+    direct: String.raw`(?:(?:git\s+)?push|ship)(?:\s+(?:(?:the|this|that)\s+)?(?:commit|branch|changes|head)|\s+it)?\b`,
+    approved: String.raw`(?:(?:git\s+)?push(?:ing)?|ship(?:ping)?)(?:\s+(?:(?:the|this|that)\s+)?(?:commit|branch|changes|head)|\s+it)?\b`,
+  },
+  "pr-create": {
+    direct: String.raw`(?:create|open)\s+(?:(?:the|a|this)\s+)?(?:pr|pull request)\b`,
+    approved: String.raw`(?:creat(?:e|ing)|open(?:ing)?)\s+(?:(?:the|a|this)\s+)?(?:pr|pull request)\b`,
+  },
+  "pr-update": {
+    direct: String.raw`(?:update|edit)\s+(?:(?:the|this)\s+)?(?:pr|pull request)\b`,
+    approved: String.raw`(?:updat(?:e|ing)|edit(?:ing)?)\s+(?:(?:the|this)\s+)?(?:pr|pull request)\b`,
+  },
+  post: {
+    direct: String.raw`(?:(?:post|send|leave|add)\s+(?:\S+\s+){0,3}?(?:comment|review|reply)\b|(?:trigger|request)\s+(?:a\s+)?claude\s+review\b)`,
+    approved: String.raw`(?:(?:post(?:ing)?|send(?:ing)?|leave|leaving|add(?:ing)?)\s+(?:\S+\s+){0,3}?(?:comment|review|reply)\b|(?:trigger(?:ing)?|request(?:ing)?)\s+(?:a\s+)?claude\s+review\b)`,
+  },
+  merge: {
+    direct: String.raw`(?:merge|land)(?:\s+(?:(?:the|this|that)\s+)?(?:pr|pull request|branch|commit)|\s+it)?\b`,
+    approved: String.raw`(?:merg(?:e|ing)|land(?:ing)?)(?:\s+(?:(?:the|this|that)\s+)?(?:pr|pull request|branch|commit)|\s+it)?\b`,
+  },
+};
+
+function lineAuthorizes(line: string, language: ActionLanguage, approvalCard: boolean): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  const politeQuestion = /^(?:can|could|would|will)\s+you\b/i.test(trimmed);
+  if (trimmed.includes("?") && !approvalCard && !politeQuestion) return false;
+
+  const direct = language.direct;
+  const approved = language.approved;
+  const patterns = [
+    new RegExp(String.raw`^\s*(?:please\s+)?${direct}`, "i"),
+    new RegExp(String.raw`^\s*(?:can|could|would|will)\s+you\s+(?:please\s+)?${direct}`, "i"),
+    new RegExp(String.raw`^\s*(?:go\s+ahead(?:\s+and)?|you\s+may|feel\s+free\s+to)\s+${direct}`, "i"),
+    new RegExp(String.raw`^\s*(?:(?:i|david)\s+)?(?:explicitly\s+|hereby\s+)?approve(?:d)?\s+(?:you\s+)?${approved}`, "i"),
+    new RegExp(String.raw`\b(?:and|then)\s+(?:please\s+)?${direct}`, "i"),
+  ];
+  return patterns.some((pattern) => {
+    const match = pattern.exec(trimmed);
+    if (!match) return false;
+    const suffix = trimmed.slice(match.index + match[0].length).split(/[.!?;]/, 1)[0];
+    if (/^\s+(?:approval|permission|request|status)\b/i.test(suffix)) return false;
+    return !/\b(?:yesterday|previously|earlier|already|pending|later|tomorrow|last\s+(?:turn|time|week))\b/i.test(suffix);
+  });
+}
+
+function grantsFromLanguage(text: string, approvalCard: boolean): Set<MutationGrant> {
+  const grants = new Set<MutationGrant>();
+  const lines = text.split(/\r?\n/);
+  for (const grant of Object.keys(ACTION_LANGUAGE) as MutationGrant[]) {
+    if (lines.some((line) => lineAuthorizes(line, ACTION_LANGUAGE[grant], approvalCard))) grants.add(grant);
+  }
+  return grants;
 }
 
 export function grantsFromPrompt(text: string): Set<MutationGrant> {
-  const grants = new Set<MutationGrant>();
-  const request = String.raw`(?:^\s*|\b(?:please|can you|could you|go ahead and|you may)\s+|\b(?:and|then)\s+)`;
-  const patterns: Array<[MutationGrant, RegExp]> = [
-    ["push", new RegExp(request + String.raw`(?:git\s+)?push\b`, "im")],
-    ["pr-create", new RegExp(request + String.raw`(?:create|open)\s+(?:the\s+|a\s+)?pr\b`, "im")],
-    ["pr-update", new RegExp(request + String.raw`update\s+(?:the\s+)?pr\b`, "im")],
-    // Allow a few intervening words ("post exactly the …", "post that review"):
-    // the strict form rejected the user's own explicit authorization verbatim.
-    ["post", new RegExp(request + String.raw`post\s+(?:\S+\s+){0,3}?(?:comment|review|reply)\b`, "im")],
-    ["merge", new RegExp(request + String.raw`merge(?:\s+(?:(?:the\s+)?(?:pr|pull request|branch)|it|this|then))?\b`, "im")],
-  ];
-  for (const [grant, pattern] of patterns) {
-    if (pattern.test(text) && !denied(text, pattern)) grants.add(grant);
-  }
-  const pushApproval = /^\s*(?:(?:I|David)\s+)?(?:explicitly\s+|hereby\s+)?approve(?:d)?\s+pushing\b[^?\n]*$/im;
-  if (pushApproval.test(text)) grants.add("push");
-  const claudeReviewRequest = /(?:^\s*|\b(?:please|can you|could you|go ahead and|you may)\s+|\b(?:and|then)\s+)(?:trigger|request|post|send)\s+(?:exactly\s+)?(?:a\s+)?[`"']?@?claude\s+review\b/im;
-  if (claudeReviewRequest.test(text) && !denied(text, claudeReviewRequest)) grants.add("post");
-  return grants;
+  return grantsFromLanguage(text, false);
+}
+
+export function grantsFromApprovalCard(text: string): Set<MutationGrant> {
+  return grantsFromLanguage(text, true);
+}
+
+export function approvalResultIsApproved(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  const text = content
+    .filter((item): item is { type: string; text: string } => typeof item === "object" && item !== null && "type" in item && "text" in item)
+    .filter((item) => item.type === "text")
+    .map((item) => item.text)
+    .join("\n")
+    .trim();
+  return /^approved$/i.test(text);
 }
 
 export function mutationForCommand(command: string): MutationGrant | null {
