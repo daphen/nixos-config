@@ -182,6 +182,42 @@ function writeThenClose(sockPath: string, obj: { session?: unknown } & Record<st
   });
 }
 
+function requestAgentd(sockPath: string, obj: { session?: unknown } & Record<string, unknown>, expectedType: string, timeoutMs = 3000): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const c = net.connect(sockPath);
+    let buf = "";
+    let done = false;
+    const finish = (value?: any, error?: Error) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      c.destroy();
+      if (error) reject(error); else resolve(value);
+    };
+    const timer = setTimeout(() => finish(undefined, new Error(`agentd timed out waiting for ${expectedType}`)), timeoutMs);
+    c.on("connect", () => c.write(JSON.stringify(obj) + "\n"));
+    c.on("data", (chunk: Buffer) => {
+      buf += chunk.toString("utf8");
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        let message: any;
+        try { message = JSON.parse(line); } catch { continue; }
+        if (message?.type === "error" && (!message.session || message.session === obj.session)) {
+          finish(undefined, new Error(`agentd refused: ${message.error ?? "unknown error"}`));
+          return;
+        }
+        if (message?.type === expectedType && (!message.session || message.session === obj.session)) {
+          finish(message);
+          return;
+        }
+      }
+    });
+    c.on("error", (error) => finish(undefined, error));
+  });
+}
+
 async function resolveSelf(): Promise<Resolved> {
   const name = await selfName();
   const cwd = expandPath(process.env.HEIDR_AGENT_CWD || process.cwd());
@@ -207,6 +243,50 @@ export async function stopSelf(): Promise<void> {
   const self = await resolveSelf();
   const name = String(self.session.name || self.session.id || "");
   await writeThenClose(self.sockPath, { type: "stop_self", session: name, from: name }, 300);
+}
+
+export type ReviewFinding = { id: string; url: string; paths: string[] };
+export type FindingDisposition = { id: string; implemented: boolean; tested: boolean };
+
+export async function reportReviewFindings(pr: number, branch: string, head: string, findings: ReviewFinding[]): Promise<string> {
+  if (process.env.HEIDR_AGENT_PROFILE !== "lovable-watcher") throw new Error("review findings may only be reported by a lovable-watcher");
+  const self = await resolveSelf();
+  const name = String(self.session.name || self.session.id || "");
+  const response = await requestAgentd(self.sockPath, {
+    type: "report_review_findings", session: name, from: name, fromProfile: "lovable-watcher",
+    fromParent: process.env.HEIDR_AGENT_PARENT || "", pr, branch, head, findings,
+  }, "review_remediation_reported");
+  return String(response.contextId);
+}
+
+export async function dispositionReviewFindings(
+  contextId: string,
+  outcome: "implemented" | "rejected",
+  findings: FindingDisposition[],
+  tests: string[],
+  commits: string[],
+): Promise<void> {
+  if (process.env.HEIDR_AGENT_PROFILE !== "lovable-worker") throw new Error("review findings may only be dispositioned by a lovable-worker");
+  const self = await resolveSelf();
+  const name = String(self.session.name || self.session.id || "");
+  await requestAgentd(self.sockPath, {
+    type: "disposition_review_findings", session: name, from: name, fromProfile: "lovable-worker",
+    contextId, outcome, findings, tests, commits,
+  }, "review_remediation_dispositioned");
+}
+
+export async function consumeReviewPush(command: string): Promise<boolean> {
+  if (process.env.HEIDR_AGENT_PROFILE !== "lovable-worker") return false;
+  try {
+    const self = await resolveSelf();
+    const name = String(self.session.name || self.session.id || "");
+    await requestAgentd(self.sockPath, {
+      type: "consume_review_push", session: name, from: name, fromProfile: "lovable-worker", command,
+    }, "review_push_consumed");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function callerIdentity(from: string): Record<string, string> {

@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "bundleVersion": "2026-08-16.1",
+  "profiles": {
+    "lovable-orchestrator": {
+      "prompt": "lovable-orchestrator.md",
+      "model": "openai/gpt-5.6-sol",
+      "reasoning": "medium",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls",
+        "agent_roster",
+        "agent_read",
+        "agent_send",
+        "agent_steer",
+        "agent_review",
+        "agent_spawn",
+        "agent_whoami",
+        "ask_user",
+        "mcp"
+      ],
+      "extensions": [
+        "../pi-extensions/role-policy/index.ts",
+        "../pi-extensions/agents/index.ts",
+        "../pi-extensions/ask/index.ts",
+        "../pi-extensions/tool-compress/index.ts",
+        "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts"
+      ],
+      "skills": [
+        "../skills/i-have-adhd/SKILL.md",
+        "../skills/notes/SKILL.md",
+        "../skills/cycle/SKILL.md",
+        "../skills/daily/SKILL.md",
+        "../skills/standup/SKILL.md"
+      ],
+      "promptTemplates": []
+    },
+    "lovable-worker": {
+      "prompt": "lovable-worker.md",
+      "model": "openai/gpt-5.6-sol",
+      "reasoning": "medium",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls",
+        "agent_roster",
+        "agent_read",
+        "agent_send",
+        "agent_steer",
+        "agent_spawn",
+        "agent_whoami",
+        "agent_disposition_review_findings",
+        "ask_user",
+        "mcp"
+      ],
+      "extensions": [
+        "../pi-extensions/role-policy/index.ts",
+        "../pi-extensions/agents/index.ts",
+        "../pi-extensions/ask/index.ts",
+        "../pi-extensions/tool-compress/index.ts",
+        "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts"
+      ],
+      "skills": [
+        "../skills/i-have-adhd/SKILL.md",
+        "../skills/plan-ticket/SKILL.md",
+        "../skills/watch-pr/SKILL.md"
+      ],
+      "promptTemplates": [
+        "../prompts/plan-ticket.md"
+      ]
+    },
+    "lovable-reviewer": {
+      "prompt": "lovable-reviewer.md",
+      "model": "openai/gpt-5.6-sol",
+      "reasoning": "medium",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls",
+        "agent_roster",
+        "agent_read",
+        "agent_send",
+        "agent_steer",
+        "agent_spawn",
+        "agent_whoami",
+        "ask_user",
+        "mcp"
+      ],
+      "extensions": [
+        "../pi-extensions/role-policy/index.ts",
+        "../pi-extensions/agents/index.ts",
+        "../pi-extensions/ask/index.ts",
+        "../pi-extensions/tool-compress/index.ts",
+        "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts"
+      ],
+      "skills": [
+        "../skills/i-have-adhd/SKILL.md",
+        "../skills/review-pr/SKILL.md"
+      ],
+      "promptTemplates": [
+        "../prompts/review-pr.md"
+      ]
+    },
+    "lovable-watcher": {
+      "prompt": "lovable-watcher.md",
+      "model": "openai/gpt-5.6-sol",
+      "reasoning": "medium",
+      "tools": [
+        "bash",
+        "agent_send",
+        "agent_report_review_findings",
+        "agent_schedule_self",
+        "agent_stop_self"
+      ],
+      "extensions": [
+        "../pi-extensions/role-policy/index.ts",
+        "../pi-extensions/agents/index.ts"
+      ],
+      "skills": [],
+      "promptTemplates": []
+    }
+  }
+}

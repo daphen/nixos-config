@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { consumeReviewPush } from "../agents/agentd.ts";
 import {
   approvalResultIsApproved,
   commandDecision,
@@ -10,6 +11,7 @@ import {
   grantsFromPrompt,
   isRoleProfile,
   mayWrite,
+  mutationForCommand,
   type MutationGrant,
   type RoleProfile,
 } from "./policy.ts";
@@ -77,7 +79,7 @@ export default function rolePolicy(pi: ExtensionAPI) {
     systemPrompt: `${event.systemPrompt}\n\n[Heidr role: ${profile} | cwd: ${cwd} | bundle: ${manifest.bundleVersion}]`,
   }));
 
-  pi.on("tool_call", (event) => {
+  pi.on("tool_call", async (event) => {
     if (event.toolName === "ask_user" && event.input.kind === "confirm") {
       const cardText = [event.input.title, event.input.message].filter((value) => typeof value === "string").join("\n");
       pendingApprovals.set(event.toolCallId, grantsFromApprovalCard(cardText));
@@ -89,7 +91,7 @@ export default function rolePolicy(pi: ExtensionAPI) {
       }
     }
 
-    if (profile === "lovable-watcher" && !["bash", "agent_send", "agent_schedule_self", "agent_stop_self"].includes(event.toolName)) {
+    if (profile === "lovable-watcher" && !["bash", "agent_send", "agent_report_review_findings", "agent_schedule_self", "agent_stop_self"].includes(event.toolName)) {
       return { block: true, reason: `lovable-watcher may only inspect once, report to its parent, schedule itself, or stop itself` };
     }
     if (profile === "lovable-watcher" && event.toolName === "agent_send" && (!parent || event.input.agent !== parent)) {
@@ -97,7 +99,10 @@ export default function rolePolicy(pi: ExtensionAPI) {
     }
 
     if (event.toolName === "bash" && typeof event.input.command === "string") {
-      const reason = commandDecision(profile, event.input.command, grants);
+      let reason = commandDecision(profile, event.input.command, grants);
+      if (reason && profile === "lovable-worker" && mutationForCommand(event.input.command) === "push") {
+        if (await consumeReviewPush(event.input.command)) reason = null;
+      }
       if (reason) return { block: true, reason };
       if (profile === "lovable-reviewer" && /\b(?:gh\s+pr|git\b[^;&|\n]*)\s+merge\b/i.test(event.input.command)) grants.delete("merge");
     }

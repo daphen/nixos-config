@@ -3,7 +3,18 @@ import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { execFile } from "node:child_process";
 
-import { allSessions, readSessionTurns, resolveSession, scheduleSelf, sendPrompt, spawnSession, steerSession, stopSelf } from "./agentd.ts";
+import {
+  allSessions,
+  dispositionReviewFindings,
+  readSessionTurns,
+  reportReviewFindings,
+  resolveSession,
+  scheduleSelf,
+  sendPrompt,
+  spawnSession,
+  steerSession,
+  stopSelf,
+} from "./agentd.ts";
 
 // Native coordination tools for pi agents driven by the Heidr rail / agentd.
 // The desktop (niri pickers, nvim keybinds, cockpit scripts) uses the sibling
@@ -136,6 +147,51 @@ export default function (pi: ExtensionAPI) {
       try {
         await scheduleSelf();
         return say("Next watcher check scheduled in about three minutes. End this turn now; do not sleep or poll.");
+      } catch (e) {
+        return say(String((e as Error).message ?? e));
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "agent_report_review_findings",
+    label: "Report PR review findings",
+    description: "Watcher-only: send typed new PR review findings to this watcher's worker parent and open an auditable remediation context bound to the PR branch and head.",
+    parameters: Type.Object({
+      pr: Type.Number({ description: "GitHub PR number" }),
+      branch: Type.String({ description: "exact PR head branch" }),
+      head: Type.String({ description: "exact PR head commit SHA" }),
+      findings: Type.Array(Type.Object({
+        id: Type.String({ description: "stable review finding/thread identifier" }),
+        url: Type.String({ description: "finding or review-thread URL" }),
+        paths: Type.Array(Type.String({ description: "files permitted to change for this finding" }), { minItems: 1 }),
+      }), { minItems: 1 }),
+    }),
+    async execute(_id, params: any) {
+      try {
+        const contextId = await reportReviewFindings(params.pr, params.branch, params.head, params.findings);
+        return say(`Reported ${params.findings.length} typed finding(s) to the worker · remediation context ${contextId}.`);
+      } catch (e) {
+        return say(String((e as Error).message ?? e));
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "agent_disposition_review_findings",
+    label: "Disposition PR review findings",
+    description: "Worker-only: mark every finding in one typed remediation context implemented+tested or rejected. A fully validated disposition can mint one same-branch non-force push grant.",
+    parameters: Type.Object({
+      contextId: Type.String(),
+      outcome: StringEnum(["implemented", "rejected"] as const),
+      findings: Type.Array(Type.Object({ id: Type.String(), implemented: Type.Boolean(), tested: Type.Boolean() }), { minItems: 1 }),
+      tests: Type.Array(Type.String(), { description: "commands/results proving remediation validation" }),
+      commits: Type.Array(Type.String(), { description: "exact remediation commit SHAs" }),
+    }),
+    async execute(_id, params: any) {
+      try {
+        await dispositionReviewFindings(params.contextId, params.outcome, params.findings, params.tests, params.commits);
+        return say(params.outcome === "implemented" ? "Recorded implemented+tested findings; one same-branch remediation push is eligible." : "Recorded rejected findings; no push grant was created.");
       } catch (e) {
         return say(String((e as Error).message ?? e));
       }

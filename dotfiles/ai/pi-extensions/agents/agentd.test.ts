@@ -3,7 +3,18 @@ import fs from "node:fs";
 import os from "node:os";
 import net from "node:net";
 import path from "node:path";
-import { readRemoteTurns, readSessionTurns, readTurns, scheduleSelf, spawnMessage, stopSelf, type Resolved } from "./agentd.ts";
+import {
+  consumeReviewPush,
+  dispositionReviewFindings,
+  readRemoteTurns,
+  readSessionTurns,
+  readTurns,
+  reportReviewFindings,
+  scheduleSelf,
+  spawnMessage,
+  stopSelf,
+  type Resolved,
+} from "./agentd.ts";
 
 describe("spawn profile payload", () => {
   test("generic child omits profile for server-side inheritance", () => {
@@ -67,6 +78,40 @@ describe("spawn profile payload", () => {
     ]);
     fs.rmSync(cwd, { recursive: true, force: true });
     fs.rmSync(sessionDir, { recursive: true, force: true });
+  });
+
+  test("typed remediation tools send authenticated structured payloads", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-remediation-socket-"));
+    const socket = path.join(dir, "agentd-work.sock");
+    const requests: any[] = [];
+    const server = net.createServer((client) => {
+      client.write(JSON.stringify({ type: "roster", sessions: [{ name: "watch", cwd: "/repo", profile: "lovable-watcher" }, { name: "worker", cwd: "/repo", profile: "lovable-worker" }] }) + "\n");
+      client.on("data", (data) => {
+        const request = JSON.parse(data.toString());
+        requests.push(request);
+        const type = request.type === "report_review_findings" ? "review_remediation_reported" :
+          request.type === "disposition_review_findings" ? "review_remediation_dispositioned" : "review_push_consumed";
+        client.write(JSON.stringify({ type, session: request.session, contextId: "ctx-1" }) + "\n");
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(socket, resolve));
+    const old = { runtime: process.env.XDG_RUNTIME_DIR, profile: process.env.HEIDR_AGENT_PROFILE, name: process.env.HEIDR_AGENT_NAME, parent: process.env.HEIDR_AGENT_PARENT, cwd: process.env.HEIDR_AGENT_CWD };
+    process.env.XDG_RUNTIME_DIR = dir;
+    process.env.HEIDR_AGENT_NAME = "watch";
+    process.env.HEIDR_AGENT_CWD = "/repo";
+    process.env.HEIDR_AGENT_PARENT = "worker";
+    process.env.HEIDR_AGENT_PROFILE = "lovable-watcher";
+    expect(await reportReviewFindings(12, "feature", "abc", [{ id: "F1", url: "https://example/F1", paths: ["a.ts"] }])).toBe("ctx-1");
+    process.env.HEIDR_AGENT_NAME = "worker";
+    process.env.HEIDR_AGENT_PROFILE = "lovable-worker";
+    await dispositionReviewFindings("ctx-1", "implemented", [{ id: "F1", implemented: true, tested: true }], ["bun test"], ["def"]);
+    expect(await consumeReviewPush("git push origin HEAD")).toBe(true);
+    expect(requests.map((request) => request.type)).toEqual(["report_review_findings", "disposition_review_findings", "consume_review_push"]);
+    expect(requests[0]).toMatchObject({ from: "watch", fromProfile: "lovable-watcher", fromParent: "worker", pr: 12, branch: "feature", head: "abc" });
+    expect(requests[1]).toMatchObject({ from: "worker", fromProfile: "lovable-worker", contextId: "ctx-1", outcome: "implemented" });
+    for (const [key, value] of Object.entries(old)) value === undefined ? delete process.env[key === "runtime" ? "XDG_RUNTIME_DIR" : key === "profile" ? "HEIDR_AGENT_PROFILE" : key === "name" ? "HEIDR_AGENT_NAME" : key === "parent" ? "HEIDR_AGENT_PARENT" : "HEIDR_AGENT_CWD"] : process.env[key === "runtime" ? "XDG_RUNTIME_DIR" : key === "profile" ? "HEIDR_AGENT_PROFILE" : key === "name" ? "HEIDR_AGENT_NAME" : key === "parent" ? "HEIDR_AGENT_PARENT" : "HEIDR_AGENT_CWD"] = value;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   test("self-timer helpers reject every non-watcher profile before socket access", async () => {
