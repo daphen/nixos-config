@@ -56,6 +56,12 @@ describe("GitHub mutation delegation", () => {
     expect(commandDecision("lovable-worker", "gh pr merge 1", grantsFromPrompt("Please push this branch"))).toContain("merge");
     expect(grantsFromPrompt("Do not push").has("push")).toBe(false);
     expect(grantsFromPrompt("Why didn't you push?").has("push")).toBe(false);
+    // the exact authorization the guard itself coached the user into (2026-08-16)
+    expect(grantsFromPrompt("Post exactly `@claude review once` on PR #83188 now.").has("post")).toBe(true);
+    expect(grantsFromPrompt("Post exactly the review comment").has("post")).toBe(true);
+    expect(grantsFromPrompt("send @claude review").has("post")).toBe(true);
+    expect(grantsFromPrompt("did you post the comment already?").has("post")).toBe(false);
+    expect(grantsFromPrompt("we discussed the claude review yesterday").has("post")).toBe(false);
   });
 
   test("explicit approval wording grants push only", () => {

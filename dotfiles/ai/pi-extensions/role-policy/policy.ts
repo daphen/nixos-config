@@ -78,7 +78,9 @@ export function grantsFromPrompt(text: string): Set<MutationGrant> {
     ["push", new RegExp(request + String.raw`(?:git\s+)?push\b`, "im")],
     ["pr-create", new RegExp(request + String.raw`(?:create|open)\s+(?:the\s+|a\s+)?pr\b`, "im")],
     ["pr-update", new RegExp(request + String.raw`update\s+(?:the\s+)?pr\b`, "im")],
-    ["post", new RegExp(request + String.raw`post\s+(?:the\s+|a\s+)?(?:comment|review|reply)\b`, "im")],
+    // Allow a few intervening words ("post exactly the …", "post that review"):
+    // the strict form rejected the user's own explicit authorization verbatim.
+    ["post", new RegExp(request + String.raw`post\s+(?:\S+\s+){0,3}?(?:comment|review|reply)\b`, "im")],
     ["merge", new RegExp(request + String.raw`merge(?:\s+(?:(?:the\s+)?(?:pr|pull request|branch)|it|this|then))?\b`, "im")],
   ];
   for (const [grant, pattern] of patterns) {
@@ -86,7 +88,7 @@ export function grantsFromPrompt(text: string): Set<MutationGrant> {
   }
   const pushApproval = /^\s*(?:(?:I|David)\s+)?(?:explicitly\s+|hereby\s+)?approve(?:d)?\s+pushing\b[^?\n]*$/im;
   if (pushApproval.test(text)) grants.add("push");
-  const claudeReviewRequest = /(?:^\s*|\b(?:please|can you|could you|go ahead and|you may)\s+|\b(?:and|then)\s+)(?:trigger|request)\s+(?:a\s+)?claude\s+review\b/im;
+  const claudeReviewRequest = /(?:^\s*|\b(?:please|can you|could you|go ahead and|you may)\s+|\b(?:and|then)\s+)(?:trigger|request|post|send)\s+(?:exactly\s+)?(?:a\s+)?[`"']?@?claude\s+review\b/im;
   if (claudeReviewRequest.test(text) && !denied(text, claudeReviewRequest)) grants.add("post");
   return grants;
 }
