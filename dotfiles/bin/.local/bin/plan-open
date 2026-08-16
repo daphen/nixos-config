@@ -54,6 +54,24 @@ def nvim_running_in(repo: str) -> bool:
     return False
 
 
+def heidr_nvim_alive() -> bool:
+    # heidr embeds nvim behind heidr-nvim-<pid>-<seq>.sock (not kitty), so the
+    # kitty scan can't see it. Any live socket means a heidr pane will render the
+    # plan itself; spawning a bare kitty+nvim beside it is the double-window bug.
+    import socket
+    run = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    for sock in glob.glob(run + "/heidr-nvim-*.sock"):
+        try:
+            s = socket.socket(socket.AF_UNIX)
+            s.settimeout(0.3)
+            s.connect(sock)
+            s.close()
+            return True
+        except Exception:
+            continue
+    return False
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         print("usage: plan-open <repo> <planfile>", file=sys.stderr)
@@ -62,6 +80,8 @@ def main() -> int:
         return 0  # no GUI here (e.g. lovbox) — nothing to open
     repo = str(Path(sys.argv[1]).expanduser().resolve())
     plan = str(Path(sys.argv[2]).expanduser().resolve())
+    if heidr_nvim_alive():
+        return 0  # a heidr nvim pane is up — it renders the plan itself
     if nvim_running_in(repo):
         return 0  # an nvim is already in the repo — it opens the plan itself
     subprocess.Popen(
