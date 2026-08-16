@@ -9,6 +9,9 @@ Item {
   id: orb
   property bool running: true
   property color glow: Theme.fg
+  // Flip the ring's light/dark pick — for orbs sitting on an inverted ground
+  // (the roster's cursor pill), where the normal ring melts into the fill.
+  property bool invertRing: false
   // Inert since the wireframe era; kept so old call sites that set it still load.
   property int nodes: 0
   implicitWidth: 26
@@ -94,7 +97,7 @@ Item {
     radius: width / 2
     color: "transparent"
     border.width: Math.max(1.25, Math.min(width, height) * 0.065)
-    border.color: Qt.hsla(orb.hu, orb.sat * 0.5, Theme.mode === "light" ? 0.34 : 0.82, 1)
+    border.color: Qt.hsla(orb.hu, orb.sat * 0.5, (Theme.mode === "light") !== orb.invertRing ? 0.34 : 0.82, 1)
     antialiasing: true
   }
 }
