@@ -84,6 +84,8 @@ export function grantsFromPrompt(text: string): Set<MutationGrant> {
   for (const [grant, pattern] of patterns) {
     if (pattern.test(text) && !denied(text, pattern)) grants.add(grant);
   }
+  const pushApproval = /^\s*(?:(?:I|David)\s+)?(?:explicitly\s+|hereby\s+)?approve(?:d)?\s+pushing\b[^?\n]*$/im;
+  if (pushApproval.test(text)) grants.add("push");
   return grants;
 }
 

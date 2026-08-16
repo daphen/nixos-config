@@ -58,6 +58,32 @@ describe("GitHub mutation delegation", () => {
     expect(grantsFromPrompt("Why didn't you push?").has("push")).toBe(false);
   });
 
+  test("explicit approval wording grants push only", () => {
+    const prompts = [
+      "David explicitly approved pushing the completed export-contract fix b3698679c5c to PR #83188 now.",
+      "Approve pushing this commit now.",
+      "I approve pushing b3698679c5c.",
+      "Approved pushing the validated commit.",
+    ];
+    for (const prompt of prompts) {
+      expect([...grantsFromPrompt(prompt)]).toEqual(["push"]);
+      expect(commandDecision("lovable-worker", "git push origin HEAD", grantsFromPrompt(prompt))).toBeNull();
+      expect(commandDecision("lovable-worker", "gh pr merge 83188", grantsFromPrompt(prompt))).toContain("merge");
+    }
+  });
+
+  test("descriptive or non-authorizing push mentions grant nothing", () => {
+    for (const prompt of [
+      "Did David approve pushing this commit?",
+      "David approved pushing this commit?",
+      "Who approved pushing this commit?",
+      "We discussed whether to approve pushing after CI.",
+      "The previous push was approved yesterday.",
+      "Approval for pushing is still pending.",
+      "I have not approved pushing this commit.",
+    ]) expect(grantsFromPrompt(prompt).has("push")).toBe(false);
+  });
+
   test("reviewer gets one explicitly requested merge attempt without polling", () => {
     expect(commandDecision("lovable-reviewer", "gh pr merge 12 --auto", grantsFromPrompt("Merge then"))).toBeNull();
     expect(commandDecision("lovable-reviewer", "gh pr merge 12 --auto", new Set())).toContain("explicit merge request");
