@@ -5885,6 +5885,21 @@ vim.api.nvim_create_autocmd("BufEnter", {
     if name ~= ours then S._follow_paused = true end
   end,
 })
+-- Reading counts, not just navigating: moving the cursor in a real file means
+-- "I'm here" even when it's the very file follow opened (a session whose cwd is
+-- a parent dir makes every file "session context", so BufEnter alone never
+-- paused and follow kept yanking mid-read). Follow's own jumps are wrapped in
+-- _program_nav and don't trip this.
+vim.api.nvim_create_autocmd("CursorMoved", {
+  group = "HeidrFollowPause",
+  callback = function(ev)
+    if S._program_nav or S._follow_paused then return end
+    local name = vim.api.nvim_buf_get_name(ev.buf)
+    if name == "" or vim.bo[ev.buf].buftype == "nofile" then return end
+    if name:find("/notes/storage/plans/", 1, true) or name:find("/%.plans/") then return end
+    S._follow_paused = true
+  end,
+})
 
 function M.setup(opts)
   opts = opts or {}
