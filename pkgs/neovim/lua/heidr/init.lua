@@ -4340,7 +4340,10 @@ reflect_context = function(cwd)
   local want = S.editor and S.selected and S.editor[S.selected]
   if want and fn.filereadable(want) == 1 then
     if fn.fnamemodify(api.nvim_buf_get_name(api.nvim_win_get_buf(ed)), ":p") ~= fn.fnamemodify(want, ":p") then
+      -- Plugin-driven restore, not user navigation — must not pause live-follow.
+      S._program_nav = true
       api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(want)) end)
+      vim.schedule(function() S._program_nav = nil end)
     end
     editor_gutter(ed, true)
     if hide_banner then hide_banner() end -- restored a file → hide the banner float
@@ -5875,6 +5878,9 @@ vim.api.nvim_create_autocmd("BufEnter", {
       return
     end
     local ours = S._follow and S._follow:gsub(":%d+$", "")
+    -- Plan buffers are spectating, not working — they must never pause follow
+    -- (watching the plan of a working session is follow's main use-case).
+    if name:find("/notes/storage/plans/", 1, true) or name:find("/%.plans/") then return end
     if name ~= ours then S._follow_paused = true end
   end,
 })
