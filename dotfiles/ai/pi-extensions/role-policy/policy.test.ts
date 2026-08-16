@@ -95,12 +95,18 @@ describe("reviewer attempt consumption", () => {
   });
 });
 
-describe("fail closed", () => {
-  test("missing or unknown profile disables every tool", () => {
+describe("global extension containment", () => {
+  test("non-role launches are inert and unknown role claims fail closed", () => {
     const previous = process.env.HEIDR_AGENT_PROFILE;
-    delete process.env.HEIDR_AGENT_PROFILE;
     let active: string[] = ["bash"];
     const pi = { setActiveTools: (tools: string[]) => { active = tools; } } as any;
+    for (const profile of [undefined, "chat", "coding"]) {
+      if (profile === undefined) delete process.env.HEIDR_AGENT_PROFILE;
+      else process.env.HEIDR_AGENT_PROFILE = profile;
+      expect(() => rolePolicy(pi)).not.toThrow();
+      expect(active).toEqual(["bash"]);
+    }
+    process.env.HEIDR_AGENT_PROFILE = "unknown-role";
     expect(() => rolePolicy(pi)).toThrow("failed closed");
     expect(active).toEqual([]);
     if (previous === undefined) delete process.env.HEIDR_AGENT_PROFILE;

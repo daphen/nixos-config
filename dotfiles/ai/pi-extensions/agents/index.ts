@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { execFile } from "node:child_process";
 
-import { allSessions, readTurns, resolveSession, scheduleSelf, sendPrompt, spawnSession, steerSession, stopSelf } from "./agentd.ts";
+import { allSessions, readSessionTurns, resolveSession, scheduleSelf, sendPrompt, spawnSession, steerSession, stopSelf } from "./agentd.ts";
 
 // Native coordination tools for pi agents driven by the Heidr rail / agentd.
 // The desktop (niri pickers, nvim keybinds, cockpit scripts) uses the sibling
@@ -50,12 +50,16 @@ export default function (pi: ExtensionAPI) {
       turns: Type.Optional(Type.Number({ description: "how many recent turns (default 6)" })),
     }),
     async execute(_id, params: any) {
-      const r = await resolveSession(params.agent);
-      if (!r) return say(`No agent session matching ${JSON.stringify(params.agent)}.`);
-      const read = readTurns(r.cwd, params.turns ?? 6);
-      if (!read || read.turns.length === 0) return say(`No transcript found for ${r.session.name ?? r.cwd}.`);
-      const body = read.turns.map((t) => `${t.role === "user" ? "▶ user" : "◀ agent"}:\n${t.text}`).join("\n\n");
-      return say(`# ${r.session.name ?? r.cwd} (${r.cwd})\n\n${body}`);
+      try {
+        const r = await resolveSession(params.agent);
+        if (!r) return say(`No agent session matching ${JSON.stringify(params.agent)}.`);
+        const read = await readSessionTurns(r, params.turns ?? 6);
+        if (!read || read.turns.length === 0) return say(`No transcript found for ${r.session.name ?? r.cwd}.`);
+        const body = read.turns.map((t) => `${t.role === "user" ? "▶ user" : "◀ agent"}:\n${t.text}`).join("\n\n");
+        return say(`# ${r.session.name ?? r.cwd} (${r.cwd})\n\n${body}`);
+      } catch (error) {
+        return say(String((error as Error).message ?? error));
+      }
     },
   });
 
