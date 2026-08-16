@@ -19,11 +19,15 @@ Item {
   visible: opacity > 0.01
   Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
   Behavior on scale   { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
-  // Ease between hues so tool changes glide instead of flashing.
-  Behavior on glow { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
-
-  readonly property real hu: glow.hslHue < 0 ? 0 : glow.hslHue
-  readonly property real sat: Math.min(1, Math.max(0.75, glow.hslSaturation))
+  // Hue/sat animate as NUMBERS, not via ColorAnimation on glow: RGB-lerped
+  // colors desaturate mid-path and their hslHue swings wildly there, which made
+  // tool-change transitions visibly hop instead of glide.
+  readonly property real _thu: glow.hslHue < 0 ? 0 : glow.hslHue
+  readonly property real _tsat: Math.min(1, Math.max(0.75, glow.hslSaturation))
+  property real hu: _thu
+  property real sat: _tsat
+  Behavior on hu  { NumberAnimation { duration: 650; easing.type: Easing.InOutQuad } }
+  Behavior on sat { NumberAnimation { duration: 650; easing.type: Easing.InOutQuad } }
 
   // Time is WALL-CLOCK seconds (daily modulus keeps float32 precision), never
   // animation state: stored-from-zero clocks visibly reset whenever `running`
