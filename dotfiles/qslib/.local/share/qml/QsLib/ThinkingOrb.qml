@@ -23,7 +23,9 @@ Item {
   // colors desaturate mid-path and their hslHue swings wildly there, which made
   // tool-change transitions visibly hop instead of glide.
   readonly property real _thu: glow.hslHue < 0 ? 0 : glow.hslHue
-  readonly property real _tsat: Math.min(1, Math.max(0.75, glow.hslSaturation))
+  // An achromatic glow (Theme.bg on cursor rows) must stay achromatic: hue -1
+  // maps to 0 = red, and the saturation floor was painting those orbs pink.
+  readonly property real _tsat: glow.hslSaturation < 0.05 ? 0 : Math.min(1, Math.max(0.75, glow.hslSaturation))
   property real hu: _thu
   property real sat: _tsat
   Behavior on hu  { NumberAnimation { duration: 650; easing.type: Easing.InOutQuad } }

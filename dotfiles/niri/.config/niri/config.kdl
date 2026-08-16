@@ -264,13 +264,13 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#EDEDED"
+        active-color "#6F6F6E"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#3A3A3A"
+        inactive-color "#E2E2E1"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -294,13 +294,13 @@ layout {
         // If you enable the border, you probably want to disable the focus ring.
 
         width 4
-        active-color "#EDEDED"
+        active-color "#6F6F6E"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
-        active-gradient from="#EDEDED" to="#EDEDED" angle=180
+        active-gradient from="#6F6F6E" to="#6F6F6E" angle=180
         // Matches waybar-notch light theme hairline
         // (foreground.primary @ 50% alpha).
-        inactive-color "#3A3A3A"
+        inactive-color "#E2E2E1"
 
         // Color of the border around windows that request your attention.
         urgent-color "#9b0000"
@@ -752,6 +752,7 @@ binds {
     // 1Password lives in the tray (close-to-tray default): focus the window
     // if mapped, else spawn — which summons the tray instance (~instant)
     Super+P { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 1password 1password"; }
+    Super+Shift+P hotkey-overlay-title="1Password credential picker" { spawn "opqs-client"; }
     Super+Ctrl+q hotkey-overlay-title="Force Kill Focused Window" { spawn "/home/daphen/.config/niri/scripts/force-kill-focused"; }
     Super+Shift+Ctrl+q hotkey-overlay-title="Lock the Screen" { spawn "swaylock"; }
 
@@ -767,9 +768,8 @@ binds {
     // pick one to jump to its window/app.
     Super+i { spawn-sh "$HOME/.config/niri/scripts/inbox-jump"; }
     // Super+Ctrl+g: resume an existing claude session (fzf picker)
-    // Super+Shift+g: start a NEW claude session, picking a working dir via zoxide+fzf
     Super+Ctrl+g { spawn-sh "kitty --class lovable_picker $HOME/.config/niri/scripts/spawn-claude-session-picker"; }
-    Super+Shift+g { spawn-sh "$HOME/.config/niri/scripts/spawn-new-claude-session"; }
+    Super+Shift+g hotkey-overlay-title="Chat" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:qstns $HOME/personal/qstns/run.sh"; }
     Super+Shift+f { spawn-sh "$HOME/.config/niri/scripts/fork-claude-session"; }
     Super+r hotkey-overlay-title="Create PR review" { spawn "qs" "ipc" "call" "review-create" "toggle"; }
     // Super+G — jump to the cockpit's nvim window (hosts the agent rail).

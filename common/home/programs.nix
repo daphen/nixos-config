@@ -13,6 +13,12 @@ let
   dsqrdClient = inputs.dsqrd.packages.${pkgs.system}.dsqrd-client;
   mlqsDaemon = inputs.mlqs.packages.${pkgs.system}.mlqs;
   mlqsClient = inputs.mlqs.packages.${pkgs.system}.mlqs-client;
+  opqsDaemon = inputs.opqs.packages.${pkgs.system}.opqs;
+  opqsClient = inputs.opqs.packages.${pkgs.system}.opqs-client;
+  helium = import ../../pkgs/helium {
+    inherit pkgs;
+    upstream = inputs.helium-nix.packages.${pkgs.system}.default;
+  };
   # heidr — cockpit launcher (bundles the libghostty terminal plugin; connects to
   # the running agentd). `heidr` opens/focuses the Quickshell cockpit window.
   heidrClient = inputs.heidr.packages.${pkgs.system}.heidr-qs;
@@ -79,7 +85,7 @@ in
   ]) ++ [
     # Helium browser via the upstream auto-bumped flake. Ships its own
     # .desktop and icon, so no xdg.desktopEntries needed.
-    inputs.helium-nix.packages.${pkgs.system}.default
+    helium
     # palette-daemon — WebKit command-palette overlay, replacing the
     # per-tab iframe prewarm. Service unit defined below.
     palette-daemon
@@ -90,6 +96,8 @@ in
     dsqrdClient
     mlqsDaemon
     mlqsClient
+    opqsDaemon
+    opqsClient
     # heidr — the cockpit (nvim + agentd rail in one qs window).
     heidrClient
     # agentd — nvim agent-rail daemon (one instance per scope, started at login).

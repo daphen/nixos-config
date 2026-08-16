@@ -49,6 +49,10 @@
       url = "git+ssh://git@github.com/daphen/mlqs";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    opqs = {
+      url = "git+ssh://git@github.com/daphen/opqs";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     # heidr — cockpit: nvim (libghostty terminal) + agentd rail in one Quickshell
     # window. Local path (actively developed); follows the system nixpkgs +

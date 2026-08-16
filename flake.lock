@@ -388,6 +388,26 @@
         "type": "github"
       }
     },
+    "opqs": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786911405,
+        "narHash": "sha256-P5Y4XMVn9k220dcUgA/Z9wauXT1MQVobzVI0zH3HIH4=",
+        "ref": "refs/heads/main",
+        "rev": "9ca73b252bdbc059bfa5cf242380b429a42436c8",
+        "revCount": 3,
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/opqs"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/opqs"
+      }
+    },
     "palette-daemon": {
       "inputs": {
         "flake-utils": "flake-utils_2",
@@ -444,6 +464,7 @@
         "nixpkgs-iwd": "nixpkgs-iwd",
         "nixpkgs-latest": "nixpkgs-latest",
         "nixpkgs-neovim": "nixpkgs-neovim",
+        "opqs": "opqs",
         "palette-daemon": "palette-daemon",
         "quickshell": "quickshell",
         "slqs": "slqs",
