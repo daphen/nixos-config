@@ -71,9 +71,9 @@ Item {
     // Lifted on light mode: identical pixels read much darker against a pale
     // ground (simultaneous contrast), so the field compensates instead of the
     // viewer squinting.
-    property color colA: Qt.hsla(orb.hu, orb.sat, Theme.mode === "light" ? 0.42 : 0.26, 1)
-    property color colB: Qt.hsla(orb.hu, orb.sat, Theme.mode === "light" ? 0.68 : 0.56, 1)
-    property color colC: Qt.hsla((orb.hu + 0.05) % 1, orb.sat * 0.7, Theme.mode === "light" ? 0.93 : 0.88, 1)
+    property color colA: Qt.hsla(orb.hu, orb.sat, Theme.mode === "light" ? 0.58 : 0.26, 1)
+    property color colB: Qt.hsla(orb.hu, orb.sat, Theme.mode === "light" ? 0.78 : 0.56, 1)
+    property color colC: Qt.hsla((orb.hu + 0.05) % 1, orb.sat * 0.7, Theme.mode === "light" ? 0.95 : 0.88, 1)
   }
 
   // The ring rides the action hue — bright tint on dark, deep shade on light —
