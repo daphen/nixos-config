@@ -133,14 +133,14 @@ Item {
           var reach = R * (orb._pts.length > 16 ? 0.72 : 0.95)
           if (dx * dx + dy * dy < reach * reach) {
             var d = (proj[e][2] + proj[f][2]) / 2
-            ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.14 + (d + 1) / 2 * 0.38)
+            ctx.strokeStyle = Qt.rgba(0, 0, 0, 0.22 + (d + 1) / 2 * 0.48)
             ctx.lineWidth = Math.max(0.5, R * 0.07)
             ctx.beginPath(); ctx.moveTo(proj[e][0], proj[e][1]); ctx.lineTo(proj[f][0], proj[f][1]); ctx.stroke()
           }
         }
       for (var j = 0; j < proj.length; j++) {
         var dd = proj[j][2]
-        ctx.fillStyle = Qt.rgba(1, 1, 1, 0.45 + (dd + 1) / 2 * 0.55)
+        ctx.fillStyle = Qt.rgba(0, 0, 0, 0.55 + (dd + 1) / 2 * 0.45)
         // Radius as a FRACTION of R, not absolute px — 2px dots on a 5px radius are
         // what made the small orb read as filled.
         var rr = R * (0.10 + (dd + 1) / 2 * 0.10)
