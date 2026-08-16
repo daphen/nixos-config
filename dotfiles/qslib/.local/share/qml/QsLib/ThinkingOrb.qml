@@ -107,9 +107,9 @@ Item {
       // The ring belongs to the duotone, not to black/white: the highlight hue,
       // brightened — it frames without introducing a foreign color. Light mode
       // deepens it instead so the badge still cuts against a pale ground.
-      ctx.strokeStyle = Theme.mode === "light"
-        ? Qt.hsla(hu, 0.7, 0.32, 1)
-        : Qt.hsla(hu, 0.8, 0.76, 1)
+      // The ring stays NEUTRAL — white on dark, near-black on light. Color lives
+      // in the gradient only; a hued ring kept reading as "why is the outline X".
+      ctx.strokeStyle = Theme.mode === "light" ? "#1F1F1F" : "#FFFFFF"
       ctx.beginPath(); ctx.arc(cx, cy, discR, 0, 2 * Math.PI); ctx.stroke()
 
       var R = (Math.min(w, h) / 2 - ring * 1.6) / 1.2
