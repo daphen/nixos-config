@@ -84,7 +84,7 @@ Item {
     radius: width / 2
     color: "transparent"
     border.width: Math.max(1.25, Math.min(width, height) * 0.065)
-    border.color: Qt.hsla(orb.hu, orb.sat * 0.85, Theme.mode === "light" ? 0.34 : 0.82, 1)
+    border.color: Qt.hsla(orb.hu, orb.sat * 0.5, Theme.mode === "light" ? 0.34 : 0.82, 1)
     antialiasing: true
   }
 }
