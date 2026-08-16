@@ -3373,7 +3373,7 @@ end
 -- plan while other files were edited). Only fires when focus is in the rail (an
 -- agent-* window): if you've clicked into the code to read/edit, it leaves you
 -- alone. Skips when the target buffer has unsaved changes. Toggle: S.follow_edits.
-follow_edit = function(cwd, path, line, external)
+follow_edit = function(cwd, path, line, external, external_force)
   if not path or S.follow_edits == false then return end
   -- Never follow into plan machinery sidecars: a /plan-ticket turn writes the
   -- reviewable .md and THEN its progress.json, so following the last edit would
@@ -3399,15 +3399,21 @@ follow_edit = function(cwd, path, line, external)
   end
   local target = target_editor_win()
   if not target or vim.bo[api.nvim_win_get_buf(target)].modified then return end
+  -- The user took the wheel: any buffer they opened THEMSELVES pauses follow
+  -- until they return to rest (dashboard) or switch sessions. Programmatic opens
+  -- (this function) are marked so the BufEnter watcher can tell them apart.
+  if S._follow_paused and not external_force then return end
   local key = file .. ":" .. tostring(line or 0)
   if S._follow == key then return end
   S._follow = key
+  S._program_nav = true
   api.nvim_win_call(target, function()
     if fn.fnamemodify(api.nvim_buf_get_name(0), ":p") ~= file then
       pcall(vim.cmd, "edit " .. fn.fnameescape(file))
     end
     if line then pcall(api.nvim_win_set_cursor, target, { tonumber(line), 0 }); vim.cmd("normal! zz") end
   end)
+  vim.schedule(function() S._program_nav = nil end)
   editor_gutter(target, true) -- a real file is showing → restore number/sign/fold cols (the dashboard turned them off)
   if hide_banner then hide_banner() end
 end
@@ -4375,9 +4381,10 @@ end
 -- rail is the only component that sees every scope's events AND maps a remote session's
 -- paths onto the local mirror — this nvim's own client spans one scope, so cockpit
 -- live-follow cannot originate in here. Both args are LOCAL absolute paths.
-function M.follow_remote(cwd, path)
+function M.follow_remote(cwd, path, force)
   local ed = target_editor_win()
   if not ed then return "" end
+  if force then S._follow_paused = nil; follow_edit(cwd, path, nil, true, true); return "" end
   local bn = api.nvim_buf_get_name(api.nvim_win_get_buf(ed))
   -- Follow only while the editor rests on session context — never yank the user out
   -- of their own unrelated file. Session context is: the dashboard (unnamed scratch),
@@ -4394,6 +4401,7 @@ function M.follow_remote(cwd, path)
 end
 
 function M.dashboard(cwd)
+  S._follow_paused = nil  -- back at rest: live-follow may drive again
   -- Adopt the session being shown. The rail picked it and drives us over RPC, but the
   -- selection is what this nvim keys its own per-session state off (the editor file it
   -- restores, the tests auto-switch), so leaving it unset made every externally-driven
@@ -5855,6 +5863,22 @@ end
 --------------------------------------------------------------------------------
 -- setup
 --------------------------------------------------------------------------------
+-- User navigation pauses live-follow: entering any real file that follow did not
+-- open itself means "I'm reading this" — the agent's edits must not yank the view.
+-- Returning to the dashboard (scratch) or switching sessions resumes.
+vim.api.nvim_create_autocmd("BufEnter", {
+  callback = function(ev)
+    if S._program_nav then return end
+    local name = vim.api.nvim_buf_get_name(ev.buf)
+    if name == "" or vim.bo[ev.buf].buftype == "nofile" then
+      S._follow_paused = nil                                  -- scratch/dash = at rest
+      return
+    end
+    local ours = S._follow and S._follow:gsub(":%d+$", "")
+    if name ~= ours then S._follow_paused = true end
+  end,
+})
+
 function M.setup(opts)
   opts = opts or {}
   load_qsicons()
