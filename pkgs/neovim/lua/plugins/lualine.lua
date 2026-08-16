@@ -140,8 +140,9 @@ return {
 		local function get_theme()
 			local pal = vim.g.theme_palette or {}
 			local dark = vim.o.background == "dark"
-			-- statusline background = the theme's surface2 elevation.
-			local surface = pal.bg_surface2 or pal.bg_surface or (dark and "#2E2E2E" or "#E8EAED")
+			-- statusline background = the dim ground (same layer as heidr's rail),
+			-- both modes — it read as a floating surface2 bar before.
+			local surface = pal.bg_dim or pal.bg_surface2 or (dark and "#101010" or "#F5F5F7")
 			local fg = dark and "#EDEDED" or "#2D4A3D"
 			local s = { fg = fg, bg = surface }
 			return { normal = { a = s, b = s, c = s, x = s, y = s, z = { fg = "#ED333B", bg = surface } } }

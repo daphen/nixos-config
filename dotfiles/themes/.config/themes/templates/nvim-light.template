@@ -24,6 +24,7 @@ local c = {
   -- elevation ladder (derived by theme-processor: fg over surface1)
   bg_surface1 = "{{light.background.surface1}}",
   bg_surface2 = "{{light.background.surface2}}",
+  bg_dim = "{{light.background.dim}}",
   bg_surface3 = "{{light.background.surface3}}",
 
   -- Foreground colors
