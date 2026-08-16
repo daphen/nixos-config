@@ -31,13 +31,18 @@ Item {
   Behavior on hu  { NumberAnimation { duration: 650; easing.type: Easing.InOutQuad } }
   Behavior on sat { NumberAnimation { duration: 650; easing.type: Easing.InOutQuad } }
 
-  // Time is WALL-CLOCK seconds (daily modulus keeps float32 precision), never
-  // animation state: stored-from-zero clocks visibly reset whenever `running`
-  // flapped or the delegate was recreated. Every orb on screen flows in unison.
-  property real t: 0
+  // Drift phases are WALL-CLOCK (never animation state, so nothing resets on
+  // running flaps or delegate recreation) and BOUNDED (radians, so the shader
+  // never sees coordinates big enough to break float32 noise). flow scales the
+  // clock, keeping continuity. Prime-ish periods so the composite never loops.
+  property real ph1: 0
+  property real ph2: 0
+  property real ph3: 0
+  property real ph4: 0
+  function _ph(P) { return ((Date.now() * flow) % P) / P * 2 * Math.PI }
   FrameAnimation {
     running: orb.running
-    onTriggered: orb.t = (Date.now() % 86400000) / 1000
+    onTriggered: { orb.ph1 = orb._ph(47000); orb.ph2 = orb._ph(61000); orb.ph3 = orb._ph(83000); orb.ph4 = orb._ph(29000) }
   }
   // Big badge flows livelier; the small roster orbs stay calm. A constant
   // multiplier on the wall clock keeps continuity (no resets, ever).
@@ -60,7 +65,10 @@ Item {
     anchors.fill: parent
     anchors.margins: ring.border.width / 2
     fragmentShader: Qt.resolvedUrl("aurora.frag.qsb")
-    property real time: orb.t * orb.flow
+    property real ph1: orb.ph1
+    property real ph2: orb.ph2
+    property real ph3: orb.ph3
+    property real ph4: orb.ph4
     property real angle: orb.angle
     property real bandX: orb.bandX
     property real bandY: orb.bandY
