@@ -295,6 +295,31 @@ describe("typed remediation push", () => {
   });
 });
 
+describe("role tool activation", () => {
+  test("reasserts the manifest tools immediately before every model turn", () => {
+    const previousProfile = process.env.HEIDR_AGENT_PROFILE;
+    const previousManifest = process.env.HEIDR_ROLE_MANIFEST;
+    process.env.HEIDR_AGENT_PROFILE = "lovable-worker";
+    process.env.HEIDR_ROLE_MANIFEST = path.join(AI, "roles/manifest.json");
+    const manifest = JSON.parse(fs.readFileSync(process.env.HEIDR_ROLE_MANIFEST, "utf8"));
+    const expected = manifest.profiles["lovable-worker"].tools;
+    const handlers: Record<string, (event: any) => any> = {};
+    let active: string[] = [];
+    rolePolicy({
+      setActiveTools: (tools: string[]) => { active = [...tools]; },
+      getAllTools: () => expected.map((name: string) => ({ name })),
+      on: (name: string, handler: (event: any) => any) => { handlers[name] = handler; },
+    } as any);
+    handlers.session_start({});
+    expect(active).toEqual(expected);
+    active = ["mcp"];
+    handlers.before_agent_start({ systemPrompt: "base" });
+    expect(active).toEqual(expected);
+    if (previousProfile === undefined) delete process.env.HEIDR_AGENT_PROFILE; else process.env.HEIDR_AGENT_PROFILE = previousProfile;
+    if (previousManifest === undefined) delete process.env.HEIDR_ROLE_MANIFEST; else process.env.HEIDR_ROLE_MANIFEST = previousManifest;
+  });
+});
+
 describe("global extension containment", () => {
   test("non-role launches are inert and unknown role claims fail closed", () => {
     const previous = process.env.HEIDR_AGENT_PROFILE;

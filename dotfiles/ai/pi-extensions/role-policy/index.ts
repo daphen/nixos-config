@@ -61,12 +61,14 @@ export default function rolePolicy(pi: ExtensionAPI) {
   let grants = new Set<MutationGrant>();
   const pendingApprovals = new Map<string, Set<MutationGrant>>();
 
-  pi.on("session_start", () => {
+  const activateExpectedTools = () => {
     const available = new Set(pi.getAllTools().map((tool) => tool.name));
     const missing = expectedTools.filter((name) => !available.has(name));
     if (missing.length > 0) failClosed(pi, `required tools are not registered: ${missing.join(", ")}`);
     pi.setActiveTools(expectedTools);
-  });
+  };
+
+  pi.on("session_start", activateExpectedTools);
 
   pi.on("input", (event) => {
     const requested = grantsFromPrompt(event.text);
@@ -75,9 +77,12 @@ export default function rolePolicy(pi: ExtensionAPI) {
     return { action: "continue" };
   });
 
-  pi.on("before_agent_start", (event) => ({
-    systemPrompt: `${event.systemPrompt}\n\n[Heidr role: ${profile} | cwd: ${cwd} | bundle: ${manifest.bundleVersion}]`,
-  }));
+  pi.on("before_agent_start", (event) => {
+    activateExpectedTools();
+    return {
+      systemPrompt: `${event.systemPrompt}\n\n[Heidr role: ${profile} | cwd: ${cwd} | bundle: ${manifest.bundleVersion}]`,
+    };
+  });
 
   pi.on("tool_call", async (event) => {
     if (event.toolName === "ask_user" && event.input.kind === "confirm") {
