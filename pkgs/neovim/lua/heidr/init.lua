@@ -4588,6 +4588,17 @@ refresh_git_changes = function(cwd, path)
     end,
     on_exit = function(id, code)
       if S.diff_jobs[cwd] ~= id then return end
+      -- git diff never lists untracked paths — synthesize them so a fresh project
+      -- shows its files as added instead of an empty CHANGES view.
+      local unt = fn.systemlist({ "git", "-C", cwd, "ls-files", "--others", "--exclude-standard" })
+      for _, f in ipairs(unt or {}) do
+        if f ~= "" then
+          output[#output + 1] = "diff --git a/" .. f .. " b/" .. f
+          output[#output + 1] = "+++ b/" .. f
+          local n = tonumber(fn.system({ "wc", "-l", cwd .. "/" .. f }):match("%d+") or "0") or 0
+          for _ = 1, math.min(n, 500) do output[#output + 1] = "+x" end
+        end
+      end
       S.diff_jobs[cwd] = nil
       if code ~= 0 then return end
       vim.schedule(function()
