@@ -3802,7 +3802,7 @@ local MASCOT_W = 27  -- cells
 -- Rows sized to the square image at ~1:2.05 cell aspect: a taller float leaves
 -- empty rows UNDER the image (it draws from the float's top), which read as the
 -- mascot hovering above the corner.
-local MASCOT_ROWS = 13
+local MASCOT_ROWS = 14
 local function place_mascot(win)
   if scope ~= "lovable" then return end
   if not (win and api.nvim_win_is_valid(win)) then return end
