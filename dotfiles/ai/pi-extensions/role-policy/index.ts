@@ -38,12 +38,12 @@ export default function rolePolicy(pi: ExtensionAPI) {
   const rawProfile = process.env.HEIDR_AGENT_PROFILE ?? "";
   // Inert for every NON-ROLE launch: no env at all (plain pi — the extension also
   // loads globally via the dotfiles symlink) and the daemon's builtin non-role
-  // profiles ("chat", "coding" — agentd stamps HEIDR_AGENT_PROFILE on every child).
+  // profiles ("chat", "phtqs", "coding" — agentd stamps HEIDR_AGENT_PROFILE on every child).
   // Fail closed only when the value claims to be a role and isn't a known one:
   // that's a role launch with a broken contract. Failing closed on the global
   // path crash-looped every plain pi (setActiveTools during load hard-crashes
   // pi >= 0.83) — the newtab outage, twice.
-  if (!rawProfile || rawProfile === "chat" || rawProfile === "coding") return;
+  if (!rawProfile || rawProfile === "chat" || rawProfile === "phtqs" || rawProfile === "coding") return;
   if (!isRoleProfile(rawProfile)) failClosed(pi, `unknown HEIDR_AGENT_PROFILE ${JSON.stringify(rawProfile)}`);
   const profile: RoleProfile = rawProfile;
   const cwd = process.env.HEIDR_AGENT_CWD || process.cwd();

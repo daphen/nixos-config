@@ -38,6 +38,7 @@ PanelWindow {
     property string iconField: ""
     property var onEnter: function(item) {}
     property var onEnterText: function(text) {}
+    property var onPaste: null
     property bool freeText: false
     property bool filterItemsWithQuery: true
     // Opt-in: Enter fires onEnter but keeps the picker open (toggle-style
@@ -129,7 +130,7 @@ PanelWindow {
     // Pickers bind their items on `tab` to swap datasets.
     property var tabs: []
     property int tab: 0
-    onTabChanged: selectedIndex = firstSelectable()
+    onTabChanged: resetList()
     // Opt-in category filter shown in the chin (replaces the j/k/enter hints):
     // [{key,label},…] with the first entry the unfiltered "all". Ctrl+Shift+H/L
     // cycles; rows are kept when item[categoryField] === the active key.
@@ -201,16 +202,22 @@ PanelWindow {
     onActiveChanged: {
         if (active && search) {
             search.text = ""
-            selectedIndex = firstSelectable()
+            resetList()
             search.forceActiveFocus()
         }
     }
-    onQueryChanged: selectedIndex = firstSelectable()
+    onQueryChanged: resetList()
+
+    function resetList() {
+        selectedIndex = firstSelectable()
+        Qt.callLater(function() { if (list) list.positionViewAtBeginning() })
+    }
 
     // First non-divider row — so selection never starts on a section header.
     function firstSelectable() {
-        for (let i = 0; i < filtered.length; i++)
-            if (!filtered[i] || !filtered[i].divider) return i
+        const values = filtered || []
+        for (let i = 0; i < values.length; i++)
+            if (!values[i] || !values[i].divider) return i
         return 0
     }
 
@@ -436,7 +443,10 @@ PanelWindow {
                 background: null
                 padding: 8
                 Keys.onPressed: event => {
-                    if (event.key === Qt.Key_Escape) {
+                    if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier) && root.onPaste) {
+                        root.onPaste()
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Escape) {
                         root.closeRequested()
                         event.accepted = true
                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
@@ -772,6 +782,8 @@ PanelWindow {
                             font.family: notch.sans
                             font.pixelSize: 15
                             font.weight: 500
+                            maximumLineCount: 1
+                            wrapMode: Text.NoWrap
                             elide: Text.ElideRight
                         }
                         Row {
