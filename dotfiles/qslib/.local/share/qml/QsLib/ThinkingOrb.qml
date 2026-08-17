@@ -52,14 +52,14 @@ Item {
   // Field shape knobs (shader uniforms). Defaults are the shipped look; the
   // orb-tuner dev shell binds sliders to them.
   property real angle: -0.76
-  property real bandX: 1.0    // feature scale (bigger = broader folds)
+  property real bandX: 1.35   // feature scale (bigger = broader folds)
   property real bandY: 1.2    // island field frequency
-  property real warp: 2.03    // fold strength
+  property real warp: 1.5     // fold strength
   property real grain: 0.54   // wobble frequency
   property real feather: 0.96
-  property real bright: 0.5   // dark-vs-luminous balance
+  property real bright: 0.55  // dark-vs-luminous balance
   property real swirl: 1.2
-  property real plasma: 0.85 // crease/seam intensity
+  property real plasma: 0.05 // crease/seam intensity (aura = no line)
 
   ShaderEffect {
     id: field
@@ -87,20 +87,18 @@ Item {
     // Duotone: depths lean one neighboring hue, crests the other (azure body ->
     // violet depths, cyan crests). A same-hue ramp with pale crests read as
     // "<color> + white" and lost the character.
-    // Palette fitted to the sampled reference (#060A25 / #2C6690 / #3E94AC),
-    // expressed relative to `glow`, with two perceptual corrections:
-    // - deep blues read darker than cyans at equal L, so a hue-based lift
-    //   peaks on think/electric and is zero at sky (read stays put)
-    // - warm hues (orange/green) keep more saturation and shift their crest
-    //   toward AMBER, not cyan — the steel/cyan treatment made bash salmon
+    // AuraGlass palette: mostly-light pastel body with ONE deep shadow and a
+    // desaturated cream-leaning highlight (fitted to the Ocean Teal stops
+    // #254754/#2D9BAD/#DBE8CD). The low crest saturation is what makes the
+    // bright regions read as diffuse glow instead of colored paint.
     readonly property bool _warm: orb.hu < 0.45
-    readonly property real _lift: 0.16 * Math.max(0, Math.min(1, (orb.hu - 0.565) / 0.06))
-    property color colA: Qt.hsla((orb.hu + (_warm ? 0.02 : 0.056)) % 1, orb.sat * 0.74,
-                                 (Theme.mode === "light" ? 0.22 : 0.08) + _lift * 0.6, 1)
-    property color colB: Qt.hsla(orb.hu, orb.sat * (_warm ? 0.78 : 0.55),
-                                 (Theme.mode === "light" ? 0.52 : 0.37) + _lift, 1)
-    property color colC: Qt.hsla((orb.hu + (_warm ? 0.045 : 0.953)) % 1, orb.sat * (_warm ? 0.7 : 0.48),
-                                 (Theme.mode === "light" ? 0.62 : 0.46) + _lift, 1)
+    readonly property real _lift: 0.10 * Math.max(0, Math.min(1, (orb.hu - 0.565) / 0.06))
+    property color colA: Qt.hsla((orb.hu + (_warm ? 0.02 : 0.03)) % 1, orb.sat * 0.60,
+                                 (Theme.mode === "light" ? 0.30 : 0.24) + _lift * 0.6, 1)
+    property color colB: Qt.hsla(orb.hu, orb.sat * (_warm ? 0.70 : 0.55),
+                                 (Theme.mode === "light" ? 0.58 : 0.52) + _lift, 1)
+    property color colC: Qt.hsla((orb.hu + (_warm ? 0.045 : 0.96)) % 1, orb.sat * 0.35,
+                                 (Theme.mode === "light" ? 0.84 : 0.80) + _lift * 0.5, 1)
     Behavior on colA { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
     Behavior on colB { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
     Behavior on colC { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
