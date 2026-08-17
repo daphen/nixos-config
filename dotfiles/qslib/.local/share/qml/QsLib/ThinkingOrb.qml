@@ -38,10 +38,22 @@ Item {
   property real ph2: 0
   property real ph3: 0
   property real ph4: 0
+  // Per-instance random seed: every orb starts at its own point in the cycle.
+  // The wall clock still drives the motion (reset-proof), but identical phases
+  // made all visible orbs move in lockstep, which read as one cheap loop.
+  // Assigned in onCompleted, not a binding — JS globals aren't reliably there
+  // during component creation (the old "Math is undefined" trap).
+  property real seed: 0
+  Component.onCompleted: seed = Math.random()
   function _ph(P) { return ((Date.now() * flow) % P) / P * 2 * Math.PI }
   FrameAnimation {
     running: orb.running
-    onTriggered: { orb.ph1 = orb._ph(47000); orb.ph2 = orb._ph(61000); orb.ph3 = orb._ph(83000); orb.ph4 = orb._ph(29000) }
+    onTriggered: {
+      orb.ph1 = orb._ph(47000) + orb.seed * 6.2832
+      orb.ph2 = orb._ph(61000) + orb.seed * 17.9
+      orb.ph3 = orb._ph(83000) + orb.seed * 29.3
+      orb.ph4 = orb._ph(29000) + orb.seed * 41.7
+    }
   }
   // Big badge flows livelier; the small roster orbs stay calm. A constant
   // multiplier on the wall clock keeps continuity (no resets, ever).
