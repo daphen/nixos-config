@@ -3799,7 +3799,10 @@ end
 -- corner (lovable scope only). Same float isolation as the banner, same
 -- dashboard-only guard; sized to stay out of the cards' way.
 local MASCOT_W = 27  -- cells
-local MASCOT_ROWS = 15
+-- Rows sized to the square image at ~1:2.05 cell aspect: a taller float leaves
+-- empty rows UNDER the image (it draws from the float's top), which read as the
+-- mascot hovering above the corner.
+local MASCOT_ROWS = 13
 local function place_mascot(win)
   if scope ~= "lovable" then return end
   if not (win and api.nvim_win_is_valid(win)) then return end
@@ -3814,7 +3817,7 @@ local function place_mascot(win)
   end
   local cfg = {
     relative = "win", win = win, anchor = "SW",
-    row = api.nvim_win_get_height(win), col = 1,
+    row = api.nvim_win_get_height(win), col = 0,
     width = MASCOT_W, height = MASCOT_ROWS,
     focusable = false, style = "minimal", zindex = 44, border = "none",
   }
@@ -6181,6 +6184,12 @@ function M.setup(opts)
             if api.nvim_win_get_width(w) ~= S.dash_w then -- width changed → reflow; else no-op
               local cwd = (S.dash and S.dash.cwd) or (S.selected and session_cwd(S.selected))
               if cwd then pcall(show_scratch, w, cwd) end
+            else
+              -- Height-only resize: the grid reflow still killed the kitty
+              -- placements (banner + mascot vanished on enlarge) — re-place
+              -- them without re-rendering the card.
+              pcall(place_banner, S.scratchbuf, w)
+              pcall(place_mascot, w)
             end
           end
         end
