@@ -3745,7 +3745,16 @@ local dash_keys
 -- via snacks.image (kitty graphics). Wrapped so a missing file or a terminal
 -- without image support never breaks the resting view.
 local HEIDR_BANNER_DIR = fn.expand("~/personal/heidr/assets")
-local HEIDR_BANNER_W = 22 -- banner width in cells
+local HEIDR_BANNER_W = 22 -- minimum banner width in cells
+-- The banner scales with the WINDOW: a fixed cell count renders physically
+-- smaller on denser screens (the private instance's masthead looked half the
+-- work one's size). ~26% of the pane, clamped sane.
+local function banner_w(win)
+  local ww = (win and api.nvim_win_is_valid(win)) and api.nvim_win_get_width(win) or 80
+  return math.max(HEIDR_BANNER_W, math.min(44, math.floor(ww * 0.26)))
+end
+-- Rows follow from the asset aspect (790x184) and ~1:2.05 cells.
+local function banner_h(w) return math.max(3, math.ceil(w / 8.6)) end
 -- 790×184 scaled to 22 cells ≈ 3 text rows. Declared before place_banner so its
 -- float config captures the local (a later declaration resolved to a nil global →
 -- height=nil → open_win threw under pcall → the banner never rendered).
@@ -3775,10 +3784,11 @@ local function place_banner(_buf, win)
     S.banner_buf = api.nvim_create_buf(false, true)
     vim.bo[S.banner_buf].bufhidden = "hide"; vim.bo[S.banner_buf].swapfile = false
   end
-  local col = math.max(0, math.floor((api.nvim_win_get_width(win) - HEIDR_BANNER_W) / 2))
+  local bw = banner_w(win)
+  local col = math.max(0, math.floor((api.nvim_win_get_width(win) - bw) / 2))
   local cfg = {
     relative = "win", win = win, anchor = "NW", row = 0, col = col,
-    width = HEIDR_BANNER_W, height = HEIDR_BANNER_ROWS,
+    width = bw, height = banner_h(bw),
     -- border=none EXPLICITLY: a global `winborder` (e.g. "rounded") otherwise leaks a box
     -- onto this float, framing the banner in an ugly outline over the card.
     focusable = false, style = "minimal", zindex = 45, border = "none",
@@ -3792,7 +3802,7 @@ local function place_banner(_buf, win)
     pcall(function() vim.wo[S.banner_win].winhighlight = "Normal:Normal,NormalFloat:Normal" end)
   end
   pcall(Placement.clean, S.banner_buf)
-  pcall(Placement.new, S.banner_buf, src, { pos = { 1, 0 }, inline = true, width = HEIDR_BANNER_W, auto_resize = false })
+  pcall(Placement.new, S.banner_buf, src, { pos = { 1, 0 }, inline = true, width = bw, auto_resize = false })
 end
 
 -- The scope mascot: a small companion pinned to the dashboard's BOTTOM-LEFT
@@ -3850,13 +3860,13 @@ end
 
 -- 0 when the banner won't render (no snacks / missing PNG), so the reserved top
 -- rows collapse and the layout stays exact in a plain terminal too.
-local function banner_rows()
+local function banner_rows(win)
   if not pcall(require, "snacks.image.placement") then return 0 end
   local variant = vim.o.background == "light" and "light" or "dark"
   local ident = (scope == "lovable") and "lovable" or "cockpit"
   if fn.filereadable(HEIDR_BANNER_DIR .. "/" .. ident .. "-" .. variant .. ".png") == 0
      and fn.filereadable(HEIDR_BANNER_DIR .. "/heidr-" .. variant .. ".png") == 0 then return 0 end
-  return HEIDR_BANNER_ROWS
+  return banner_h(banner_w(win))
 end
 
 local function show_scratch(win, cwd)
@@ -3904,7 +3914,7 @@ local function show_scratch(win, cwd)
 
   -- masthead: the inline HEIDR banner IS the header — reserve its rows, nothing else.
   -- The session identity lives in the PLAN card title (Electric); no path, no id line.
-  local br = banner_rows()
+  local br = banner_rows(win)
   local topN = math.max(2, br) -- banner-reserved rows preserved across re-renders (no image re-place)
   for _ = 1, topN do push("") end
   for _ = 1, 3 do push("") end -- breathing room between the banner image and the HUD card
