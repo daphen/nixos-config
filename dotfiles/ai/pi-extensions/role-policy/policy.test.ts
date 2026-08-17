@@ -13,6 +13,7 @@ import {
   mutationForCommand,
   watcherCommandAllowed,
   grantsFromApprovalCard,
+  commandFromCardText,
 } from "./policy.ts";
 
 const AI = path.resolve(import.meta.dir, "../..");
@@ -53,7 +54,12 @@ describe("GitHub mutation delegation", () => {
   });
 
   test("worker permission is current-turn and action-specific", () => {
-    expect(commandDecision("lovable-worker", "git push", grantsFromPrompt("CI is green"))).toContain("explicit request");
+    // pr-create and branch-contained pushes are ungated for workers;
+    // main pushes, merges and comments still gate.
+    expect(commandDecision("lovable-worker", "git push -u origin daphen/every-1", new Set())).toBeNull();
+    expect(commandDecision("lovable-worker", "gh pr create --draft --fill", new Set())).toBeNull();
+    expect(commandDecision("lovable-worker", "git push origin main", new Set())).toContain("needs approval");
+    expect(commandDecision("lovable-worker", "gh pr comment 1 --body hi", new Set())).toContain("needs approval");
     expect(commandDecision("lovable-worker", "git push", grantsFromPrompt("Please push this branch"))).toBeNull();
     expect(commandDecision("lovable-worker", "gh pr merge 1", grantsFromPrompt("Please push this branch"))).toContain("merge");
     expect(grantsFromPrompt("Do not push").has("push")).toBe(false);
@@ -104,7 +110,7 @@ describe("GitHub mutation delegation", () => {
     ]) {
       expect([...grantsFromPrompt(prompt)]).toEqual(["post"]);
       expect(commandDecision("lovable-worker", "gh pr comment 83188 --body '@claude review once'", grantsFromPrompt(prompt))).toBeNull();
-      expect(commandDecision("lovable-worker", "git push origin HEAD", grantsFromPrompt(prompt))).toContain("push");
+      expect(commandDecision("lovable-worker", "git push origin main", grantsFromPrompt(prompt))).toContain("push");
       expect(commandDecision("lovable-worker", "gh pr merge 83188", grantsFromPrompt(prompt))).toContain("merge");
     }
   });
@@ -235,14 +241,16 @@ describe("approval-card grants", () => {
     const { handlers, restore } = workerHandlers();
     process.env.HEIDR_AGENT_PROFILE = "coding";
     handlers.input({ text: "CI is green." });
-    const card = { toolName: "ask_user", toolCallId: "approval-1", input: { kind: "confirm", title: "Push the commit?", message: "Approve pushing commit abc123 now?" } };
+    // Merge is still gated: blocked before the card, allowed after approval,
+    // gated again next turn. (Branch pushes are ungated for workers now.)
+    const card = { toolName: "ask_user", toolCallId: "approval-1", input: { kind: "confirm", title: "Merge main?", message: "Approve merging: git merge --no-ff origin/main now?" } };
     await handlers.tool_call(card);
-    expect((await handlers.tool_call({ toolName: "bash", toolCallId: "before", input: { command: "git push origin HEAD" } })).reason).toContain("push");
+    expect((await handlers.tool_call({ toolName: "bash", toolCallId: "before", input: { command: "git merge --no-ff origin/main" } })).reason).toContain("merge");
     handlers.tool_result({ ...card, content: [{ type: "text", text: "approved" }], isError: false });
-    expect(await handlers.tool_call({ toolName: "bash", toolCallId: "push", input: { command: "git push origin HEAD" } })).toBeUndefined();
-    expect((await handlers.tool_call({ toolName: "bash", toolCallId: "merge", input: { command: "gh pr merge 83188" } })).reason).toContain("merge");
+    expect(await handlers.tool_call({ toolName: "bash", toolCallId: "merge", input: { command: "git merge --no-ff origin/main" } })).toBeUndefined();
+    expect((await handlers.tool_call({ toolName: "bash", toolCallId: "comment", input: { command: "gh pr comment 83188 --body hi" } })).reason).toContain("post");
     handlers.input({ text: "What is the status?" });
-    expect((await handlers.tool_call({ toolName: "bash", toolCallId: "later", input: { command: "git push origin HEAD" } })).reason).toContain("push");
+    expect((await handlers.tool_call({ toolName: "bash", toolCallId: "later", input: { command: "git merge --no-ff origin/main" } })).reason).toContain("merge");
     restore();
   });
 
@@ -253,7 +261,7 @@ describe("approval-card grants", () => {
     const declined = { toolName: "ask_user", toolCallId: "approval-2", input: { kind: "confirm", title: "Open a PR?", message: "Create the PR now?" } };
     await handlers.tool_call(declined);
     handlers.tool_result({ ...declined, content: [{ type: "text", text: "declined" }], isError: false });
-    expect((await handlers.tool_call({ toolName: "bash", toolCallId: "create", input: { command: "gh pr create --fill" } })).reason).toContain("pr-create");
+    expect((await handlers.tool_call({ toolName: "bash", toolCallId: "comment2", input: { command: "gh pr comment 1 --body hi" } })).reason).toContain("post");
     const ambiguous = { toolName: "ask_user", toolCallId: "approval-3", input: { kind: "confirm", title: "Review the PR?", message: "Should I review it?" } };
     await handlers.tool_call(ambiguous);
     handlers.tool_result({ ...ambiguous, content: [{ type: "text", text: "approved" }], isError: false });
@@ -286,9 +294,11 @@ describe("typed remediation push", () => {
     const handlers: Record<string, (event: any) => any> = {};
     rolePolicy({ setActiveTools: () => {}, getAllTools: () => [], on: (name: string, handler: (event: any) => any) => { handlers[name] = handler; } } as any);
     handlers.input({ text: "The typed watcher findings are implemented and tested." });
+    // Branch pushes are ungated for workers now, so the remediation one-shot
+    // never triggers — both pushes pass without consuming the grant.
     expect(await handlers.tool_call({ toolName: "bash", toolCallId: "push-1", input: { command: "git push origin HEAD" } })).toBeUndefined();
-    expect((await handlers.tool_call({ toolName: "bash", toolCallId: "push-2", input: { command: "git push origin HEAD" } })).reason).toContain("push");
-    expect(consumes).toBe(2);
+    expect(await handlers.tool_call({ toolName: "bash", toolCallId: "push-2", input: { command: "git push origin HEAD" } })).toBeUndefined();
+    expect(consumes).toBe(0);
     const envNames = { runtime: "XDG_RUNTIME_DIR", profile: "HEIDR_AGENT_PROFILE", name: "HEIDR_AGENT_NAME", cwd: "HEIDR_AGENT_CWD", manifest: "HEIDR_ROLE_MANIFEST" } as const;
     for (const key of Object.keys(envNames) as Array<keyof typeof envNames>) previous[key] === undefined ? delete process.env[envNames[key]] : process.env[envNames[key]] = previous[key];
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -358,6 +368,14 @@ describe("watcher containment and manifest", () => {
       for (const tool of spec.tools) expect(known.has(tool)).toBe(true);
     }
     expect(manifest.profiles["lovable-watcher"].tools).toEqual(["bash", "agent_send", "agent_report_review_findings", "agent_schedule_self", "agent_stop_self"]);
+  });
+});
+
+describe("approval cards quoting a command", () => {
+  test("finds the quoted command in a card", () => {
+    expect(commandFromCardText("Create the draft PR?\nRun: gh pr create --draft --title 'feat(canvas): modes'")).toBe("gh pr create --draft --title");
+    expect(commandFromCardText("Merge main into this branch?\n`git merge --no-ff origin/main`")).toBe("git merge --no-ff origin/main");
+    expect(commandFromCardText("Proceed with the plan?")).toBe(null);
   });
 });
 

@@ -6,6 +6,7 @@ import path from "node:path";
 import { consumeReviewPush } from "../agents/agentd.ts";
 import {
   approvalResultIsApproved,
+  commandFromCardText,
   commandDecision,
   grantsFromApprovalCard,
   grantsFromPrompt,
@@ -87,7 +88,14 @@ export default function rolePolicy(pi: ExtensionAPI) {
   pi.on("tool_call", async (event) => {
     if (event.toolName === "ask_user" && event.input.kind === "confirm") {
       const cardText = [event.input.title, event.input.message].filter((value) => typeof value === "string").join("\n");
-      pendingApprovals.set(event.toolCallId, grantsFromApprovalCard(cardText));
+      const cardGrants = grantsFromApprovalCard(cardText);
+      // A card that QUOTES a command grants that command's mutation on approval,
+      // regardless of how the card is worded — parsing approval prose was the
+      // recurring lockout (three deploy-bounce-retype cycles in one day).
+      const quoted = commandFromCardText(cardText);
+      const quotedMutation = quoted ? mutationForCommand(quoted) : null;
+      if (quotedMutation) cardGrants.add(quotedMutation);
+      pendingApprovals.set(event.toolCallId, cardGrants);
     }
 
     if ((event.toolName === "write" || event.toolName === "edit") && typeof event.input.path === "string") {

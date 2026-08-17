@@ -165,6 +165,14 @@ export function approvalResultIsApproved(content: unknown): boolean {
   return /^approved$/i.test(text);
 }
 
+// The literal git/gh command an approval card is asking about. Cards quote the
+// command they want to run; approving the card grants THAT command's mutation,
+// with no natural-language parsing in the approval path.
+export function commandFromCardText(text: string): string | null {
+  const m = /(?:^|[\s:`"'])((?:git|gh)\s+[a-z][^\n`"']*)/im.exec(text);
+  return m ? m[1].trim() : null;
+}
+
 export function mutationForCommand(command: string): MutationGrant | null {
   if (/\bgit\b[^;&|\n]*\bpush\b/i.test(command)) return "push";
   if (/\bgh\s+pr\s+create\b/i.test(command)) return "pr-create";
@@ -208,6 +216,15 @@ export function commandDecision(profile: RoleProfile, command: string, grants: S
     return grants.has("merge") ? null : "lovable-reviewer requires an explicit merge request in the current user turn";
   }
   if (profile !== "lovable-worker") return `${profile} may not mutate GitHub or merge`;
-  if (!grants.has(mutation)) return `lovable-worker requires an explicit request for this exact ${mutation} action in the current user turn`;
+  if (!grants.has(mutation)) {
+    // Risk tiers, not ceremony (David, 2026-08-17): PR creation and
+    // branch-contained pushes are reversible and covered by the worker role's
+    // standing authorization — a plain-words request is enough. Merges,
+    // comments and PR edits still need a grant (card or wording); force/
+    // destructive ops and pushes to main stay hard-blocked above.
+    if (mutation === "pr-create") return null;
+    if (mutation === "push" && !/\bpush\b[^;&|\n]*\s(?:origin\s+)?(?:main|master)(?:\s|$)/i.test(command)) return null;
+    return `lovable-worker needs approval for this ${mutation} action: raise an ask_user confirm card QUOTING the exact command — the user's approval grants it. Do not retry the command before the card is approved.`;
+  }
   return null;
 }
