@@ -33,7 +33,15 @@ Item {
                 if (root.prevTotal > 0) {
                     const dt = total - root.prevTotal
                     const di = idle - root.prevIdle
-                    if (dt > 0) root.usage = Math.round(100 * (dt - di) / dt)
+                    // dt floor: back-to-back runs (reload + timer edge) sample a
+                    // few-millisecond window where idle hasn't ticked -> false 100%.
+                    // ~3200 jiffies/s on this box; require at least ~100ms of window.
+                    if (dt > 300) {
+                        root.usage = Math.round(100 * (dt - di) / dt)
+                        root.prevIdle = idle
+                        root.prevTotal = total
+                    }
+                    return
                 }
                 root.prevIdle = idle
                 root.prevTotal = total
