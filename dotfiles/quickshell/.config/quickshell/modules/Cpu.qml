@@ -8,8 +8,10 @@ Item {
     id: root
 
     property int usage: 0
-    property int prevTotal: 0
-    property int prevIdle: 0
+    // real, NOT int: total jiffies overflow 32-bit after ~8 days of uptime on
+    // 32 threads (prevTotal went negative and the >0 guard froze the bar at 0%).
+    property real prevTotal: 0
+    property real prevIdle: 0
 
     implicitWidth: row.implicitWidth + Theme.modulePadH * 2
     implicitHeight: parent ? parent.height : Theme.barHeight
@@ -25,8 +27,8 @@ Item {
             onRead: data => {
                 const parts = String(data).trim().split(/\s+/)
                 if (parts.length < 2) return
-                const idle = parseInt(parts[parts.length - 2])
-                const total = parseInt(parts[parts.length - 1])
+                const idle = Number(parts[parts.length - 2])
+                const total = Number(parts[parts.length - 1])
                 if (isNaN(idle) || isNaN(total)) return
                 if (root.prevTotal > 0) {
                     const dt = total - root.prevTotal
