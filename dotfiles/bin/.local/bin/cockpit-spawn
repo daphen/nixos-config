@@ -38,6 +38,19 @@ dir=$(cockpit_context_dir "$name")
 # 2) rail agent in that worktree — the essential half.
 agent spawn "$dir" ${prompt:+"$prompt"} --name "$name" $oneshot
 
+# 2b) declare it: emit the session spec so the imperative kickoff converges to
+# the declarative world (`agent up <dir>` re-materializes it from now on).
+if [ -z "$oneshot" ]; then
+  mkdir -p "$dir/.heidr"
+  if [ ! -f "$dir/.heidr/session.toml" ]; then
+    { printf 'name = "%s"\n' "$name"
+      printf 'dir = "%s"\n' "$dir"
+      printf 'scope = "lovable"\n'
+      printf 'profile = "lovable-worker"\n'
+    } > "$dir/.heidr/session.toml"
+  fi
+fi
+
 # 3) cockpit tabs — BEST-EFFORT (worktree already exists, so this just adds tabs).
 "$SCRIPTS/cockpit-add" --no-switch "$name" \
   || echo "cockpit-spawn: context/tabs step had issues — the rail agent is still up" >&2
