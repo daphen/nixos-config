@@ -19,10 +19,7 @@ ShellRoot {
 
     Launcher {}
     CmdPalette {}
-    WorktreePicker {}
-    WorktreeCreatePicker {}
     ReviewCreatePicker {}
-    WorktreeNameInputPicker {}
     LovboxPicker {}
     BluetoothPicker {}
     TimerPicker {}

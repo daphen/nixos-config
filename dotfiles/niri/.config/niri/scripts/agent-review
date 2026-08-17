@@ -15,7 +15,7 @@ never stealing focus:
   PRs you want to actually run rather than just read.
 
 Background by design: nothing is focused, no workspace is claimed. The old
-full 4-window flow still lives in ws-createreview.
+the old 4-window ws-createreview flow is retired (heidr owns reviews).
 """
 from __future__ import annotations
 import argparse
