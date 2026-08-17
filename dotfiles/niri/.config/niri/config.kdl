@@ -510,6 +510,13 @@ window-rule {
 }
 
 window-rule {
+    // heidr instances (both modes): spawn wide — the rail + editor split needs
+    // more room than a default kitty column.
+    match app-id=r#"^org\.quickshell$"# title=r#"^heidr-qs"#
+    default-column-width { proportion 0.85; }
+}
+
+window-rule {
     match app-id=r#"^file-chooser$"#
     open-floating true
     default-column-width { proportion 0.62; }
