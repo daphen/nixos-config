@@ -54,12 +54,12 @@ Item {
   property real angle: -0.76
   property real bandX: 1.0    // feature scale (bigger = broader folds)
   property real bandY: 1.2    // island field frequency
-  property real warp: 2.4     // fold strength
-  property real grain: 0.45   // wobble frequency
-  property real feather: 0.74
+  property real warp: 2.03    // fold strength
+  property real grain: 0.54   // wobble frequency
+  property real feather: 0.96
   property real bright: 0.5   // dark-vs-luminous balance
   property real swirl: 1.2
-  property real plasma: 0.6  // crease/seam intensity
+  property real plasma: 0.85 // crease/seam intensity
 
   ShaderEffect {
     id: field
