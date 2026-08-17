@@ -85,7 +85,7 @@ void main() {
     col = mix(col, ubuf.colC.rgb, s2 * 0.92);
     // the fold: a thin luminous crease along the deep|mid interface — the
     // satin seam that sells the reference
-    float cr = exp(-pow(vb - 0.55, 2.0) / 0.0014);
+    float cr = exp(-pow(vb - 0.55, 2.0) / 0.0032);
     col += ubuf.colC.rgb * cr * (0.55 * clamp(ubuf.plasma, 0.0, 1.0));
     col *= 1.0 - 0.18 * smoothstep(0.55, 1.0, r);
     fragColor = vec4(col, 1.0) * mask * ubuf.qt_Opacity;
