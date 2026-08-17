@@ -3799,10 +3799,20 @@ end
 -- corner (lovable scope only). Same float isolation as the banner, same
 -- dashboard-only guard; sized to stay out of the cards' way.
 local MASCOT_W = 27  -- cells
--- Rows sized to the square image at ~1:2.05 cell aspect: a taller float leaves
--- empty rows UNDER the image (it draws from the float's top), which read as the
--- mascot hovering above the corner.
-local MASCOT_ROWS = 14
+local MASCOT_IMG_ASPECT = 776 / 715 -- trimmed asset h/w
+-- Rows COMPUTED from the terminal's real cell pixel size (snacks queries it):
+-- a guessed cell aspect left slack rows under the top-drawn image, which read
+-- as the mascot hovering above the corner. Fallback matches ~1:2.05 cells.
+local function mascot_rows()
+  local ok, term = pcall(require, "snacks.image.terminal")
+  if ok and term.size then
+    local oks, sz = pcall(term.size)
+    if oks and sz and sz.cell_width and sz.cell_height and sz.cell_height > 0 then
+      return math.max(4, math.floor(MASCOT_W * sz.cell_width * MASCOT_IMG_ASPECT / sz.cell_height))
+    end
+  end
+  return 14
+end
 local function place_mascot(win)
   if scope ~= "lovable" then return end
   if not (win and api.nvim_win_is_valid(win)) then return end
@@ -3818,7 +3828,7 @@ local function place_mascot(win)
   local cfg = {
     relative = "win", win = win, anchor = "SW",
     row = api.nvim_win_get_height(win), col = 0,
-    width = MASCOT_W, height = MASCOT_ROWS,
+    width = MASCOT_W, height = mascot_rows(),
     focusable = false, style = "minimal", zindex = 44, border = "none",
   }
   if S.mascot_win and api.nvim_win_is_valid(S.mascot_win) then
