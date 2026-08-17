@@ -3765,9 +3765,9 @@ local function place_banner(_buf, win)
   local ok, Placement = pcall(require, "snacks.image.placement")
   if not ok then return end
   local variant = vim.o.background == "light" and "light" or "dark"
-  -- Per-scope identity: the work instance flies the LOVABLE masthead (Camera
-  -- wordmark + mascot); everything else keeps HEIÐR. Missing file falls back.
-  local ident = (scope == "lovable") and "lovable" or "heidr"
+  -- Per-scope identity: work flies the LOVABLE masthead, the private cockpit
+  -- flies David's own mark + "cockpit"; missing files fall back to HEIÐR.
+  local ident = (scope == "lovable") and "lovable" or "cockpit"
   local src = HEIDR_BANNER_DIR .. "/" .. ident .. "-" .. variant .. ".png"
   if fn.filereadable(src) == 0 then src = HEIDR_BANNER_DIR .. "/heidr-" .. variant .. ".png" end
   if fn.filereadable(src) == 0 then hide_banner(); return end
@@ -3853,7 +3853,9 @@ end
 local function banner_rows()
   if not pcall(require, "snacks.image.placement") then return 0 end
   local variant = vim.o.background == "light" and "light" or "dark"
-  if fn.filereadable(HEIDR_BANNER_DIR .. "/heidr-" .. variant .. ".png") == 0 then return 0 end
+  local ident = (scope == "lovable") and "lovable" or "cockpit"
+  if fn.filereadable(HEIDR_BANNER_DIR .. "/" .. ident .. "-" .. variant .. ".png") == 0
+     and fn.filereadable(HEIDR_BANNER_DIR .. "/heidr-" .. variant .. ".png") == 0 then return 0 end
   return HEIDR_BANNER_ROWS
 end
 
