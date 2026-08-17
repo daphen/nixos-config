@@ -20,10 +20,14 @@ Item {
         command: ["sh", "-c", "head -n1 /proc/stat | awk '{idle=$5+$6; total=$2+$3+$4+$5+$6+$7+$8; print idle, total}'"]
         stdout: StdioCollector {
             onStreamFinished: {
+                // Take the LAST two fields: the collector can accumulate output
+                // across the timer's re-runs (quickshell 0.3), and requiring
+                // exactly one sample froze the readout at 0%.
                 const parts = this.text.trim().split(/\s+/)
-                if (parts.length !== 2) return
-                const idle = parseInt(parts[0])
-                const total = parseInt(parts[1])
+                if (parts.length < 2) return
+                const idle = parseInt(parts[parts.length - 2])
+                const total = parseInt(parts[parts.length - 1])
+                if (isNaN(idle) || isNaN(total)) return
                 if (root.prevTotal > 0) {
                     const dt = total - root.prevTotal
                     const di = idle - root.prevIdle
