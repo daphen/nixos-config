@@ -120,7 +120,7 @@ function lineAuthorizes(line: string, language: ActionLanguage, approvalCard: bo
 // command now: git merge --no-ff origin/main ...") grants exactly that
 // command's mutation. The verb-phrase grammar can never enumerate every way a
 // human phrases approval, but a spelled-out command is unambiguous.
-const INLINE_COMMAND_APPROVAL = /(approv\w+|authoriz\w+|go\s+ahead)([^.!?;:]{0,120})[:\u2014-]\s*[`"']?((?:git|gh)\s[^!?\n`]+)/i;
+const INLINE_COMMAND_APPROVAL = /(approv\w+|authoriz\w+|go\s+ahead)([^.!?;\n]{0,120}?)[:\u2014]?\s*[`"']?\b((?:git|gh)\s[^!?\n`]+)/i;
 
 function inlineCommandGrant(line: string, approvalCard: boolean): MutationGrant | null {
   const trimmed = line.trim();

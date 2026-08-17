@@ -370,6 +370,14 @@ describe("claude-review kickoff verbs", () => {
 });
 
 describe("inline-command approvals", () => {
+  test("command embedded mid-sentence without a colon grants", () => {
+    const g = grantsFromPrompt(
+      "David explicitly approves executing the gh pr create --draft action now for pushed head daphen/every-2738 with base main and title exactly feat(canvas): add specimen iframe interaction modes",
+    );
+    expect(g.has("pr-create")).toBe(true);
+    expect(g.has("push")).toBe(false);
+  });
+
   test("approves-executing-colon-command grants that command's mutation", () => {
     const g = grantsFromPrompt(
       "David explicitly approves executing this exact LOCAL branch-integration command now: git merge --no-ff origin/main -m 'chore: merge main into every-2741'. Resolve any conflicts, test, and commit the local integration.",
