@@ -52,14 +52,14 @@ Item {
   // Field shape knobs (shader uniforms). Defaults are the shipped look; the
   // orb-tuner dev shell binds sliders to them.
   property real angle: -0.76
-  property real bandX: 1.84
-  property real bandY: 5.03
-  property real warp: 6.37
-  property real grain: 0.45
+  property real bandX: 1.0    // lobe size
+  property real bandY: 2.0    // lobe spread
+  property real warp: 1.5     // edge wobble
+  property real grain: 0.45   // wobble frequency
   property real feather: 0.74
-  property real bright: 0.25
-  property real swirl: 1.1
-  property real plasma: 0.4
+  property real bright: 0.5
+  property real swirl: 1.2
+  property real plasma: 0.45
 
   ShaderEffect {
     id: field

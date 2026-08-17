@@ -54,30 +54,35 @@ void main() {
     vec2 uv = qt_TexCoord0 * 2.0 - 1.0;
     float r = length(uv);
     float mask = 1.0 - smoothstep(0.98, 1.0, r);
-    float c = cos(ubuf.angle), s = sin(ubuf.angle);
-    vec2 p = mat2(c, -s, s, c) * uv;
-    p = vec2(p.x * ubuf.bandX, p.y * ubuf.bandY);
-    // warp the warp: q displaces w displaces the final field — the folds.
-    // Each layer meanders on its own circle in noise space; incommensurate
-    // periods keep the composite from ever visibly repeating.
-    vec2 d1 = 2.0 * vec2(cos(ubuf.ph1), sin(ubuf.ph1));
-    vec2 d2 = 2.0 * vec2(cos(ubuf.ph2), sin(ubuf.ph2));
-    vec2 d3 = 1.6 * vec2(cos(ubuf.ph3), sin(ubuf.ph3));
-    vec2 d4 = 2.6 * vec2(cos(ubuf.ph4), sin(ubuf.ph4));
-    vec2 q = vec2(fbm(p + d1),
-                  fbm(p + vec2(5.2, 1.3) + d2));
-    // liquid: the sampling space itself rotates with the flow field, so
-    // features shear and curl around each other instead of only translating
-    float sa = ubuf.swirl * (q.x - q.y) * 3.14159;
-    float sc = cos(sa), ss = sin(sa);
-    vec2 pp = mat2(sc, -ss, ss, sc) * p;
-    vec2 w = vec2(fbm(pp + ubuf.warp * q + vec2(1.7, 9.2) + d3),
-                  fbm(pp + ubuf.warp * q + vec2(8.3, 2.8) + vec2(d3.y, -d1.x)));
-    float v = fbm(pp + ubuf.warp * 0.85 * w + d4);
-    // plasma: sine interference threaded through the warped domain — bright
-    // filaments that snake with the liquid rather than sitting on top of it
-    float pl = 0.5 + 0.5 * sin(6.2831 * (w.x - w.y) + 2.0 * (ubuf.ph1 - ubuf.ph3) + 1.5 * (pp.x + pp.y));
-    v = mix(v, 0.72 * pl + 0.28 * v, clamp(ubuf.plasma, 0.0, 1.0));
+    float c = cos(ubuf.angle), sn = sin(ubuf.angle);
+    vec2 u = mat2(c, -sn, sn, c) * uv;
+    // liquid: the whole constellation swirls back and forth
+    float ga = ubuf.swirl * 0.7 * sin(ubuf.ph1);
+    float gc = cos(ga), gs = sin(ga);
+    u = mat2(gc, -gs, gs, gc) * u;
+    vec2 d1 = vec2(cos(ubuf.ph1), sin(ubuf.ph2));
+    vec2 d2 = vec2(cos(ubuf.ph2 + 2.1), sin(ubuf.ph3 + 1.0));
+    vec2 d3 = vec2(cos(ubuf.ph3 + 4.2), sin(ubuf.ph4 + 3.1));
+    vec2 d4 = vec2(cos(ubuf.ph4 + 0.7), sin(ubuf.ph1 + 2.6));
+    // organic edges: fbm wobbles where the lobes THINK they are
+    float wf = 2.0 + 4.0 * ubuf.gain;
+    vec2 wob = (vec2(fbm(u * wf + d3), fbm(u * wf + vec2(7.7, 3.3) + d4)) - 0.5) * (0.3 * ubuf.warp);
+    vec2 uu = u + wob;
+    // metaballs: glowing field sources that bloom and MERGE (the plasma body,
+    // not marble veins) — inverse-square falloff sums where lobes approach
+    float spread = 0.28 * ubuf.bandY;
+    float rb = 0.30 * ubuf.bandX;
+    float rb2 = rb * rb;
+    float field = 0.0;
+    vec2 dd;
+    dd = uu - spread * d1;          field += rb2 / (dot(dd, dd) + 0.015);
+    dd = uu - spread * d2;          field += rb2 / (dot(dd, dd) + 0.015);
+    dd = uu - spread * d3 * 0.8;    field += rb2 / (dot(dd, dd) + 0.015);
+    dd = uu - spread * d4 * 0.55;   field += rb2 / (dot(dd, dd) + 0.015);
+    float v = clamp(0.55 * field - 0.35, 0.0, 1.0);
+    // plasma: iso-contour rings blooming around the lobes (plasma-ball arcs)
+    float pl = 0.5 + 0.5 * sin(9.0 * field - 3.0 * ubuf.ph2);
+    v = mix(v, v * (0.5 + 0.6 * pl), clamp(ubuf.plasma, 0.0, 1.0));
     float sv = smoothstep(0.05, 1.0, v);
     sv = pow(sv, mix(1.7, 0.6, ubuf.bright));
     float abHi = mix(0.35, 0.95, ubuf.feather);
