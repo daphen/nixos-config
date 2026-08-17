@@ -3798,8 +3798,8 @@ end
 -- The scope mascot: a small companion pinned to the dashboard's BOTTOM-LEFT
 -- corner (lovable scope only). Same float isolation as the banner, same
 -- dashboard-only guard; sized to stay out of the cards' way.
-local MASCOT_W = 9  -- cells
-local MASCOT_ROWS = 5
+local MASCOT_W = 27  -- cells
+local MASCOT_ROWS = 15
 local function place_mascot(win)
   if scope ~= "lovable" then return end
   if not (win and api.nvim_win_is_valid(win)) then return end
