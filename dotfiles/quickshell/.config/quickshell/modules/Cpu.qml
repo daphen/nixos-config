@@ -18,12 +18,12 @@ Item {
         id: proc
         running: true
         command: ["sh", "-c", "head -n1 /proc/stat | awk '{idle=$5+$6; total=$2+$3+$4+$5+$6+$7+$8; print idle, total}'"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                // Take the LAST two fields: the collector can accumulate output
-                // across the timer's re-runs (quickshell 0.3), and requiring
-                // exactly one sample froze the readout at 0%.
-                const parts = this.text.trim().split(/\s+/)
+        // SplitParser, not StdioCollector: on quickshell 0.3 a reused collector
+        // never fires onStreamFinished for the timer's re-runs, so the readout
+        // froze at 0%. The parser fires per line on every run.
+        stdout: SplitParser {
+            onRead: data => {
+                const parts = String(data).trim().split(/\s+/)
                 if (parts.length < 2) return
                 const idle = parseInt(parts[parts.length - 2])
                 const total = parseInt(parts[parts.length - 1])
