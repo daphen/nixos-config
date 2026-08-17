@@ -300,6 +300,102 @@ def cmd_review(a) -> int:
     os.execv(script, argv)  # replace: agent-review owns the rest (fetch/worktree/spawn)
 
 
+SESSIONS_D = HOME / ".config/agentd/sessions.d"
+
+def _load_spec(path: Path) -> dict:
+    import tomllib
+    spec = tomllib.loads(path.read_text())
+    spec.setdefault("name", path.stem if path.parent.name != ".heidr" else path.parent.parent.name)
+    if "dir" not in spec and path.parent.name == ".heidr":
+        spec["dir"] = str(path.parent.parent)
+    if "dir" not in spec:
+        raise SystemExit(f"agent up: spec {path} has no dir")
+    spec["dir"] = str(Path(spec["dir"]).expanduser())
+    spec["_path"] = str(path)
+    return spec
+
+def _find_specs(target: str | None) -> list[dict]:
+    if target is None:  # --all: every central spec
+        return [_load_spec(f) for f in sorted(SESSIONS_D.glob("*.toml"))]
+    t = Path(target).expanduser()
+    if t.is_dir():
+        f = t / ".heidr/session.toml"
+        if not f.is_file():
+            raise SystemExit(f"agent up: no .heidr/session.toml in {t}")
+        return [_load_spec(f)]
+    f = SESSIONS_D / f"{target}.toml"
+    if f.is_file():
+        return [_load_spec(f)]
+    for f in sorted(SESSIONS_D.glob("*.toml")):
+        spec = _load_spec(f)
+        if spec["name"] == target:
+            return [spec]
+    raise SystemExit(f"agent up: no spec named {target!r} (looked in {SESSIONS_D} and for a dir)")
+
+def _up_one(spec: dict, bounce: bool) -> int:
+    name, d = spec["name"], Path(spec["dir"])
+    scope = spec.get("scope") or ("lovable" if str(d).startswith(str(LOVABLE)) else "personal")
+    live = None
+    for sess in roster(os.path.join(RUNTIME, f"agentd-{scope}.sock")):
+        if sess.get("name") == name:
+            live = sess
+            break
+    if live is not None and not bounce:
+        drift = []
+        if live.get("cwd") and str(d) != live["cwd"]:
+            drift.append(f"cwd {live['cwd']} != spec {d}")
+        want_profile = spec.get("profile", "coding")
+        if live.get("profile") and live["profile"] != want_profile:
+            drift.append(f"profile {live['profile']} != spec {want_profile}")
+        if spec.get("plan") and live.get("plan") != spec.get("plan"):
+            drift.append(f"plan {live.get('plan') or '(none)'} != spec {spec['plan']}")
+        state = live.get("status", "?")
+        if drift:
+            print(f"agent up: '{name}' is {state} with DRIFT: " + "; ".join(drift) + "  (--bounce applies the spec)")
+        else:
+            print(f"agent up: '{name}' is {state}, matches spec — nothing to do")
+        return 0
+    if live is not None and bounce:
+        send_line(agentd_connect(scope), {"type": "stop", "session": name}, 0.5)
+        time.sleep(1.2)
+    if not d.is_dir():
+        tmpl = spec.get("template")
+        if not tmpl:
+            raise SystemExit(f"agent up: {d} does not exist and the spec has no template")
+        subprocess.run(["git", "clone", str(Path(tmpl).expanduser()), str(d)], check=True)
+        print(f"agent up: cloned {tmpl} -> {d}")
+    msg = {"type": "spawn", "session": name, "cwd": str(d)}
+    for key, field in (("profile", "profile"), ("model", "model"), ("plan", "plan")):
+        if spec.get(field):
+            msg[key] = spec[field]
+    if live is None and spec.get("seed"):
+        msg["prompt"] = spec["seed"]  # seed delivers on CREATION only, never on a bounce
+    send_line(agentd_connect(scope), msg, 0.5)
+    print(f"agent up: materialized '{name}' in {scope} (cwd {d})"
+          + (" + seed" if "prompt" in msg else "") + (f" · plan {spec['plan']}" if spec.get("plan") else ""))
+    return 0
+
+def cmd_up(a) -> int:
+    specs = _find_specs(None if a.all else a.target)
+    if not specs:
+        print("agent up: no specs found", file=sys.stderr)
+        return 1
+    rc = 0
+    for spec in specs:
+        rc = max(rc, _up_one(spec, a.bounce))
+    return rc
+
+def cmd_down(a) -> int:
+    for sp in socks():
+        for sess in roster(sp):
+            if sess.get("name") == a.name:
+                send_line(sp, {"type": "stop", "session": a.name}, 0.5)
+                print(f"agent down: stopped '{a.name}' ({scope_of(sp)})")
+                return 0
+    print(f"agent down: no session named {a.name!r}", file=sys.stderr)
+    return 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="agent")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -332,6 +428,16 @@ def main() -> int:
     p_spawn.add_argument("--profile", choices=("lovable-orchestrator", "lovable-worker", "lovable-reviewer", "lovable-watcher", "coding", "chat"), help="validated agent profile (default: daemon default)")
     p_spawn.add_argument("--oneshot", action="store_true", help="ephemeral: run seed once then exit")
     p_spawn.set_defaults(fn=cmd_spawn)
+
+    p_up = sub.add_parser("up", help="materialize a declared session (idempotent)")
+    p_up.add_argument("target", nargs="?", help="spec name, or a dir containing .heidr/session.toml")
+    p_up.add_argument("--all", action="store_true", help="apply every spec in ~/.config/agentd/sessions.d")
+    p_up.add_argument("--bounce", action="store_true", help="stop + respawn to apply the spec")
+    p_up.set_defaults(fn=cmd_up)
+
+    p_down = sub.add_parser("down", help="stop a session (the explicit remover)")
+    p_down.add_argument("name")
+    p_down.set_defaults(fn=cmd_down)
 
     p_review = sub.add_parser("review", help="review a PR: own worktree + rail session seeded with /review-pr")
     p_review.add_argument("pr", help="PR number or GitHub PR URL")
