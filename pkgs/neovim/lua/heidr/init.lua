@@ -4387,7 +4387,23 @@ end
 function M.follow_remote(cwd, path, force)
   local ed = target_editor_win()
   if not ed then return "" end
-  if force then S._follow_paused = nil; follow_edit(cwd, path, nil, true, true); return "" end
+  if force then
+    -- A forced follow is the rail SWITCHING to a streaming session: adopt it
+    -- (capturing the outgoing session's file first). Without this the viewed
+    -- session changed while S.selected didn't, and the next capture filed the
+    -- new session's buffer under the old session's memory.
+    if cwd and cwd ~= "" then
+      local want = fn.fnamemodify(cwd, ":t")
+      for _, a in ipairs(S.roster or {}) do
+        if a.cwd and fn.fnamemodify(a.cwd, ":t") == want then
+          if S.selected and S.selected ~= a.id then capture_editor(S.selected) end
+          S.selected = a.id
+          break
+        end
+      end
+    end
+    S._follow_paused = nil; follow_edit(cwd, path, nil, true, true); return ""
+  end
   local bn = api.nvim_buf_get_name(api.nvim_win_get_buf(ed))
   -- Follow only while the editor rests on session context — never yank the user out
   -- of their own unrelated file. Session context is: the dashboard (unnamed scratch),
@@ -4405,6 +4421,10 @@ end
 
 function M.dashboard(cwd)
   S._follow_paused = nil  -- back at rest: live-follow may drive again
+  -- Capture the OUTGOING session's editor file before adopting the new one:
+  -- rail-driven switches used to always land on the dashboard, losing the file
+  -- the user was working in (the cycle-plan-then-back-to-dash complaint).
+  if S.selected then capture_editor(S.selected) end
   -- Adopt the session being shown. The rail picked it and drives us over RPC, but the
   -- selection is what this nvim keys its own per-session state off (the editor file it
   -- restores, the tests auto-switch), so leaving it unset made every externally-driven
@@ -4416,11 +4436,10 @@ function M.dashboard(cwd)
       if a.cwd and fn.fnamemodify(a.cwd, ":t") == want then S.selected = a.id; break end
     end
   end
-  -- show_scratch, not reflect_context: adopting the session above would otherwise let the
-  -- per-session editor-restore divert this to a remembered FILE, and where the rail lands
-  -- is the rail's call — it asked for the dashboard.
-  local ed = target_editor_win()
-  if ed then show_scratch(ed, cwd) end
+  -- reflect_context, not bare scratch: restore the file this session had open
+  -- (captured on switch-away); the dashboard is the at-rest fallback. A
+  -- deliberate dashboard (to_dashboard / <leader>D) clears the memory first.
+  reflect_context(cwd)
 end
 
 -- Map a session cwd to its cockpit context name (~/work/lovable → "main";
