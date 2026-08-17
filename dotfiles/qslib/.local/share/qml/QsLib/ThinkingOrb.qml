@@ -58,6 +58,8 @@ Item {
   property real grain: 0.45
   property real feather: 0.74
   property real bright: 0.25
+  property real swirl: 1.1
+  property real plasma: 0.4
 
   ShaderEffect {
     id: field
@@ -75,6 +77,8 @@ Item {
     property real gain: orb.grain
     property real feather: orb.feather
     property real bright: orb.bright
+    property real swirl: orb.swirl
+    property real plasma: orb.plasma
     // Bright-dominated palette: the field lives between mid and crest; the deep
     // tone only survives in the folds (the old near-black ground read as a pit).
     // Lifted on light mode: identical pixels read much darker against a pale

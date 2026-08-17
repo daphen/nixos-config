@@ -25,6 +25,8 @@ layout(std140, binding = 0) uniform buf {
     float gain;     // fbm octave gain (texture grain)
     float feather;  // 0 = crisp color steps, 1 = widest blends
     float bright;   // 0 = deep-dominated, 1 = crest-dominated
+    float swirl;    // local space rotates with the flow field (liquid)
+    float plasma;   // sine-interference mixed through the warp (filaments)
 } ubuf;
 
 float hash(vec2 p) {
@@ -64,9 +66,18 @@ void main() {
     vec2 d4 = 2.6 * vec2(cos(ubuf.ph4), sin(ubuf.ph4));
     vec2 q = vec2(fbm(p + d1),
                   fbm(p + vec2(5.2, 1.3) + d2));
-    vec2 w = vec2(fbm(p + ubuf.warp * q + vec2(1.7, 9.2) + d3),
-                  fbm(p + ubuf.warp * q + vec2(8.3, 2.8) + vec2(d3.y, -d1.x)));
-    float v = fbm(p + ubuf.warp * 0.85 * w + d4);
+    // liquid: the sampling space itself rotates with the flow field, so
+    // features shear and curl around each other instead of only translating
+    float sa = ubuf.swirl * (q.x - q.y) * 3.14159;
+    float sc = cos(sa), ss = sin(sa);
+    vec2 pp = mat2(sc, -ss, ss, sc) * p;
+    vec2 w = vec2(fbm(pp + ubuf.warp * q + vec2(1.7, 9.2) + d3),
+                  fbm(pp + ubuf.warp * q + vec2(8.3, 2.8) + vec2(d3.y, -d1.x)));
+    float v = fbm(pp + ubuf.warp * 0.85 * w + d4);
+    // plasma: sine interference threaded through the warped domain — bright
+    // filaments that snake with the liquid rather than sitting on top of it
+    float pl = 0.5 + 0.5 * sin(6.2831 * (w.x - w.y) + 2.0 * (ubuf.ph1 - ubuf.ph3) + 1.5 * (pp.x + pp.y));
+    v = mix(v, 0.72 * pl + 0.28 * v, clamp(ubuf.plasma, 0.0, 1.0));
     float sv = smoothstep(0.05, 1.0, v);
     sv = pow(sv, mix(1.7, 0.6, ubuf.bright));
     float abHi = mix(0.35, 0.95, ubuf.feather);
