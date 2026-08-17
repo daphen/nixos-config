@@ -361,6 +361,14 @@ describe("watcher containment and manifest", () => {
   });
 });
 
+describe("claude-review kickoff verbs", () => {
+  test("kick off / run / rerun a claude review all grant post", () => {
+    expect(grantsFromPrompt("Can you kick off a claude review on the current head").has("post")).toBe(true);
+    expect(grantsFromPrompt("run a claude review").has("post")).toBe(true);
+    expect(grantsFromPrompt("please re-trigger the claude review").has("post")).toBe(true);
+  });
+});
+
 describe("inline-command approvals", () => {
   test("approves-executing-colon-command grants that command's mutation", () => {
     const g = grantsFromPrompt(
