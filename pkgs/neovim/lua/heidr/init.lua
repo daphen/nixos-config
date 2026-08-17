@@ -3799,7 +3799,7 @@ end
 -- corner (lovable scope only). Same float isolation as the banner, same
 -- dashboard-only guard; sized to stay out of the cards' way.
 local MASCOT_W = 27  -- cells
-local MASCOT_IMG_ASPECT = 776 / 715 -- trimmed asset h/w
+local MASCOT_IMG_ASPECT = 733 / 660 -- trimmed asset h/w
 -- Rows COMPUTED from the terminal's real cell pixel size (snacks queries it):
 -- a guessed cell aspect left slack rows under the top-drawn image, which read
 -- as the mascot hovering above the corner. Fallback matches ~1:2.05 cells.
