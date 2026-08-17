@@ -64,33 +64,29 @@ void main() {
     vec2 d2 = vec2(cos(ubuf.ph2 + 2.1), sin(ubuf.ph3 + 1.0));
     vec2 d3 = vec2(cos(ubuf.ph3 + 4.2), sin(ubuf.ph4 + 3.1));
     vec2 d4 = vec2(cos(ubuf.ph4 + 0.7), sin(ubuf.ph1 + 2.6));
-    // organic edges: fbm wobbles where the lobes THINK they are
-    float wf = 2.0 + 4.0 * ubuf.gain;
-    vec2 wob = (vec2(fbm(u * wf + d3), fbm(u * wf + vec2(7.7, 3.3) + d4)) - 0.5) * (0.3 * ubuf.warp);
-    vec2 uu = u + wob;
-    // metaballs: glowing field sources that bloom and MERGE (the plasma body,
-    // not marble veins) — inverse-square falloff sums where lobes approach
-    float spread = 0.28 * ubuf.bandY;
-    float rb = 0.30 * ubuf.bandX;
-    float rb2 = rb * rb;
-    float field = 0.0;
-    vec2 dd;
-    dd = uu - spread * d1;          field += rb2 / (dot(dd, dd) + 0.015);
-    dd = uu - spread * d2;          field += rb2 / (dot(dd, dd) + 0.015);
-    dd = uu - spread * d3 * 0.8;    field += rb2 / (dot(dd, dd) + 0.015);
-    dd = uu - spread * d4 * 0.55;   field += rb2 / (dot(dd, dd) + 0.015);
-    float v = clamp(0.55 * field - 0.35, 0.0, 1.0);
-    // plasma: iso-contour rings blooming around the lobes (plasma-ball arcs)
-    float pl = 0.5 + 0.5 * sin(9.0 * field - 3.0 * ubuf.ph2);
-    v = mix(v, v * (0.5 + 0.6 * pl), clamp(ubuf.plasma, 0.0, 1.0));
-    float sv = smoothstep(0.05, 1.0, v);
-    sv = pow(sv, mix(1.7, 0.6, ubuf.bright));
-    float abHi = mix(0.35, 0.95, ubuf.feather);
-    float bcLo = mix(0.72, 0.30, ubuf.feather);
-    float bcHi = mix(0.95, 1.45, ubuf.feather);
-    vec3 col = mix(ubuf.colA.rgb, ubuf.colB.rgb, smoothstep(0.0, abHi, sv));
-    col = mix(col, ubuf.colC.rgb, smoothstep(bcLo, bcHi, sv));
-    col += ubuf.colC.rgb * 0.06 * smoothstep(0.75, 1.15, sv);
+    // Fluid gradient: features LARGER than the disc. Iso-lines of a compact
+    // source are closed loops (an outlined blob); only sub-viewport-frequency
+    // warped noise gives the open folds that sweep across and out of frame.
+    vec2 b = u * (0.8 / max(0.3, ubuf.bandX));
+    vec2 q = vec2(fbm(b + d1), fbm(b + vec2(3.7, 1.9) + d2));
+    float vraw = fbm(b + ubuf.warp * (q - 0.45) + d4);
+    float v = smoothstep(0.22, 0.62, vraw);
+    // second field for the bright islands: same space, rotated warp, own drift
+    float praw = fbm(b * (1.1 + 0.2 * ubuf.bandY) + ubuf.warp * 0.8 * vec2(q.y, -q.x) + vec2(9.1, 4.7) + d3);
+    float pl = smoothstep(0.30, 0.60, praw);
+
+    // fluid-gradient color zones: deep ground -> swept mid body -> bright
+    // islands, boundaries wide but DEFINED (satin, not fog)
+    float vb = v + (ubuf.bright - 0.5) * 0.6;
+    float fw = mix(0.10, 0.45, ubuf.feather);
+    float s1 = smoothstep(0.55 - fw, 0.55 + fw, vb);
+    vec3 col = mix(ubuf.colA.rgb, ubuf.colB.rgb, s1);
+    float s2 = smoothstep(0.80 - fw * 0.6, 0.92, pl + (ubuf.bright - 0.5) * 0.3);
+    col = mix(col, ubuf.colC.rgb, s2 * 0.92);
+    // the fold: a thin luminous crease along the deep|mid interface — the
+    // satin seam that sells the reference
+    float cr = exp(-pow(vb - 0.55, 2.0) / 0.0014);
+    col += ubuf.colC.rgb * cr * (0.55 * clamp(ubuf.plasma, 0.0, 1.0));
     col *= 1.0 - 0.18 * smoothstep(0.55, 1.0, r);
     fragColor = vec4(col, 1.0) * mask * ubuf.qt_Opacity;
 }
