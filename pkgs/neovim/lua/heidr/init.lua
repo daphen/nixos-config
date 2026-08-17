@@ -3765,7 +3765,11 @@ local function place_banner(_buf, win)
   local ok, Placement = pcall(require, "snacks.image.placement")
   if not ok then return end
   local variant = vim.o.background == "light" and "light" or "dark"
-  local src = HEIDR_BANNER_DIR .. "/heidr-" .. variant .. ".png"
+  -- Per-scope identity: the work instance flies the LOVABLE masthead (Camera
+  -- wordmark + mascot); everything else keeps HEIÐR. Missing file falls back.
+  local ident = (scope == "lovable") and "lovable" or "heidr"
+  local src = HEIDR_BANNER_DIR .. "/" .. ident .. "-" .. variant .. ".png"
+  if fn.filereadable(src) == 0 then src = HEIDR_BANNER_DIR .. "/heidr-" .. variant .. ".png" end
   if fn.filereadable(src) == 0 then hide_banner(); return end
   if not (S.banner_buf and api.nvim_buf_is_valid(S.banner_buf)) then
     S.banner_buf = api.nvim_create_buf(false, true)
