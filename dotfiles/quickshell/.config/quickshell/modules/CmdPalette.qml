@@ -72,7 +72,7 @@ PanelWindow {
         restoreTabOnClose = true
         committedTabId = null
         captureTabOrder()
-        selectedIndex = 0
+        selectedIndex = firstSelectable()
         list.positionViewAtBeginning()
     }
 
