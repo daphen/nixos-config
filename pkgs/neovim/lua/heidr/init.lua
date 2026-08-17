@@ -4368,13 +4368,20 @@ local function to_dashboard()
   -- silent no-op — that silent return was "<leader>D stopped opening the dash".
   if not S.selected then
     local d = default_session()
-    if not d then return end
-    S.selected = d.id
+    if d then
+      S.selected = d.id
+    else
+      -- No roster yet (fresh heidr nvim before the rail's first drive): render
+      -- the dashboard for the current cwd instead of silently doing nothing.
+      local ed = target_editor_win()
+      if ed then show_scratch(ed, fn.getcwd()) end
+      return
+    end
   end
   S.editor = S.editor or {}
   S.editor[S.selected] = nil
   local cwd = session_cwd(S.selected)
-  if cwd and cwd ~= "" then reflect_context(cwd) end
+  reflect_context((cwd and cwd ~= "") and cwd or fn.getcwd())
 end
 
 -- Public: render the session dashboard for an explicit absolute cwd, independent
