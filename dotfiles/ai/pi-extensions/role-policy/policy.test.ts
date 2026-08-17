@@ -12,6 +12,7 @@ import {
   mayWrite,
   mutationForCommand,
   watcherCommandAllowed,
+  grantsFromApprovalCard,
 } from "./policy.ts";
 
 const AI = path.resolve(import.meta.dir, "../..");
@@ -357,5 +358,32 @@ describe("watcher containment and manifest", () => {
       for (const tool of spec.tools) expect(known.has(tool)).toBe(true);
     }
     expect(manifest.profiles["lovable-watcher"].tools).toEqual(["bash", "agent_send", "agent_report_review_findings", "agent_schedule_self", "agent_stop_self"]);
+  });
+});
+
+describe("inline-command approvals", () => {
+  test("approves-executing-colon-command grants that command's mutation", () => {
+    const g = grantsFromPrompt(
+      "David explicitly approves executing this exact LOCAL branch-integration command now: git merge --no-ff origin/main -m 'chore: merge main into every-2741'. Resolve any conflicts, test, and commit the local integration.",
+    );
+    expect(g.has("merge")).toBe(true);
+    expect(g.has("push")).toBe(false);
+  });
+
+  test("third-person approves with bounded filler reaches the action verb", () => {
+    expect(grantsFromPrompt("David approves you merging the branch now.").has("merge")).toBe(true);
+  });
+
+  test("negated inline command never grants", () => {
+    expect(grantsFromPrompt("This does not authorize running: git push origin main").has("push")).toBe(false);
+    expect(grantsFromPrompt("it does NOT authorize merging GitHub PR #83188, force-pushing, or any PR merge").has("push")).toBe(false);
+  });
+
+  test("a question naming a command grants nothing", () => {
+    expect(grantsFromPrompt("Should I go ahead with: git merge origin/main?").has("merge")).toBe(false);
+  });
+
+  test("approved card with inline command grants", () => {
+    expect(grantsFromApprovalCard("Approve running: gh pr create --fill").has("pr-create")).toBe(true);
   });
 });

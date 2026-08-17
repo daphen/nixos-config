@@ -104,7 +104,7 @@ function lineAuthorizes(line: string, language: ActionLanguage, approvalCard: bo
     new RegExp(String.raw`^\s*(?:please\s+)?${direct}`, "i"),
     new RegExp(String.raw`^\s*(?:can|could|would|will)\s+you\s+(?:please\s+)?${direct}`, "i"),
     new RegExp(String.raw`^\s*(?:go\s+ahead(?:\s+and)?|you\s+may|feel\s+free\s+to)\s+${direct}`, "i"),
-    new RegExp(String.raw`^\s*(?:(?:i|david)\s+)?(?:explicitly\s+|hereby\s+)?approve(?:d)?\s+(?:you\s+)?${approved}`, "i"),
+    new RegExp(String.raw`^\s*(?:(?:i|david)\s+)?(?:explicitly\s+|hereby\s+)?approve(?:s|d)?\s+(?:you\s+)?(?:\S+\s+){0,4}?${approved}`, "i"),
     new RegExp(String.raw`\b(?:and|then)\s+(?:please\s+)?${direct}`, "i"),
   ];
   return patterns.some((pattern) => {
@@ -116,11 +116,32 @@ function lineAuthorizes(line: string, language: ActionLanguage, approvalCard: bo
   });
 }
 
+// An approval that names the literal command ("approves executing this exact
+// command now: git merge --no-ff origin/main ...") grants exactly that
+// command's mutation. The verb-phrase grammar can never enumerate every way a
+// human phrases approval, but a spelled-out command is unambiguous.
+const INLINE_COMMAND_APPROVAL = /(approv\w+|authoriz\w+|go\s+ahead)([^.!?;:]{0,120})[:\u2014-]\s*[`"']?((?:git|gh)\s[^!?\n`]+)/i;
+
+function inlineCommandGrant(line: string, approvalCard: boolean): MutationGrant | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes("?") && !approvalCard) return null;
+  const m = INLINE_COMMAND_APPROVAL.exec(trimmed);
+  if (!m) return null;
+  // "does not authorize: git push" must never grant.
+  if (/(?:\bnot\b|\bnever\b|n't\b|\bwithout\b)/i.test(trimmed.slice(0, m.index + m[1].length + m[2].length))) return null;
+  return mutationForCommand(m[3]);
+}
+
 function grantsFromLanguage(text: string, approvalCard: boolean): Set<MutationGrant> {
   const grants = new Set<MutationGrant>();
   const lines = text.split(/\r?\n/);
   for (const grant of Object.keys(ACTION_LANGUAGE) as MutationGrant[]) {
     if (lines.some((line) => lineAuthorizes(line, ACTION_LANGUAGE[grant], approvalCard))) grants.add(grant);
+  }
+  for (const line of lines) {
+    const g = inlineCommandGrant(line, approvalCard);
+    if (g) grants.add(g);
   }
   return grants;
 }
