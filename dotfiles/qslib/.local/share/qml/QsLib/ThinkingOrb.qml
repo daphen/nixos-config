@@ -123,7 +123,7 @@ Item {
     anchors.fill: parent
     radius: width / 2
     color: "transparent"
-    border.width: Math.max(1.25, Math.min(width, height) * 0.065)
+    border.width: Math.max(1.25, Math.min(width, height) * 0.065) + (Theme.mode === "light" ? 1 : 0)
     border.color: Qt.hsla(orb.hu, orb.sat * 0.5, (Theme.mode === "light") !== orb.invertRing ? 0.34 : 0.82, 1)
     Behavior on border.color { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
     antialiasing: true
