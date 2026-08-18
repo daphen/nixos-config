@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import "."
@@ -14,11 +15,27 @@ PanelWindow {
     id: root
 
     property bool active: false
+    property real morphProgress: open ? 1 : 0
+    property real morphOriginX: width / 2 - 14
+    property real morphOriginY: height - 10
     visible: active
     readonly property bool open: PaletteState.open
 
+    Behavior on morphProgress {
+        NumberAnimation {
+            duration: 420
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: [0.16, 1, 0.3, 1, 1, 1]
+        }
+    }
+
     onOpenChanged: {
         if (open) {
+            const geom = NiriState.focusedWindowGeom()
+            morphOriginX = geom ? geom.x + geom.w / 2 - 14 : width / 2 - 14
+            morphOriginY = geom
+                ? Math.min(height - 5, (geom.y + geom.h + height) / 2 - 2.5)
+                : height - 10
             closeDelay.stop()
             reassert.stop()
             active = true
@@ -51,7 +68,7 @@ PanelWindow {
             if (scopedWindowId != null && scopedWindowProfile) reassert.restart()
         }
     }
-    Timer { id: closeDelay; interval: 300; onTriggered: root.active = false }
+    Timer { id: closeDelay; interval: 450; onTriggered: root.active = false }
     Timer { id: closeScrollTimeout; interval: 1000; onTriggered: root.preservingCloseScroll = false }
     Timer {
         id: reassert
@@ -74,6 +91,7 @@ PanelWindow {
         captureTabOrder()
         selectedIndex = firstSelectable()
         list.positionViewAtBeginning()
+        Qt.callLater(() => { syncFilmIndex(); filmPos = filmIndex })
     }
 
     anchors { top: true; bottom: true; left: true; right: true }
@@ -110,6 +128,58 @@ PanelWindow {
     property var sessionCurrentTabId: null
     property var sessionQuickmarks: []
     property string sessionQuickmarksKey: ""
+    property int filmIndex: 0
+    property real filmPos: 0
+
+    readonly property var filmTabs: {
+        const tabs = (open ? sessionTabs : (PaletteState.tabs || [])).slice()
+        tabs.sort((a, b) => {
+            const ai = tabOrder.indexOf(a.id)
+            const bi = tabOrder.indexOf(b.id)
+            if (ai >= 0 && bi >= 0) return ai - bi
+            if (ai >= 0) return -1
+            if (bi >= 0) return 1
+            return (b.lastAccessed || 0) - (a.lastAccessed || 0)
+        })
+        return scopedWindowId == null ? tabs : tabs.filter(t => t.windowId === scopedWindowId)
+    }
+    readonly property bool showFilmstrip: !searchMode && query.trim().length === 0
+        && (filterTab === 0 || filterTabs[filterTab] === "Tabs") && filmTabs.length > 0
+
+    onFilmTabsChanged: Qt.callLater(syncFilmIndex)
+
+    FrameAnimation {
+        running: root.active && Math.abs(root.filmPos - root.filmIndex) > 0.001
+        onTriggered: {
+            const k = 1 - Math.exp(-frameTime / 0.07)
+            const next = root.filmPos + (root.filmIndex - root.filmPos) * k
+            root.filmPos = Math.abs(next - root.filmIndex) < 0.001 ? root.filmIndex : next
+        }
+    }
+
+    function filmEntry(index) {
+        const tab = filmTabs[index]
+        if (!tab) return null
+        return {
+            kind: "tab", title: tab.title || "Untitled", url: tab.url || "",
+            subtitle: niceUrl(tab.url || ""), faviconPath: tab.faviconPath || "",
+            previewPath: tab.previewPath || "", tabId: tab.id, windowId: tab.windowId,
+        }
+    }
+
+    function syncFilmIndex() {
+        if (filmTabs.length === 0) { filmIndex = 0; filmPos = 0; return }
+        const wanted = previewTabId == null ? sessionCurrentTabId : previewTabId
+        const index = filmTabs.findIndex(tab => tab.id === wanted)
+        filmIndex = index >= 0 ? index : Math.min(filmIndex, filmTabs.length - 1)
+        if (!open || Math.abs(filmPos - filmIndex) > filmTabs.length) filmPos = filmIndex
+    }
+
+    function moveFilm(delta) {
+        if (filmTabs.length === 0) return
+        filmIndex = Math.max(0, Math.min(filmTabs.length - 1, filmIndex + delta))
+        previewTab(filmEntry(filmIndex))
+    }
 
     function tabContentKey(tabs) {
         return JSON.stringify(tabs.map(t => [
@@ -428,7 +498,7 @@ PanelWindow {
         if (urlItems.length && !hasHit) groups.push({ id: "url", heading: "Open URL", items: urlItems })
         if (ftab === "Pinned items")
             groups.push({ id: "pinned", heading: "Pinned items", items: rp.items })
-        else
+        else if (!showFilmstrip)
             groups.push({ id: "tabs", heading: "Tabs", items: rt.items })
         groups.push({ id: "quickmarks", heading: "Quickmarks", items: rq.items })
         if (urlItems.length && hasHit) groups.push({ id: "url", heading: "Open URL", items: urlItems })
@@ -546,10 +616,7 @@ PanelWindow {
     // Enter = run: tab rows always activate the existing tab; URL rows
     // navigate the current tab (Ctrl+Enter = new tab). Shift+Enter = DDG
     // the raw query.
-    function runSelected(inNewTab) {
-        if (entries.length === 0) return
-        const idx = Math.max(0, Math.min(selectedIndex, entries.length - 1))
-        const e = entries[idx]
+    function runEntry(e, inNewTab) {
         if (!e || e.divider || e.kind === "help") return
         if (e.kind === "addqm") {
             if (e.qmUrl) PaletteState.quickmarkAdd(e.qmName, e.qmUrl)
@@ -566,6 +633,22 @@ PanelWindow {
             PaletteState.gotoUrl(e.url, inNewTab || !!e.forceNewTab)
         }
         PaletteState.hide()
+    }
+
+    function runSelected(inNewTab) {
+        if (showFilmstrip) {
+            runEntry(filmEntry(filmIndex), inNewTab)
+            return
+        }
+        if (entries.length === 0) return
+        const idx = Math.max(0, Math.min(selectedIndex, entries.length - 1))
+        runEntry(entries[idx], inNewTab)
+    }
+
+    function actionEntry() {
+        if (showFilmstrip) return filmEntry(filmIndex)
+        const idx = Math.max(0, Math.min(selectedIndex, entries.length - 1))
+        return entries[idx]
     }
 
     // Drop a stale chin scope when the daemon reports a different
@@ -643,6 +726,10 @@ PanelWindow {
                 root.runSelected(!!ctrl)
             }
             event.accepted = true
+        } else if (root.showFilmstrip && (event.key === Qt.Key_Left || (event.key === Qt.Key_K && ctrl))) {
+            root.moveFilm(-1); event.accepted = true
+        } else if (root.showFilmstrip && (event.key === Qt.Key_Right || (event.key === Qt.Key_J && ctrl))) {
+            root.moveFilm(1); event.accepted = true
         } else if (event.key === Qt.Key_Down || (event.key === Qt.Key_J && ctrl)) {
             root.step(1); event.accepted = true
         } else if (event.key === Qt.Key_Up || (event.key === Qt.Key_K && ctrl)) {
@@ -656,8 +743,7 @@ PanelWindow {
             event.accepted = true
         } else if ((event.key === Qt.Key_D || event.key === Qt.Key_W) && ctrl) {
             // ⌃w matches browser muscle memory; ⌃d kept as the original bind
-            const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
-            const e = root.entries[idx]
+            const e = root.actionEntry()
             if (e && !e.divider && e.kind === "tab") {
                 root.closeScrollY = list.contentY
                 root.preservingCloseScroll = true
@@ -670,12 +756,10 @@ PanelWindow {
             root.filterTab = root.filterTab === helpIdx ? 0 : helpIdx
             event.accepted = true
         } else if (event.key === Qt.Key_P && ctrl) {
-            const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
-            root.togglePinned(root.entries[idx])
+            root.togglePinned(root.actionEntry())
             event.accepted = true
         } else if (event.key === Qt.Key_M && ctrl) {
-            const idx = Math.max(0, Math.min(root.selectedIndex, root.entries.length - 1))
-            const e = root.entries[idx]
+            const e = root.actionEntry()
             if (e && !e.divider && e.kind === "tab" && e.url) {
                 const already = (PaletteState.quickmarks || []).some(q => q.url === e.url)
                 if (already) {
@@ -712,32 +796,40 @@ PanelWindow {
 
     Rectangle {
         id: panel
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: Math.round((parent.height - height) / 2)
-        width: Math.min(780, parent.width - 96)
-        height: Math.min(680, parent.height - 96)
+        readonly property real targetWidth: Math.min(780, parent.width - 96)
+        readonly property real targetHeight: Math.min(680, parent.height - 96)
+        readonly property real targetX: (parent.width - targetWidth) / 2
+        readonly property real targetY: Math.max(48,
+            Math.min(parent.height - targetHeight - 48,
+                     parent.height * 0.70 - targetHeight / 2))
+        readonly property real targetBottom: targetY + targetHeight
+        readonly property real morphBottom: root.morphOriginY + 5
+            + (targetBottom - root.morphOriginY - 5) * root.morphProgress
+        x: root.morphOriginX + (targetX - root.morphOriginX) * root.morphProgress
+        width: 28 + (targetWidth - 28) * root.morphProgress
+        height: 5 + (targetHeight - 5) * root.morphProgress
+        y: morphBottom - height
 
         color: Theme.bg
         // Radii measured off the reference palette: panel 24, field 15,
         // cards 13, tiles 10, keycaps 7.
-        radius: 24
+        radius: 2.5 + 21.5 * root.morphProgress
         border.color: root.panelBorder
         border.width: 1
         clip: true
 
-        scale: root.open ? 1.0 : 0.97
-        opacity: root.open ? 1.0 : 0.0
-        Behavior on scale {
-            NumberAnimation { duration: 170; easing.type: Easing.BezierSpline
-                              easing.bezierCurve: [0.26, 0.08, 0.25, 1.0, 1.0, 1.0] }
-        }
-        Behavior on opacity {
-            NumberAnimation { duration: 170; easing.type: Easing.BezierSpline
-                              easing.bezierCurve: [0.26, 0.08, 0.25, 1.0, 1.0, 1.0] }
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            color: Theme.cursor
+            opacity: Math.max(0, 1 - root.morphProgress * 4)
         }
 
         Column {
             anchors.fill: parent
+            enabled: opacity > 0.99
+            opacity: Math.max(0, Math.min(1, (root.morphProgress - 0.68) / 0.32))
+            Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
             // ── input_wrap: icon + borderless input + ESC badge ──────
             Item {
@@ -896,11 +988,159 @@ PanelWindow {
                 }
             }
 
+            Item {
+                id: filmWrap
+                width: parent.width
+                height: root.showFilmstrip ? 242 : 0
+                visible: height > 0
+                clip: true
+
+                readonly property var slotW: [340, 210, 150, 110, 80]
+                readonly property var slotH: [190, 118, 84, 62, 45]
+                readonly property var slotX: [0, 250, 420, 545, 640]
+                readonly property var slotLight: [1, 0.62, 0.44, 0.30, 0.20]
+
+                function lerp(values, distance) {
+                    if (distance >= values.length - 1) return values[values.length - 1]
+                    const index = Math.floor(distance)
+                    const amount = distance - index
+                    return values[index] + (values[index + 1] - values[index]) * amount
+                }
+
+                function offsetX(offset) {
+                    const distance = Math.abs(offset)
+                    const x = distance <= 4 ? lerp(slotX, distance)
+                        : slotX[4] + (distance - 4) * 60
+                    return offset < 0 ? -x : x
+                }
+
+                Repeater {
+                    model: root.filmTabs
+                    delegate: Item {
+                        id: filmCard
+                        required property int index
+                        required property var modelData
+                        readonly property real offset: index - root.filmPos
+                        readonly property real distance: Math.abs(offset)
+                        readonly property bool focused: index === root.filmIndex
+                        readonly property real light: filmWrap.lerp(filmWrap.slotLight, distance)
+                        width: filmWrap.lerp(filmWrap.slotW, distance)
+                        height: filmWrap.lerp(filmWrap.slotH, distance)
+                        x: filmWrap.width / 2 + filmWrap.offsetX(offset) - width / 2
+                        y: (filmWrap.height - height) / 2
+                        z: 10 - distance
+                        visible: distance <= 5
+                        opacity: distance <= 4 ? 1 : Math.max(0, 5 - distance)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 13
+                            color: Theme.surface1
+                            border.width: 1
+                            border.color: filmCard.focused ? Theme.fg_muted : Theme.hairline
+                            clip: true
+                            layer.enabled: filmCard.focused
+                            layer.effect: MultiEffect {
+                                shadowEnabled: true
+                                shadowColor: Qt.rgba(0, 0, 0, 0.45)
+                                shadowBlur: 0.7
+                                shadowVerticalOffset: 5
+                            }
+
+                            Image {
+                                anchors.fill: parent
+                                source: filmCard.modelData.previewPath
+                                    ? "file://" + filmCard.modelData.previewPath : ""
+                                sourceSize.width: 960
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                cache: false
+                            }
+
+                            Rectangle {
+                                anchors.fill: parent
+                                visible: !filmCard.modelData.previewPath
+                                color: Theme.surface2
+                                Image {
+                                    anchors.centerIn: parent
+                                    width: filmCard.focused ? 36 : 24
+                                    height: width
+                                    source: filmCard.modelData.faviconPath
+                                        ? "file://" + filmCard.modelData.faviconPath : ""
+                                    sourceSize.width: 72
+                                    sourceSize.height: 72
+                                }
+                            }
+
+                            Rectangle {
+                                anchors.fill: parent
+                                color: "#000000"
+                                opacity: 1 - filmCard.light
+                            }
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: filmCard.focused ? 46 : 30
+                                color: Qt.rgba(0, 0, 0, 0.68)
+                                Text {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: String(filmCard.modelData.title || "Untitled")
+                                    color: "#ffffff"
+                                    elide: Text.ElideRight
+                                    font.family: root.sans
+                                    font.pixelSize: filmCard.focused ? 14 : 11
+                                    font.weight: 500
+                                }
+                            }
+                        }
+
+                        HoverHandler {
+                            id: filmHover
+                            onHoveredChanged: if (hovered) {
+                                root.filmIndex = filmCard.index
+                                root.previewTab(root.filmEntry(filmCard.index))
+                            }
+                        }
+                        TapHandler {
+                            onTapped: {
+                                if (filmCard.focused) root.runEntry(root.filmEntry(filmCard.index), false)
+                                else {
+                                    root.filmIndex = filmCard.index
+                                    root.previewTab(root.filmEntry(filmCard.index))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.NoButton
+                    onWheel: event => {
+                        root.moveFilm(event.angleDelta.y < 0 ? 1 : -1)
+                        event.accepted = true
+                    }
+                }
+
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    height: 1
+                    color: Theme.hairline
+                }
+            }
+
             // ── list ─────────────────────────────────────────────────
             ListView {
                 id: list
                 width: parent.width
-                height: parent.height - inputWrap.height - tabsWrap.height - chinWrap.height
+                height: parent.height - inputWrap.height - tabsWrap.height - filmWrap.height - chinWrap.height
                 clip: true
                 model: root.entries
                 readonly property int navigationMargin: 24
@@ -909,7 +1149,7 @@ PanelWindow {
                 boundsBehavior: Flickable.StopAtBounds
 
                 Text {
-                    visible: root.entries.length === 0
+                    visible: root.entries.length === 0 && !root.showFilmstrip
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.top: parent.top
                     anchors.topMargin: 24

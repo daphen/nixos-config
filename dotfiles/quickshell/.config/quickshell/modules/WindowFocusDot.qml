@@ -78,8 +78,18 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "qs-window-focus-dot"
-    mask: Region {}
+    mask: Region { item: dot }
     visible: effGeom !== null
+
+    Timer {
+        id: hoverDwell
+        interval: 200
+        onTriggered: {
+            const app = NiriState.focusedAppId()
+            if (!PaletteState.open && (app === "browser-personal" || app === "browser-work"))
+                PaletteState.show()
+        }
+    }
 
     Rectangle {
         id: dot
@@ -87,6 +97,8 @@ PanelWindow {
         height: root.pillH
         radius: height / 2
         color: Theme.cursor
+        opacity: PaletteState.open ? 0 : 1
+        Behavior on opacity { NumberAnimation { duration: 80 } }
         // Horizontally centered under the focused window; vertically centered in
         // the gap between the window's bottom edge and the output's bottom edge.
         // Holds its x when geometry is momentarily absent, so a picker opening
@@ -102,5 +114,16 @@ PanelWindow {
         // up then plays from the bottom edge once warping clears.
         Behavior on x { enabled: !root.warping; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         Behavior on y { enabled: !root.warping; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+
+        HoverHandler {
+            onHoveredChanged: {
+                const app = NiriState.focusedAppId()
+                if (hovered && !PaletteState.open
+                    && (app === "browser-personal" || app === "browser-work"))
+                    hoverDwell.restart()
+                else
+                    hoverDwell.stop()
+            }
+        }
     }
 }
