@@ -1175,8 +1175,10 @@ PanelWindow {
                         Rectangle {
                             anchors.fill: parent
                             radius: 16
-                            color: Theme.fg
-                            opacity: filmHover.hovered ? 0.04 : 0
+                            color: "transparent"
+                            border.width: 1
+                            border.color: Theme.fg_muted
+                            opacity: filmHover.hovered ? 0.35 : 0
                             Behavior on opacity {
                                 NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
                             }
