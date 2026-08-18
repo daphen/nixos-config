@@ -342,13 +342,13 @@ if [ -z "$review_wt" ]; then
   printf '%s|%s\n' "$review_wt" "{self.expected_sha}" >"$state/owned-worktree"
 fi
 [ -n "$review_wt" ] || {{ echo 'remote review worktree missing' >&2; exit 1; }}
-[ "$(git -C "$review_wt" rev-parse HEAD)" = "{self.expected_sha}" ] || {{ echo 'remote review worktree SHA mismatch' >&2; exit 1; }}
-owned=no
-[ "$(cat "$state/owned-worktree" 2>/dev/null || true)" = "$review_wt|{self.expected_sha}" ] && owned=yes
-if [ -n "$(git -C "$review_wt" status --porcelain=v1)" ]; then
-  [ "$owned" = yes ] || {{ echo 'remote review worktree is dirty' >&2; exit 1; }}
-  git -C "$review_wt" reset --hard HEAD >/dev/null
+[ -z "$(git -C "$review_wt" status --porcelain=v1)" ] || {{ echo 'remote review worktree is dirty' >&2; exit 1; }}
+actual="$(git -C "$review_wt" rev-parse HEAD)"
+if [ "$actual" != "{self.expected_sha}" ]; then
+  git -C "$review_wt" merge-base --is-ancestor "$actual" "{self.expected_sha}" || {{ echo 'remote review worktree is not behind PR head' >&2; exit 1; }}
+  git -C "$review_wt" reset --hard "{self.expected_sha}" >/dev/null
 fi
+[ "$(git -C "$review_wt" rev-parse HEAD)" = "{self.expected_sha}" ] || {{ echo 'remote review worktree SHA mismatch after update' >&2; exit 1; }}
 (
   cd "$review_wt"
   git config --local filter.lfs.clean 'git-lfs clean -- %f'
@@ -356,7 +356,6 @@ fi
   git config --local filter.lfs.process 'git-lfs filter-process'
   git config --local filter.lfs.required true
   git lfs pull
-  [ "$owned" = no ] || git reset --hard HEAD >/dev/null
   git lfs fsck
   [ -z "$(git status --porcelain=v1)" ] || {{ echo 'remote review worktree is dirty' >&2; exit 1; }}
   "$direnv" allow .

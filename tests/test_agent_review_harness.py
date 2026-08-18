@@ -138,6 +138,17 @@ class HarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "not behind"):
                 harness.adopt_or_create_worktree(repo, 9, expected_sha, root / "other")
 
+    def test_remote_clean_stale_worktree_updates_but_dirty_or_ahead_refuses(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).remote_setup_script()
+            dirty = text.index("remote review worktree is dirty")
+            ancestry = text.index("merge-base --is-ancestor")
+            reset = text.index('reset --hard "9999999999999999999999999999999999999999"')
+            verified = text.index("remote review worktree SHA mismatch after update")
+            self.assertEqual([dirty, ancestry, reset, verified], sorted([dirty, ancestry, reset, verified]))
+            self.assertIn("remote review worktree is not behind PR head", text)
+            self.assertNotIn("reset --hard HEAD", text)
+
     def test_context_artifacts_encode_proven_environment_and_owned_services(self):
         with tempfile.TemporaryDirectory() as td:
             home = Path(td)
