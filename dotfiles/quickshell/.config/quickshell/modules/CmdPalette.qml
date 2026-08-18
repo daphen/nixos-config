@@ -1022,6 +1022,8 @@ PanelWindow {
                     anchors.rightMargin: 12
                     anchors.verticalCenter: searchField.verticalCenter
                     color: Theme.fg
+                    selectionColor: Theme.selection
+                    selectedTextColor: Theme.fg
                     font.family: root.sans
                     font.pixelSize: 18
                     clip: true
@@ -1175,10 +1177,8 @@ PanelWindow {
                         Rectangle {
                             anchors.fill: parent
                             radius: 16
-                            color: "transparent"
-                            border.width: 1
-                            border.color: Theme.fg_muted
-                            opacity: filmHover.hovered ? 0.35 : 0
+                            color: Theme.fg
+                            opacity: filmHover.hovered ? 0.08 : 0
                             Behavior on opacity {
                                 NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
                             }
