@@ -153,6 +153,8 @@ PanelWindow {
     property bool filterNavFocused: false
 
     readonly property var dockQuickmarks: open ? sessionQuickmarks : (PaletteState.quickmarks || [])
+    readonly property bool showQuickmarkDock: !searchMode && query.trim().length === 0
+        && (filterTab === 0 || filterTabs[filterTab] === "Tabs")
     readonly property var filmTabs: {
         const tabs = (open ? sessionTabs : (PaletteState.tabs || [])).slice()
         tabs.sort((a, b) => {
@@ -522,7 +524,8 @@ PanelWindow {
             groups.push({ id: "pinned", heading: "Pinned items", items: rp.items })
         else if (!showFilmstrip)
             groups.push({ id: "tabs", heading: "Tabs", items: rt.items })
-        groups.push({ id: "quickmarks", heading: "Quickmarks", items: rq.items })
+        if (!showQuickmarkDock)
+            groups.push({ id: "quickmarks", heading: "Quickmarks", items: rq.items })
         if (urlItems.length && hasHit) groups.push({ id: "url", heading: "Open URL", items: urlItems })
         groups.push({ id: "history", heading: "History", items: histItems })
         groups.push({ id: "websites", heading: "Web Search", items: webItems })
@@ -1178,7 +1181,8 @@ PanelWindow {
                 id: list
                 width: parent.width
                 height: parent.height - inputWrap.height - tabsWrap.height - filmWrap.height
-                    - chinWrap.height - (root.dockQuickmarks.length > 0 ? 64 : 0)
+                    - chinWrap.height
+                    - (root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 64 : 0)
                 clip: true
                 model: root.entries
                 readonly property int navigationMargin: 24
@@ -1338,7 +1342,7 @@ PanelWindow {
             Item {
                 id: quickmarkDockWrap
                 width: parent.width
-                height: root.dockQuickmarks.length > 0 ? 64 : 0
+                height: root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 64 : 0
                 visible: height > 0
 
                 Rectangle {
