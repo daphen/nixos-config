@@ -7,6 +7,12 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
+// Rename transition (heidr -> cockpit): prefer the new var, fall back.
+function envAlias(name: string): string | undefined {
+  return process.env["COCKPIT_" + name] ?? process.env["HEIDR_" + name];
+}
+
+
 export interface Session {
   id?: string;
   name?: string;
@@ -129,7 +135,7 @@ export async function resolveSession(ref: string): Promise<Resolved | null> {
 // (see registry.isLineage). Empty when the caller isn't a registered session
 // (then agentd treats it as human and doesn't gate).
 async function selfName(): Promise<string> {
-  if (process.env.HEIDR_AGENT_NAME) return process.env.HEIDR_AGENT_NAME;
+  if (envAlias("AGENT_NAME")) return envAlias("AGENT_NAME");
   try {
     const s = await resolveSession(process.cwd());
     return s ? String(s.session.name ?? s.session.id ?? "") : "";
@@ -220,7 +226,7 @@ function requestAgentd(sockPath: string, obj: { session?: unknown } & Record<str
 
 async function resolveSelf(): Promise<Resolved> {
   const name = await selfName();
-  const cwd = expandPath(process.env.HEIDR_AGENT_CWD || process.cwd());
+  const cwd = expandPath(envAlias("AGENT_CWD") || process.cwd());
   for (const scope of scopeSocks()) {
     for (const session of await readRoster(scope.path)) {
       if ((session.name === name || session.id === name) && (!cwd || expandPath(session.cwd || "") === cwd)) {
@@ -232,14 +238,14 @@ async function resolveSelf(): Promise<Resolved> {
 }
 
 export async function scheduleSelf(): Promise<void> {
-  if (process.env.HEIDR_AGENT_PROFILE !== "lovable-watcher") throw new Error("agent_schedule_self is watcher-only");
+  if (envAlias("AGENT_PROFILE") !== "lovable-watcher") throw new Error("agent_schedule_self is watcher-only");
   const self = await resolveSelf();
   const name = String(self.session.name || self.session.id || "");
   await writeThenClose(self.sockPath, { type: "schedule_self", session: name, from: name }, 500);
 }
 
 export async function stopSelf(): Promise<void> {
-  if (process.env.HEIDR_AGENT_PROFILE !== "lovable-watcher") throw new Error("agent_stop_self is watcher-only");
+  if (envAlias("AGENT_PROFILE") !== "lovable-watcher") throw new Error("agent_stop_self is watcher-only");
   const self = await resolveSelf();
   const name = String(self.session.name || self.session.id || "");
   await writeThenClose(self.sockPath, { type: "stop_self", session: name, from: name }, 300);
@@ -249,12 +255,12 @@ export type ReviewFinding = { id: string; url: string; paths: string[] };
 export type FindingDisposition = { id: string; implemented: boolean; tested: boolean };
 
 export async function reportReviewFindings(pr: number, branch: string, head: string, findings: ReviewFinding[]): Promise<string> {
-  if (process.env.HEIDR_AGENT_PROFILE !== "lovable-watcher") throw new Error("review findings may only be reported by a lovable-watcher");
+  if (envAlias("AGENT_PROFILE") !== "lovable-watcher") throw new Error("review findings may only be reported by a lovable-watcher");
   const self = await resolveSelf();
   const name = String(self.session.name || self.session.id || "");
   const response = await requestAgentd(self.sockPath, {
     type: "report_review_findings", session: name, from: name, fromProfile: "lovable-watcher",
-    fromParent: process.env.HEIDR_AGENT_PARENT || "", pr, branch, head, findings,
+    fromParent: envAlias("AGENT_PARENT") || "", pr, branch, head, findings,
   }, "review_remediation_reported");
   return String(response.contextId);
 }
@@ -266,7 +272,7 @@ export async function dispositionReviewFindings(
   tests: string[],
   commits: string[],
 ): Promise<void> {
-  if (process.env.HEIDR_AGENT_PROFILE !== "lovable-worker") throw new Error("review findings may only be dispositioned by a lovable-worker");
+  if (envAlias("AGENT_PROFILE") !== "lovable-worker") throw new Error("review findings may only be dispositioned by a lovable-worker");
   const self = await resolveSelf();
   const name = String(self.session.name || self.session.id || "");
   await requestAgentd(self.sockPath, {
@@ -276,7 +282,7 @@ export async function dispositionReviewFindings(
 }
 
 export async function consumeReviewPush(command: string): Promise<boolean> {
-  if (process.env.HEIDR_AGENT_PROFILE !== "lovable-worker") return false;
+  if (envAlias("AGENT_PROFILE") !== "lovable-worker") return false;
   try {
     const self = await resolveSelf();
     const name = String(self.session.name || self.session.id || "");
@@ -290,8 +296,8 @@ export async function consumeReviewPush(command: string): Promise<boolean> {
 }
 
 function callerIdentity(from: string): Record<string, string> {
-  const profile = process.env.HEIDR_AGENT_PROFILE || "";
-  const parent = process.env.HEIDR_AGENT_PARENT || "";
+  const profile = envAlias("AGENT_PROFILE") || "";
+  const parent = envAlias("AGENT_PARENT") || "";
   return { from, ...(profile ? { fromProfile: profile } : {}), ...(parent ? { fromParent: parent } : {}) };
 }
 
@@ -318,7 +324,7 @@ export async function steerSession(ref: string, text: string): Promise<{ resolve
 
 function scopeForDir(dir: string, override?: string): string {
   if (override) return override;
-  const env = process.env.HEIDR_SCOPE || process.env.AGENT_SCOPE;
+  const env = envAlias("SCOPE") || process.env.AGENT_SCOPE;
   if (env) return env;
   const lov = path.join(HOME, "work", "lovable");
   if (dir === lov || dir.startsWith(lov + ".") || dir.startsWith(lov + "/")) return "lovable";

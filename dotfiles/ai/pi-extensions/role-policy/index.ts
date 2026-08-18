@@ -3,6 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+// Rename transition (heidr -> cockpit): prefer the new var, fall back to the
+// old one. Writers export both; this fallback retires in a later pass.
+function envAlias(name: string): string | undefined {
+  return process.env["COCKPIT_" + name] ?? process.env["HEIDR_" + name];
+}
+
 import { consumeReviewPush } from "../agents/agentd.ts";
 import {
   approvalResultIsApproved,
@@ -24,7 +30,7 @@ type Manifest = {
 };
 
 function manifestPath(): string {
-  const configured = process.env.HEIDR_ROLE_MANIFEST;
+  const configured = envAlias("ROLE_MANIFEST");
   if (configured) return configured.replace(/^~(?=\/)/, os.homedir());
   return path.join(os.homedir(), ".pi", "agent", "roles", "manifest.json");
 }
@@ -35,7 +41,7 @@ function failClosed(pi: ExtensionAPI, reason: string): never {
 }
 
 export default function rolePolicy(pi: ExtensionAPI) {
-  const rawProfile = process.env.HEIDR_AGENT_PROFILE ?? "";
+  const rawProfile = envAlias("AGENT_PROFILE") ?? "";
   // Inert for every NON-ROLE launch: no env at all (plain pi — the extension also
   // loads globally via the dotfiles symlink) and the daemon's builtin non-role
   // profiles ("chat", "phtqs", "coding" — agentd stamps HEIDR_AGENT_PROFILE on every child).
@@ -46,8 +52,8 @@ export default function rolePolicy(pi: ExtensionAPI) {
   if (!rawProfile || rawProfile === "chat" || rawProfile === "phtqs" || rawProfile === "coding") return;
   if (!isRoleProfile(rawProfile)) failClosed(pi, `unknown HEIDR_AGENT_PROFILE ${JSON.stringify(rawProfile)}`);
   const profile: RoleProfile = rawProfile;
-  const cwd = process.env.HEIDR_AGENT_CWD || process.cwd();
-  const parent = process.env.HEIDR_AGENT_PARENT || "";
+  const cwd = envAlias("AGENT_CWD") || process.cwd();
+  const parent = envAlias("AGENT_PARENT") || "";
 
   let manifest: Manifest;
   try {
