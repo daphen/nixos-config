@@ -406,6 +406,10 @@ PanelWindow {
         return false
     }
 
+    function urlFromInput(t) {
+        return /^[a-z][\w-]*:/i.test(t) ? t : "https://" + t
+    }
+
     function matchText(e) {
         let s = (e.title || "")
         if (e.url) {
@@ -730,6 +734,13 @@ PanelWindow {
     }
 
     function runSelected(inNewTab) {
+        const editedAddress = query.trim()
+        if (!addressPristine && looksLikeUrl(editedAddress)) {
+            restoreTabOnClose = false
+            PaletteState.gotoUrl(urlFromInput(editedAddress), inNewTab)
+            PaletteState.hide()
+            return
+        }
         if (showFilmstrip && (filmFocused || entries.length === 0)) {
             runEntry(filmEntry(filmIndex), inNewTab)
             return
@@ -1165,7 +1176,7 @@ PanelWindow {
                             anchors.fill: parent
                             radius: 16
                             color: Theme.fg
-                            opacity: filmHover.hovered ? 0.08 : 0
+                            opacity: filmHover.hovered ? 0.04 : 0
                             Behavior on opacity {
                                 NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
                             }
