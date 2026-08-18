@@ -896,7 +896,7 @@ PanelWindow {
         }
         readonly property real fixedHeight: 68
             + (root.showFilmstrip ? 178 : 0)
-            + (root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 64 : 0)
+            + (root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 85 : 0)
             + (PaletteState.chin.length > 0 ? 54 : 0)
         readonly property real targetHeight: Math.min(620,
             Math.min(parent.height - 96, fixedHeight + resultHeight))
@@ -1071,7 +1071,7 @@ PanelWindow {
 
                         Rectangle {
                             anchors.fill: parent
-                            radius: 13
+                            radius: 16
                             color: Theme.surface1
                             border.width: 1
                             border.color: Theme.hairline
@@ -1182,6 +1182,7 @@ PanelWindow {
                     width: parent.width
                     height: 1
                     color: Theme.hairline
+                    visible: root.entries.length > 0
                 }
             }
 
@@ -1190,7 +1191,7 @@ PanelWindow {
                 id: list
                 width: parent.width
                 height: parent.height - inputWrap.height - filmWrap.height - chinWrap.height
-                    - (root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 64 : 0)
+                    - (root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 85 : 0)
                 clip: true
                 model: root.entries
                 readonly property int navigationMargin: 24
@@ -1357,11 +1358,13 @@ PanelWindow {
             Item {
                 id: quickmarkDockWrap
                 width: parent.width
-                height: root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 64 : 0
+                height: root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 85 : 0
                 visible: height > 0
 
                 Rectangle {
-                    anchors.centerIn: parent
+                    anchors.top: parent.top
+                    anchors.topMargin: 7
+                    anchors.horizontalCenter: parent.horizontalCenter
                     width: dockRow.implicitWidth + 14
                     height: 50
                     radius: 16
