@@ -4472,7 +4472,7 @@ end
 -- rail is the only component that sees every scope's events AND maps a remote session's
 -- paths onto the local mirror — this nvim's own client spans one scope, so cockpit
 -- live-follow cannot originate in here. Both args are LOCAL absolute paths.
-function M.follow_remote(cwd, path, force)
+function M.follow_remote(cwd, path, force, line)
   local ed = target_editor_win()
   if not ed then return "" end
   if force then
@@ -4490,7 +4490,7 @@ function M.follow_remote(cwd, path, force)
         end
       end
     end
-    S._follow_paused = nil; follow_edit(cwd, path, nil, true, true); return ""
+    S._follow_paused = nil; follow_edit(cwd, path, line, true, true); return ""
   end
   local bn = api.nvim_buf_get_name(api.nvim_win_get_buf(ed))
   -- Follow only while the editor rests on session context — never yank the user out
@@ -4503,7 +4503,7 @@ function M.follow_remote(cwd, path, force)
   if bn ~= "" and not (cwd and cwd ~= "" and bn:sub(1, #cwd) == cwd)
      and bn:sub(1, #plans) ~= plans and not bn:find("/%.plans/")
      and bn ~= ours then return "" end
-  follow_edit(cwd, path, nil, true)
+  follow_edit(cwd, path, line, true)
   return ""
 end
 
