@@ -1037,7 +1037,8 @@ PanelWindow {
                 visible: height > 0
                 clip: true
 
-                readonly property var slotX: [0, 264, 528, 792, 1056]
+                readonly property var slotX: [0, 324, 648, 972, 1296]
+                property real wheelAccumulator: 0
                 readonly property var slotLight: [1, 0.62, 0.44, 0.30, 0.20]
 
                 function lerp(values, distance) {
@@ -1077,7 +1078,7 @@ PanelWindow {
                             radius: 13
                             color: Theme.surface1
                             border.width: 1
-                            border.color: filmCard.focused ? Theme.fg_muted : Theme.hairline
+                            border.color: Theme.hairline
                             clip: true
                             layer.enabled: filmCard.focused
                             layer.effect: MultiEffect {
@@ -1140,13 +1141,16 @@ PanelWindow {
                             }
                         }
 
-                        HoverHandler {
-                            id: filmHover
-                            onHoveredChanged: if (hovered) {
-                                root.filmIndex = filmCard.index
-                                root.previewTab(root.filmEntry(filmCard.index))
-                            }
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            radius: 17
+                            color: "transparent"
+                            border.width: 2
+                            border.color: Theme.cursor
+                            visible: filmCard.focused
                         }
+
                         TapHandler {
                             onTapped: {
                                 if (filmCard.focused) root.runEntry(root.filmEntry(filmCard.index), false)
@@ -1163,7 +1167,15 @@ PanelWindow {
                     anchors.fill: parent
                     acceptedButtons: Qt.NoButton
                     onWheel: event => {
-                        root.moveFilm(event.angleDelta.y < 0 ? 1 : -1)
+                        const x = event.angleDelta.x
+                        const y = event.angleDelta.y
+                        const delta = Math.abs(x) > Math.abs(y) ? x : y
+                        filmWrap.wheelAccumulator += delta
+                        const steps = Math.trunc(filmWrap.wheelAccumulator / 120)
+                        if (steps !== 0) {
+                            root.moveFilm(-steps)
+                            filmWrap.wheelAccumulator -= steps * 120
+                        }
                         event.accepted = true
                     }
                 }
