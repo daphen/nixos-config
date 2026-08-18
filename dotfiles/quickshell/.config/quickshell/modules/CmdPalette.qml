@@ -221,6 +221,23 @@ PanelWindow {
         Qt.callLater(() => search.selectAll())
     }
 
+    function openBlankTab() {
+        restoreTabOnClose = false
+        PaletteState.gotoUrl("chrome://newtab/", true)
+        PaletteState.hide()
+    }
+
+    function hardReloadActiveTab() {
+        if (previewTabId == null) return
+        restoreTabOnClose = false
+        PaletteState.send({
+            cmd: "reload-tab",
+            tabId: previewTabId,
+            bypassCache: true
+        })
+        PaletteState.hide()
+    }
+
     function moveFilm(delta) {
         if (filmTabs.length === 0) return
         filmFocused = true
@@ -928,7 +945,7 @@ PanelWindow {
         }
         readonly property real fixedHeight: 68
             + (root.showFilmstrip ? 178 : 0)
-            + (root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 85 : 0)
+            + (root.showQuickmarkDock ? 85 : 0)
             + (PaletteState.chin.length > 0 ? 54 : 0)
         readonly property real targetHeight: Math.min(620,
             Math.min(parent.height - 96, fixedHeight + resultHeight))
@@ -1241,7 +1258,7 @@ PanelWindow {
                 id: list
                 width: parent.width
                 height: parent.height - inputWrap.height - filmWrap.height - chinWrap.height
-                    - (root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 85 : 0)
+                    - (root.showQuickmarkDock ? 85 : 0)
                 clip: true
                 model: root.entries
                 readonly property int navigationMargin: 24
@@ -1408,7 +1425,7 @@ PanelWindow {
             Item {
                 id: quickmarkDockWrap
                 width: parent.width
-                height: root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 85 : 0
+                height: root.showQuickmarkDock ? 85 : 0
                 visible: height > 0
 
                 Rectangle {
@@ -1473,6 +1490,52 @@ PanelWindow {
                                     }, false)
                                 }
                             }
+                        }
+
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 1
+                            height: 22
+                            color: Theme.hairline
+                        }
+
+                        Item {
+                            width: 36
+                            height: 36
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 9
+                                color: reloadHover.hovered ? Theme.selection : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "↻"
+                                    color: Theme.fg_muted
+                                    font.family: root.sans
+                                    font.pixelSize: 18
+                                }
+                            }
+                            HoverHandler { id: reloadHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: root.hardReloadActiveTab() }
+                        }
+
+                        Item {
+                            width: 36
+                            height: 36
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 9
+                                color: addTabHover.hovered ? Theme.selection : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "+"
+                                    color: Theme.fg_muted
+                                    font.family: root.sans
+                                    font.pixelSize: 21
+                                    font.weight: 400
+                                }
+                            }
+                            HoverHandler { id: addTabHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: root.openBlankTab() }
                         }
                     }
                 }
