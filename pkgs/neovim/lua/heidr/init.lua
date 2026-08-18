@@ -3753,8 +3753,20 @@ local function banner_w(win)
   local ww = (win and api.nvim_win_is_valid(win)) and api.nvim_win_get_width(win) or 80
   return math.max(HEIDR_BANNER_W, math.min(44, math.floor(ww * 0.26)))
 end
--- Rows follow from the asset aspect (790x184) and ~1:2.05 cells.
-local function banner_h(w) return math.max(3, math.ceil(w / 8.6)) end
+-- Rows from the asset aspect (790x184 = 4.29) and the REAL cell pixel size
+-- (snacks queries the terminal): an assumed cell aspect made the float box a
+-- wrong shape at most window widths and the image squished to fit it.
+local BANNER_ASPECT = 790 / 184
+local function banner_h(w)
+  local ok, term = pcall(require, "snacks.image.terminal")
+  if ok and term.size then
+    local oks, sz = pcall(term.size)
+    if oks and sz and sz.cell_width and sz.cell_height and sz.cell_height > 0 then
+      return math.max(3, math.floor(w * sz.cell_width / BANNER_ASPECT / sz.cell_height))
+    end
+  end
+  return math.max(3, math.floor(w / 8.6))
+end
 -- 790×184 scaled to 22 cells ≈ 3 text rows. Declared before place_banner so its
 -- float config captures the local (a later declaration resolved to a nil global →
 -- height=nil → open_win threw under pcall → the banner never rendered).
