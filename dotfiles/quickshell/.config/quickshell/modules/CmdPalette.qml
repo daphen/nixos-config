@@ -234,7 +234,7 @@ PanelWindow {
             }
         }
         if (bestResultIndex >= 0) selectedIndex = bestResultIndex
-        filmFocused = bestTabIndex >= 0 && bestTabScore > bestResultScore
+        filmFocused = bestTabIndex >= 0
         if (!filmFocused) return
         filmIndex = bestTabIndex
         const entry = filmEntry(bestTabIndex)
