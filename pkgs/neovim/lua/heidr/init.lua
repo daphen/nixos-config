@@ -3762,10 +3762,13 @@ local function banner_h(w)
   if ok and term.size then
     local oks, sz = pcall(term.size)
     if oks and sz and sz.cell_width and sz.cell_height and sz.cell_height > 0 then
-      return math.max(3, math.floor(w * sz.cell_width / BANNER_ASPECT / sz.cell_height))
+      -- ceil, not floor: the image draws from the float's TOP, so a float even
+      -- a fraction of a row short CLIPS the glyph bottoms (the mascot floors
+      -- because it bottom-anchors; the banner must ceil).
+      return math.max(3, math.ceil(w * sz.cell_width / BANNER_ASPECT / sz.cell_height))
     end
   end
-  return math.max(3, math.floor(w / 8.6))
+  return math.max(3, math.ceil(w / 8.6))
 end
 -- 790×184 scaled to 22 cells ≈ 3 text rows. Declared before place_banner so its
 -- float config captures the local (a later declaration resolved to a nil global →
