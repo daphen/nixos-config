@@ -1139,6 +1139,16 @@ PanelWindow {
 
                         Rectangle {
                             anchors.fill: parent
+                            radius: 16
+                            color: Theme.fg
+                            opacity: filmHover.hovered ? 0.08 : 0
+                            Behavior on opacity {
+                                NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
                             anchors.margins: -3
                             radius: 16
                             color: "transparent"
@@ -1146,6 +1156,8 @@ PanelWindow {
                             border.color: Theme.cursor
                             visible: filmCard.focused && root.filmFocused
                         }
+
+                        HoverHandler { id: filmHover; cursorShape: Qt.PointingHandCursor }
 
                         TapHandler {
                             onTapped: {
