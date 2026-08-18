@@ -153,7 +153,7 @@ PanelWindow {
     property bool filterNavFocused: false
 
     readonly property var dockQuickmarks: open ? sessionQuickmarks : (PaletteState.quickmarks || [])
-    readonly property bool showQuickmarkDock: !searchMode && query.trim().length === 0
+    readonly property bool showQuickmarkDock: !searchMode
         && (filterTab === 0 || filterTabs[filterTab] === "Tabs")
     readonly property var filmTabs: {
         const tabs = (open ? sessionTabs : (PaletteState.tabs || [])).slice()
@@ -167,7 +167,7 @@ PanelWindow {
         })
         return scopedWindowId == null ? tabs : tabs.filter(t => t.windowId === scopedWindowId)
     }
-    readonly property bool showFilmstrip: !searchMode && query.trim().length === 0
+    readonly property bool showFilmstrip: !searchMode
         && (filterTab === 0 || filterTabs[filterTab] === "Tabs") && filmTabs.length > 0
 
     onFilmTabsChanged: Qt.callLater(syncFilmIndex)
@@ -203,6 +203,24 @@ PanelWindow {
         if (filmTabs.length === 0) return
         filmIndex = Math.max(0, Math.min(filmTabs.length - 1, filmIndex + delta))
         previewTab(filmEntry(filmIndex))
+    }
+
+    function focusFilmMatch() {
+        if (!showFilmstrip) return
+        const q = query.trim().toLowerCase()
+        if (!q) return
+        let bestIndex = -1
+        let bestScore = 0
+        for (let i = 0; i < filmTabs.length; i++) {
+            const tab = filmTabs[i]
+            const value = String(tab.title || "") + " " + String(tab.url || "")
+            const score = scoreMatch(q, value.toLowerCase())
+            if (score > bestScore) { bestScore = score; bestIndex = i }
+        }
+        if (bestIndex < 0) return
+        filmIndex = bestIndex
+        const entry = filmEntry(bestIndex)
+        if (entry && entry.tabId !== previewTabId) previewTab(entry)
     }
 
     function tabContentKey(tabs) {
@@ -275,6 +293,7 @@ PanelWindow {
     }
     onQueryChanged: {
         selectedIndex = firstSelectable(); list.positionViewAtBeginning()
+        Qt.callLater(focusFilmMatch)
         if (historyWanted()) histDebounce.restart()
     }
     onFilterTabChanged: {
@@ -524,15 +543,17 @@ PanelWindow {
             groups.push({ id: "pinned", heading: "Pinned items", items: rp.items })
         else if (!showFilmstrip)
             groups.push({ id: "tabs", heading: "Tabs", items: rt.items })
-        if (!showQuickmarkDock)
+        if (q.length > 0 || !showQuickmarkDock)
             groups.push({ id: "quickmarks", heading: "Quickmarks", items: rq.items })
         if (urlItems.length && hasHit) groups.push({ id: "url", heading: "Open URL", items: urlItems })
-        groups.push({ id: "history", heading: "History", items: histItems })
-        groups.push({ id: "websites", heading: "Web Search", items: webItems })
+        if (q.length > 0 || ftab === "History")
+            groups.push({ id: "history", heading: "History", items: histItems })
+        if (ftab === "Web")
+            groups.push({ id: "websites", heading: "Web Search", items: webItems })
         // Actions on the current tab. Rankable like everything else
         // ("add"/"quickmark"/"mark", "save"/"sync"/"synced"). Quickmark hides
         // once the tab's already marked; save-to-Synced always offered.
-        if (cur) {
+        if (cur && q.length > 0) {
             const actionItems = []
             if (!quickmarks.some(m => m.url === cur.url)) {
                 actionItems.push({
@@ -571,6 +592,7 @@ PanelWindow {
         if (ftab === "Tabs") nonEmpty = nonEmpty.filter(g => g.id === "tabs")
         else if (ftab === "Pinned items") nonEmpty = nonEmpty.filter(g => g.id === "pinned")
         else if (ftab === "Quickmarks") nonEmpty = nonEmpty.filter(g => g.id === "quickmarks")
+        else if (ftab === "History") nonEmpty = nonEmpty.filter(g => g.id === "history")
         else if (ftab === "Web") nonEmpty = nonEmpty.filter(g => g.id === "websites")
 
         const out = []
@@ -836,16 +858,39 @@ PanelWindow {
     Rectangle {
         id: panel
         readonly property real targetWidth: Math.min(1120, parent.width - 96)
-        readonly property real targetHeight: Math.min(620, parent.height - 96)
+        readonly property real resultHeight: {
+            if (root.entries.length === 0) return 0
+            let total = 48
+            for (let i = 0; i < root.entries.length; i++) {
+                const entry = root.entries[i]
+                total += entry && entry.divider ? 36
+                    : String(entry && entry.subtitle || "").length > 0 ? 64 : 44
+            }
+            return Math.min(300, total)
+        }
+        readonly property real fixedHeight: 68 + 42
+            + (root.showFilmstrip ? 178 : 0)
+            + (root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 64 : 0)
+            + (PaletteState.chin.length > 0 ? 54 : 0)
+        readonly property real targetHeight: Math.min(620,
+            Math.min(parent.height - 96, fixedHeight + resultHeight))
         readonly property real targetX: (parent.width - targetWidth) / 2
-        readonly property real targetY: Math.max(48,
-            Math.min(parent.height - targetHeight - 48,
-                     parent.height * 0.70 - targetHeight / 2))
+        readonly property real targetBottom: Math.min(parent.height - 48,
+            parent.height * 0.70 + 310)
+        readonly property real settledY: Math.max(48, targetBottom - height)
         readonly property real startY: parent.height + 24
         x: targetX
-        y: startY + (targetY - startY) * root.slideProgress
+        y: startY + (settledY - startY) * root.slideProgress
         width: targetWidth
         height: targetHeight
+        Behavior on height {
+            enabled: root.open && root.slideProgress > 0.99
+            NumberAnimation {
+                duration: 200
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: [0.165, 0.84, 0.44, 1.0, 1.0, 1.0]
+            }
+        }
 
         color: Theme.bg
         // Radii measured off the reference palette: panel 24, field 15,
@@ -1024,9 +1069,12 @@ PanelWindow {
                 height: root.showFilmstrip ? 178 : 0
                 visible: height > 0
                 clip: true
+                transform: Translate { y: list.height }
 
-                readonly property var slotX: [0, 256, 512, 768, 1024]
                 property real wheelAccumulator: 0
+                readonly property real cardStride: 256
+                readonly property real scrollX: Math.max(0,
+                    (root.filmPos + 1) * cardStride - (width - 32))
                 readonly property var slotLight: [1, 0.62, 0.44, 0.30, 0.20]
 
                 function lerp(values, distance) {
@@ -1034,13 +1082,6 @@ PanelWindow {
                     const index = Math.floor(distance)
                     const amount = distance - index
                     return values[index] + (values[index + 1] - values[index]) * amount
-                }
-
-                function offsetX(offset) {
-                    const distance = Math.abs(offset)
-                    const x = distance <= 4 ? lerp(slotX, distance)
-                        : slotX[4] + (distance - 4) * 60
-                    return offset < 0 ? -x : x
                 }
 
                 Repeater {
@@ -1055,10 +1096,10 @@ PanelWindow {
                         readonly property real light: filmWrap.lerp(filmWrap.slotLight, distance)
                         width: 240
                         height: 135
-                        x: filmWrap.width / 2 + filmWrap.offsetX(offset) - width / 2
+                        x: 16 + index * filmWrap.cardStride - filmWrap.scrollX
                         y: (filmWrap.height - height) / 2
                         z: 10 - distance
-                        visible: distance <= 5
+                        visible: x + width > -16 && x < filmWrap.width + 16
                         opacity: distance <= 4 ? 1 : Math.max(0, 5 - distance)
 
                         Rectangle {
@@ -1189,6 +1230,7 @@ PanelWindow {
                 header: Item { width: 1; height: list.navigationMargin }
                 footer: Item { width: 1; height: list.navigationMargin }
                 boundsBehavior: Flickable.StopAtBounds
+                transform: Translate { y: -filmWrap.height }
 
                 Text {
                     visible: root.entries.length === 0 && !root.showFilmstrip
