@@ -102,6 +102,7 @@ PanelWindow {
         search.text = ""
         searchMode = null
         filterTab = 0
+        filterNavFocused = false
         scopedWindowId = null
         scopedWindowProfile = null
         previewTabId = PaletteState.currentTabId
@@ -149,7 +150,9 @@ PanelWindow {
     property string sessionQuickmarksKey: ""
     property int filmIndex: 0
     property real filmPos: 0
+    property bool filterNavFocused: false
 
+    readonly property var dockQuickmarks: open ? sessionQuickmarks : (PaletteState.quickmarks || [])
     readonly property var filmTabs: {
         const tabs = (open ? sessionTabs : (PaletteState.tabs || [])).slice()
         tabs.sort((a, b) => {
@@ -386,8 +389,8 @@ PanelWindow {
             // keys as the title, action as the muted subtitle — no prose
             const help = [
                 ["\u23ce   \u2303\u23ce", "open \u00b7 open in new tab"],
-                ["\u2303j   \u2303k", "move"],
-                ["\u2303h   \u2303l", "switch filter"],
+                ["\u2303h   \u2303l", "move open-tab focus"],
+                ["tab, then h/l", "focus / move filters"],
                 ["\u2303\u21e7h   \u2303\u21e7l", "window scope"],
                 ["\u2303w", "close tab"],
                 ["\u2303m", "quickmark tab"],
@@ -724,11 +727,25 @@ PanelWindow {
         const ctrl = event.modifiers & Qt.ControlModifier
         const shift = event.modifiers & Qt.ShiftModifier
         if (event.key === Qt.Key_Escape) {
-            PaletteState.hide(); event.accepted = true
+            if (root.filterNavFocused) root.filterNavFocused = false
+            else PaletteState.hide()
+            event.accepted = true
         } else if (event.key === Qt.Key_Tab && !root.searchMode) {
             const kw = root.query.trim().toLowerCase()
             const t = root.webTemplates.find(t => t.key === kw)
-            if (t) { root.searchMode = t; search.text = "" }
+            if (t && kw.length > 0) { root.searchMode = t; search.text = "" }
+            else if (kw.length === 0) root.filterNavFocused = !root.filterNavFocused
+            event.accepted = true
+        } else if (root.filterNavFocused && !ctrl
+                   && (event.key === Qt.Key_H || event.key === Qt.Key_Left
+                       || event.key === Qt.Key_L || event.key === Qt.Key_Right)) {
+            const dir = (event.key === Qt.Key_L || event.key === Qt.Key_Right) ? 1 : -1
+            const n = root.filterTabs.length - 1
+            root.filterTab = (root.filterTab + dir + n) % n
+            event.accepted = true
+        } else if (root.filterNavFocused
+                   && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+            root.filterNavFocused = false
             event.accepted = true
         } else if (event.key === Qt.Key_Backspace && root.searchMode && search.text.length === 0) {
             root.searchMode = null
@@ -745,9 +762,9 @@ PanelWindow {
                 root.runSelected(!!ctrl)
             }
             event.accepted = true
-        } else if (root.showFilmstrip && (event.key === Qt.Key_Left || (event.key === Qt.Key_K && ctrl))) {
+        } else if (root.showFilmstrip && ctrl && event.key === Qt.Key_H) {
             root.moveFilm(-1); event.accepted = true
-        } else if (root.showFilmstrip && (event.key === Qt.Key_Right || (event.key === Qt.Key_J && ctrl))) {
+        } else if (root.showFilmstrip && ctrl && event.key === Qt.Key_L) {
             root.moveFilm(1); event.accepted = true
         } else if (event.key === Qt.Key_Down || (event.key === Qt.Key_J && ctrl)) {
             root.step(1); event.accepted = true
@@ -903,6 +920,7 @@ PanelWindow {
                     font.pixelSize: 18
                     clip: true
                     Keys.onPressed: event => root.handleKeys(event)
+                    onTextChanged: if (text.length > 0) root.filterNavFocused = false
                     Text {
                         visible: !search.text
                         text: PaletteState.daemonConnected ? "Type to search..." : "palette-daemon offline…"
@@ -957,6 +975,8 @@ PanelWindow {
                             radius: 10
                             color: isActive ? Theme.selection
                                  : tabHover.hovered ? Theme.surface : "transparent"
+                            border.width: root.filterNavFocused && isActive ? 2 : 0
+                            border.color: Theme.cursor
                             Text {
                                 id: tabLabel
                                 anchors.centerIn: parent
@@ -998,11 +1018,11 @@ PanelWindow {
             Item {
                 id: filmWrap
                 width: parent.width
-                height: root.showFilmstrip ? 220 : 0
+                height: root.showFilmstrip ? 178 : 0
                 visible: height > 0
                 clip: true
 
-                readonly property var slotX: [0, 324, 648, 972, 1296]
+                readonly property var slotX: [0, 256, 512, 768, 1024]
                 property real wheelAccumulator: 0
                 readonly property var slotLight: [1, 0.62, 0.44, 0.30, 0.20]
 
@@ -1030,8 +1050,8 @@ PanelWindow {
                         readonly property real distance: Math.abs(offset)
                         readonly property bool focused: index === root.filmIndex
                         readonly property real light: filmWrap.lerp(filmWrap.slotLight, distance)
-                        width: 300
-                        height: 169
+                        width: 240
+                        height: 135
                         x: filmWrap.width / 2 + filmWrap.offsetX(offset) - width / 2
                         y: (filmWrap.height - height) / 2
                         z: 10 - distance
@@ -1069,7 +1089,7 @@ PanelWindow {
                                 color: Theme.surface2
                                 Image {
                                     anchors.centerIn: parent
-                                    width: 30
+                                    width: 24
                                     height: width
                                     source: filmCard.modelData.faviconPath
                                         ? "file://" + filmCard.modelData.faviconPath : ""
@@ -1088,7 +1108,7 @@ PanelWindow {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
-                                height: 40
+                                height: 32
                                 color: Qt.rgba(0, 0, 0, 0.68)
                                 Text {
                                     anchors.left: parent.left
@@ -1100,7 +1120,7 @@ PanelWindow {
                                     color: "#ffffff"
                                     elide: Text.ElideRight
                                     font.family: root.sans
-                                    font.pixelSize: 13
+                                    font.pixelSize: 12
                                     font.weight: 500
                                 }
                             }
@@ -1108,8 +1128,8 @@ PanelWindow {
 
                         Rectangle {
                             anchors.fill: parent
-                            anchors.margins: -4
-                            radius: 17
+                            anchors.margins: -3
+                            radius: 16
                             color: "transparent"
                             border.width: 2
                             border.color: Theme.cursor
@@ -1157,7 +1177,8 @@ PanelWindow {
             ListView {
                 id: list
                 width: parent.width
-                height: parent.height - inputWrap.height - tabsWrap.height - filmWrap.height - chinWrap.height
+                height: parent.height - inputWrap.height - tabsWrap.height - filmWrap.height
+                    - chinWrap.height - (root.dockQuickmarks.length > 0 ? 64 : 0)
                 clip: true
                 model: root.entries
                 readonly property int navigationMargin: 24
@@ -1404,6 +1425,77 @@ PanelWindow {
                             }
                             HoverHandler { id: pillHover }
                             TapHandler { onTapped: root.selectChinWindow(pill.modelData) }
+                        }
+                    }
+                }
+            }
+
+            Item {
+                id: quickmarkDockWrap
+                width: parent.width
+                height: root.dockQuickmarks.length > 0 ? 64 : 0
+                visible: height > 0
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: dockRow.implicitWidth + 14
+                    height: 50
+                    radius: 16
+                    color: Theme.surface1
+                    border.width: 1
+                    border.color: root.panelBorder
+
+                    Row {
+                        id: dockRow
+                        anchors.centerIn: parent
+                        spacing: 4
+
+                        Repeater {
+                            model: root.dockQuickmarks
+                            Item {
+                                id: dockSlot
+                                required property var modelData
+                                width: 36
+                                height: 36
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 9
+                                    color: dockHover.hovered ? Theme.selection : "transparent"
+
+                                    Image {
+                                        id: dockIcon
+                                        anchors.centerIn: parent
+                                        width: 22
+                                        height: 22
+                                        source: dockSlot.modelData.faviconPath
+                                            ? "file://" + dockSlot.modelData.faviconPath : ""
+                                        sourceSize.width: 44
+                                        sourceSize.height: 44
+                                        visible: status === Image.Ready
+                                    }
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        visible: dockIcon.status !== Image.Ready
+                                        text: String(dockSlot.modelData.name || "?").slice(0, 1).toUpperCase()
+                                        color: Theme.fg_muted
+                                        font.family: root.sans
+                                        font.pixelSize: 13
+                                        font.weight: 600
+                                    }
+                                }
+
+                                HoverHandler { id: dockHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler {
+                                    onTapped: root.runEntry({
+                                        kind: "quickmark",
+                                        title: dockSlot.modelData.name || "",
+                                        url: dockSlot.modelData.url || "",
+                                        faviconPath: dockSlot.modelData.faviconPath || ""
+                                    }, false)
+                                }
+                            }
                         }
                     }
                 }
