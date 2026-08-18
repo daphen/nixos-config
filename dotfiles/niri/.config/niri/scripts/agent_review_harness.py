@@ -87,7 +87,15 @@ def adopt_or_create_worktree(repo: Path, pr: int, expected_sha: str, wt: Path) -
             raise RuntimeError(f"existing review worktree is dirty: {adopted}")
         actual = git(["rev-parse", "HEAD"], adopted)
         if actual != expected_sha:
-            raise RuntimeError(f"existing review worktree HEAD {actual} != PR head {expected_sha}")
+            ancestor = run(
+                ["git", "-C", str(adopted), "merge-base", "--is-ancestor", actual, expected_sha],
+                check=False,
+            )
+            if ancestor.returncode:
+                raise RuntimeError(f"existing review worktree HEAD {actual} is not behind PR head {expected_sha}")
+            git(["reset", "--hard", expected_sha], adopted)
+            if git(["rev-parse", "HEAD"], adopted) != expected_sha:
+                raise RuntimeError("updated review worktree does not match PR head")
         lfs = run(["git", "-C", str(adopted), "lfs", "fsck"], timeout=120, check=False)
         if lfs.returncode:
             raise RuntimeError(f"existing review worktree failed Git LFS fsck: {lfs.stderr.strip()}")
