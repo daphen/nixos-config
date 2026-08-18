@@ -14,31 +14,66 @@ import "../QsLib" as Lib
 PanelWindow {
     id: root
 
+    screen: {
+        const _ = NiriState.version
+        const output = NiriState.focusedOutput()
+        const screens = Quickshell.screens
+        for (let i = 0; i < screens.length; i++)
+            if (screens[i].name === output) return screens[i]
+        return screens.length ? screens[0] : null
+    }
+
     property bool active: false
-    property real morphProgress: open ? 1 : 0
-    property real morphOriginX: width / 2 - 14
-    property real morphOriginY: height - 10
+    property real morphProgress: 0
+    property real morphOriginX: 0
+    property real morphOriginY: 0
+    property var lastFocusGeom: null
+    readonly property var liveFocusGeom: {
+        const _ = NiriState.version
+        return NiriState.focusedWindowGeom()
+    }
     visible: active
     readonly property bool open: PaletteState.open
 
-    Behavior on morphProgress {
-        NumberAnimation {
-            duration: 420
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: [0.16, 1, 0.3, 1, 1, 1]
-        }
+    onLiveFocusGeomChanged: if (!open && liveFocusGeom !== null)
+        lastFocusGeom = liveFocusGeom
+    Component.onCompleted: if (liveFocusGeom !== null) lastFocusGeom = liveFocusGeom
+
+    NumberAnimation {
+        id: openMorph
+        target: root
+        property: "morphProgress"
+        from: 0
+        to: 1
+        duration: 420
+        easing.type: Easing.BezierSpline
+        easing.bezierCurve: [0.16, 1, 0.3, 1, 1, 1]
+    }
+    NumberAnimation {
+        id: closeMorph
+        target: root
+        property: "morphProgress"
+        to: 0
+        duration: 300
+        easing.type: Easing.InCubic
     }
 
     onOpenChanged: {
         if (open) {
-            const geom = NiriState.focusedWindowGeom()
-            morphOriginX = geom ? geom.x + geom.w / 2 - 14 : width / 2 - 14
+            const geom = lastFocusGeom || liveFocusGeom
+            const screenWidth = root.screen ? root.screen.width : root.width
+            const screenHeight = root.screen ? root.screen.height : root.height
+            morphOriginX = geom ? geom.x + geom.w / 2 : screenWidth / 2
             morphOriginY = geom
-                ? Math.min(height - 5, (geom.y + geom.h + height) / 2 - 2.5)
-                : height - 10
+                ? Math.min(screenHeight - 5,
+                           (geom.y + geom.h + screenHeight) / 2 - 2.5)
+                : screenHeight - 10
             closeDelay.stop()
+            closeMorph.stop()
             reassert.stop()
             active = true
+            morphProgress = 0
+            openMorph.restart()
             resetTransient()
             PaletteState.refresh()
             search.forceActiveFocus()
@@ -48,6 +83,9 @@ PanelWindow {
                 Qt.callLater(() => list.positionViewAtBeginning())
             })
         } else {
+            openMorph.stop()
+            closeMorph.from = morphProgress
+            closeMorph.restart()
             closeDelay.restart()
             if (restoreTabOnClose) {
                 const original = sessionTabs.find(t => t.id === sessionCurrentTabId)
@@ -805,9 +843,12 @@ PanelWindow {
         readonly property real targetBottom: targetY + targetHeight
         readonly property real morphBottom: root.morphOriginY + 5
             + (targetBottom - root.morphOriginY - 5) * root.morphProgress
-        x: root.morphOriginX + (targetX - root.morphOriginX) * root.morphProgress
+        readonly property real targetCenterX: targetX + targetWidth / 2
+        readonly property real morphCenterX: root.morphOriginX
+            + (targetCenterX - root.morphOriginX) * root.morphProgress
         width: 28 + (targetWidth - 28) * root.morphProgress
         height: 5 + (targetHeight - 5) * root.morphProgress
+        x: morphCenterX - width / 2
         y: morphBottom - height
 
         color: Theme.bg
@@ -829,6 +870,7 @@ PanelWindow {
             anchors.fill: parent
             enabled: opacity > 0.99
             opacity: Math.max(0, Math.min(1, (root.morphProgress - 0.68) / 0.32))
+            transform: Translate { y: (1 - root.morphProgress) * 72 }
             Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
             // ── input_wrap: icon + borderless input + ESC badge ──────

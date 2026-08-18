@@ -78,7 +78,7 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "qs-window-focus-dot"
-    mask: Region { item: dot }
+    mask: Region { item: hoverTarget }
     visible: effGeom !== null
 
     Timer {
@@ -115,15 +115,26 @@ PanelWindow {
         Behavior on x { enabled: !root.warping; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         Behavior on y { enabled: !root.warping; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
-        HoverHandler {
-            onHoveredChanged: {
+    }
+
+    Item {
+        id: hoverTarget
+        x: dot.x - 10
+        y: dot.y - 8
+        width: dot.width + 20
+        height: dot.height + 16
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+            onEntered: {
                 const app = NiriState.focusedAppId()
-                if (hovered && !PaletteState.open
+                if (!PaletteState.open
                     && (app === "browser-personal" || app === "browser-work"))
                     hoverDwell.restart()
-                else
-                    hoverDwell.stop()
             }
+            onExited: hoverDwell.stop()
         }
     }
 }
