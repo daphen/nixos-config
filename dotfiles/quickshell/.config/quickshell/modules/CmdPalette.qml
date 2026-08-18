@@ -103,6 +103,7 @@ PanelWindow {
         searchMode = null
         filterTab = 0
         filterNavFocused = false
+        filmFocused = true
         scopedWindowId = null
         scopedWindowProfile = null
         previewTabId = PaletteState.currentTabId
@@ -150,6 +151,7 @@ PanelWindow {
     property string sessionQuickmarksKey: ""
     property int filmIndex: 0
     property real filmPos: 0
+    property bool filmFocused: true
     property bool filterNavFocused: false
 
     readonly property var dockQuickmarks: open ? sessionQuickmarks : (PaletteState.quickmarks || [])
@@ -201,6 +203,7 @@ PanelWindow {
 
     function moveFilm(delta) {
         if (filmTabs.length === 0) return
+        filmFocused = true
         filmIndex = Math.max(0, Math.min(filmTabs.length - 1, filmIndex + delta))
         previewTab(filmEntry(filmIndex))
     }
@@ -208,18 +211,33 @@ PanelWindow {
     function focusFilmMatch() {
         if (!showFilmstrip) return
         const q = query.trim().toLowerCase()
-        if (!q) return
-        let bestIndex = -1
-        let bestScore = 0
+        if (!q) { filmFocused = true; return }
+        let bestTabIndex = -1
+        let bestTabScore = 0
         for (let i = 0; i < filmTabs.length; i++) {
             const tab = filmTabs[i]
             const value = String(tab.title || "") + " " + String(tab.url || "")
             const score = scoreMatch(q, value.toLowerCase())
-            if (score > bestScore) { bestScore = score; bestIndex = i }
+            if (score > bestTabScore) { bestTabScore = score; bestTabIndex = i }
         }
-        if (bestIndex < 0) return
-        filmIndex = bestIndex
-        const entry = filmEntry(bestIndex)
+        let bestResultIndex = -1
+        let bestResultScore = 0
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i]
+            if (!entry || entry.divider) continue
+            const value = String(entry.title || "") + " "
+                + String(entry.subtitle || "") + " " + String(entry.url || "")
+            const score = scoreMatch(q, value.toLowerCase())
+            if (score > bestResultScore) {
+                bestResultScore = score
+                bestResultIndex = i
+            }
+        }
+        if (bestResultIndex >= 0) selectedIndex = bestResultIndex
+        filmFocused = bestTabIndex >= 0 && bestTabScore > bestResultScore
+        if (!filmFocused) return
+        filmIndex = bestTabIndex
+        const entry = filmEntry(bestTabIndex)
         if (entry && entry.tabId !== previewTabId) previewTab(entry)
     }
 
@@ -606,6 +624,7 @@ PanelWindow {
 
     onEntriesChanged: {
         if (selectedIndex >= entries.length) selectedIndex = firstSelectable()
+        Qt.callLater(focusFilmMatch)
         if (preservingCloseScroll) {
             Qt.callLater(() => Qt.callLater(() => {
                 const minY = list.originY
@@ -651,12 +670,19 @@ PanelWindow {
     function step(dir) {
         const n = entries.length
         if (n === 0) return
+        if (filmFocused) {
+            filmFocused = false
+            ensureSelectedVisible(selectedIndex)
+            return
+        }
         let i = selectedIndex + dir
         while (i >= 0 && i < n && entries[i] && entries[i].divider) i += dir
         if (i >= 0 && i < n) {
             selectedIndex = i
             previewTab(entries[i])
             ensureSelectedVisible(i)
+        } else if (dir < 0 && showFilmstrip) {
+            filmFocused = true
         }
     }
 
@@ -683,7 +709,7 @@ PanelWindow {
     }
 
     function runSelected(inNewTab) {
-        if (showFilmstrip) {
+        if (showFilmstrip && (filmFocused || entries.length === 0)) {
             runEntry(filmEntry(filmIndex), inNewTab)
             return
         }
@@ -693,7 +719,7 @@ PanelWindow {
     }
 
     function actionEntry() {
-        if (showFilmstrip) return filmEntry(filmIndex)
+        if (showFilmstrip && (filmFocused || entries.length === 0)) return filmEntry(filmIndex)
         const idx = Math.max(0, Math.min(selectedIndex, entries.length - 1))
         return entries[idx]
     }
@@ -787,9 +813,9 @@ PanelWindow {
                 root.runSelected(!!ctrl)
             }
             event.accepted = true
-        } else if (root.showFilmstrip && ctrl && event.key === Qt.Key_H) {
+        } else if (root.showFilmstrip && ctrl && !shift && event.key === Qt.Key_H) {
             root.moveFilm(-1); event.accepted = true
-        } else if (root.showFilmstrip && ctrl && event.key === Qt.Key_L) {
+        } else if (root.showFilmstrip && ctrl && !shift && event.key === Qt.Key_L) {
             root.moveFilm(1); event.accepted = true
         } else if (event.key === Qt.Key_Down || (event.key === Qt.Key_J && ctrl)) {
             root.step(1); event.accepted = true
@@ -1073,7 +1099,10 @@ PanelWindow {
 
                 property real wheelAccumulator: 0
                 readonly property real cardStride: 256
-                readonly property real scrollX: Math.max(0,
+                readonly property real contentWidth: root.filmTabs.length * cardStride - 16
+                readonly property real baseX: contentWidth <= width - 32
+                    ? (width - contentWidth) / 2 : 16
+                readonly property real scrollX: contentWidth <= width - 32 ? 0 : Math.max(0,
                     (root.filmPos + 1) * cardStride - (width - 32))
                 readonly property var slotLight: [1, 0.62, 0.44, 0.30, 0.20]
 
@@ -1096,7 +1125,7 @@ PanelWindow {
                         readonly property real light: filmWrap.lerp(filmWrap.slotLight, distance)
                         width: 240
                         height: 135
-                        x: 16 + index * filmWrap.cardStride - filmWrap.scrollX
+                        x: filmWrap.baseX + index * filmWrap.cardStride - filmWrap.scrollX
                         y: (filmWrap.height - height) / 2
                         z: 10 - distance
                         visible: x + width > -16 && x < filmWrap.width + 16
@@ -1177,11 +1206,12 @@ PanelWindow {
                             color: "transparent"
                             border.width: 2
                             border.color: Theme.cursor
-                            visible: filmCard.focused
+                            visible: filmCard.focused && root.filmFocused
                         }
 
                         TapHandler {
                             onTapped: {
+                                root.filmFocused = true
                                 if (filmCard.focused) root.runEntry(root.filmEntry(filmCard.index), false)
                                 else {
                                     root.filmIndex = filmCard.index
@@ -1210,7 +1240,7 @@ PanelWindow {
                 }
 
                 Rectangle {
-                    anchors.bottom: parent.bottom
+                    anchors.top: parent.top
                     width: parent.width
                     height: 1
                     color: Theme.hairline
@@ -1296,12 +1326,13 @@ PanelWindow {
                         anchors.leftMargin: 14
                         anchors.rightMargin: 14
                         radius: 13
-                        color: rowItem.index === root.selectedIndex ? Theme.selection
-                             : rowItem.isPreviewedTab ? Theme.surface2
-                             : rowHover.hovered ? Theme.surface : "transparent"
+                        color: rowItem.index === root.selectedIndex && !root.filmFocused
+                            ? Theme.selection
+                            : rowItem.isPreviewedTab ? Theme.surface2
+                            : rowHover.hovered ? Theme.surface : "transparent"
                         border.width: 1
-                        border.color: rowItem.index === root.selectedIndex || rowItem.isPreviewedTab
-                            ? Theme.hairline : "transparent"
+                        border.color: (rowItem.index === root.selectedIndex && !root.filmFocused)
+                            || rowItem.isPreviewedTab ? Theme.hairline : "transparent"
 
                         Rectangle {
                             id: iconBox
@@ -1370,12 +1401,17 @@ PanelWindow {
                             id: rowHover
                             onPointChanged: {
                                 if (!hovered || rowItem.isDivider) return
+                                root.filmFocused = false
                                 root.selectedIndex = rowItem.index
                                 root.previewTab(rowItem.modelData)
                             }
                         }
                         TapHandler {
-                            onTapped: { root.selectedIndex = rowItem.index; root.runSelected(false) }
+                            onTapped: {
+                                root.filmFocused = false
+                                root.selectedIndex = rowItem.index
+                                root.runSelected(false)
+                            }
                         }
                     }
                 }
