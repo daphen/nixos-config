@@ -834,8 +834,8 @@ PanelWindow {
 
     Rectangle {
         id: panel
-        readonly property real targetWidth: Math.min(780, parent.width - 96)
-        readonly property real targetHeight: Math.min(680, parent.height - 96)
+        readonly property real targetWidth: Math.min(1120, parent.width - 96)
+        readonly property real targetHeight: Math.min(620, parent.height - 96)
         readonly property real targetX: (parent.width - targetWidth) / 2
         readonly property real targetY: Math.max(48,
             Math.min(parent.height - targetHeight - 48,
@@ -1033,13 +1033,11 @@ PanelWindow {
             Item {
                 id: filmWrap
                 width: parent.width
-                height: root.showFilmstrip ? 242 : 0
+                height: root.showFilmstrip ? 220 : 0
                 visible: height > 0
                 clip: true
 
-                readonly property var slotW: [340, 210, 150, 110, 80]
-                readonly property var slotH: [190, 118, 84, 62, 45]
-                readonly property var slotX: [0, 250, 420, 545, 640]
+                readonly property var slotX: [0, 264, 528, 792, 1056]
                 readonly property var slotLight: [1, 0.62, 0.44, 0.30, 0.20]
 
                 function lerp(values, distance) {
@@ -1066,8 +1064,8 @@ PanelWindow {
                         readonly property real distance: Math.abs(offset)
                         readonly property bool focused: index === root.filmIndex
                         readonly property real light: filmWrap.lerp(filmWrap.slotLight, distance)
-                        width: filmWrap.lerp(filmWrap.slotW, distance)
-                        height: filmWrap.lerp(filmWrap.slotH, distance)
+                        width: 300
+                        height: 169
                         x: filmWrap.width / 2 + filmWrap.offsetX(offset) - width / 2
                         y: (filmWrap.height - height) / 2
                         z: 10 - distance
@@ -1105,7 +1103,7 @@ PanelWindow {
                                 color: Theme.surface2
                                 Image {
                                     anchors.centerIn: parent
-                                    width: filmCard.focused ? 36 : 24
+                                    width: 30
                                     height: width
                                     source: filmCard.modelData.faviconPath
                                         ? "file://" + filmCard.modelData.faviconPath : ""
@@ -1124,7 +1122,7 @@ PanelWindow {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
-                                height: filmCard.focused ? 46 : 30
+                                height: 40
                                 color: Qt.rgba(0, 0, 0, 0.68)
                                 Text {
                                     anchors.left: parent.left
@@ -1136,7 +1134,7 @@ PanelWindow {
                                     color: "#ffffff"
                                     elide: Text.ElideRight
                                     font.family: root.sans
-                                    font.pixelSize: filmCard.focused ? 14 : 11
+                                    font.pixelSize: 13
                                     font.weight: 500
                                 }
                             }
