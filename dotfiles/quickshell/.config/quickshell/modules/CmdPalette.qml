@@ -1335,6 +1335,77 @@ PanelWindow {
                 }
             }
 
+            Item {
+                id: quickmarkDockWrap
+                width: parent.width
+                height: root.dockQuickmarks.length > 0 ? 64 : 0
+                visible: height > 0
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: dockRow.implicitWidth + 14
+                    height: 50
+                    radius: 16
+                    color: Theme.surface1
+                    border.width: 1
+                    border.color: root.panelBorder
+
+                    Row {
+                        id: dockRow
+                        anchors.centerIn: parent
+                        spacing: 4
+
+                        Repeater {
+                            model: root.dockQuickmarks
+                            Item {
+                                id: dockSlot
+                                required property var modelData
+                                width: 36
+                                height: 36
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 9
+                                    color: dockHover.hovered ? Theme.selection : "transparent"
+
+                                    Image {
+                                        id: dockIcon
+                                        anchors.centerIn: parent
+                                        width: 22
+                                        height: 22
+                                        source: dockSlot.modelData.faviconPath
+                                            ? "file://" + dockSlot.modelData.faviconPath : ""
+                                        sourceSize.width: 44
+                                        sourceSize.height: 44
+                                        visible: status === Image.Ready
+                                    }
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        visible: dockIcon.status !== Image.Ready
+                                        text: String(dockSlot.modelData.name || "?").slice(0, 1).toUpperCase()
+                                        color: Theme.fg_muted
+                                        font.family: root.sans
+                                        font.pixelSize: 13
+                                        font.weight: 600
+                                    }
+                                }
+
+                                HoverHandler { id: dockHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler {
+                                    onTapped: root.runEntry({
+                                        kind: "quickmark",
+                                        title: dockSlot.modelData.name || "",
+                                        url: dockSlot.modelData.url || "",
+                                        faviconPath: dockSlot.modelData.faviconPath || ""
+                                    }, false)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── chin: surface0 band + top border + pills ─────────────
             Item {
                 id: chinWrap
@@ -1430,76 +1501,6 @@ PanelWindow {
                 }
             }
 
-            Item {
-                id: quickmarkDockWrap
-                width: parent.width
-                height: root.dockQuickmarks.length > 0 ? 64 : 0
-                visible: height > 0
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: dockRow.implicitWidth + 14
-                    height: 50
-                    radius: 16
-                    color: Theme.surface1
-                    border.width: 1
-                    border.color: root.panelBorder
-
-                    Row {
-                        id: dockRow
-                        anchors.centerIn: parent
-                        spacing: 4
-
-                        Repeater {
-                            model: root.dockQuickmarks
-                            Item {
-                                id: dockSlot
-                                required property var modelData
-                                width: 36
-                                height: 36
-
-                                Rectangle {
-                                    anchors.fill: parent
-                                    radius: 9
-                                    color: dockHover.hovered ? Theme.selection : "transparent"
-
-                                    Image {
-                                        id: dockIcon
-                                        anchors.centerIn: parent
-                                        width: 22
-                                        height: 22
-                                        source: dockSlot.modelData.faviconPath
-                                            ? "file://" + dockSlot.modelData.faviconPath : ""
-                                        sourceSize.width: 44
-                                        sourceSize.height: 44
-                                        visible: status === Image.Ready
-                                    }
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        visible: dockIcon.status !== Image.Ready
-                                        text: String(dockSlot.modelData.name || "?").slice(0, 1).toUpperCase()
-                                        color: Theme.fg_muted
-                                        font.family: root.sans
-                                        font.pixelSize: 13
-                                        font.weight: 600
-                                    }
-                                }
-
-                                HoverHandler { id: dockHover; cursorShape: Qt.PointingHandCursor }
-                                TapHandler {
-                                    onTapped: root.runEntry({
-                                        kind: "quickmark",
-                                        title: dockSlot.modelData.name || "",
-                                        url: dockSlot.modelData.url || "",
-                                        faviconPath: dockSlot.modelData.faviconPath || ""
-                                    }, false)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }
