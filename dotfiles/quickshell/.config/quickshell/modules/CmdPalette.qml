@@ -894,7 +894,7 @@ PanelWindow {
             }
             return Math.min(300, total)
         }
-        readonly property real fixedHeight: 68 + 42
+        readonly property real fixedHeight: 68
             + (root.showFilmstrip ? 178 : 0)
             + (root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 64 : 0)
             + (PaletteState.chin.length > 0 ? 54 : 0)
@@ -1024,68 +1024,6 @@ PanelWindow {
                         font.weight: 500
                         font.letterSpacing: 0.5
                     }
-                }
-            }
-
-            // ── filter_tabs: pill buttons + hairline ─────────────────
-            Item {
-                id: tabsWrap
-                width: parent.width
-                height: 42
-
-                Row {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
-                    Repeater {
-                        model: root.filterTabs.filter(t => t !== "?")
-                        Rectangle {
-                            required property var modelData
-                            required property int index
-                            readonly property bool isActive: index === root.filterTab
-                            width: tabLabel.implicitWidth + 16
-                            height: 26
-                            radius: 10
-                            color: isActive ? Theme.selection
-                                 : tabHover.hovered ? Theme.surface : "transparent"
-                            border.width: root.filterNavFocused && isActive ? 2 : 0
-                            border.color: Theme.cursor
-                            Text {
-                                id: tabLabel
-                                anchors.centerIn: parent
-                                text: String(parent.modelData)
-                                color: parent.isActive ? Theme.fg : Theme.fg_muted
-                                font.family: root.sans
-                                font.pixelSize: 12
-                                font.weight: 500
-                            }
-                            HoverHandler { id: tabHover }
-                            TapHandler { onTapped: root.filterTab = parent.index }
-                        }
-                    }
-                }
-
-                Lib.KeyCap {
-                    readonly property bool helpActive: root.filterTab === root.filterTabs.length - 1
-                    anchors.right: parent.right
-                    anchors.rightMargin: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "?"
-                    textColor: helpActive ? Theme.fg
-                             : Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
-                    border.color: helpActive ? Theme.fg_muted : Theme.hairline
-                    HoverHandler { cursorShape: Qt.PointingHandCursor }
-                    TapHandler {
-                        onTapped: root.filterTab = parent.helpActive ? 0 : root.filterTabs.length - 1
-                    }
-                }
-
-                Rectangle {
-                    anchors.bottom: parent.bottom
-                    width: parent.width
-                    height: 1
-                    color: Theme.hairline
                 }
             }
 
@@ -1251,8 +1189,7 @@ PanelWindow {
             ListView {
                 id: list
                 width: parent.width
-                height: parent.height - inputWrap.height - tabsWrap.height - filmWrap.height
-                    - chinWrap.height
+                height: parent.height - inputWrap.height - filmWrap.height - chinWrap.height
                     - (root.showQuickmarkDock && root.dockQuickmarks.length > 0 ? 64 : 0)
                 clip: true
                 model: root.entries
@@ -1513,15 +1450,69 @@ PanelWindow {
                 }
 
                 Row {
+                    id: chinTabsRow
+                    anchors.right: parent.right
+                    anchors.rightMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+
+                    Repeater {
+                        model: root.filterTabs.filter(t => t !== "?")
+                        Rectangle {
+                            required property var modelData
+                            required property int index
+                            readonly property bool isActive: index === root.filterTab
+                            width: chinTabLabel.implicitWidth + 16
+                            height: 26
+                            radius: 10
+                            color: isActive ? Theme.selection
+                                 : chinTabHover.hovered ? Theme.surface : "transparent"
+                            border.width: root.filterNavFocused && isActive ? 2 : 0
+                            border.color: Theme.cursor
+                            Text {
+                                id: chinTabLabel
+                                anchors.centerIn: parent
+                                text: String(parent.modelData)
+                                color: parent.isActive ? Theme.fg : Theme.fg_muted
+                                font.family: root.sans
+                                font.pixelSize: 12
+                                font.weight: 500
+                            }
+                            HoverHandler { id: chinTabHover }
+                            TapHandler { onTapped: root.filterTab = parent.index }
+                        }
+                    }
+
+                    Item {
+                        width: 26
+                        height: 26
+                        Lib.KeyCap {
+                            readonly property bool helpActive: root.filterTab === root.filterTabs.length - 1
+                            anchors.fill: parent
+                            text: "?"
+                            textColor: helpActive ? Theme.fg
+                                : Qt.tint(Theme.fg_muted,
+                                    Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
+                            border.color: helpActive ? Theme.fg_muted : Theme.hairline
+                            HoverHandler { cursorShape: Qt.PointingHandCursor }
+                            TapHandler {
+                                onTapped: root.filterTab = parent.helpActive
+                                    ? 0 : root.filterTabs.length - 1
+                            }
+                        }
+                    }
+                }
+
+                Row {
                     id: chinRow
                     anchors.left: parent.left
                     anchors.leftMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
-                    // chips share the panel width — three fixed 220px pills overflowed
-                    readonly property int maxPill: Math.floor(
-                        (chinWrap.width - 28 - spacing * Math.max(0, PaletteState.chin.length - 1))
-                        / Math.max(1, PaletteState.chin.length))
+                    readonly property int availableWidth: Math.max(0, chinTabsRow.x - 28)
+                    readonly property int maxPill: Math.max(60, Math.floor(
+                        (availableWidth - spacing * Math.max(0, PaletteState.chin.length - 1))
+                        / Math.max(1, PaletteState.chin.length)))
                     Repeater {
                         model: PaletteState.chin
                         Rectangle {
