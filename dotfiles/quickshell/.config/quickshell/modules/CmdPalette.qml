@@ -60,8 +60,12 @@ PanelWindow {
             search.forceActiveFocus()
             Qt.callLater(() => {
                 search.forceActiveFocus()
+                search.selectAll()
                 list.positionViewAtBeginning()
-                Qt.callLater(() => list.positionViewAtBeginning())
+                Qt.callLater(() => {
+                    search.selectAll()
+                    list.positionViewAtBeginning()
+                })
             })
         } else {
             openSlide.stop()
@@ -99,7 +103,6 @@ PanelWindow {
     }
 
     function resetTransient() {
-        search.text = ""
         searchMode = null
         filterTab = 0
         filterNavFocused = false
@@ -110,6 +113,11 @@ PanelWindow {
         restoreTabOnClose = true
         committedTabId = null
         captureTabOrder()
+        const current = sessionTabs.find(tab => tab.id === sessionCurrentTabId)
+        settingAddress = true
+        addressPristine = !!(current && current.url)
+        search.text = current && current.url ? current.url : ""
+        settingAddress = false
         selectedIndex = firstSelectable()
         list.positionViewAtBeginning()
         Qt.callLater(() => { syncFilmIndex(); filmPos = filmIndex })
@@ -132,7 +140,9 @@ PanelWindow {
     // ── ranking / grouping ────────────────────────────────────────────
     readonly property var filterTabs: ["All", "Tabs", "Pinned items", "Quickmarks", "History", "Web", "?"]
     property int filterTab: 0
-    property string query: search ? search.text : ""
+    property bool settingAddress: false
+    property bool addressPristine: false
+    property string query: addressPristine ? "" : (search ? search.text : "")
     property var scopedWindowId: null
     property var scopedWindowProfile: null
     property int selectedIndex: 0
@@ -201,10 +211,21 @@ PanelWindow {
         if (!open || Math.abs(filmPos - filmIndex) > filmTabs.length) filmPos = filmIndex
     }
 
+    function syncAddressToFilm(index) {
+        const tab = filmTabs[index]
+        if (!tab || !tab.url) return
+        settingAddress = true
+        addressPristine = true
+        search.text = tab.url
+        settingAddress = false
+        Qt.callLater(() => search.selectAll())
+    }
+
     function moveFilm(delta) {
         if (filmTabs.length === 0) return
         filmFocused = true
         filmIndex = Math.max(0, Math.min(filmTabs.length - 1, filmIndex + delta))
+        syncAddressToFilm(filmIndex)
         previewTab(filmEntry(filmIndex))
     }
 
@@ -994,7 +1015,10 @@ PanelWindow {
                     font.pixelSize: 18
                     clip: true
                     Keys.onPressed: event => root.handleKeys(event)
-                    onTextChanged: if (text.length > 0) root.filterNavFocused = false
+                    onTextChanged: {
+                        if (text.length > 0) root.filterNavFocused = false
+                        if (!root.settingAddress) root.addressPristine = false
+                    }
                     Text {
                         visible: !search.text
                         text: PaletteState.daemonConnected ? "Type to search..." : "palette-daemon offline…"
@@ -1165,6 +1189,7 @@ PanelWindow {
                                 if (filmCard.focused) root.runEntry(root.filmEntry(filmCard.index), false)
                                 else {
                                     root.filmIndex = filmCard.index
+                                    root.syncAddressToFilm(filmCard.index)
                                     root.previewTab(root.filmEntry(filmCard.index))
                                 }
                             }
