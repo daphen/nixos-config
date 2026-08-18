@@ -24,56 +24,37 @@ PanelWindow {
     }
 
     property bool active: false
-    property real morphProgress: 0
-    property real morphOriginX: 0
-    property real morphOriginY: 0
-    property var lastFocusGeom: null
-    readonly property var liveFocusGeom: {
-        const _ = NiriState.version
-        return NiriState.focusedWindowGeom()
-    }
+    property real slideProgress: 0
     visible: active
     readonly property bool open: PaletteState.open
 
-    onLiveFocusGeomChanged: if (!open && liveFocusGeom !== null)
-        lastFocusGeom = liveFocusGeom
-    Component.onCompleted: if (liveFocusGeom !== null) lastFocusGeom = liveFocusGeom
-
     NumberAnimation {
-        id: openMorph
+        id: openSlide
         target: root
-        property: "morphProgress"
+        property: "slideProgress"
         from: 0
         to: 1
-        duration: 420
+        duration: 280
         easing.type: Easing.BezierSpline
         easing.bezierCurve: [0.16, 1, 0.3, 1, 1, 1]
     }
     NumberAnimation {
-        id: closeMorph
+        id: closeSlide
         target: root
-        property: "morphProgress"
+        property: "slideProgress"
         to: 0
-        duration: 300
+        duration: 220
         easing.type: Easing.InCubic
     }
 
     onOpenChanged: {
         if (open) {
-            const geom = lastFocusGeom || liveFocusGeom
-            const screenWidth = root.screen ? root.screen.width : root.width
-            const screenHeight = root.screen ? root.screen.height : root.height
-            morphOriginX = geom ? geom.x + geom.w / 2 : screenWidth / 2
-            morphOriginY = geom
-                ? Math.min(screenHeight - 5,
-                           (geom.y + geom.h + screenHeight) / 2 - 2.5)
-                : screenHeight - 10
             closeDelay.stop()
-            closeMorph.stop()
+            closeSlide.stop()
             reassert.stop()
             active = true
-            morphProgress = 0
-            openMorph.restart()
+            slideProgress = 0
+            openSlide.restart()
             resetTransient()
             PaletteState.refresh()
             search.forceActiveFocus()
@@ -83,9 +64,9 @@ PanelWindow {
                 Qt.callLater(() => list.positionViewAtBeginning())
             })
         } else {
-            openMorph.stop()
-            closeMorph.from = morphProgress
-            closeMorph.restart()
+            openSlide.stop()
+            closeSlide.from = slideProgress
+            closeSlide.restart()
             closeDelay.restart()
             if (restoreTabOnClose) {
                 const original = sessionTabs.find(t => t.id === sessionCurrentTabId)
@@ -106,7 +87,7 @@ PanelWindow {
             if (scopedWindowId != null && scopedWindowProfile) reassert.restart()
         }
     }
-    Timer { id: closeDelay; interval: 450; onTriggered: root.active = false }
+    Timer { id: closeDelay; interval: 240; onTriggered: root.active = false }
     Timer { id: closeScrollTimeout; interval: 1000; onTriggered: root.preservingCloseScroll = false }
     Timer {
         id: reassert
@@ -840,38 +821,22 @@ PanelWindow {
         readonly property real targetY: Math.max(48,
             Math.min(parent.height - targetHeight - 48,
                      parent.height * 0.70 - targetHeight / 2))
-        readonly property real targetBottom: targetY + targetHeight
-        readonly property real morphBottom: root.morphOriginY + 5
-            + (targetBottom - root.morphOriginY - 5) * root.morphProgress
-        readonly property real targetCenterX: targetX + targetWidth / 2
-        readonly property real morphCenterX: root.morphOriginX
-            + (targetCenterX - root.morphOriginX) * root.morphProgress
-        width: 28 + (targetWidth - 28) * root.morphProgress
-        height: 5 + (targetHeight - 5) * root.morphProgress
-        x: morphCenterX - width / 2
-        y: morphBottom - height
+        readonly property real startY: parent.height + 24
+        x: targetX
+        y: startY + (targetY - startY) * root.slideProgress
+        width: targetWidth
+        height: targetHeight
 
         color: Theme.bg
         // Radii measured off the reference palette: panel 24, field 15,
         // cards 13, tiles 10, keycaps 7.
-        radius: 2.5 + 21.5 * root.morphProgress
+        radius: 24
         border.color: root.panelBorder
         border.width: 1
         clip: true
 
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            color: Theme.cursor
-            opacity: Math.max(0, 1 - root.morphProgress * 4)
-        }
-
         Column {
             anchors.fill: parent
-            enabled: opacity > 0.99
-            opacity: Math.max(0, Math.min(1, (root.morphProgress - 0.68) / 0.32))
-            transform: Translate { y: (1 - root.morphProgress) * 72 }
-            Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
             // ── input_wrap: icon + borderless input + ESC badge ──────
             Item {
