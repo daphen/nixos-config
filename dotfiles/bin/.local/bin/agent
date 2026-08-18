@@ -296,7 +296,18 @@ def cmd_review(a) -> int:
     if not os.path.exists(script):
         print(f"agent review: {script} not found", file=sys.stderr)
         return 1
+    if a.teardown:
+        os.execv(script, [script, "--teardown", a.teardown])
+    if not a.pr:
+        print("agent review: PR is required unless --teardown is used", file=sys.stderr)
+        return 2
     argv = [script, str(a.pr)] + (["--devenv"] if a.devenv else [])
+    if a.manual_test:
+        argv += ["--manual-test", a.manual_test]
+    if a.browser_profile_seed:
+        argv += ["--browser-profile-seed", a.browser_profile_seed]
+    if a.allow_sandbox_start:
+        argv += ["--allow-sandbox-start"]
     os.execv(script, argv)  # replace: agent-review owns the rest (fetch/worktree/spawn)
 
 
@@ -440,8 +451,12 @@ def main() -> int:
     p_down.set_defaults(fn=cmd_down)
 
     p_review = sub.add_parser("review", help="review a PR: own worktree + rail session seeded with /review-pr")
-    p_review.add_argument("pr", help="PR number or GitHub PR URL")
-    p_review.add_argument("--devenv", action="store_true", help="also boot devenv for the review worktree")
+    p_review.add_argument("pr", nargs="?", help="PR number or GitHub PR URL")
+    p_review.add_argument("--devenv", action="store_true", help="also boot local devenv for the review worktree")
+    p_review.add_argument("--manual-test", metavar="PROJECT_ID", help="prepare the canonical VM-backed manual-test harness")
+    p_review.add_argument("--browser-profile-seed", help="authenticated stopped Chromium profile to clone")
+    p_review.add_argument("--allow-sandbox-start", action="store_true", help="allow one bounded sandbox start")
+    p_review.add_argument("--teardown", metavar="CONTEXT_ID", help="remove one owned manual-test context")
     p_review.set_defaults(fn=cmd_review)
 
     a = ap.parse_args()

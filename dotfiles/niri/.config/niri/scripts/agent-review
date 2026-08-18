@@ -22,12 +22,21 @@ import argparse
 import json
 import os
 import re
-import shutil
+import shlex
 import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from agent_review_harness import (
+    HarnessPorts,
+    ManualHarness,
+    adopt_or_create_worktree,
+    deterministic_path,
+    teardown_context,
+)
 
 HOME = os.environ["HOME"]
 LOVABLE_DIR = Path(HOME) / "work" / "lovable"
@@ -56,70 +65,36 @@ def slugify(title: str, max_segments: int = 3) -> str:
     return "-".join(parts) or "pr"
 
 
-def gh_pr_title(num: int) -> str:
-    try:
-        out = subprocess.run(
-            ["gh", "pr", "view", str(num), "--json", "title"],
-            capture_output=True, text=True, check=True, cwd=str(LOVABLE_DIR),
-        )
-        return json.loads(out.stdout).get("title", "")
-    except Exception:
-        return ""
-
-
-def ensure_git_lfs() -> None:
-    if shutil.which("git-lfs"):
-        return
+def gh_pr_metadata(num: int) -> tuple[str, str]:
     result = subprocess.run(
-        ["nix", "build", "--no-link", "--print-out-paths", "nixpkgs#git-lfs"],
-        capture_output=True, text=True,
+        ["gh", "pr", "view", str(num), "--json", "title,headRefOid"],
+        capture_output=True, text=True, check=True, cwd=str(LOVABLE_DIR), timeout=30,
     )
-    if result.returncode != 0:
-        raise SystemExit(f"could not provision git-lfs: {result.stderr.strip()}")
-    outputs = result.stdout.splitlines()
-    if not outputs:
-        raise SystemExit("could not provision git-lfs: nix returned no output path")
-    os.environ["PATH"] = f"{outputs[-1]}/bin:{os.environ.get('PATH', '')}"
-    if not shutil.which("git-lfs"):
-        raise SystemExit("could not provision git-lfs: executable missing from nix output")
+    data = json.loads(result.stdout)
+    sha = data.get("headRefOid", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise SystemExit(f"GitHub did not return an exact head SHA for PR #{num}")
+    return data.get("title", ""), sha
 
 
-def ensure_worktree(num: int, slug: str) -> Path:
-    """Check out the PR head on review/pr-<num> in a worktree (idempotent)."""
-    wt = Path(HOME) / f"work/lovable.review-{num}-{slug}"
-    branch = f"review/pr-{num}"
-    if wt.is_dir():
-        return wt
-    # Refresh origin/main first: the rail measures the review diff as HEAD vs the
-    # merge-base with origin/main, so a stale local main makes the merge-base
-    # ancient and the diff swallow everything merged into main since (the +157k/
-    # -560k blowup). This force-updates the tracking ref to the real fork point.
+def git_output(args: list[str], cwd: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(cwd), *args], capture_output=True, text=True,
+        check=True, timeout=30,
+    ).stdout.strip()
+
+
+def ensure_worktree(num: int, slug: str, sha: str) -> Path:
     subprocess.run(
         ["git", "-C", str(LOVABLE_DIR), "fetch", "origin",
-         "+refs/heads/main:refs/remotes/origin/main"],
-        capture_output=True,
+         "+refs/heads/main:refs/remotes/origin/main", f"pull/{num}/head"],
+        capture_output=True, check=True, timeout=120,
     )
-    subprocess.run(
-        ["git", "-C", str(LOVABLE_DIR), "fetch", "origin", f"pull/{num}/head"],
-        check=True,
-    )
-    sha = subprocess.run(
-        ["git", "-C", str(LOVABLE_DIR), "rev-parse", "FETCH_HEAD"],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    # Drop a stale branch from a prior attempt so the add is idempotent.
-    subprocess.run(
-        ["git", "-C", str(LOVABLE_DIR), "branch", "-D", branch],
-        capture_output=True,
-    )
-    rc = subprocess.run(
-        ["git", "-C", str(LOVABLE_DIR), "worktree", "add",
-         "-b", branch, str(wt), sha],
-    ).returncode
-    if rc != 0:
-        raise SystemExit("git worktree add failed")
-    subprocess.run(["zoxide", "add", str(wt)], capture_output=True)
-    return wt
+    target = Path(HOME) / f"work/lovable.review-{num}-{slug}"
+    try:
+        return adopt_or_create_worktree(LOVABLE_DIR, num, sha, target)
+    except RuntimeError as error:
+        raise SystemExit(str(error)) from error
 
 
 def agentd_connect():
@@ -164,65 +139,127 @@ def start_rail_session(sid: str, cwd: Path, prompt: str) -> None:
         s.close()
 
 
-def boot_devenv(num: int, wt: Path) -> None:
-    """Run `devenv wt` for the worktree as a cockpit devenv tab (no focus steal).
+def boot_devenv(num: int, wt: Path) -> Path:
+    state = Path(os.environ.get("XDG_STATE_HOME", Path(HOME) / ".local/state")) / "agent-review"
+    state.mkdir(parents=True, exist_ok=True)
+    log = state / f"review-pr-{num}-devenv.log"
+    unit = f"agent-review-pr-{num}-devenv.service"
 
-    Mirrors the cockpit config's devenv leg: seed pnpm for a fresh worktree
-    (else the app filewatcher loops), tear the slice down on exit, keep failures
-    visible. Falls back to a detached window if the cockpit isn't open.
-    """
-    seed = (
-        '[ -f .devenv/state/pnpm-lock.sha ] || { echo "[review] seeding pnpm…"; '
-        'direnv exec . pnpm install && mkdir -p .devenv/state && '
-        'sha256sum pnpm-lock.yaml | cut -d" " -f1 > .devenv/state/pnpm-lock.sha; }; '
-    )
+    active = subprocess.run(
+        ["systemctl", "--user", "is-active", "--quiet", unit],
+        capture_output=True,
+    ).returncode == 0
+    if active:
+        return log
+    subprocess.run(["systemctl", "--user", "reset-failed", unit], capture_output=True)
+
+    slice_down = Path(HOME) / ".local/bin/slice-down"
+    if not os.access(slice_down, os.X_OK):
+        raise SystemExit(f"could not start headless devenv: {slice_down} is unavailable")
+    qwt = shlex.quote(str(wt))
+    qlog = shlex.quote(str(log))
+    qslice = shlex.quote(str(slice_down))
     cmd = (
-        f"trap 'slice-down \"{wt}\"' EXIT HUP TERM; {seed}"
-        "while true; do direnv exec . devenv wt; rc=$?; "
-        f"slice-down \"{wt}\"; echo; "
-        "echo \"[review] devenv wt exited ($rc) — enter to restart, ctrl-c for a shell\"; "
-        "read -r || break; done; fish"
+        f"exec >>{qlog} 2>&1; "
+        "echo \"[review] $(date -Is) starting headless devenv\"; "
+        f"trap '{qslice} {qwt}' EXIT HUP TERM; "
+        "[ -f .devenv/state/pnpm-lock.sha ] || { echo '[review] seeding pnpm…'; "
+        "direnv exec . pnpm install && mkdir -p .devenv/state && "
+        "sha256sum pnpm-lock.yaml | cut -d' ' -f1 > .devenv/state/pnpm-lock.sha; }; "
+        "direnv exec . devenv wt"
     )
-    title = f"review-pr-{num}"
-    sock = os.path.join(RUNTIME, "kitty-cockpit-devenv")
-    if os.path.exists(sock):
-        subprocess.run(
-            ["kitty", "@", "--to", f"unix:{sock}", "launch",
-             "--type=tab", "--tab-title", title, "--cwd", str(wt),
-             "--keep-focus", "--", "bash", "-c", cmd],
-            capture_output=True,
-        )
-    else:
-        subprocess.Popen(
-            ["setsid", "kitty", "--working-directory", str(wt),
-             "-e", "bash", "-c", cmd],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, start_new_session=True,
-        )
+    result = subprocess.run(
+        ["systemd-run", "--user", f"--unit={unit}", "--collect",
+         f"--property=WorkingDirectory={wt}", "--property=Type=exec",
+         "bash", "-c", cmd],
+        capture_output=True, text=True, timeout=15,
+    )
+    if result.returncode != 0:
+        raise SystemExit(f"could not start headless devenv: {result.stderr.strip()}")
+    return log
+
+
+def default_ports(_num: int) -> HarnessPorts:
+    return HarnessPorts(
+        browser=3000,
+        browser_debug=9341,
+        web_forward=51320,
+        browser_api_forward=51302,
+        compatibility_api_forward=8020,
+        vm_web=51300,
+        vm_api=51302,
+    )
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("pr", help="PR number or github.com PR URL")
+    ap.add_argument("pr", nargs="?", help="PR number or github.com PR URL")
     ap.add_argument("--devenv", action="store_true",
-                    help="also boot devenv wt for the worktree")
+                    help="also boot local devenv wt for the worktree")
+    ap.add_argument("--manual-test", metavar="PROJECT_ID",
+                    help="create the canonical VM-backed browser-test context")
+    ap.add_argument("--browser-profile-seed", type=Path,
+                    help="authenticated stopped Chromium profile cloned into the context")
+    ap.add_argument("--allow-sandbox-start", action="store_true",
+                    help="one bounded browser-flow sandbox start if no live iframe exists")
+    ap.add_argument("--teardown", metavar="CONTEXT_ID",
+                    help="stop and remove one owned manual-test context")
+    ap.add_argument("--prepare-only", action="store_true",
+                    help=argparse.SUPPRESS)
     a = ap.parse_args()
 
+    if a.teardown:
+        if a.pr or a.devenv or a.manual_test or a.browser_profile_seed or a.allow_sandbox_start:
+            ap.error("--teardown cannot be combined with PR startup options")
+        try:
+            teardown_context(Path(HOME), a.teardown)
+        except RuntimeError as error:
+            raise SystemExit(str(error)) from error
+        print(f"{a.teardown}: owned services, links, and state removed")
+        return 0
+    if not a.pr:
+        ap.error("PR is required unless --teardown is used")
+    if (a.browser_profile_seed or a.allow_sandbox_start) and not a.manual_test:
+        ap.error("browser harness options require --manual-test PROJECT_ID")
+
     num = parse_pr(a.pr)
-    ensure_git_lfs()
+    try:
+        deterministic_path(Path(HOME))
+    except RuntimeError as error:
+        raise SystemExit(str(error)) from error
     notify(f"preparing PR #{num}…")
-    slug = slugify(gh_pr_title(num))
-    wt = ensure_worktree(num, slug)
-    # Seed the /review-pr skill pointed at this PR (not a bare "review this PR"): the
-    # skill runs its full review flow + writes the durable review artifact. The number
-    # makes it unambiguous even though the review/pr-<n> worktree would auto-detect it.
+    title, sha = gh_pr_metadata(num)
+    slug = slugify(title)
+    wt = ensure_worktree(num, slug, sha)
     start_rail_session(f"review-pr-{num}", wt, f"/review-pr {num}")
     if a.devenv:
         boot_devenv(num, wt)
+    harness = None
+    if a.manual_test:
+        ports = default_ports(num)
+        harness = ManualHarness(
+            home=Path(HOME), pr=num, expected_sha=sha, project_id=a.manual_test,
+            worktree=wt, ports=ports,
+            vm_host=os.environ.get("HEIDR_VM_HOST", "dev-heidr-2a39.workstation.lovable.net"),
+            vm_user=os.environ.get("HEIDR_VM_USER", "david_karlsson_lovable_dev"),
+            browser_profile_seed=a.browser_profile_seed,
+            allow_sandbox_start=a.allow_sandbox_start,
+        )
+        context = harness.write()
+        if not a.prepare_only:
+            try:
+                harness.prepare_vm()
+                harness.start()
+                subprocess.run(shlex.split(context.readiness), check=True, timeout=70)
+            except (RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                raise SystemExit(f"manual-test context is not ready: {error}") from error
+        print(f"{context.context_id}: context written at {harness.root}")
+        print(f"readiness: {context.readiness}")
+        print(f"teardown: {context.teardown}")
     notify(f"PR #{num} review is in the rail roster"
-           + (" · devenv booting" if a.devenv else ""))
+           + (" · manual-test context prepared" if harness else " · devenv booting" if a.devenv else ""))
     print(f"review-pr-{num}: session started in the {SCOPE} rail (cwd {wt})"
-          + (" + devenv" if a.devenv else ""))
+          + (" + manual-test harness" if harness else " + devenv" if a.devenv else ""))
     return 0
 
 

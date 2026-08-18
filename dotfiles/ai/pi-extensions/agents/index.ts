@@ -122,16 +122,30 @@ export default function (pi: ExtensionAPI) {
       "Spin up a Pi-native PR review: fetches the PR onto its OWN review/pr-<n> worktree and starts a rail session there seeded with /review-pr (it runs the full review and writes the artifact; posts nothing to GitHub). Use THIS for PR reviews — NOT agent_spawn, which has no worktree/PR checkout so the review has nothing to look at. `pr` is a number or a GitHub PR URL.",
     promptSnippet: "agent_review: review a PR in its own worktree",
     parameters: Type.Object({
-      pr: Type.String({ description: "PR number or GitHub PR URL" }),
-      devenv: Type.Optional(Type.Boolean({ description: "also boot devenv for the review worktree" })),
+      pr: Type.Optional(Type.String({ description: "PR number or GitHub PR URL; omit only for teardown" })),
+      devenv: Type.Optional(Type.Boolean({ description: "also boot local devenv for the review worktree" })),
+      manualTestProject: Type.Optional(Type.String({ description: "prepare the canonical VM-backed manual-test harness for this project UUID" })),
+      browserProfileSeed: Type.Optional(Type.String({ description: "authenticated stopped Chromium profile to clone into the isolated context" })),
+      allowSandboxStart: Type.Optional(Type.Boolean({ description: "allow exactly one bounded browser-flow sandbox start when no live iframe exists; requires explicit current-turn approval" })),
+      teardownContext: Type.Optional(Type.String({ description: "stop and remove one owned pr-N manual-test context; mutually exclusive with pr" })),
     }),
     async execute(_id, params: any) {
       const bin = (process.env.HOME ?? "") + "/.local/bin/agent";
-      const args = ["review", String(params.pr)];
+      if (params.teardownContext && (params.pr || params.devenv || params.manualTestProject || params.browserProfileSeed || params.allowSandboxStart)) {
+        return say("agent review failed: teardownContext is mutually exclusive with startup options");
+      }
+      if (!params.teardownContext && !params.pr) return say("agent review failed: pr is required unless teardownContext is set");
+      const args = params.teardownContext
+        ? ["review", "--teardown", String(params.teardownContext)]
+        : ["review", String(params.pr)];
       if (params.devenv) args.push("--devenv");
+      if (params.manualTestProject) args.push("--manual-test", String(params.manualTestProject));
+      if (params.browserProfileSeed) args.push("--browser-profile-seed", String(params.browserProfileSeed));
+      if (params.allowSandboxStart) args.push("--allow-sandbox-start");
       return await new Promise((resolve) => {
-        execFile(bin, args, { timeout: 120_000 }, (err, _out, stderr) => {
+        execFile(bin, args, { timeout: 600_000 }, (err, _out, stderr) => {
           if (err) resolve(say("agent review failed: " + String(stderr || (err as Error).message).trim()));
+          else if (params.teardownContext) resolve(say(`Removed owned manual-test context ${params.teardownContext}.`));
           else resolve(say(`Started a PR review for ${params.pr} on its own review/pr worktree — a rail session is running /review-pr; open it from the roster when it settles.`));
         });
       });
