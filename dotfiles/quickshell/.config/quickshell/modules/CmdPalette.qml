@@ -1283,12 +1283,8 @@ PanelWindow {
                         TapHandler {
                             onTapped: {
                                 root.filmFocused = true
-                                if (filmCard.focused) root.runEntry(root.filmEntry(filmCard.index), false)
-                                else {
-                                    root.filmIndex = filmCard.index
-                                    root.syncAddressToFilm(filmCard.index)
-                                    root.previewTab(root.filmEntry(filmCard.index))
-                                }
+                                root.filmIndex = filmCard.index
+                                root.runEntry(root.filmEntry(filmCard.index), false)
                             }
                         }
                     }
@@ -1482,7 +1478,7 @@ PanelWindow {
                             onTapped: {
                                 root.filmFocused = false
                                 root.selectedIndex = rowItem.index
-                                root.runSelected(false)
+                                root.runEntry(rowItem.modelData, false)
                             }
                         }
                     }
