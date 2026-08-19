@@ -105,6 +105,33 @@ class HarnessTests(unittest.TestCase):
             self.assertEqual(harness.git(["rev-parse", "HEAD"], review), expected_sha)
             self.assertEqual((review / "a").read_text(), "head")
 
+    def test_clean_detached_review_worktree_reattaches_and_updates(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo, review = root / "repo", root / "review"
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.com"], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+            (repo / "a").write_text("base")
+            subprocess.run(["git", "-C", str(repo), "add", "a"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "base"], check=True)
+            stale_sha = harness.git(["rev-parse", "HEAD"], repo)
+            subprocess.run(["git", "-C", str(repo), "branch", "review/pr-10", stale_sha], check=True)
+            subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "--detach", str(review), stale_sha], check=True)
+            (repo / "a").write_text("head")
+            subprocess.run(["git", "-C", str(repo), "commit", "-qam", "head"], check=True)
+            expected_sha = harness.git(["rev-parse", "HEAD"], repo)
+            original = harness.run
+            def fake_run(args, **kwargs):
+                if args[:4] == ["git", "-C", str(review), "lfs"]:
+                    return subprocess.CompletedProcess(args, 0, "", "")
+                return original(args, **kwargs)
+            with mock.patch.object(harness, "run", side_effect=fake_run):
+                adopted = harness.adopt_or_create_worktree(repo, 10, expected_sha, review)
+            self.assertEqual(adopted, review)
+            self.assertEqual(harness.git(["rev-parse", "--abbrev-ref", "HEAD"], review), "review/pr-10")
+            self.assertEqual(harness.git(["rev-parse", "HEAD"], review), expected_sha)
+
     def test_dirty_adopted_worktree_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -120,6 +147,23 @@ class HarnessTests(unittest.TestCase):
             (review / "dirty").write_text("x")
             with self.assertRaisesRegex(RuntimeError, "dirty"):
                 harness.adopt_or_create_worktree(repo, 7, sha, root / "other")
+
+    def test_dirty_detached_review_worktree_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo, review = root / "repo", root / "review"
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.com"], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+            (repo / "a").write_text("a")
+            subprocess.run(["git", "-C", str(repo), "add", "a"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "base"], check=True)
+            sha = harness.git(["rev-parse", "HEAD"], repo)
+            subprocess.run(["git", "-C", str(repo), "branch", "review/pr-11", sha], check=True)
+            subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "--detach", str(review), sha], check=True)
+            (review / "dirty").write_text("x")
+            with self.assertRaisesRegex(RuntimeError, "dirty"):
+                harness.adopt_or_create_worktree(repo, 11, sha, review)
 
     def test_locally_ahead_worktree_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:
@@ -137,6 +181,25 @@ class HarnessTests(unittest.TestCase):
             subprocess.run(["git", "-C", str(repo), "worktree", "add", "-qb", "review/pr-9", str(review), "HEAD"], check=True)
             with self.assertRaisesRegex(RuntimeError, "not behind"):
                 harness.adopt_or_create_worktree(repo, 9, expected_sha, root / "other")
+
+    def test_locally_ahead_detached_review_worktree_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo, review = root / "repo", root / "review"
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.com"], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+            (repo / "a").write_text("base")
+            subprocess.run(["git", "-C", str(repo), "add", "a"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "base"], check=True)
+            expected_sha = harness.git(["rev-parse", "HEAD"], repo)
+            (repo / "a").write_text("local")
+            subprocess.run(["git", "-C", str(repo), "commit", "-qam", "local"], check=True)
+            local_sha = harness.git(["rev-parse", "HEAD"], repo)
+            subprocess.run(["git", "-C", str(repo), "branch", "review/pr-12", local_sha], check=True)
+            subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "--detach", str(review), local_sha], check=True)
+            with self.assertRaisesRegex(RuntimeError, "not behind"):
+                harness.adopt_or_create_worktree(repo, 12, expected_sha, review)
 
     def test_remote_clean_stale_worktree_updates_but_dirty_or_ahead_refuses(self):
         with tempfile.TemporaryDirectory() as td:

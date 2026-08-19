@@ -76,36 +76,70 @@ def worktree_records(repo: Path) -> list[dict[str, str]]:
     return records
 
 
+def require_clean_ancestor(worktree: Path, expected_sha: str) -> str:
+    if git(["status", "--porcelain=v1"], worktree):
+        raise RuntimeError(f"existing review worktree is dirty: {worktree}")
+    actual = git(["rev-parse", "HEAD"], worktree)
+    if actual != expected_sha:
+        ancestor = run(
+            ["git", "-C", str(worktree), "merge-base", "--is-ancestor", actual, expected_sha],
+            check=False,
+        )
+        if ancestor.returncode:
+            raise RuntimeError(f"existing review worktree HEAD {actual} is not behind PR head {expected_sha}")
+    return actual
+
+
+def verify_review_worktree(worktree: Path, expected_sha: str) -> Path:
+    if git(["rev-parse", "HEAD"], worktree) != expected_sha:
+        raise RuntimeError("updated review worktree does not match PR head")
+    lfs = run(["git", "-C", str(worktree), "lfs", "fsck"], timeout=120, check=False)
+    if lfs.returncode:
+        raise RuntimeError(f"existing review worktree failed Git LFS fsck: {lfs.stderr.strip()}")
+    return worktree
+
+
 def adopt_or_create_worktree(repo: Path, pr: int, expected_sha: str, wt: Path) -> Path:
-    branch_ref = f"refs/heads/review/pr-{pr}"
-    matches = [Path(item["worktree"]) for item in worktree_records(repo) if item.get("branch") == branch_ref]
+    branch = f"review/pr-{pr}"
+    branch_ref = f"refs/heads/{branch}"
+    records = worktree_records(repo)
+    matches = [Path(item["worktree"]) for item in records if item.get("branch") == branch_ref]
     if len(matches) > 1:
         raise RuntimeError(f"multiple worktrees own {branch_ref}")
     if matches:
         adopted = matches[0]
-        if git(["status", "--porcelain=v1"], adopted):
-            raise RuntimeError(f"existing review worktree is dirty: {adopted}")
-        actual = git(["rev-parse", "HEAD"], adopted)
+        actual = require_clean_ancestor(adopted, expected_sha)
         if actual != expected_sha:
-            ancestor = run(
-                ["git", "-C", str(adopted), "merge-base", "--is-ancestor", actual, expected_sha],
-                check=False,
-            )
-            if ancestor.returncode:
-                raise RuntimeError(f"existing review worktree HEAD {actual} is not behind PR head {expected_sha}")
             git(["reset", "--hard", expected_sha], adopted)
-            if git(["rev-parse", "HEAD"], adopted) != expected_sha:
-                raise RuntimeError("updated review worktree does not match PR head")
-        lfs = run(["git", "-C", str(adopted), "lfs", "fsck"], timeout=120, check=False)
-        if lfs.returncode:
-            raise RuntimeError(f"existing review worktree failed Git LFS fsck: {lfs.stderr.strip()}")
-        return adopted
+        return verify_review_worktree(adopted, expected_sha)
+    target_record = next((item for item in records if Path(item["worktree"]) == wt), None)
     if wt.exists():
-        raise RuntimeError(f"target path exists but is not a registered worktree: {wt}")
-    command = [
-        "wt", "switch", "-C", str(repo), "--create", f"review/pr-{pr}",
-        "--base", expected_sha, "--no-hooks", "--yes", "--no-cd", "--format", "json",
-    ]
+        try:
+            require_clean_ancestor(wt, expected_sha)
+            common_dir = Path(git(["rev-parse", "--path-format=absolute", "--git-common-dir"], wt))
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(f"existing review path cannot be safely adopted: {wt}") from error
+        if common_dir.resolve() != (repo / ".git").resolve():
+            raise RuntimeError(f"existing review path belongs to another repository: {wt}")
+        branch_sha = run(["git", "-C", str(repo), "rev-parse", "--verify", branch_ref], check=False)
+        if branch_sha.returncode == 0:
+            branch_head = branch_sha.stdout.strip()
+            if branch_head != expected_sha and run(
+                ["git", "-C", str(repo), "merge-base", "--is-ancestor", branch_head, expected_sha], check=False,
+            ).returncode:
+                raise RuntimeError(f"existing review branch {branch_head} is not behind PR head {expected_sha}")
+        git(["branch", "-f", branch, expected_sha], repo)
+        if target_record is not None:
+            git(["switch", branch], wt)
+            return verify_review_worktree(wt, expected_sha)
+        shutil.rmtree(wt)
+    branch_exists = run(["git", "-C", str(repo), "show-ref", "--verify", "--quiet", branch_ref], check=False).returncode == 0
+    command = ["wt", "switch", "-C", str(repo)]
+    if branch_exists:
+        command.append(branch)
+    else:
+        command.extend(["--create", branch, "--base", expected_sha])
+    command.extend(["--no-hooks", "--yes", "--no-cd", "--format", "json"])
     result = run(command, timeout=120, check=False)
     if result.returncode:
         raise RuntimeError(f"Worktrunk could not create review worktree: {result.stderr.strip()}")
