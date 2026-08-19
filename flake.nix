@@ -77,7 +77,7 @@
     # Fork adding tile_pos_in_workspace_view for tiled windows (IPC exposes
     # on-screen geometry so quickshell can draw a focus dot). Tracks the PR
     # branch (niri-wm/niri#4369); drop this override once it lands upstream.
-    niri-flake.inputs.niri-unstable.url = "github:daphen/niri/tile-pos-in-workspace-view";
+    niri-flake.inputs.niri-unstable.url = "github:daphen/niri/tile-pos-and-palette-gesture";
 
     # quickshell — upstream flake pinned to v0.3.0. nixpkgs ships only 0.2.1,
     # which crashes tearing down layer-shell windows on reload / monitor

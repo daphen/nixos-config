@@ -246,16 +246,16 @@
     "niri-unstable": {
       "flake": false,
       "locked": {
-        "lastModified": 1785156605,
-        "narHash": "sha256-yiqNhr8ZEOSMz0MVjkGfMXej4N/zzmwNoErmXz05NjM=",
+        "lastModified": 1787129976,
+        "narHash": "sha256-yuioxMA5CVz2lEXp6kjoRMgkO8/GY5uzYSaH4cgKKOA=",
         "owner": "daphen",
         "repo": "niri",
-        "rev": "9652d8ccb224fd841d99dab7a5f717b126a0ed22",
+        "rev": "989c6cabc6bd2ca106e4b9dfd5c7715a1f3919b1",
         "type": "github"
       },
       "original": {
         "owner": "daphen",
-        "ref": "tile-pos-in-workspace-view",
+        "ref": "tile-pos-and-palette-gesture",
         "repo": "niri",
         "type": "github"
       }
@@ -395,17 +395,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1786914352,
-        "narHash": "sha256-LOoUTRowubDpcJ4ndvtdg8km2/SrpWyD/e8tV23gwYU=",
-        "owner": "daphen",
-        "repo": "opqs",
-        "rev": "09992dddf806b41ca5f082dc912cf5c8be83dfdf",
-        "type": "github"
+        "lastModified": 1786960496,
+        "narHash": "sha256-8Wvam9cgssahPFIH1Y3W+txCSOhUYBsVHM8sY4QaFyk=",
+        "ref": "refs/heads/main",
+        "rev": "a71e8c2c731ca5cae68076f7df81a65d5d54f596",
+        "revCount": 11,
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/opqs"
       },
       "original": {
-        "owner": "daphen",
-        "repo": "opqs",
-        "type": "github"
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/opqs"
       }
     },
     "palette-daemon": {

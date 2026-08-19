@@ -24,6 +24,8 @@ PanelWindow {
     }
 
     property bool active: false
+    property bool gestureActive: false
+    property bool gestureSettling: false
     property real slideProgress: 0
     visible: active
     readonly property bool open: PaletteState.open
@@ -46,6 +48,56 @@ PanelWindow {
         duration: 220
         easing.type: Easing.InCubic
     }
+    NumberAnimation {
+        id: gestureSlide
+        target: root
+        property: "slideProgress"
+        easing.type: Easing.OutCubic
+        onFinished: {
+            if (to === 0) root.active = false
+            root.gestureSettling = false
+            if (to === 1) search.forceActiveFocus()
+        }
+    }
+
+    Connections {
+        target: NiriState
+        function onPaletteGesture(phase, progress, velocity, shouldOpen) {
+            root.handlePaletteGesture(phase, progress, velocity, shouldOpen)
+        }
+    }
+
+    function gestureSettleDuration(target, velocity) {
+        const distance = Math.abs(target - slideProgress)
+        const towardTarget = target === 1 ? velocity : -velocity
+        const speed = Math.max(0.8, towardTarget)
+        return Math.max(90, Math.min(260, distance / speed * 1000))
+    }
+
+    function handlePaletteGesture(phase, progress, velocity, shouldOpen) {
+        if (phase === "begin") {
+            openSlide.stop()
+            closeSlide.stop()
+            gestureSlide.stop()
+            closeDelay.stop()
+            gestureActive = true
+            gestureSettling = false
+            active = true
+            slideProgress = Math.max(0, Math.min(1, progress))
+            if (!PaletteState.open) PaletteState.show()
+        } else if (phase === "update" && gestureActive) {
+            slideProgress = Math.max(0, Math.min(1, progress))
+        } else if (phase === "end" && gestureActive) {
+            gestureActive = false
+            gestureSettling = true
+            const target = shouldOpen ? 1 : 0
+            gestureSlide.from = slideProgress
+            gestureSlide.to = target
+            gestureSlide.duration = gestureSettleDuration(target, velocity)
+            if (!shouldOpen) PaletteState.hide()
+            gestureSlide.restart()
+        }
+    }
 
     onOpenChanged: {
         if (open) {
@@ -53,8 +105,12 @@ PanelWindow {
             closeSlide.stop()
             reassert.stop()
             active = true
-            slideProgress = 0
-            openSlide.restart()
+            if (!gestureActive) {
+                gestureSlide.stop()
+                gestureSettling = false
+                slideProgress = 0
+                openSlide.restart()
+            }
             resetTransient()
             PaletteState.refresh()
             search.forceActiveFocus()
@@ -69,9 +125,12 @@ PanelWindow {
             })
         } else {
             openSlide.stop()
-            closeSlide.from = slideProgress
-            closeSlide.restart()
-            closeDelay.restart()
+            if (!gestureSettling) {
+                gestureSlide.stop()
+                closeSlide.from = slideProgress
+                closeSlide.restart()
+                closeDelay.restart()
+            }
             if (restoreTabOnClose) {
                 const original = sessionTabs.find(t => t.id === sessionCurrentTabId)
                 if (original && previewTabId !== original.id)

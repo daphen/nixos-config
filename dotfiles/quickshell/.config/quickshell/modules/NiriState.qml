@@ -18,6 +18,8 @@ Singleton {
     property string activeStack: ""
     property int version: 0
 
+    signal paletteGesture(string phase, real progress, real velocity, bool open)
+
     readonly property var relevantEvents: [
         "WorkspacesChanged",
         "WindowsChanged",
@@ -120,6 +122,8 @@ Singleton {
                 const wid = change[0], layout = change[1]
                 if (windows[wid]) windows[wid].layout = layout
             }
+        } else if (name === "PaletteGesture") {
+            paletteGesture(data.phase || "", data.progress || 0, data.velocity || 0, data.open === true)
         }
     }
 
