@@ -678,7 +678,13 @@ PanelWindow {
                 closeScrollTimeout.stop()
             }))
         } else if (entries.length > 0) {
-            ensureSelectedVisible(selectedIndex)
+            const first = firstSelectable()
+            if (selectedIndex === first) {
+                list.positionViewAtBeginning()
+                Qt.callLater(() => list.positionViewAtBeginning())
+            } else {
+                ensureSelectedVisible(selectedIndex)
+            }
         }
     }
 
