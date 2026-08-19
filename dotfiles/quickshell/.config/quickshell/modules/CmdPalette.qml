@@ -603,6 +603,8 @@ PanelWindow {
             groups.push({ id: "pinned", heading: "Pinned items", items: rp.items })
         else if (!showFilmstrip)
             groups.push({ id: "tabs", heading: "Tabs", items: rt.items })
+        if (ftab === "All" && q.length > 0 && urlItems.length === 0)
+            groups.push({ id: "websites", heading: "Web Search", items: webItems.slice(0, 1) })
         if (q.length > 0 || !showQuickmarkDock)
             groups.push({ id: "quickmarks", heading: "Quickmarks", items: rq.items })
         if (urlItems.length && hasHit) groups.push({ id: "url", heading: "Open URL", items: urlItems })
