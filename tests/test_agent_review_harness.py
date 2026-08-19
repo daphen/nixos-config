@@ -183,6 +183,34 @@ class HarnessTests(unittest.TestCase):
                 self.assertIn(proof, certification)
             self.assertIn("sandbox-start one-shot marker already exists", certification)
 
+    def test_sandbox_start_collector_blocks_second_post_before_execution(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            request_gate = text.index('isSandboxStart=request.method==="POST"')
+            duplicate_gate = text.index("if(startRequest){blockedDuplicateStarts++", request_gate)
+            duplicate_block = text.index('Fetch.failRequest",{requestId:event.params.requestId', duplicate_gate)
+            first_record = text.index("startRequest={fetchRequestId:", duplicate_block)
+            first_continue = text.index('Fetch.continueRequest",{requestId:event.params.requestId}', first_record)
+            duplicate_failure = text.index("blocked ${blockedDuplicateStarts} duplicate sandbox-start attempt(s)", first_continue)
+            self.assertEqual(
+                [request_gate, duplicate_gate, duplicate_block, first_record, first_continue, duplicate_failure],
+                sorted([request_gate, duplicate_gate, duplicate_block, first_record, first_continue, duplicate_failure]),
+            )
+            self.assertEqual(text.count("startRequest={fetchRequestId:"), 1)
+            self.assertEqual(text.count("blockedDuplicateStarts++"), 1)
+
+    def test_sandbox_start_collector_records_one_request_response_pair(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            request = text.index("startRequest={fetchRequestId:")
+            response = text.index("startResponse={status:response.status", request)
+            missing_response = text.index("sandbox-start request completed without an observed response", response)
+            certification = text.index("sandboxStart:startRequest?{request:startRequest,response:startResponse}", missing_response)
+            self.assertEqual([request, response, missing_response, certification], sorted([request, response, missing_response, certification]))
+            recorded_request = text[request:text.index("};await parent.send", request)]
+            self.assertNotIn("headers", recorded_request)
+            self.assertNotIn("Authorization", recorded_request)
+
     def test_specimen_reset_is_required_before_success_certification(self):
         with tempfile.TemporaryDirectory() as td:
             text = self.context(Path(td)).render_browser_readiness()
