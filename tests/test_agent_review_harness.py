@@ -233,6 +233,7 @@ class HarnessTests(unittest.TestCase):
             browser = (manual.root / context.units["browser"]).read_text()
             self.assertIn("--user-data-dir=", browser)
             self.assertIn("--remote-debugging-port=9341", browser)
+            self.assertIn("--window-size=1920,1080", browser)
             self.assertIn("--disable-extensions", browser)
             self.assertIn("about:blank", browser)
             proxy = (manual.root / "keyless-proxy.mjs").read_text()
@@ -273,6 +274,18 @@ class HarnessTests(unittest.TestCase):
             recorded_request = text[request:text.index("};await parent.send", request)]
             self.assertNotIn("headers", recorded_request)
             self.assertNotIn("Authorization", recorded_request)
+
+    def test_canonical_button_controls_require_desktop_tldraw_breakpoint(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            selection_at = text.index("shape:component-anchor-Button")
+            breakpoint_at = text.index("typedControls.breakpoint>=4", selection_at)
+            portal_at = text.index("canonical Button typed-controls portal missing", breakpoint_at)
+            certification_at = text.index("typedControls:{selection:canonicalSelection", portal_at)
+            self.assertEqual([selection_at, breakpoint_at, portal_at, certification_at], sorted([selection_at, breakpoint_at, portal_at, certification_at]))
+            for control in ("Specimen", "Reset", "variant", "primary", "size", "md"):
+                self.assertIn(control, text)
+            self.assertIn("typedControls?.viewport.width!==1920", text)
 
     def test_specimen_reset_is_required_before_success_certification(self):
         with tempfile.TemporaryDirectory() as td:
