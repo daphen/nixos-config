@@ -3665,10 +3665,33 @@ local function plandirs(cwd)
   return out
 end
 
--- find the plan for a session's worktree: by the branch its progress.json recorded,
+-- find the plan for a session's worktree: by the session's explicit plan binding
+-- (roster `plan`, set at spawn), else by the branch its progress.json recorded,
 -- else by the ticket id in the worktree's own name
 load_plan = function(cwd)
   if not cwd or cwd == "" then return nil end -- nil cwd → malformed `git -C` call
+  -- Explicit binding wins: main-checkout sessions (~/personal repos) have neither a
+  -- feature branch nor a ticket-shaped dirname, so heuristics can never find their plan.
+  for _, a in ipairs(S.roster or {}) do
+    if a.cwd == cwd and a.plan and a.plan ~= "" then
+      for _, dir in ipairs(plandirs(cwd)) do
+        local f = dir .. "/" .. a.plan .. ".progress.json"
+        if fn.filereadable(f) == 1 then
+          local ok, data = pcall(function() return vim.json.decode(table.concat(fn.readfile(f), "\n")) end)
+          if ok and type(data) == "table" then
+            local review
+            local rf = dir .. "/" .. a.plan .. ".review.json"
+            if fn.filereadable(rf) == 1 then
+              local rok, rdata = pcall(function() return vim.json.decode(table.concat(fn.readfile(rf), "\n")) end)
+              if rok and type(rdata) == "table" then review = rdata end
+            end
+            return { progress = data, key = a.plan, review = review }
+          end
+        end
+      end
+      break
+    end
+  end
   local branch = fn.system({ "git", "-C", cwd, "branch", "--show-current" }):gsub("%s+$", "")
   -- A plan belongs to a ticket/feature branch. `main`/`master` is shared across
   -- repos and many old progress.json files recorded branch:"main", so matching on
