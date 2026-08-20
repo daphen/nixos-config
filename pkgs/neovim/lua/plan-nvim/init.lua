@@ -35,6 +35,7 @@ local state = {
 -- Assigned lower down; forward-declared so earlier closures capture the upvalue.
 local arm_surface_watches, follow_step, resolve_next_decision
 
+local resolve_plan_path -- defined below; M.open needs it as an upvalue
 local function git_root()
 	local out = vim.fn.systemlist({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })
 	if vim.v.shell_error ~= 0 or #out == 0 then return nil end
@@ -362,11 +363,16 @@ local function open_path(path, keep_focus)
 end
 
 function M.open(ticket)
-	local root = git_root()
-	if not root then vim.notify("plan: not in a git repo", vim.log.levels.WARN); return end
+	-- Folder-first: no repo required. The folder's session binding (or branch) names
+	-- the plan; a git root only matters as the base for legacy in-repo .plans dirs.
+	local root = git_root() or vim.fn.getcwd()
 	state.root = root
+	if not ticket or ticket == "" then
+		local bound = resolve_plan_path()
+		if bound then open_path(bound); return end
+	end
 	local plans = list_plans(root)
-	if #plans == 0 then vim.notify("plan: no .plans/*.md found", vim.log.levels.WARN); return end
+	if #plans == 0 then vim.notify("plan: no plan found for this folder", vim.log.levels.WARN); return end
 	if ticket and ticket ~= "" then
 		for _, p in ipairs(plans) do
 			if p:lower():find(ticket:lower(), 1, true) then open_path(p); return end
@@ -893,7 +899,7 @@ end
 -- The plan binds to the nvim session when a plan buffer opens (autostart, :PlanOpen).
 -- For an ordinary nvim that never opened it, resolve it on demand from the folder
 -- binding or the worktree's branch (via plan_key) — so <C-p> works anywhere.
-local function resolve_plan_path()
+resolve_plan_path = function()
 	if state.plan_path and vim.uv.fs_stat(state.plan_path) then return state.plan_path end
 	local root = state.root or git_root() or vim.fn.getcwd()
 	if not root then return nil end
