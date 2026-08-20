@@ -84,7 +84,13 @@ PanelWindow {
             gestureSettling = false
             active = true
             slideProgress = Math.max(0, Math.min(1, progress))
-            if (!PaletteState.open) PaletteState.show()
+            if (!PaletteState.open) {
+                const windows = PaletteState.chin || []
+                const browser = windows.find(w => w.focused)
+                    || windows.find(w => w.profile === PaletteState.profile)
+                if (browser) PaletteState.activateWindow(browser.profile, browser.id)
+                PaletteState.show()
+            }
         } else if (phase === "update" && gestureActive) {
             slideProgress = Math.max(0, Math.min(1, progress))
         } else if (phase === "end" && gestureActive) {
