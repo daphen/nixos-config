@@ -856,13 +856,31 @@ local function set_action_hl()
 end
 
 
--- The artifact key for a worktree's plan, from its branch: a Linear branch (carries a
--- ticket number) keys as `EVERY-<num>`; an ad-hoc branch (`daphen/refactor-foo`) keys
--- as its short name (`refactor-foo`) — so own-work plans need no ticket. nil for
--- main/master or no repo.
+-- FOLDER-based binding, the primary key: a session spawned in this folder with a
+-- bound plan slug (agentd persist, one file per scope). Plans belong to the folder
+-- a session lives in, not to a git branch — a main-checkout or non-repo folder has
+-- no usable branch at all.
+local function bound_key(dir)
+	local base = vim.fn.expand("~/.local/state/agentd")
+	for _, f in ipairs(vim.fn.glob(base .. "/*-sessions.json", false, true)) do
+		local ok, data = pcall(function() return vim.json.decode(table.concat(vim.fn.readfile(f), "\n")) end)
+		if ok and type(data) == "table" then
+			for _, s in ipairs(data) do
+				if s.cwd == dir and s.plan and s.plan ~= "" then return s.plan end
+			end
+		end
+	end
+end
+
+-- The artifact key for a folder's plan: the folder's session binding first; else
+-- from the branch — a Linear branch (carries a ticket number) keys as `EVERY-<num>`;
+-- an ad-hoc branch (`daphen/refactor-foo`) keys as its short name (`refactor-foo`) —
+-- so own-work plans need no ticket. nil for main/master with no binding.
 local function plan_key(root)
-	root = root or state.root or git_root()
+	root = root or state.root or git_root() or vim.fn.getcwd()
 	if not root then return nil end
+	local bound = bound_key(root)
+	if bound then return bound end
 	local branch = (vim.fn.systemlist({ "git", "-C", root, "branch", "--show-current" })[1]) or ""
 	local name = branch:match("^daphen/(.+)")
 		or (branch ~= "" and branch)
@@ -873,11 +891,11 @@ local function plan_key(root)
 end
 
 -- The plan binds to the nvim session when a plan buffer opens (autostart, :PlanOpen).
--- For an ordinary nvim that never opened it, resolve it on demand from the worktree's
--- branch (via plan_key) — so <C-p> works anywhere in the worktree, ticket or ad-hoc.
+-- For an ordinary nvim that never opened it, resolve it on demand from the folder
+-- binding or the worktree's branch (via plan_key) — so <C-p> works anywhere.
 local function resolve_plan_path()
 	if state.plan_path and vim.uv.fs_stat(state.plan_path) then return state.plan_path end
-	local root = state.root or git_root()
+	local root = state.root or git_root() or vim.fn.getcwd()
 	if not root then return nil end
 	local key = plan_key(root)
 	if not key then return nil end
