@@ -585,10 +585,26 @@ end
 -- Send a /plan-ticket prompt to the agent driving the plan's repo
 -- (state.root) — repo-targeted via `agent send --cwd`, which routes to the pi rail
 -- session kicked the plan off in, worktree or not. Prompt goes on stdin to avoid arg-quoting.
+-- Inverse of bound_key: the cwd of the session bound to this plan slug. Lets a
+-- multi-repo / vault-only plan dispatch to its driving session with no git root.
+local function bound_session_cwd(slug)
+	if not slug or slug == "" then return nil end
+	local base = vim.fn.expand("~/.local/state/agentd")
+	for _, f in ipairs(vim.fn.glob(base .. "/*-sessions.json", false, true)) do
+		local ok, data = pcall(function() return vim.json.decode(table.concat(vim.fn.readfile(f), "\n")) end)
+		if ok and type(data) == "table" then
+			for _, s in ipairs(data) do
+				if s.plan == slug and s.cwd and s.cwd ~= "" then return s.cwd end
+			end
+		end
+	end
+end
+
 local function dispatch(prompt, wait, cwd)
 	local root = cwd or state.root or git_root()
+		or bound_session_cwd(state.plan_path and vim.fn.fnamemodify(state.plan_path, ":t:r"))
 	if not root then
-		vim.notify("plan: no repo bound — open the plan from inside its repo", vim.log.levels.WARN)
+		vim.notify("plan: no session bound to this plan — bind one (Shift+P in heidr) or open it from its repo", vim.log.levels.WARN)
 		return false
 	end
 	vim.system({ "agent", "send", "--cwd", root, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
