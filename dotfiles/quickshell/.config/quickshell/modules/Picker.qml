@@ -89,6 +89,11 @@ PanelWindow {
     // Opt-in Ctrl+R: called with the focused item (mark-read semantics);
     // the picker stays open so a pile can be cleared in one visit.
     property var onCtrlR: null
+    // Answer hooks for card rows (agent questions, invitations): Ctrl+Y / Ctrl+N
+    // act on the SELECTED row. Checked before onYank, so a picker that sets
+    // these trades away copy-on-ctrl+y deliberately.
+    property var onCtrlY: null
+    property var onCtrlN: null
     property bool previewOpen: false
     // Opt-in text preview: when the selected item has no image, Ctrl+O unfolds
     // this field's full text in the pane (scrollable) — for long clips.
@@ -491,6 +496,14 @@ PanelWindow {
                         const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
                         if (root.filtered.length > 0 && !root.filtered[idx].divider) root.onCtrlR(root.filtered[idx])
                         event.accepted = true
+                    } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier) && root.onCtrlY) {
+                        const yidx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
+                        if (root.filtered.length > 0 && !root.filtered[yidx].divider) root.onCtrlY(root.filtered[yidx])
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier) && root.onCtrlN) {
+                        const nidx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
+                        if (root.filtered.length > 0 && !root.filtered[nidx].divider) root.onCtrlN(root.filtered[nidx])
+                        event.accepted = true
                     } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier) && root.onYank) {
                         const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))
                         if (root.filtered.length > 0 && !root.filtered[idx].divider) root.onYank(root.filtered[idx])
@@ -689,6 +702,36 @@ PanelWindow {
                         opacity: 0.7
                         font.family: notch.sans
                         font.pixelSize: 11
+                    }
+
+                    // Option chips (card rows: agent questions, invitations) —
+                    // small pills at the row's right edge naming the answers.
+                    Row {
+                        visible: !rowItem.isDivider && rowItem.modelData && (rowItem.modelData.chips || []).length > 0
+                        anchors.right: parent.right
+                        anchors.rightMargin: 28
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 5
+                        Repeater {
+                            model: (rowItem.modelData && rowItem.modelData.chips) || []
+                            Rectangle {
+                                required property string modelData
+                                width: chipText.implicitWidth + 14
+                                height: 22
+                                radius: 11
+                                color: Theme.surface2
+                                border.width: 1
+                                border.color: Theme.hairline
+                                Text {
+                                    id: chipText
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    color: Theme.fg_secondary
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                }
+                            }
+                        }
                     }
 
                     Text {

@@ -21,11 +21,30 @@ Picker {
     iconField: "icon"
     // right-slot hints; drop the redundant j/k "move" on the left
     navHint: false
-    altLabel: "ctrl+r: mark read · ctrl+o: expand"
+    altLabel: "ctrl+y/n: answer · ctrl+r: mark read · ctrl+o: expand"
     // Ctrl+O unfolds the notification body (clipboard-picker convention)
     previewTextField: "body"
     // Ctrl+R marks read in place: mail invokes the daemon's "read" action
     // (server-side mark-read); everything else just clears from the center
+    // Ctrl+Y / Ctrl+N answer the selected card: agent confirms directly; calendar
+    // invitations map to their accept/decline actions when the invite carries them.
+    function _invokeMatching(item, rx) {
+        const n = item.notif
+        if (!n || !n.actions) return false
+        for (let i = 0; i < n.actions.length; i++)
+            if (rx.test(n.actions[i].text || "") || rx.test(n.actions[i].identifier || "")) {
+                n.actions[i].invoke(); return true
+            }
+        return false
+    }
+    onCtrlY: item => {
+        if (item.agentAsk && !item.askInput) { AgentAskState.answer(item.agentAsk, { confirmed: true }); return }
+        if (item.cal && _invokeMatching(item, /accept|yes|going/i)) { Notifications.markSeenById(item.id); return }
+    }
+    onCtrlN: item => {
+        if (item.agentAsk && !item.askInput) { AgentAskState.answer(item.agentAsk, { confirmed: false }); return }
+        if (item.cal && _invokeMatching(item, /decline|no(?!t)/i)) { Notifications.markSeenById(item.id); return }
+    }
     onCtrlR: item => {
         if (item.agentAsk) return
         const n = item.notif
@@ -76,8 +95,10 @@ Picker {
         if (!item || item.divider) return
         NotificationJumpPickerState.open = false
         if (item.agentAsk) {
+            // Enter = the affirmative default (mirrors the island's cursor-on-Yes);
+            // select/input open the typed reply, which pi accepts for both.
             if (item.askInput) AgentAskState.openInput(item.agentAsk)
-            else AgentAskState.answer(item.agentAsk, item.agentAnswer)
+            else AgentAskState.answer(item.agentAsk, { confirmed: true })
             return
         }
         // Close the capsule up front: acting on it is the answer to it, and for
@@ -115,10 +136,16 @@ Picker {
     function mkItemLive(n) {
         const wid = (n.hints && n.hints["niri-window"] !== undefined) ? String(n.hints["niri-window"]) : ""
         const cal = Notifications.isCalNotif(n)
+        // Invitations use the same card grammar as agent questions: chips name
+        // the actions, ctrl+y/n answer.
+        let chips
+        if (cal && n.actions && n.actions.length)
+            chips = n.actions.filter(a => (a.identifier || "") !== "default").map(a => a.text || a.identifier).slice(0, 3)
         return {
             id: n.id, notif: n, app: n.appName || "", summary: n.summary || "", windowId: wid, cal: cal,
             body: n.body || "", label: n.summary || n.appName || "notification",
             icon: cal ? Notifications.calendarIcon : _icon(n.appName, n.appIcon),
+            chips: chips && chips.length ? chips : undefined,
         }
     }
 
@@ -136,15 +163,15 @@ Picker {
         out.push({ divider: true, label: "agent questions" })
         for (const ask of asks) {
             const title = ask.title || ask.session || "Agent needs input"
-            if (ask.method === "confirm") {
-                out.push({ agentAsk: ask, agentAnswer: { confirmed: true }, label: title + " · Yes", body: ask.message || "" })
-                out.push({ agentAsk: ask, agentAnswer: { confirmed: false }, label: title + " · No", body: ask.message || "" })
-            } else if (ask.method === "select") {
-                for (const option of ask.options || [])
-                    out.push({ agentAsk: ask, agentAnswer: { value: option }, label: title + " · " + option, body: ask.message || "" })
-            } else {
-                out.push({ agentAsk: ask, askInput: true, label: title, body: ask.message || "" })
-            }
+            // ONE card per question; chips name the answers, ctrl+y/n and enter act.
+            let chips
+            if (ask.method === "confirm") chips = ["⌃y yes", "⌃n no"]
+            else if (ask.method === "select") {
+                chips = (ask.options || []).slice(0, 3)
+                if ((ask.options || []).length > 3) chips.push("…")
+            } else chips = ["⏎ reply"]
+            out.push({ agentAsk: ask, askInput: ask.method !== "confirm",
+                       label: title, body: ask.message || "", chips: chips })
         }
         return out
     }
