@@ -3831,6 +3831,8 @@ local function place_banner(_buf, win)
   local src = COCKPIT_BANNER_DIR .. "/" .. ident .. "-" .. variant .. ".png"
   if fn.filereadable(src) == 0 then src = COCKPIT_BANNER_DIR .. "/cockpit-" .. variant .. ".png" end
   if fn.filereadable(src) == 0 then hide_banner(); return end
+  if S.banner_placing then return end
+  S.banner_placing = true
   if not (S.banner_buf and api.nvim_buf_is_valid(S.banner_buf)) then
     S.banner_buf = api.nvim_create_buf(false, true)
     vim.bo[S.banner_buf].bufhidden = "hide"; vim.bo[S.banner_buf].swapfile = false
@@ -3846,31 +3848,57 @@ local function place_banner(_buf, win)
     -- NO noautocmd: snacks.image hooks window autocmds to draw the inline image, so
     -- suppressing them left the float empty (the "no header" bug).
   }
+  if S.banner_placement and S.banner_src ~= src then
+    pcall(function() S.banner_placement:close() end)
+    S.banner_placement, S.banner_src = nil, nil
+  end
+  local geometry_changed = true
   if S.banner_win and api.nvim_win_is_valid(S.banner_win) then
     local old = api.nvim_win_get_config(S.banner_win)
-    local unchanged = S.banner_placement and old.width == cfg.width and old.height == cfg.height
-      and old.row == cfg.row and old.col == cfg.col and S.banner_src == src
-    if unchanged then
-      if S.banner_placement then pcall(function() S.banner_placement:update() end) end
-      return
+    geometry_changed = old.width ~= cfg.width or old.height ~= cfg.height
+      or old.row ~= cfg.row or old.col ~= cfg.col
+    if geometry_changed and S.banner_placement then
+      local terminal = _G.Snacks and Snacks.image and Snacks.image.terminal
+      if terminal then
+        pcall(terminal.request, {
+          a = "d", d = "i", i = S.banner_placement.img.id, p = S.banner_placement.id,
+        })
+      end
     end
-    if S.banner_placement then pcall(function() S.banner_placement:close() end)
-    else pcall(Placement.clean, S.banner_buf) end
-    pcall(api.nvim_win_close, S.banner_win, true)
-    S.banner_win, S.banner_placement = nil, nil
+    pcall(api.nvim_win_set_config, S.banner_win, cfg)
+  else
+    S.banner_win = api.nvim_open_win(S.banner_buf, false, cfg)
+    pcall(function() vim.wo[S.banner_win].winhighlight = "Normal:Normal,NormalFloat:Normal" end)
   end
-  S.banner_win = api.nvim_open_win(S.banner_buf, false, cfg)
-  pcall(function() vim.wo[S.banner_win].winhighlight = "Normal:Normal,NormalFloat:Normal" end)
-  pcall(Placement.clean, S.banner_buf)
-  local okp, placement = pcall(Placement.new, S.banner_buf, src,
-    { pos = { 1, 0 }, inline = true, width = bw, auto_resize = false })
-  if okp then S.banner_placement, S.banner_src = placement, src end
+  if S.banner_placement then
+    S.banner_placement.opts.width = bw
+    S.banner_placement.hidden = false
+    S.banner_placement._state = nil
+  else
+    pcall(Placement.clean, S.banner_buf)
+    local okp, placement = pcall(Placement.new, S.banner_buf, src,
+      { pos = { 1, 0 }, inline = true, width = bw, auto_resize = false })
+    if okp then S.banner_placement, S.banner_src = placement, src end
+  end
+  S.banner_placing = false
+  vim.schedule(function()
+    if S.banner_placement then pcall(function() S.banner_placement:update() end) end
+  end)
 end
 
 hide_banner = function()
-  if S.banner_placement then pcall(function() S.banner_placement:close() end) end
+  if S.banner_placement then
+    local terminal = _G.Snacks and Snacks.image and Snacks.image.terminal
+    if terminal then
+      pcall(terminal.request, {
+        a = "d", d = "i", i = S.banner_placement.img.id, p = S.banner_placement.id,
+      })
+    end
+    S.banner_placement.hidden = true
+    S.banner_placement._state = nil
+  end
   if S.banner_win and api.nvim_win_is_valid(S.banner_win) then pcall(api.nvim_win_close, S.banner_win, true) end
-  S.banner_win, S.banner_placement, S.banner_src = nil, nil, nil
+  S.banner_win = nil
 end
 
 -- 0 when the banner won't render (no snacks / missing PNG), so the reserved top
@@ -6139,6 +6167,15 @@ vim.api.nvim_create_autocmd("CursorMoved", {
     S._follow_paused = true
   end,
 })
+
+-- The session bound to a plan slug, from the LIVE roster (cross-scope — the
+-- work scope's persist lives on the VM, invisible to local file scans).
+function M.session_for_plan(slug)
+  if not slug or slug == "" then return nil end
+  for _, a in ipairs(S.roster or {}) do
+    if a.plan == slug and (a.name or a.rawName) then return a.rawName or a.name end
+  end
+end
 
 function M.setup(opts)
   opts = opts or {}

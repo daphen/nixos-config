@@ -591,6 +591,13 @@ end
 -- which once landed a vault plan's --finalize in whatever session owned ~/personal.
 local function bound_session_name(slug)
 	if not slug or slug == "" then return nil end
+	-- Live roster first: it is cross-scope (VM work sessions included), where
+	-- the persist scan below only sees daemons persisting on THIS machine.
+	local ok, ck = pcall(require, "cockpit")
+	if ok and ck and type(ck.session_for_plan) == "function" then
+		local live = ck.session_for_plan(slug)
+		if live and live ~= "" then return live end
+	end
 	local base = vim.fn.expand("~/.local/state/agentd")
 	for _, f in ipairs(vim.fn.glob(base .. "/*-sessions.json", false, true)) do
 		local ok, data = pcall(function() return vim.json.decode(table.concat(vim.fn.readfile(f), "\n")) end)
