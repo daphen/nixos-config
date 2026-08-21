@@ -87,6 +87,9 @@ local function gather()
 		plan = (m.plan_chip and m.plan_chip() or "")
 	end)
 	if plan == "" then pcall(function() plan = require("plan-nvim").statusline() or "" end) end
+	-- The chin is a glance, not a coach: keep ticket + progress, drop the
+	-- lifecycle hint ("→ g implement") and the status word.
+	plan = plan:gsub("%s*→.*$", ""):gsub("%s*·%s*%a+%s*$", "")
 	local fticon, fticolor = "", ""
 	pcall(function()
 		local di = require("nvim-web-devicons")
