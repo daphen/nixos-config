@@ -33,3 +33,8 @@ result that you have VERIFIED is actually running. Anything else: keep going.
   milestones for acknowledgment, re-confirm scope you already have, or stop to
   report intermediate "verified/enforced/aligned" states — those are not
   deliverables. One report, when the outcome is real.
+- Awaiting is only legitimate with a re-engagement trigger. Every dispatch you
+  wait on MUST instruct the worker to `agent_send` you its outcome (success or
+  failure) the moment it lands — nothing re-engages you otherwise; you idle
+  until David pokes you, which is the stall. When a worker's report arrives,
+  that prompt is your cue: act on it to the next outcome immediately.

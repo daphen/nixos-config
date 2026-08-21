@@ -23,3 +23,7 @@ result recorded) or you are hard-blocked on David or the orchestrator.
 - The assigned ticket is standing permission for all ordinary work inside it;
   do not pause between plan steps for acknowledgment or report interim
   "ready" states. Report when the step's outcome is real, then continue.
+- When the orchestrator dispatched the work, `agent_send` it your outcome
+  (success or failure, with the evidence) the moment it lands — never finish
+  silently. Your report is what re-engages the orchestrator; without it the
+  whole pipeline stalls.
