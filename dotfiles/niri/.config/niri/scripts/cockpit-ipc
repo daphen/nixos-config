@@ -22,15 +22,19 @@ probe_id() {
   case "$out" in nvim|rail) return 0;; *) return 1;; esac
 }
 
-# A probe that fails marks a DEAD instance dir: reap it on the spot. Crashed
-# quickshells never clean their by-id dirs — 843 corpses accumulated and every
-# keypress walked all of them at 2s apiece (the "infinite spawning" storm).
-probe() { # probe <id> <fn> -> stdout or failure (+reap)
-  local out
-  out=$(timeout 1 qs ipc -i "$1" call cockpit "$2" 2>/dev/null) || { rm -rf "${reg:?}/$1"; return 1; }
-  [ -n "$out" ] || { rm -rf "${reg:?}/$1"; return 1; }
-  printf '%s
-' "$out"
+# Reap ONLY dirs whose instance is actually DEAD (connect failure/timeout).
+# A live NON-cockpit instance (the bar, mlqs, …) answers "Target not found" on
+# stderr with exit 0 — the first reaper treated that as dead and rm -rf'd the
+# registry dirs of every live sibling, unlinking their ipc sockets and making
+# qs client commands abort in LogManager::init. Alive-but-not-ours = skip, keep.
+probe() { # probe <id> <fn> -> stdout or failure (+reap only if dead)
+  local out rc
+  out=$(timeout 1 qs ipc -i "$1" call cockpit "$2" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ]; then rm -rf "${reg:?}/$1"; return 1; fi
+  case "$out" in
+    *"not found"*|"") return 1;;
+  esac
+  printf '%s\n' "$out"
 }
 resolve_id() {
   local i t focused="$1" fallback=""
