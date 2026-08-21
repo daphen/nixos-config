@@ -30,7 +30,9 @@ PanelWindow {
     anchors.top: true
     margins.top: 0
     implicitWidth: 600
-    implicitHeight: Theme.barHeight + 130
+    // Track the capsule: the fixed 130 clipped tall ask capsules (button row +
+    // multi-line body) at the window edge, eating the bottom border.
+    implicitHeight: Theme.barHeight + Math.max(130, capsule.height + 24)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -333,14 +335,20 @@ PanelWindow {
                 ClippingRectangle {
                     anchors.fill: parent
                     radius: 15
-                    color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
+                    // Ask avatars are bare glyphs — no ground behind the logo.
+                    color: root.showingAsk ? "transparent" : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
                     Image {
                         id: avatar
                         anchors.fill: parent
+                        anchors.margins: root.showingAsk ? 2 : 0
                         source: root.showingAsk ? root.askAvatar : root.nImage
                         visible: status === Image.Ready
-                        sourceSize.width: 60; sourceSize.height: 60
-                        fillMode: Image.PreserveAspectCrop
+                        // SVGs rasterize AT sourceSize — forcing a square there squishes
+                        // before the fit can help. Ask glyphs rasterize at true aspect.
+                        sourceSize.width: root.showingAsk ? 48 : 60
+                        sourceSize.height: 60
+                        // Fit, not crop: the scope glyphs aren't square (122:152).
+                        fillMode: root.showingAsk ? Image.PreserveAspectFit : Image.PreserveAspectCrop
                         asynchronous: true
                     }
                     // no avatar → the app's brand glyph; unknown app → monogram
