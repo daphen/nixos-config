@@ -126,7 +126,7 @@ return {
 		end
 
 		local function editor_filename()
-			local ok, rail = pcall(require, "heidr")
+			local ok, rail = pcall(require, "cockpit")
 			local win = ok and rail.editor_win and rail.editor_win()
 			if not win or not vim.api.nvim_win_is_valid(win) then return "" end
 			local ebuf = vim.api.nvim_win_get_buf(win)
@@ -140,7 +140,7 @@ return {
 		local function get_theme()
 			local pal = vim.g.theme_palette or {}
 			local dark = vim.o.background == "dark"
-			-- statusline background = the dim ground (same layer as heidr's rail),
+			-- statusline background = the dim ground (same layer as Cockpit's rail),
 			-- both modes — it read as a floating surface2 bar before.
 			local surface = pal.bg_dim or pal.bg_surface2 or (dark and "#101010" or "#F5F5F7")
 			local fg = dark and "#EDEDED" or "#2D4A3D"
@@ -199,7 +199,7 @@ return {
 					-- live working state/spinner stays above the composer input.
 					{
 						function()
-							local ok, m = pcall(require, "heidr")
+							local ok, m = pcall(require, "cockpit")
 							return (ok and m.plan_chip) and m.plan_chip() or ""
 						end,
 						padding = { left = 1, right = 1 },
@@ -275,7 +275,7 @@ return {
 								-- work items (plan progress ◆ N/N) for the active rail session
 								{
 									function()
-										local ok, m = pcall(require, "heidr")
+										local ok, m = pcall(require, "cockpit")
 										return (ok and m.plan_chip) and m.plan_chip() or ""
 									end,
 									padding = { left = 1, right = 1 },

@@ -13,17 +13,17 @@ keymap.set("n", "x", '"_x')
 keymap.set("n", "<C-h>", "<C-w>h")
 keymap.set("n", "<C-j>", "<C-w>j")
 keymap.set("n", "<C-k>", "<C-w>k")
--- In the Heidr cockpit, <C-l> crosses into the rail when there's no split to the
+-- In Cockpit, <C-l> crosses into the rail when there is no split to the
 -- right (vim-tmux-navigator style); otherwise it's a plain window move. Bound in
 -- EVERY mode: focus is leaving nvim entirely, so waiting for normal mode first is
 -- friction — each mode just drops back to normal on the way out (otherwise you'd
 -- return mid-insert / with a stale visual selection).
-if vim.env.HEIDR_COCKPIT == "1" then
+if vim.env.COCKPIT_COCKPIT == "1" or vim.env.HEIDR_COCKPIT == "1" then
   local function cross_right()
     local prev = vim.fn.winnr()
     vim.cmd("wincmd l")
     if vim.fn.winnr() == prev then
-      vim.system({ vim.fn.expand("~/.config/niri/scripts/heidr-cross"), "right" })
+      vim.system({ vim.fn.expand("~/.config/niri/scripts/cockpit-cross"), "right" })
     end
   end
   keymap.set("n", "<C-l>", cross_right)

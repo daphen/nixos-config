@@ -98,7 +98,7 @@ local function repo_of(path)
 end
 
 local function pick_target_window()
-	local ok, rail = pcall(require, "heidr")
+	local ok, rail = pcall(require, "cockpit")
 	local shared = ok and rail.editor_win and rail.editor_win()
 	if shared then return shared end
 	local function is_editor(w)
@@ -382,7 +382,7 @@ function M.setup(opts)
 			-- Only auto-start inside a real work tree. `--show-toplevel` + `~= ""` was
 			-- wrong: a non-repo can still return a non-empty line, so it started the
 			-- watcher which then failed on ls-files. is-inside-work-tree == "true" is
-			-- the robust test (matches M.start's capability + heidr's reroot check).
+			-- the robust test (matches M.start's capability + Cockpit's reroot check).
 			local in_repo = vim.fn.systemlist({
 				"git", "-C", vim.fn.getcwd(), "rev-parse", "--is-inside-work-tree",
 			})[1]
