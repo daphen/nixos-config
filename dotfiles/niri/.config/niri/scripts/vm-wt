@@ -68,6 +68,14 @@ say "boot devenv wt in tmux session wt-$t …"
 say "local worktree + sync via vm-sync …"
 "$HOME/.local/bin/vm-sync" "$raw" 2>&1 | sed 's/^/  /' || say "  ✗ vm-sync failed"
 
+# Local deps for the mirror: mutagen doesn't carry node_modules, so ts_ls in
+# the mirror drowns in "Cannot find module" until an install links them from
+# the shared pnpm store. Background — the rail doesn't wait on it.
+if [ -f "$mirror/package.json" ] && [ ! -d "$mirror/node_modules" ]; then
+    say "pnpm install (background) for mirror deps …"
+    (cd "$mirror" && nohup pnpm install --prefer-offline >"$mirror/.pnpm-install.log" 2>&1 &)
+fi
+
 # ── 4. agentd session rooted at the VM worktree ──────────────────────────────
 # Seed the session with /skill:plan-ticket so a fresh ticket lands in PLAN, not an
 # empty prompt. agentd delivers `prompt` once pi's stdin is ready.
