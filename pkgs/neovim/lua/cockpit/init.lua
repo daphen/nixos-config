@@ -193,6 +193,7 @@ local S = {
   idle_since = {},    -- id -> os.time() when the session last went idle
   folds = {},         -- id -> { [msgIndex]=true }
   plan = {},          -- id -> { done, total, phase } | false  (cached, refreshed slowly)
+  plan_inventory = { needs = {}, implementing = {}, reconciled = {} },
   devenv = {},        -- ctx -> "running"|"stopped"|"broken"  (devenv link health, cached)
   orphans = {},       -- ctx[] with a running slice but no live session (from cockpit-devenv orphans)
   nav_hist = {},      -- session-visit history (ids, oldest→newest); Ctrl-o/Ctrl-i walk it
@@ -212,7 +213,7 @@ local S = {
 
 local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send, git_changes, refresh_git_changes, parse_git_diff
 local refresh_dashboard, hide_banner
-local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, refresh_plan_one, refresh_devenv, sync_approval_keys
+local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, refresh_plan_one, refresh_plan_bindings, refresh_devenv, sync_approval_keys
 local session_cwd, load_plan, answer, apply_prompt_mode
 local on_cockpit_active -- reconciles the rail's selection with the cockpit active context
 local on_agent_jump -- Super+i: select a session by name (works even without a cockpit tab)
@@ -1863,7 +1864,9 @@ handle = function(obj)
       if ra ~= rb then return ra > rb end
       return (a.name or "") < (b.name or "")
     end)
+    local plan_binding_changed = refresh_plan_bindings and refresh_plan_bindings()
     render_roster()
+    if plan_binding_changed and refresh_dashboard then refresh_dashboard() end
     -- Fresh cockpit nvim: land on the ORCHESTRATOR's Cockpit dashboard instead of the
     -- stock splash. Once, first roster only, and only when nvim was started bare (no
     -- file args, untouched empty buffer) — a restarted pane otherwise sat on the NVIM
@@ -3776,7 +3779,7 @@ local dash_keys
 -- Cockpit masthead banner — theme-aware PNG (light/dark electric) rendered inline
 -- via snacks.image (kitty graphics). Wrapped so a missing file or a terminal
 -- without image support never breaks the resting view.
-local COCKPIT_BANNER_DIR = fn.expand("~/personal/cockpit/assets")
+local COCKPIT_BANNER_DIR = fn.expand("~/personal/ai-cockpit/assets")
 local COCKPIT_BANNER_W = 22 -- minimum banner width in cells
 -- The banner scales with the WINDOW: a fixed cell count renders physically
 -- smaller on denser screens (the private instance's masthead looked half the
@@ -3910,7 +3913,8 @@ local function show_scratch(win, cwd)
   -- `l` linear action) when an external driver renders a session this nvim never selected
   local tik = (S.selected or ""):match("%a+%-%d+") or fn.fnamemodify(cwd or "", ":t"):match("%a+%-%d+")
   local ctx = cockpit_ctx_registered(cwd)
-  local root = ctx == "main" -- the orchestrator (main checkout) → a fleet dashboard
+  local private_root = scope == "personal" and cwd == scope_root()
+  local root = ctx == "main" or private_root -- the scope's main checkout → a fleet dashboard
 
   -- masthead: the inline Cockpit banner IS the header — reserve its rows, nothing else.
   -- The session identity lives in the PLAN card title (Electric); no path, no id line.
@@ -4002,7 +4006,7 @@ local function show_scratch(win, cwd)
   -- autocmd re-renders automatically — so a manual changes/refresh hint is dead weight.)
   local FOOTER_H = 1 -- the horizontal hint row pinned to the bottom
 
-  local openmap, expand_ln, sessmap, ticketmap, teardownmap = {}, nil, {}, {}, {} -- file/toggle/session/ticket/teardown rows
+  local openmap, expand_ln, sessmap, ticketmap, planmap, teardownmap = {}, nil, {}, {}, {}, {} -- file/toggle/session/ticket/plan/teardown rows
   local dash_views -- the HUD card's tab order (non-root), exposed to <Tab> via S.dash
   if root then
     -- ORCHESTRATOR dashboard — the cycle's tickets in the same centered bordered cards
@@ -4010,10 +4014,51 @@ local function show_scratch(win, cwd)
     -- sessions are NOT listed here (the rail roster shows them permanently); a ticket
     -- being worked on is flagged "in progress" in the list below instead.
 
-    -- CYCLE + TICKETS from the agent-cached cycle.json, in the same card chrome. Tickets
-    -- in priority order; <CR>/o confirms + cockpit-adds a session. Live ones flagged.
-    local cyc = read_cycle()
-    if cyc and cyc.cycle then
+    if scope == "personal" then
+      local inv = S.plan_inventory or { needs = {}, implementing = {}, reconciled = {} }
+      local slugw = 0
+      for _, group in ipairs({ inv.needs, inv.implementing, inv.reconciled }) do
+        for _, row in ipairs(group or {}) do slugw = math.max(slugw, #row.slug) end
+      end
+      slugw = math.min(slugw, math.max(12, CARD_INNER - 22))
+      card(nil, "PLANS", function(add)
+        local summary = #inv.needs .. " need you · " .. #inv.implementing .. " implementing"
+        add(summary, { { 0, #summary, "CockpitMuted" } })
+        local function add_group(label, rows, color)
+          if #rows == 0 then return end
+          add("")
+          add(label, { { 0, #label, color } })
+          for _, row in ipairs(rows) do
+            local session = row.session and (row.session.name or short_name(row.session.id)) or "unbound"
+            local slug = row.slug
+            if #slug > slugw then slug = slug:sub(1, slugw - 1) .. "…" end
+            local mark = "●"
+            local left = mark .. " " .. slug .. string.rep(" ", slugw - #slug)
+              .. "   ◆ " .. row.done .. "/" .. row.total
+            local suffix = " · " .. session
+            local text = left .. suffix
+            local basehl = label == "RECENTLY RECONCILED" and "CockpitMuted" or "CockpitFile"
+            planmap[add(text, {
+              { 0, #text, basehl },
+              { 0, #mark, color },
+              { #left, #text, "CockpitMuted" },
+            })] = row
+          end
+        end
+        add_group("NEEDS YOU", inv.needs, "CockpitErr")
+        add_group("IMPLEMENTING", inv.implementing, "CockpitElectric")
+        add_group("RECENTLY RECONCILED", inv.reconciled, "CockpitMuted")
+        if #inv.needs + #inv.implementing + #inv.reconciled == 0 then
+          add("")
+          local empty = "No plan artifacts"
+          add(empty, { { 0, #empty, "CockpitMuted" } })
+        end
+      end)
+    else
+      -- CYCLE + TICKETS from the agent-cached cycle.json, in the same card chrome. Tickets
+      -- in priority order; <CR>/o confirms + cockpit-adds a session. Live ones flagged.
+      local cyc = read_cycle()
+      if cyc and cyc.cycle then
       local cy = cyc.cycle
       local span = (cy.starts and cy.ends) and (" · " .. cy.starts .. "–" .. cy.ends) or ""
       local cprog = (cy.progress and cy.progress.total and cy.progress.total > 0)
@@ -4096,6 +4141,7 @@ local function show_scratch(win, cwd)
           if #done > 5 then local m = "… " .. (#done - 5) .. " more"; add(m, { { 0, #m, "CockpitMuted" } }) end
         end)
       end
+    end
     end
   else
     -- Unified HUD card: PLAN and CHANGES in ONE card; <Tab> swaps the active view.
@@ -4277,7 +4323,7 @@ local function show_scratch(win, cwd)
   vim.bo[buf].modifiable = false
   api.nvim_buf_clear_namespace(buf, S.ns, 0, -1)
   for _, d in ipairs(decor) do pcall(api.nvim_buf_add_highlight, buf, S.ns, d.grp, d.ln, d.cs, d.ce) end
-  S.dash = { open = openmap, sessions = sessmap, tickets = ticketmap, teardown = teardownmap, expand_ln = expand_ln, cwd = cwd, win = win, views = dash_views } -- <CR>/o targets; views = the card's tab order
+  S.dash = { open = openmap, sessions = sessmap, tickets = ticketmap, plans = planmap, teardown = teardownmap, expand_ln = expand_ln, cwd = cwd, win = win, views = dash_views } -- <CR>/o targets; views = the card's tab order
   dash_keys(buf, acts)
   pcall(api.nvim_win_set_buf, win, buf)
   editor_gutter(win, false) -- clean resting view: no number/sign/fold columns
@@ -4341,6 +4387,14 @@ dash_keys = function(buf, acts)
       local t = d.teardown[ln0]
       teardown_session(t.id, t.cwd)
       if d.win and api.nvim_win_is_valid(d.win) then vim.defer_fn(function() show_scratch(d.win, d.cwd) end, 500) end
+    elseif d.plans and d.plans[ln0] then
+      local p = d.plans[ln0]
+      if p.session then
+        view_session(p.session.id, p.session.cwd)
+      else
+        vim.notify("unbound — P in the rail binds it")
+      end
+      pcall(function() require("plan-nvim").open(p.slug) end)
     elseif d.tickets and d.tickets[ln0] then
       local t = d.tickets[ln0]
       if t.live then
@@ -4793,8 +4847,68 @@ refresh_plan_one = function(a)
     end
   end
 end
+refresh_plan_bindings = function()
+  local bound, changed = {}, false
+  for _, a in ipairs(S.roster) do
+    if a.plan and a.plan ~= "" then bound[a.plan] = a end
+  end
+  for _, group in pairs(S.plan_inventory or {}) do
+    for _, row in ipairs(group) do
+      local next_session = bound[row.slug]
+      if (row.session and row.session.id or nil) ~= (next_session and next_session.id or nil) then changed = true end
+      row.session = next_session
+    end
+  end
+  return changed
+end
+
+local function refresh_plan_inventory()
+  local groups = { needs = {}, implementing = {}, reconciled = {} }
+  local bound = {}
+  for _, a in ipairs(S.roster) do
+    if a.plan and a.plan ~= "" then bound[a.plan] = a end
+  end
+  local dir = fn.expand("~/personal/notes/storage/plans")
+  for _, path in ipairs(fn.glob(dir .. "/*.progress.json", false, true)) do
+    local ok, progress = pcall(function() return vim.json.decode(table.concat(fn.readfile(path), "\n")) end)
+    if ok and type(progress) == "table" then
+      local slug = fn.fnamemodify(path, ":t"):gsub("%.progress%.json$", "")
+      local md = dir .. "/" .. slug .. ".md"
+      local mok, mlines = pcall(fn.readfile, md)
+      local body = mok and table.concat(mlines, "\n") or ""
+      local status = body:match("> Status:%s*`([^`]+)`") or progress.phase or "draft"
+      local flow, done = progress.flow or {}, 0
+      for _, step in ipairs(flow) do if step.status == "done" then done = done + 1 end end
+      local complete = #flow > 0 and done == #flow
+      local bucket
+      if body:find("%(unresolved%)") or status == "draft" or status == "amended"
+          or (complete and status ~= "reconciled") then
+        bucket = "needs"
+      elseif status == "reconciled" or progress.phase == "reconciled" then
+        bucket = "reconciled"
+      else
+        bucket = "implementing"
+      end
+      groups[bucket][#groups[bucket] + 1] = {
+        slug = slug, path = md, done = done, total = #flow,
+        session = bound[slug], mtime = math.max(fn.getftime(path), fn.getftime(md)),
+      }
+    end
+  end
+  local function newer(a, b)
+    if a.mtime ~= b.mtime then return a.mtime > b.mtime end
+    return a.slug < b.slug
+  end
+  table.sort(groups.needs, newer)
+  table.sort(groups.implementing, newer)
+  table.sort(groups.reconciled, newer)
+  while #groups.reconciled > 5 do table.remove(groups.reconciled) end
+  S.plan_inventory = groups
+end
+
 refresh_plans = function()
   for _, a in ipairs(S.roster) do refresh_plan_one(a) end
+  refresh_plan_inventory()
 end
 
 -- Devenv link health, cached per CONTEXT (not per session — the slice is a property
@@ -5881,7 +5995,11 @@ function M.open()
   api.nvim_create_autocmd("VimLeavePre", { group = fgrp, callback = function() rail_focus_mark(false) end })
 
   connect(function() send({ type = "list_sources" }); render() end)
-  vim.defer_fn(function() if S.win and api.nvim_win_is_valid(S.win) then refresh_plans(); render_roster() end end, 300)
+  vim.defer_fn(function()
+    refresh_plans()
+    if S.win and api.nvim_win_is_valid(S.win) then render_roster() end
+    refresh_dashboard()
+  end, 300)
   render()
   -- rail is now fully constructed: focus autocmds may resize/expand from here on
   S.built = true

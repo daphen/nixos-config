@@ -61,7 +61,7 @@ case "$focused" in
     exit 0   # only one cockpit: already on its roster, nothing to hop to
     ;;
   *)
-    "$HOME/.config/niri/scripts/niri-jump-or-exec" title:cockpit-qs "$HOME/personal/cockpit/run-qs.sh"
+    "$HOME/.config/niri/scripts/niri-jump-or-exec" title:cockpit-qs "$HOME/personal/ai-cockpit/run-qs.sh"
     "$IPC" focusRoster 2>/dev/null || true
     ;;
 esac

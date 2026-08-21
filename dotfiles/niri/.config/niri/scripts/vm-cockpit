@@ -37,7 +37,7 @@ legacy_restart_marker="${XDG_RUNTIME_DIR}/heidr-role-bundle-work.restart-require
 [ -e "$legacy_restart_marker" ] && mv -f "$legacy_restart_marker" "$restart_marker"
 role_files=(
   roles prompts/plan-ticket.md prompts/review-pr.md
-  pi-extensions/role-policy pi-extensions/agents pi-extensions/ask pi-extensions/tool-compress
+  pi-extensions/role-policy pi-extensions/agents pi-extensions/ask pi-extensions/user-bash pi-extensions/tool-compress
   skills/i-have-adhd skills/notes skills/cycle skills/daily skills/standup
   skills/plan-ticket skills/watch-pr skills/review-pr
 )

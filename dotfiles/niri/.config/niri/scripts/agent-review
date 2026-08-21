@@ -240,8 +240,8 @@ def main() -> int:
         harness = ManualHarness(
             home=Path(HOME), pr=num, expected_sha=sha, project_id=a.manual_test,
             worktree=wt, ports=ports,
-            vm_host=os.environ.get("HEIDR_VM_HOST", "dev-heidr-2a39.workstation.lovable.net"),
-            vm_user=os.environ.get("HEIDR_VM_USER", "david_karlsson_lovable_dev"),
+            vm_host=os.environ.get("COCKPIT_VM_HOST", os.environ.get("HEIDR_VM_HOST", "dev-heidr-2a39.workstation.lovable.net")),
+            vm_user=os.environ.get("COCKPIT_VM_USER", os.environ.get("HEIDR_VM_USER", "david_karlsson_lovable_dev")),
             browser_profile_seed=a.browser_profile_seed,
             allow_sandbox_start=a.allow_sandbox_start,
         )

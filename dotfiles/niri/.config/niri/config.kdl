@@ -808,7 +808,7 @@ binds {
     // Cockpit (nvim + agentd rail) coexists with the kitty cockpit.
     // Both binds launch the dev tree so per-workspace mode and current QML stay aligned.
     Super+y hotkey-overlay-title="Answer agent question / Cockpit" { spawn-sh "$HOME/.config/niri/scripts/agent-ask-or-cockpit"; }
-    Super+Shift+y hotkey-overlay-title="Cockpit for this workspace (mode-scoped relaunch)" { spawn-sh "$HOME/personal/cockpit/run-qs.sh"; }
+    Super+Shift+y hotkey-overlay-title="Cockpit for this workspace (mode-scoped relaunch)" { spawn-sh "$HOME/personal/ai-cockpit/run-qs.sh"; }
     // Super+Ctrl+M: rebuild/repair the cockpit (windows + registered
     // contexts). Idempotent — replaces the old ws-startmain bind.
     Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/cockpit-restore"; }

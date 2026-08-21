@@ -6,4 +6,4 @@ if [[ "$result" == *focused* ]]; then
 fi
 
 exec "$HOME/.config/niri/scripts/niri-jump-or-exec" \
-    title:cockpit-qs "$HOME/personal/cockpit/run-qs.sh"
+    title:cockpit-qs "$HOME/personal/ai-cockpit/run-qs.sh"

@@ -18,7 +18,7 @@ case "$title" in
   *[Hh]eidr*)
     matched=yes
     fn="focusRight"; [ "$dir" = left ] && fn="focusLeft"
-    res="$(qs ipc -p "$HOME/personal/cockpit/qs-shell" call cockpit "$fn" 2>/dev/null)"
+    res="$(qs ipc -p "$HOME/personal/ai-cockpit/qs-shell" call cockpit "$fn" 2>/dev/null)"
     res="${res//[$'\t\r\n ']/}"   # trim any whitespace
     ;;
 esac
