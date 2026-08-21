@@ -933,17 +933,28 @@ end
 -- For an ordinary nvim that never opened it, resolve it on demand from the folder
 -- binding or the worktree's branch (via plan_key) — so <C-p> works anywhere.
 resolve_plan_path = function()
-	if state.plan_path and vim.uv.fs_stat(state.plan_path) then return state.plan_path end
-	local root = state.root or git_root() or vim.fn.getcwd()
-	if not root then return nil end
-	local key = plan_key(root)
-	if not key then return nil end
-	local target = plans_dir(root) .. "/" .. key .. ".md"
-	if vim.uv.fs_stat(target) then
-		state.root = root
-		state.plan_path = target
-		return target
+	-- Precedence: (1) the plan buffer you are IN — in-buffer lifecycle acts on
+	-- itself; (2) the CURRENT context's plan (session binding / branch) — a
+	-- previously opened plan must not shadow the session you switched to;
+	-- (3) the last-opened plan, as the ad-hoc fallback.
+	local bufname = vim.api.nvim_buf_get_name(0)
+	if bufname:match("%.md$")
+		and (bufname:match("/%.plans/") or bufname:match("/notes/storage/plans/"))
+		and vim.uv.fs_stat(bufname) then
+		state.plan_path = bufname
+		return bufname
 	end
+	local root = git_root() or vim.fn.getcwd()
+	local key = root and plan_key(root)
+	if key then
+		local target = plans_dir(root) .. "/" .. key .. ".md"
+		if vim.uv.fs_stat(target) then
+			state.root = root
+			state.plan_path = target
+			return target
+		end
+	end
+	if state.plan_path and vim.uv.fs_stat(state.plan_path) then return state.plan_path end
 	return nil
 end
 
