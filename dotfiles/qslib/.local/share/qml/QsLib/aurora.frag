@@ -78,6 +78,12 @@ void main() {
     // fluid-gradient color zones: deep ground -> swept mid body -> bright
     // islands, boundaries wide but DEFINED (satin, not fog)
     float vb = v + (ubuf.bright - 0.5) * 0.6;
+    // Gradient floor: the drifting fbm occasionally passes a low-variance
+    // stretch and the whole disc lands in ONE zone (all-dark / all-light).
+    // A slowly rotating linear ramp guarantees ~0.32 of spread across the
+    // disc at all times; with healthy noise it is an invisible bias.
+    float ga2 = ubuf.ph2 * 0.5;
+    vb += 0.16 * dot(u, vec2(cos(ga2), sin(ga2)));
     float fw = mix(0.10, 0.45, ubuf.feather);
     float s1 = smoothstep(0.55 - fw, 0.55 + fw, vb);
     vec3 col = mix(ubuf.colA.rgb, ubuf.colB.rgb, s1);
