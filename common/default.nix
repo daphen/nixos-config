@@ -312,6 +312,20 @@
   # 1Password with polkit integration
   programs._1password.enable = true;
   programs._1password-gui.enable = true;
+  programs._1password-gui.package = pkgs._1password-gui.overrideAttrs (old: {
+    postFixup = (old.postFixup or "") + ''
+      mv "$out/bin/1password" "$out/bin/.1password-wrapped"
+      cat > "$out/bin/1password" <<'EOF'
+#!/bin/sh
+self="$(readlink -f "$0")"
+if [ "$(cat "$HOME/.config/theme_mode" 2>/dev/null)" = dark ]; then
+  exec "$(dirname "$self")/.1password-wrapped" --force-dark-mode "$@"
+fi
+exec "$(dirname "$self")/.1password-wrapped" "$@"
+EOF
+      chmod +x "$out/bin/1password"
+    '';
+  });
   programs._1password-gui.polkitPolicyOwners = [ "daphen" ];
   environment.etc."1password/custom_allowed_browsers" = {
     text = "helium\n";

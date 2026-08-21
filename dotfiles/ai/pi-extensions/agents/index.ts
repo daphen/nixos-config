@@ -5,12 +5,14 @@ import { execFile } from "node:child_process";
 
 import {
   allSessions,
+  answerSession,
   dispositionReviewFindings,
   readSessionTurns,
   reportReviewFindings,
   resolveSession,
   scheduleSelf,
   sendPrompt,
+  setPlan,
   spawnSession,
   steerSession,
   stopSelf,
@@ -43,9 +45,11 @@ export default function (pi: ExtensionAPI) {
     async execute() {
       const sessions = await allSessions();
       if (sessions.length === 0) return say("No active agent sessions.");
-      const rows = sessions.map(
-        (s) => `${(s.scope ?? "?").padEnd(8)} ${String(s.status ?? "?").padEnd(10)} ${String(s.profile ?? "?").padEnd(22)} ${String(s.name ?? "?").padEnd(36)} ${s.cwd ?? ""}`,
-      );
+      const rows = sessions.map((s) => {
+        const plan = s.plan ? ` · plan: ${s.plan}` : "";
+        const ask = s.ask?.title ? ` · needs input: ${JSON.stringify(s.ask.title)}` : "";
+        return `${(s.scope ?? "?").padEnd(8)} ${String(s.status ?? "?").padEnd(10)} ${String(s.profile ?? "?").padEnd(22)} ${String(s.name ?? "?").padEnd(36)} ${s.cwd ?? ""}${plan}${ask}`;
+      });
       return say(rows.join("\n"));
     },
   });
@@ -88,6 +92,45 @@ export default function (pi: ExtensionAPI) {
       try {
         const r = await sendPrompt(params.agent, params.message);
         return say(`Delivered to ${r.session.name ?? r.cwd} (${r.scope}).`);
+      } catch (e) {
+        return say(String((e as Error).message ?? e));
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "agent_answer",
+    label: "Answer agent",
+    description:
+      "Answer a pending ask_user question in another agent session. Use yes/no for confirmations, option text or its 1-based number for choices, free text for inputs, or cancel.",
+    promptSnippet: "agent_answer: answer an agent's pending question",
+    parameters: Type.Object({
+      agent: Type.String({ description: "session name, id, or cwd" }),
+      answer: Type.String({ description: "yes/no, option text or number, input text, or cancel" }),
+    }),
+    async execute(_id, params: any) {
+      try {
+        const r = await answerSession(params.agent, params.answer);
+        return say(`Answered ${r.session.name ?? r.cwd} (${r.scope}).`);
+      } catch (e) {
+        return say(String((e as Error).message ?? e));
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "agent_set_plan",
+    label: "Set session plan",
+    description:
+      "Bind this calling agent session to a vault plan slug, replacing its previous binding. Pass an empty string to clear the binding.",
+    promptSnippet: "agent_set_plan: bind or clear this session's plan slug",
+    parameters: Type.Object({
+      plan: Type.String({ description: "vault plan slug, or an empty string to clear" }),
+    }),
+    async execute(_id, params: any) {
+      try {
+        const r = await setPlan(params.plan);
+        return say(params.plan ? `Bound ${r.session.name ?? r.cwd} to plan ${params.plan}.` : `Cleared the plan binding for ${r.session.name ?? r.cwd}.`);
       } catch (e) {
         return say(String((e as Error).message ?? e));
       }
@@ -274,7 +317,7 @@ export default function (pi: ExtensionAPI) {
     async execute() {
       const r = await resolveSession(process.cwd());
       if (!r) return say(`Not registered in any roster (cwd ${process.cwd()}).`);
-      return say(`${r.session.name ?? "(unnamed)"} · ${r.scope} · ${r.cwd}`);
+      return say(`${r.session.name ?? "(unnamed)"} · ${r.scope} · ${r.cwd} · plan ${r.session.plan || "none"}`);
     },
   });
 }

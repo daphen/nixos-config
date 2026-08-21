@@ -20,6 +20,8 @@ export interface Session {
   status?: string;
   scope?: string;
   profile?: string;
+  plan?: string;
+  ask?: { title?: string; method?: string; options?: string[] };
 }
 
 const HOME = os.homedir();
@@ -237,6 +239,14 @@ async function resolveSelf(): Promise<Resolved> {
   throw new Error(`current agent session ${JSON.stringify(name)} is not registered`);
 }
 
+export async function setPlan(plan: string): Promise<Resolved> {
+  const self = await resolveSelf();
+  const name = String(self.session.name || self.session.id || "");
+  await writeThenClose(self.sockPath, { type: "set_plan", session: name, plan }, 500);
+  self.session.plan = plan;
+  return self;
+}
+
 export async function scheduleSelf(): Promise<void> {
   if (envAlias("AGENT_PROFILE") !== "lovable-watcher") throw new Error("agent_schedule_self is watcher-only");
   const self = await resolveSelf();
@@ -299,6 +309,28 @@ function callerIdentity(from: string): Record<string, string> {
   const profile = envAlias("AGENT_PROFILE") || "";
   const parent = envAlias("AGENT_PARENT") || "";
   return { from, ...(profile ? { fromProfile: profile } : {}), ...(parent ? { fromParent: parent } : {}) };
+}
+
+export async function answerSession(ref: string, answer: string): Promise<Resolved> {
+  const r = await resolveSession(ref);
+  if (!r) throw new Error(`no agent session matching ${JSON.stringify(ref)}`);
+  if (!r.session.ask) throw new Error(`${r.session.name ?? ref} has no unanswered question`);
+  const sid = r.session.id || r.session.name;
+  const raw = answer.trim();
+  const normalized = raw.toLowerCase();
+  let response: Record<string, unknown>;
+  if (normalized === "cancel") response = { cancelled: true };
+  else if (["yes", "y", "true"].includes(normalized)) response = { confirmed: true };
+  else if (["no", "n", "false"].includes(normalized)) response = { confirmed: false };
+  else {
+    const options = r.session.ask.options ?? [];
+    const number = Number.parseInt(raw, 10);
+    const numbered = /^\d+$/.test(raw) && number >= 1 && number <= options.length ? options[number - 1] : undefined;
+    const matched = options.find((option) => option.toLowerCase() === normalized);
+    response = { value: numbered ?? matched ?? raw };
+  }
+  await writeThenClose(r.sockPath, { type: "answer", session: sid, response, ...callerIdentity(await selfName()) }, 800);
+  return r;
 }
 
 export async function sendPrompt(ref: string, text: string): Promise<Resolved> {

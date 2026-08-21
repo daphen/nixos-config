@@ -27,6 +27,7 @@ Picker {
     // Ctrl+R marks read in place: mail invokes the daemon's "read" action
     // (server-side mark-read); everything else just clears from the center
     onCtrlR: item => {
+        if (item.agentAsk) return
         const n = item.notif
         let fired = false
         if (n && n.actions) {
@@ -49,7 +50,8 @@ Picker {
     }
 
     items: buildItems(Notifications.tracked, Notifications.seenGen,
-                      Notifications.retained, Notifications.retainedGen)
+                      Notifications.retained, Notifications.retainedGen,
+                      AgentAskState.asks, AgentAskState.gen)
 
     // NOTE: named openItem, NOT activate — Picker has its own activate() that
     // its Enter handling calls; shadowing it breaks Enter inside the picker.
@@ -60,6 +62,10 @@ Picker {
     Connections {
         target: NotificationJumpPickerState
         function onJumpRequested() {
+            if (AgentAskState.asks.length) {
+                NotificationJumpPickerState.open = true
+                return
+            }
             const vis = Notifications.visibleTrayToasts()
             if (vis.length === 1) root.openItem(root.mkItemLive(vis[0]))
             else NotificationJumpPickerState.open = true
@@ -69,6 +75,11 @@ Picker {
     function openItem(item) {
         if (!item || item.divider) return
         NotificationJumpPickerState.open = false
+        if (item.agentAsk) {
+            if (item.askInput) AgentAskState.openInput(item.agentAsk)
+            else AgentAskState.answer(item.agentAsk, item.agentAnswer)
+            return
+        }
         // Close the capsule up front: acting on it is the answer to it, and for
         // message apps nothing below dismisses the live notification.
         Notifications.toastHandled(item.id)
@@ -119,7 +130,26 @@ Picker {
         }
     }
 
-    function buildItems(tracked, sgen, retained, rgen) {
+    function askItems(asks) {
+        const out = []
+        if (!asks || !asks.length) return out
+        out.push({ divider: true, label: "agent questions" })
+        for (const ask of asks) {
+            const title = ask.title || ask.session || "Agent needs input"
+            if (ask.method === "confirm") {
+                out.push({ agentAsk: ask, agentAnswer: { confirmed: true }, label: title + " · Yes", body: ask.message || "" })
+                out.push({ agentAsk: ask, agentAnswer: { confirmed: false }, label: title + " · No", body: ask.message || "" })
+            } else if (ask.method === "select") {
+                for (const option of ask.options || [])
+                    out.push({ agentAsk: ask, agentAnswer: { value: option }, label: title + " · " + option, body: ask.message || "" })
+            } else {
+                out.push({ agentAsk: ask, askInput: true, label: title, body: ask.message || "" })
+            }
+        }
+        return out
+    }
+
+    function buildItems(tracked, sgen, retained, rgen, asks, agen) {
         // Center contents = live tracked tray notifications ∪ retained (messages
         // whose live notification was deleted when its channel was opened).
         const live = (tracked && tracked.values) ? tracked.values.slice() : []
@@ -132,7 +162,7 @@ Picker {
         items.sort((a, b) => (b.id || 0) - (a.id || 0))   // newest first
         const unseen = items.filter(it => !Notifications.isSeenId(it.id))
         const seen = items.filter(it => Notifications.isSeenId(it.id))
-        const out = []
+        const out = askItems(asks)
         if (unseen.length) {
             out.push({ divider: true, label: "current" })
             for (let i = 0; i < unseen.length; i++) out.push(unseen[i])

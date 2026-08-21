@@ -93,6 +93,7 @@ worktree and resolve them against the current checkout, wherever the plan lives.
 {
   "ticket": "EVERY-1234",
   "branch": "<git branch --show-current>",
+  "session": "<registered agentd session name, or empty outside agentd>",
   "phase": "draft|planned|implementing|reconciled",
   "flow":      [{"step": "one line matching a ◆ step in the plan", "status": "pending|active|done"}],
   "planned":   [{"file": "...", "action": "create|modify|touch", "status": "pending|touched|done", "note": "optional one line: what you did, or why no change was needed"}],
@@ -132,23 +133,27 @@ conversing with the agent. Your job here is the best full draft you can produce.
      ("Refactor the color utils" → `refactor-color-utils`). Works from any repo/cwd —
      no worktree needed. (If you happen to be on a matching `daphen/<name>` worktree
      branch, use that short name so the neovim plugin auto-opens it.)
-2. Spawn **read-only** Explore agents to map where this lands and what exists
+2. Resolve the executing session with `agent_whoami` when that tool is available.
+   In a registered agentd session, immediately call `agent_set_plan` with the derived
+   key; this makes `new plan…` auto-bind as soon as plan-ticket derives its slug.
+   Outside agentd, leave the progress `session` field empty and continue normally.
+3. Spawn **read-only** Explore agents to map where this lands and what exists
    nearby. NO code is written in this or any planning step.
-3. Fill `~/nixos/dotfiles/ai/skills/plan-ticket/template.md` COMPLETELY → `<plandir>/<key>.md`
+4. Fill `~/nixos/dotfiles/ai/skills/plan-ticket/template.md` COMPLETELY → `<plandir>/<key>.md`
    (substitute `{{TICKET}}` = the key — ticket id or ad-hoc slug; `{{TITLE}}`;
    `{{DATE}}` = `date -u +%Y-%m-%dT%H:%MZ`; `{{BRANCH}}` = `git branch --show-current`).
    Every section filled: the shape, the
    flow with ◆ new steps, decision points (options + recommendation), surface area +
    tree, verification, out of scope.
-4. Write `<plandir>/<key>.progress.json` (`phase: "draft"`, branch, `planned[]` from
-   the surface area, all `status: "pending"`; `flow[]` seeded from the `◆` steps — one
-   entry each, in flow order, all `status: "pending"`).
-5. **Open it in neovim** so the user drives the rest from there: run
+5. Write `<plandir>/<key>.progress.json` (`phase: "draft"`, branch, resolved
+   `session`, `planned[]` from the surface area, all `status: "pending"`; `flow[]`
+   seeded from the `◆` steps — one entry each, in flow order, all `status: "pending"`).
+6. **Open it in neovim** so the user drives the rest from there: run
    `plan-open "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" <plandir>/<key>.md`
    (best-effort — pops the plan up in an nvim window, no-ops if one's already in the
    repo or there's no GUI). The lifecycle keybinds in that nvim dispatch `--finalize`/
    `--go`/`--reconcile` back to THIS agent session (via wt-send, which routes to the pi rail session or a claude TUI), so keep it open.
-6. **STOP.** Print only a one-line pointer to the artifact path. The user manages it
+7. **STOP.** Print only a one-line pointer to the artifact path. The user manages it
    from there in neovim — editing steps, resolving decisions, approving. Do not
    iterate on the plan in chat. `--go` runs only after the plan is approved
    (status `planned`) in the editor.
@@ -267,6 +272,10 @@ new scope to add; also honor any manual edits the user already made to the artif
 1. Read `<plandir>/<key>.md` (normally already `--finalize`d into clean
    directives); honor the user's edits — their text wins.
 2. Refuse to start if any **Your call:** is `(unresolved)`; list them and stop.
+2a. If progress `session` is non-empty, call `agent_whoami` and refuse unless both
+   the session name matches that field and its current roster binding is this plan's
+   key. Rebinding a long-lived session to another task immediately prevents the old
+   plan from being executed there. Outside agentd (`session` empty), skip this check.
 2b. **If the plan's `> Status:` is not `finalized`** (draft/amended with all
    decisions resolved), run the FINALIZE phase first — bake directives, author the
    `## How it works` section, set the status — then continue into implementation.

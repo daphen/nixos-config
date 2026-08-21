@@ -32,6 +32,7 @@ ShellRoot {
     ClipboardPicker {}
     TodoListPicker {}
     NotificationJumpPicker {}
+    AgentAskPicker {}
     CockpitPicker {}
     WpmBadge {}
     WindowFocusDot {}

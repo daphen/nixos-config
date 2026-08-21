@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "bundleVersion": "2026-08-16.1",
+  "bundleVersion": "2026-08-20.3",
   "profiles": {
     "lovable-orchestrator": {
       "prompt": "lovable-orchestrator.md",
@@ -17,6 +17,7 @@
         "agent_roster",
         "agent_read",
         "agent_send",
+        "agent_answer",
         "agent_steer",
         "agent_review",
         "agent_spawn",
@@ -58,6 +59,7 @@
         "agent_steer",
         "agent_spawn",
         "agent_whoami",
+        "agent_set_plan",
         "agent_disposition_review_findings",
         "ask_user",
         "mcp"

@@ -50,7 +50,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     opqs = {
-      url = "git+ssh://git@github.com/daphen/opqs";
+      url = "github:daphen/opqs";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

@@ -47,6 +47,8 @@ singleton TodoListPickerState 1.0 TodoListPickerState.qml
 TodoListPicker 1.0 TodoListPicker.qml
 singleton NotificationJumpPickerState 1.0 NotificationJumpPickerState.qml
 NotificationJumpPicker 1.0 NotificationJumpPicker.qml
+singleton AgentAskState 1.0 AgentAskState.qml
+AgentAskPicker 1.0 AgentAskPicker.qml
 singleton PaletteState 1.0 PaletteState.qml
 CmdPalette 1.0 CmdPalette.qml
 NotificationIsland 1.0 NotificationIsland.qml

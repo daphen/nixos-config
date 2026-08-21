@@ -147,6 +147,7 @@ PanelWindow {
     property var onCtrlO: null
 
     property string query: search ? search.text : ""
+    function clearQuery() { if (search) search.text = "" }
     property int selectedIndex: 0
     readonly property color panelBorder: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b,
                                                  Theme.mode === "light" ? 0.15 : 0.10)

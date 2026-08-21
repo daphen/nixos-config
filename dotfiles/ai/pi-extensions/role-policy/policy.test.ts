@@ -361,7 +361,7 @@ describe("watcher containment and manifest", () => {
   });
 
   test("manifest tools are locked to names inventoried from pi.getAllTools", () => {
-    const known = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "agent_roster", "agent_read", "agent_send", "agent_steer", "agent_review", "agent_spawn", "agent_whoami", "agent_report_review_findings", "agent_disposition_review_findings", "agent_schedule_self", "agent_stop_self", "ask_user", "mcp"]);
+    const known = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "agent_roster", "agent_read", "agent_send", "agent_answer", "agent_steer", "agent_review", "agent_spawn", "agent_whoami", "agent_set_plan", "agent_report_review_findings", "agent_disposition_review_findings", "agent_schedule_self", "agent_stop_self", "ask_user", "mcp"]);
     const manifest = JSON.parse(fs.readFileSync(path.join(AI, "roles/manifest.json"), "utf8"));
     for (const [profile, spec] of Object.entries<any>(manifest.profiles)) {
       expect(isRoleProfile(profile)).toBe(true);

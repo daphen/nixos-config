@@ -35,6 +35,7 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "qs-island"
+    WlrLayershell.keyboardFocus: answerMode ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     // Input only over the capsule — the rest of the surface passes clicks
     // through to whatever is beneath.
     mask: Region { item: capsule }
@@ -42,6 +43,14 @@ PanelWindow {
 
     property bool active: false
     property bool open: false
+    property bool answerMode: false
+    property var ask: null
+    readonly property bool showingAsk: !!ask && nApp === "Agent" && notif === null
+    readonly property bool heidrFocused: {
+        const _ = NiriState.version
+        return NiriState.focusedTitle().startsWith("heidr")
+    }
+    readonly property var askOptions: ask && ask.method === "confirm" ? ["Yes", "No"] : []
 
     // Current presentation.
     property var notif: null           // live Notification (may die under us)
@@ -62,8 +71,68 @@ PanelWindow {
         target: Notifications
         function onPresent(n) { root.show(n) }
     }
+    Connections {
+        target: AgentAskState
+        function onGenChanged() { root.refreshAsk() }
+        function onFocusConfirmRequested(item) {
+            root.ask = item
+            root.showAsk(item)
+            root.answerMode = true
+            answerKeys.forceActiveFocus()
+        }
+    }
+    onHeidrFocusedChanged: refreshAsk()
+
+    function refreshAsk() {
+        if (heidrFocused) {
+            if (showingAsk && open) hide()
+            return
+        }
+        const available = AgentAskState.asks
+        if (ask && available.some(item => item.key === ask.key)) {
+            if (!showingAsk) showAsk(ask)
+            return
+        }
+        ask = available.length ? available[0] : null
+        if (ask) showAsk(ask)
+        else {
+            answerMode = false
+            if (open && nApp === "Agent") hide()
+        }
+    }
+
+    function showAsk(item) {
+        if (notif) endShowing()
+        notif = null
+        ask = item
+        nId = 0
+        nApp = "Agent"
+        nSummary = item.title || "Agent needs input"
+        nBody = item.message || ""
+        nImage = ""
+        nAppIcon = ""
+        nIsCalendar = false
+        nIsPhone = false
+        nWindowId = ""
+        extraCount = Math.max(0, AgentAskState.asks.length - 1)
+        closeDelay.stop()
+        holdTimer.stop()
+        active = true
+        open = true
+    }
+
+    function answerAskOption(index, value) {
+        if (!ask) return
+        answerMode = false
+        const payload = ask.method === "confirm" ? { confirmed: index === 0 } : { value: value }
+        const current = ask
+        ask = null
+        AgentAskState.answer(current, payload)
+        refreshAsk()
+    }
 
     function show(n) {
+        if (showingAsk) return
         const wasOpen = open
         if (notif && nId !== (n.id || 0)) endShowing()
         notif = n
@@ -122,12 +191,12 @@ PanelWindow {
         function onToastHandled(id) { if (root.open && root.nId === id) root.hide() }
     }
     // Wordy messages (3+ wrapped lines) get 2s more reading time.
-    Timer { id: holdTimer; interval: bodyText.lineCount >= 3 ? 7000 : 5000; onTriggered: root.hide() }
+    Timer { id: holdTimer; interval: bodyText.lineCount >= 3 ? 7000 : 5000; onTriggered: if (!root.showingAsk) root.hide() }
     Timer {
         id: closeDelay
         interval: 400
         onTriggered: {
-            root.endShowing()
+            if (!root.showingAsk) root.endShowing()
             root.active = false
             root.notif = null
         }
@@ -195,7 +264,7 @@ PanelWindow {
         Rectangle {
             anchors.fill: parent
             anchors.topMargin: root.seamOverlap
-            color: Theme.hairline
+            color: root.answerMode ? Theme.sky : Theme.hairline
             topLeftRadius: capsule.topLeftRadius
             topRightRadius: capsule.topRightRadius
             bottomLeftRadius: capsule.bottomLeftRadius
@@ -320,6 +389,34 @@ PanelWindow {
                 }
             }
 
+            Row {
+                visible: root.showingAsk && root.askOptions.length > 0
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 6
+                Repeater {
+                    model: root.askOptions
+                    Rectangle {
+                        required property string modelData
+                        required property int index
+                        width: optionText.implicitWidth + 18
+                        height: 28
+                        radius: height / 2
+                        color: optionTap.hovered ? Theme.fg : Theme.surface2
+                        Text {
+                            id: optionText
+                            anchors.centerIn: parent
+                            text: modelData
+                            color: optionTap.hovered ? Theme.bg : Theme.fg
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize - 1
+                            font.weight: 600
+                        }
+                        HoverHandler { id: optionTap; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.answerAskOption(index, modelData) }
+                    }
+                }
+            }
+
             // Provenance marker: this arrived from the phone. Sits opposite the
             // avatar so the left badge can carry the caller's picture.
             Item {
@@ -362,7 +459,28 @@ PanelWindow {
             }
         }
 
+        Item {
+            id: answerKeys
+            anchors.fill: parent
+            focus: root.answerMode
+            Keys.onPressed: event => {
+                if (!root.answerMode) return
+                if (event.key === Qt.Key_Y) root.answerAskOption(0, "Yes")
+                else if (event.key === Qt.Key_N) root.answerAskOption(1, "No")
+                else if (event.key === Qt.Key_Escape) root.answerMode = false
+                else return
+                event.accepted = true
+            }
+        }
+
         HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
-        TapHandler { onTapped: root.activate() }
+        TapHandler {
+            enabled: !root.showingAsk || root.askOptions.length === 0
+            onTapped: {
+                if (!root.showingAsk) root.activate()
+                else if (root.ask.method === "select") NotificationJumpPickerState.open = true
+                else AgentAskState.openInput(root.ask)
+            }
+        }
     }
 }

@@ -3670,26 +3670,30 @@ end
 -- else by the ticket id in the worktree's own name
 load_plan = function(cwd)
   if not cwd or cwd == "" then return nil end -- nil cwd → malformed `git -C` call
-  -- Explicit binding wins: main-checkout sessions (~/personal repos) have neither a
-  -- feature branch nor a ticket-shaped dirname, so heuristics can never find their plan.
+  -- Explicit binding wins. Match the selected session before cwd: several sessions
+  -- may share one directory while carrying unrelated plans.
+  local bound
   for _, a in ipairs(S.roster or {}) do
-    if a.cwd == cwd and a.plan and a.plan ~= "" then
-      for _, dir in ipairs(plandirs(cwd)) do
-        local f = dir .. "/" .. a.plan .. ".progress.json"
-        if fn.filereadable(f) == 1 then
-          local ok, data = pcall(function() return vim.json.decode(table.concat(fn.readfile(f), "\n")) end)
-          if ok and type(data) == "table" then
-            local review
-            local rf = dir .. "/" .. a.plan .. ".review.json"
-            if fn.filereadable(rf) == 1 then
-              local rok, rdata = pcall(function() return vim.json.decode(table.concat(fn.readfile(rf), "\n")) end)
-              if rok and type(rdata) == "table" then review = rdata end
-            end
-            return { progress = data, key = a.plan, review = review }
+    if (a.id == S.selected or a.name == S.selected) and a.cwd == cwd then bound = a; break end
+  end
+  if not bound and (not S.selected or S.selected == "") then
+    for _, a in ipairs(S.roster or {}) do if a.cwd == cwd then bound = a; break end end
+  end
+  if bound and bound.plan and bound.plan ~= "" then
+    for _, dir in ipairs(plandirs(cwd)) do
+      local f = dir .. "/" .. bound.plan .. ".progress.json"
+      if fn.filereadable(f) == 1 then
+        local ok, data = pcall(function() return vim.json.decode(table.concat(fn.readfile(f), "\n")) end)
+        if ok and type(data) == "table" then
+          local review
+          local rf = dir .. "/" .. bound.plan .. ".review.json"
+          if fn.filereadable(rf) == 1 then
+            local rok, rdata = pcall(function() return vim.json.decode(table.concat(fn.readfile(rf), "\n")) end)
+            if rok and type(rdata) == "table" then review = rdata end
           end
+          return { progress = data, key = bound.plan, review = review }
         end
       end
-      break
     end
   end
   local branch = fn.system({ "git", "-C", cwd, "branch", "--show-current" }):gsub("%s+$", "")
