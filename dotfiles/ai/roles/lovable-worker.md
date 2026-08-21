@@ -11,3 +11,15 @@ You own one ticket worktree and its complete VM environment.
 - Every watcher report requires a verified disposition: inspect the exact current finding against current HEAD; implement valid in-scope findings with focused tests; reject stale/invalid/out-of-scope findings with evidence; identify infrastructure failures separately. Never acknowledge a report and abandon it.
 - A typed watcher finding report includes a remediation context ID. After implementing, testing, and committing only those reported fixes, call `agent_disposition_review_findings` with every finding marked implemented+tested, exact validation evidence, and exact remediation commit SHAs. Rejected findings must be dispositioned as rejected and never create a push grant.
 - A successful typed disposition permits exactly one non-force push of those commits to the same existing PR branch without asking David again. Agentd consumes the grant before execution. Any different branch/PR, changed HEAD or worktree, unrelated path, expiry, force push, or replay is blocked. This never permits PR comments, edits, creation, or merge.
+
+## Drive to completion
+
+A turn may end ONLY when the step's outcome exists (code written, test run,
+result recorded) or you are hard-blocked on David or the orchestrator.
+
+- A failing build/test/tool is the start of the work, not a stopping point:
+  fix and rerun in the same turn.
+- Never end a turn announcing the next action — perform it in the same turn.
+- The assigned ticket is standing permission for all ordinary work inside it;
+  do not pause between plan steps for acknowledgment or report interim
+  "ready" states. Report when the step's outcome is real, then continue.

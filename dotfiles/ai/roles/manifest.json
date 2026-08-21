@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "bundleVersion": "2026-08-20.3",
+  "bundleVersion": "2026-08-21.2",
   "profiles": {
     "lovable-orchestrator": {
       "prompt": "lovable-orchestrator.md",
@@ -23,12 +23,14 @@
         "agent_spawn",
         "agent_whoami",
         "ask_user",
+        "request_user_bash",
         "mcp"
       ],
       "extensions": [
         "../pi-extensions/role-policy/index.ts",
         "../pi-extensions/agents/index.ts",
         "../pi-extensions/ask/index.ts",
+        "../pi-extensions/user-bash/index.ts",
         "../pi-extensions/tool-compress/index.ts",
         "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts"
       ],
@@ -62,12 +64,14 @@
         "agent_set_plan",
         "agent_disposition_review_findings",
         "ask_user",
+        "request_user_bash",
         "mcp"
       ],
       "extensions": [
         "../pi-extensions/role-policy/index.ts",
         "../pi-extensions/agents/index.ts",
         "../pi-extensions/ask/index.ts",
+        "../pi-extensions/user-bash/index.ts",
         "../pi-extensions/tool-compress/index.ts",
         "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts"
       ],
@@ -99,12 +103,14 @@
         "agent_spawn",
         "agent_whoami",
         "ask_user",
+        "request_user_bash",
         "mcp"
       ],
       "extensions": [
         "../pi-extensions/role-policy/index.ts",
         "../pi-extensions/agents/index.ts",
         "../pi-extensions/ask/index.ts",
+        "../pi-extensions/user-bash/index.ts",
         "../pi-extensions/tool-compress/index.ts",
         "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts"
       ],
@@ -125,11 +131,13 @@
         "agent_send",
         "agent_report_review_findings",
         "agent_schedule_self",
-        "agent_stop_self"
+        "agent_stop_self",
+        "request_user_bash"
       ],
       "extensions": [
         "../pi-extensions/role-policy/index.ts",
-        "../pi-extensions/agents/index.ts"
+        "../pi-extensions/agents/index.ts",
+        "../pi-extensions/user-bash/index.ts"
       ],
       "skills": [],
       "promptTemplates": []
