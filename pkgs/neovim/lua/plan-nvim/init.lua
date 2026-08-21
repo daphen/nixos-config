@@ -631,6 +631,20 @@ local function dispatch(prompt, wait, cwd)
 		vim.notify("plan: no session bound to this plan — press P in the rail to bind one, then re-dispatch", vim.log.levels.WARN)
 		return false
 	end
+	-- Ticket worktrees carry their session's NAME in the dirname (context name =
+	-- ticket id): send by name — cwd matching cannot reach a VM worker, whose
+	-- session cwd is the box path, not this local mirror.
+	local tick = vim.fn.fnamemodify(root, ":t"):match("^lovable%.daphen%-(.+)$")
+	if tick then
+		vim.system({ "agent", "send", tick, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
+			if res.code ~= 0 then
+				vim.schedule(function()
+					vim.notify("plan: couldn't reach session '" .. tick .. "' — is it in the roster?", vim.log.levels.WARN)
+				end)
+			end
+		end)
+		return true
+	end
 	vim.system({ "agent", "send", "--cwd", root, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
 		if res.code ~= 0 then
 			vim.schedule(function()
