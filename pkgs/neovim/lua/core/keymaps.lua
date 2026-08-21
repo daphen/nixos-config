@@ -136,11 +136,13 @@ end
 
 -- Override the default paste mappings to include indentation
 vim.keymap.set("n", "p", function()
+	if not vim.bo.modifiable then return end
 	vim.cmd("normal! p")
 	indent_after_paste()
 end, { noremap = true, silent = true })
 
 vim.keymap.set("n", "P", function()
+	if not vim.bo.modifiable then return end
 	vim.cmd("normal! P")
 	indent_after_paste()
 end, { noremap = true, silent = true })
