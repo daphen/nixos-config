@@ -30,6 +30,15 @@ Singleton {
         const key = _key(index, message.session || "")
         const next = asks.filter(ask => ask.key !== key)
         const ask = Object.assign({}, message)
+        // user-bash sentinel: the rail wraps agent-proposed shell commands in a
+        // machine title + JSON payload. Render it as the "! <command>" grammar
+        // the rail uses instead of leaking the raw sentinel to the island/inbox.
+        if (ask.title === "__cockpit_user_bash__") {
+            try {
+                const cmd = String(JSON.parse(String(ask.message || "")).command || "")
+                if (cmd) { ask.title = "run this command?"; ask.message = "! " + cmd }
+            } catch (e) {}
+        }
         ask.key = key
         ask.socketIndex = index
         // Scope from the owning socket path (agentd-<scope>.sock) — clients pick
