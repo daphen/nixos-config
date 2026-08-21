@@ -3853,57 +3853,9 @@ local function place_banner(_buf, win)
   pcall(Placement.new, S.banner_buf, src, { pos = { 1, 0 }, inline = true, width = bw, auto_resize = false })
 end
 
--- The scope mascot: a small companion pinned to the dashboard's BOTTOM-LEFT
--- corner (lovable scope only). Same float isolation as the banner, same
--- dashboard-only guard; sized to stay out of the cards' way.
-local MASCOT_W = 27  -- cells
-local MASCOT_IMG_ASPECT = 733 / 660 -- trimmed asset h/w
--- Rows COMPUTED from the terminal's real cell pixel size (snacks queries it):
--- a guessed cell aspect left slack rows under the top-drawn image, which read
--- as the mascot hovering above the corner. Fallback matches ~1:2.05 cells.
-local function mascot_rows()
-  local ok, term = pcall(require, "snacks.image.terminal")
-  if ok and term.size then
-    local oks, sz = pcall(term.size)
-    if oks and sz and sz.cell_width and sz.cell_height and sz.cell_height > 0 then
-      return math.max(4, math.floor(MASCOT_W * sz.cell_width * MASCOT_IMG_ASPECT / sz.cell_height))
-    end
-  end
-  return 14
-end
-local function place_mascot(win)
-  if scope ~= "lovable" then return end
-  if not (win and api.nvim_win_is_valid(win)) then return end
-  if not (S.scratchbuf and api.nvim_win_get_buf(win) == S.scratchbuf) then return end
-  local ok, Placement = pcall(require, "snacks.image.placement")
-  if not ok then return end
-  local src = COCKPIT_BANNER_DIR .. "/lovable-mascot.png"
-  if fn.filereadable(src) == 0 then return end
-  if not (S.mascot_buf and api.nvim_buf_is_valid(S.mascot_buf)) then
-    S.mascot_buf = api.nvim_create_buf(false, true)
-    vim.bo[S.mascot_buf].bufhidden = "hide"; vim.bo[S.mascot_buf].swapfile = false
-  end
-  local cfg = {
-    relative = "win", win = win, anchor = "SW",
-    row = api.nvim_win_get_height(win), col = 0,
-    width = MASCOT_W, height = mascot_rows(),
-    focusable = false, style = "minimal", zindex = 44, border = "none",
-  }
-  if S.mascot_win and api.nvim_win_is_valid(S.mascot_win) then
-    pcall(api.nvim_win_set_config, S.mascot_win, cfg)
-  else
-    S.mascot_win = api.nvim_open_win(S.mascot_buf, false, cfg)
-    pcall(function() vim.wo[S.mascot_win].winhighlight = "Normal:Normal,NormalFloat:Normal" end)
-  end
-  pcall(Placement.clean, S.mascot_buf)
-  pcall(Placement.new, S.mascot_buf, src, { pos = { 1, 0 }, inline = true, width = MASCOT_W, auto_resize = false })
-end
-
 hide_banner = function()
   if S.banner_win and api.nvim_win_is_valid(S.banner_win) then pcall(api.nvim_win_close, S.banner_win, true) end
   S.banner_win = nil
-  if S.mascot_win and api.nvim_win_is_valid(S.mascot_win) then pcall(api.nvim_win_close, S.mascot_win, true) end
-  S.mascot_win = nil
 end
 
 -- 0 when the banner won't render (no snacks / missing PNG), so the reserved top
@@ -4331,7 +4283,6 @@ local function show_scratch(win, cwd)
   editor_gutter(win, false) -- clean resting view: no number/sign/fold columns
   if _d then _d[#_d + 1] = vim.loop.hrtime() end -- [4]: before place_banner
   pcall(place_banner, buf, win)
-  pcall(place_mascot, win)
   if _d then
     local ms = function(a, b) return (_d[b] - _d[a]) / 1e6 end
     pcall(fn.writefile, { string.format("  show_scratch(%s): pre+loadplan=%.1fms body=%.1fms commit=%.1fms place_banner=%.1fms",
@@ -6120,7 +6071,6 @@ function M.setup(opts)
     callback = function()
       if S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf) then
         pcall(place_banner, S.scratchbuf, S.dash and S.dash.win)
-        pcall(place_mascot, S.dash and S.dash.win)
       end
     end,
   })
@@ -6266,11 +6216,8 @@ function M.setup(opts)
               local cwd = (S.dash and S.dash.cwd) or (S.selected and session_cwd(S.selected))
               if cwd then pcall(show_scratch, w, cwd) end
             else
-              -- Height-only resize: the grid reflow still killed the kitty
-              -- placements (banner + mascot vanished on enlarge) — re-place
-              -- them without re-rendering the card.
+              -- Height-only resize: re-place the banner without re-rendering the card.
               pcall(place_banner, S.scratchbuf, w)
-              pcall(place_mascot, w)
             end
           end
         end
