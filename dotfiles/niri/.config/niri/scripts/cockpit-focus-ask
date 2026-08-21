@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Focus the cockpit window owning an agent question and select that session.
+# Usage: cockpit-focus-ask <scope> <session>
+set -u
+scope="${1:?scope}"; session="${2:?session}"
+case "$scope" in
+  personal) title="cockpit-qs · private";  shelldir="$HOME/.local/state/cockpit/private-shell" ;;
+  *)        title="cockpit-qs · lovable";  shelldir="$HOME/personal/ai-cockpit/qs-shell" ;;
+esac
+wid=$(niri msg --json windows 2>/dev/null | python3 -c "
+import json,sys
+t=sys.argv[1]
+for w in json.load(sys.stdin):
+    if (w.get('title') or '') == t: print(w['id']); break
+" "$title")
+[ -n "$wid" ] && niri msg action focus-window --id "$wid"
+exec qs -p "$shelldir" ipc call cockpit selectSession "$session"

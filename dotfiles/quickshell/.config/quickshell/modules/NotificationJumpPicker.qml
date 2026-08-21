@@ -81,8 +81,14 @@ Picker {
     Connections {
         target: NotificationJumpPickerState
         function onJumpRequested() {
+            // A live agent question wins: Super+i goes TO the asking session —
+            // focusing the cockpit also auto-hides the capsule (heidrFocused).
             if (AgentAskState.asks.length) {
-                NotificationJumpPickerState.open = true
+                const ask = AgentAskState.asks[0]
+                Quickshell.execDetached([
+                    Quickshell.env("HOME") + "/.config/niri/scripts/cockpit-focus-ask",
+                    String(ask.scope || "personal"), String(ask.session || "")
+                ])
                 return
             }
             const vis = Notifications.visibleTrayToasts()
