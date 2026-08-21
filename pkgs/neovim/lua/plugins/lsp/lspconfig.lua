@@ -148,6 +148,18 @@ return {
 		})
 
 		-- Lovable essentials: always on (lean sandbox set).
+		-- gopls must run inside the worktree's direnv env: the lovable repo's
+		-- go.work pins a go version the devenv provides — with the bare system
+		-- env, gopls dies on "go.work requires go >= X" the moment upstream
+		-- bumps past the system toolchain.
+		vim.lsp.config("gopls", {
+			on_new_config = function(config, root_dir)
+				if root_dir and vim.uv.fs_stat(root_dir .. "/.envrc") then
+					config.cmd = { "direnv", "exec", root_dir, "gopls" }
+				end
+			end,
+		})
+
 		local servers = { "ts_ls", "eslint", "oxlint", "html", "tailwindcss", "gopls", "nil_ls", "lua_ls" }
 		-- Full profile (nvim-next on the desktop): extras we use locally but
 		-- don't want in sandboxes. The wrapper sets NVIM_PROFILE=full and puts
