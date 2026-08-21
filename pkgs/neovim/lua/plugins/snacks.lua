@@ -50,6 +50,15 @@ local function open_changed_files_picker()
 			for _, f in ipairs(untracked) do
 				if not seen[f] then table.insert(files, f); seen[f] = true end
 			end
+			-- Rail image pastes live in .heidr-pastes/ (gitignore-exempt scratch);
+			-- they're attachments, not changed work — noise in a changed-files picker.
+			local filtered = {}
+			for _, f in ipairs(files) do
+				if not f:match("^%.heidr%-pastes/") and not f:match("^%.cockpit%-pastes/") then
+					table.insert(filtered, f)
+				end
+			end
+			files = filtered
 			local mtime_of = {}
 			for _, f in ipairs(files) do
 				local st = uv.fs_stat((repo_root or ".") .. "/" .. f)
