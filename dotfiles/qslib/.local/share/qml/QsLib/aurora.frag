@@ -74,6 +74,10 @@ void main() {
     // second field for the bright islands: same space, rotated warp, own drift
     float praw = fbm(b * (1.1 + 0.2 * ubuf.bandY) + ubuf.warp * 0.8 * vec2(q.y, -q.x) + vec2(9.1, 4.7) + d3);
     float pl = smoothstep(0.30, 0.60, praw);
+    // Same gradient floor as vb below, own phase: a saturated crest field made
+    // the whole disc bright regardless of the base ramp.
+    float ga3 = ubuf.ph3 * 0.5 + 1.7;
+    pl -= 0.14 * (dot(u, vec2(cos(ga3), sin(ga3))) * 0.5 + 0.5);
 
     // fluid-gradient color zones: deep ground -> swept mid body -> bright
     // islands, boundaries wide but DEFINED (satin, not fog)
