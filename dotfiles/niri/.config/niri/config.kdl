@@ -264,13 +264,13 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#6F6F6E"
+        active-color "#EDEDED"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#E2E2E1"
+        inactive-color "#3A3A3A"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -294,13 +294,13 @@ layout {
         // If you enable the border, you probably want to disable the focus ring.
 
         width 4
-        active-color "#6F6F6E"
+        active-color "#EDEDED"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
-        active-gradient from="#6F6F6E" to="#6F6F6E" angle=180
+        active-gradient from="#EDEDED" to="#EDEDED" angle=180
         // Matches waybar-notch light theme hairline
         // (foreground.primary @ 50% alpha).
-        inactive-color "#E2E2E1"
+        inactive-color "#3A3A3A"
 
         // Color of the border around windows that request your attention.
         urgent-color "#9b0000"
@@ -422,11 +422,6 @@ spawn-sh-at-startup "/home/daphen/.config/niri/scripts/ensure-chat-workspace"
 // A never-focused workspace where the dsqrd voice Helium is parked (hidden),
 // so its window stays mapped + audio alive but is never shown.
 workspace "voice"
-
-// Rebuild the cockpit on login: windows + every registered context (agents
-// resume transcripts, devenv stacks reboot, nvim restores sessions).
-// Idempotent — replaces the old always-on lovable-main stack (ws-startmain).
-spawn-sh-at-startup "/home/daphen/.config/niri/scripts/cockpit-restore"
 
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
@@ -809,9 +804,6 @@ binds {
     // Both binds launch the dev tree so per-workspace mode and current QML stay aligned.
     Super+y hotkey-overlay-title="Answer agent question / Cockpit" { spawn-sh "$HOME/.config/niri/scripts/agent-ask-or-cockpit"; }
     Super+Shift+y hotkey-overlay-title="Cockpit for this workspace (mode-scoped relaunch)" { spawn-sh "$HOME/personal/ai-cockpit/run-qs.sh"; }
-    // Super+Ctrl+M: rebuild/repair the cockpit (windows + registered
-    // contexts). Idempotent — replaces the old ws-startmain bind.
-    Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/cockpit-restore"; }
 
     // Super+T — jump to the cockpit nvim rail and focus the roster (focuses the
     // roster in place when already there). Super+Ctrl+T opens the context picker

@@ -13,19 +13,18 @@ Use `wt` (worktrunk) for all worktree operations instead of raw `git worktree` c
 ## Cockpit contexts (proart-only)
 
 The workspace-per-stack flow (ws-createwt, per-ticket niri workspaces) is
-RETIRED on proart. Everything lives on one `lovable` workspace — the
-cockpit: three fixed kitty windows (agent, nvim, devenv) plus the work
-browser, where each worktree is a *context* = one tab in each window.
+RETIRED on proart, and so is the kitty-window cockpit that replaced it
+(the fixed agent/nvim/devenv kitty windows). The cockpit is now the
+quickshell app (`cockpit-qs`, one instance per scope): the rail, embedded
+nvim, and devenv all live INSIDE it. NEVER run `cockpit-open` or
+`cockpit-restore` (deleted) and never spawn kitty windows for the cockpit.
 
 When the user asks for a new worktree on proart, use
-`~/.config/niri/scripts/cockpit-add <name>`. It creates the branch +
+`cockpit-spawn <name> [prompt]` (on PATH). It creates the branch +
 worktree via wt (`daphen/<name>` off fresh origin/main, at
-`~/work/lovable.daphen-<name>`), opens one tab per cockpit window (claude
-resumes the newest non-empty session for that worktree, devenv boots the
-wt slice), registers the context for crash-restore, and switches to it.
-No workspace is claimed and no windows spawn, so no confirmation needed —
-but the cockpit windows must exist (`cockpit-open` is idempotent;
-`cockpit-restore` rebuilds everything after a crash).
+`~/work/lovable.daphen-<name>`), seeds a rail agent in that worktree,
+and best-effort opens its tabs. No windows spawn, so no confirmation
+needed.
 
 Naming: the context name IS the branch short-name and is JUST the ticket
 id, lowercased — no title slug. The full ticket id must be present (Linear
@@ -36,9 +35,9 @@ human readability and is dropped). For EVERY-1234:
 - git branch: `daphen/every-1234`
 - `main` is a special context: the primary checkout, runs `devenv deps`.
 
-Switching: `cockpit-switch <name>` (users press Super+T). Closing: Ctrl+W
-in the picker closes the tabs and keeps the dir; `wt remove daphen/<name>`
-deletes it. The old ws-* scripts remain on disk but are unbound — don't
+Switching: the rail roster (Super+T) / context picker (Super+Ctrl+T) in
+the cockpit app — not a script. `wt remove daphen/<name>` deletes a
+worktree. The old ws-* scripts remain on disk but are unbound — don't
 reach for them unless the user explicitly asks.
 
 ## Lovable-on-Lovable sandboxes (proart-only)
@@ -97,7 +96,7 @@ Pick which script based on cues:
   REMOTE cockpit context (tabs land in it via lovssh; type claude/nvim
   after landing). ws-createlovbox's workspace-spawning half is retired;
   its provisioning survives via --provision-only underneath.
-- New worktree / Linear ticket / local feature work → cockpit-add
+- New worktree / Linear ticket / local feature work → cockpit-spawn
 - Reviewing someone else's PR → ws-createreview
 - Lovable-on-Lovable work (LoL week: ship monorepo tickets via the agent) →
   `cockpit-add-lol <name>` — one LoL project + monorepo-clone sandbox as a
