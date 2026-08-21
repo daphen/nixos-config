@@ -437,11 +437,10 @@ PanelWindow {
             }
             }
 
-            // Answer buttons: their own bottom row, aligned under the text
-            // (avatar 30 + gap 10), not squeezed to the right of it.
+            // Answer buttons: their own bottom row, centered in the capsule.
             Row {
                 visible: root.showingAsk && root.askOptions.length > 0
-                leftPadding: 40
+                anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 6
                 Repeater {
                     model: root.askOptions
