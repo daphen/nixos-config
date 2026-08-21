@@ -44,6 +44,7 @@ PanelWindow {
     property bool active: false
     property bool open: false
     property bool answerMode: false
+    property int answerCur: 0   // which option the keyboard cursor sits on
     property var ask: null
     readonly property bool showingAsk: !!ask && nApp === "Agent" && notif === null
     readonly property bool heidrFocused: {
@@ -78,6 +79,7 @@ PanelWindow {
             root.ask = item
             root.showAsk(item)
             root.answerMode = true
+            root.answerCur = 0
             answerKeys.forceActiveFocus()
         }
     }
@@ -264,7 +266,7 @@ PanelWindow {
         Rectangle {
             anchors.fill: parent
             anchors.topMargin: root.seamOverlap
-            color: root.answerMode ? Theme.sky : Theme.hairline
+            color: Theme.hairline
             topLeftRadius: capsule.topLeftRadius
             topRightRadius: capsule.topRightRadius
             bottomLeftRadius: capsule.bottomLeftRadius
@@ -449,14 +451,15 @@ PanelWindow {
                         width: Math.max(optionText.implicitWidth + 26, 64)
                         height: 28
                         radius: height / 2
-                        color: optionTap.hovered ? Theme.fg : Theme.surface2
+                        readonly property bool cursorOn: root.answerMode && root.answerCur === index
+                        color: (optionTap.hovered || cursorOn) ? Theme.fg : Theme.surface2
                         border.width: 1
                         border.color: Theme.hairline
                         Text {
                             id: optionText
                             anchors.centerIn: parent
                             text: modelData
-                            color: optionTap.hovered ? Theme.bg : Theme.fg
+                            color: (optionTap.hovered || parent.cursorOn) ? Theme.bg : Theme.fg
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSize - 1
                             font.weight: 600
@@ -474,7 +477,14 @@ PanelWindow {
             focus: root.answerMode
             Keys.onPressed: event => {
                 if (!root.answerMode) return
-                if (event.key === Qt.Key_Y) root.answerAskOption(0, "Yes")
+                const n = root.askOptions.length
+                if (event.key === Qt.Key_H || event.key === Qt.Key_Left)
+                    root.answerCur = Math.max(0, root.answerCur - 1)
+                else if (event.key === Qt.Key_L || event.key === Qt.Key_Right)
+                    root.answerCur = Math.min(Math.max(0, n - 1), root.answerCur + 1)
+                else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                    root.answerAskOption(root.answerCur, root.askOptions[root.answerCur] || "")
+                else if (event.key === Qt.Key_Y) root.answerAskOption(0, "Yes")
                 else if (event.key === Qt.Key_N) root.answerAskOption(1, "No")
                 else if (event.key === Qt.Key_Escape) root.answerMode = false
                 else return
