@@ -3847,18 +3847,30 @@ local function place_banner(_buf, win)
     -- suppressing them left the float empty (the "no header" bug).
   }
   if S.banner_win and api.nvim_win_is_valid(S.banner_win) then
-    pcall(api.nvim_win_set_config, S.banner_win, cfg)
-  else
-    S.banner_win = api.nvim_open_win(S.banner_buf, false, cfg)
-    pcall(function() vim.wo[S.banner_win].winhighlight = "Normal:Normal,NormalFloat:Normal" end)
+    local old = api.nvim_win_get_config(S.banner_win)
+    local unchanged = S.banner_placement and old.width == cfg.width and old.height == cfg.height
+      and old.row == cfg.row and old.col == cfg.col and S.banner_src == src
+    if unchanged then
+      if S.banner_placement then pcall(function() S.banner_placement:update() end) end
+      return
+    end
+    if S.banner_placement then pcall(function() S.banner_placement:close() end)
+    else pcall(Placement.clean, S.banner_buf) end
+    pcall(api.nvim_win_close, S.banner_win, true)
+    S.banner_win, S.banner_placement = nil, nil
   end
+  S.banner_win = api.nvim_open_win(S.banner_buf, false, cfg)
+  pcall(function() vim.wo[S.banner_win].winhighlight = "Normal:Normal,NormalFloat:Normal" end)
   pcall(Placement.clean, S.banner_buf)
-  pcall(Placement.new, S.banner_buf, src, { pos = { 1, 0 }, inline = true, width = bw, auto_resize = false })
+  local okp, placement = pcall(Placement.new, S.banner_buf, src,
+    { pos = { 1, 0 }, inline = true, width = bw, auto_resize = false })
+  if okp then S.banner_placement, S.banner_src = placement, src end
 end
 
 hide_banner = function()
+  if S.banner_placement then pcall(function() S.banner_placement:close() end) end
   if S.banner_win and api.nvim_win_is_valid(S.banner_win) then pcall(api.nvim_win_close, S.banner_win, true) end
-  S.banner_win = nil
+  S.banner_win, S.banner_placement, S.banner_src = nil, nil, nil
 end
 
 -- 0 when the banner won't render (no snacks / missing PNG), so the reserved top
@@ -4456,6 +4468,25 @@ reflect_context = function(cwd)
   local ed = target_editor_win()
   if not ed then return end
   local want = S.editor and S.selected and S.editor[S.selected]
+  -- A plan still in its PLANNING life (draft/planned — not implementing or
+  -- reconciled) is what you switched here to deal with: open it instead of the
+  -- dashboard. A remembered editor file still wins (you were mid-something).
+  if not (want and fn.filereadable(want) == 1) then
+    local plan = load_plan(cwd)
+    local phase = plan and plan.progress and plan.progress.phase
+    if plan and phase ~= "implementing" and phase ~= "reconciled" then
+      local pfile = fn.expand("~/personal/notes/storage/plans/") .. plan.key .. ".md"
+      if fn.filereadable(pfile) == 0 then pfile = cwd .. "/.plans/" .. plan.key .. ".md" end
+      if fn.filereadable(pfile) == 1 then
+        S._program_nav = true
+        api.nvim_win_call(ed, function() pcall(vim.cmd, "edit " .. fn.fnameescape(pfile)) end)
+        vim.schedule(function() S._program_nav = nil end)
+        editor_gutter(ed, true)
+        if hide_banner then hide_banner() end
+        return
+      end
+    end
+  end
   if want and fn.filereadable(want) == 1 then
     if fn.fnamemodify(api.nvim_buf_get_name(api.nvim_win_get_buf(ed)), ":p") ~= fn.fnamemodify(want, ":p") then
       -- Plugin-driven restore, not user navigation — must not pause live-follow.
