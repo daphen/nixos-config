@@ -87,8 +87,16 @@ local function gather()
 		plan = (m.plan_chip and m.plan_chip() or "")
 	end)
 	if plan == "" then pcall(function() plan = require("plan-nvim").statusline() or "" end) end
+	local fticon, fticolor = "", ""
+	pcall(function()
+		local di = require("nvim-web-devicons")
+		local ic, color = di.get_icon_color_by_filetype(vim.bo[buf].filetype, { default = true })
+		fticon, fticolor = ic or "", color or ""
+	end)
 	return {
 		path = rel,
+		fticon = fticon,
+		fticolor = fticolor,
 		err = diag[vim.diagnostic.severity.ERROR] or 0,
 		warn = diag[vim.diagnostic.severity.WARN] or 0,
 		info = diag[vim.diagnostic.severity.INFO] or 0,
