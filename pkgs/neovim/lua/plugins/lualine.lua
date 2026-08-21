@@ -3,6 +3,13 @@ return {
 	lazy = false,
 	event = { "BufReadPost", "BufNewFile", "VimEnter" },
 	after = function()
+		-- Cockpit mode: the QML chin owns the statusline (fed by cockpit/chin.lua);
+		-- nvim runs bar-less so the grid is pure buffer. Plain nvim keeps lualine.
+		if vim.env.COCKPIT_OPEN ~= nil or vim.env.HEIDR_OPEN ~= nil then
+			vim.o.laststatus = 0
+			vim.o.cmdheight = 0
+			return
+		end
 		-- lualine-so-fancy is an opt (lazy) plugin with no lz.n spec of its own, so
 		-- nothing force-loads it — its fancy_branch/fancy_diff/fancy_diagnostics
 		-- components would silently render nothing (the "missing git stuff"). Pull it
