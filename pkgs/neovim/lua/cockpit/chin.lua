@@ -86,7 +86,9 @@ local function gather()
 		local m = require("cockpit")
 		plan = (m.plan_chip and m.plan_chip() or "")
 	end)
-	if plan == "" then pcall(function() plan = require("plan-nvim").statusline() or "" end) end
+	-- SESSION-scoped only: the plan-nvim statusline fallback reported the
+	-- last-opened plan BUFFER regardless of session (inline-user-bash showing
+	-- on the lovable orchestrator). No session plan -> no chip.
 	-- The chin is a glance, not a coach: keep ticket + progress, drop the
 	-- lifecycle hint ("→ g implement") and the status word.
 	plan = plan:gsub("%s*→.*$", ""):gsub("%s*·%s*%a+%s*$", "")
