@@ -586,26 +586,42 @@ end
 -- Send a /plan-ticket prompt to the agent driving the plan's repo
 -- (state.root) — repo-targeted via `agent send --cwd`, which routes to the pi rail
 -- session kicked the plan off in, worktree or not. Prompt goes on stdin to avoid arg-quoting.
--- Inverse of bound_key: the cwd of the session bound to this plan slug. Lets a
--- multi-repo / vault-only plan dispatch to its driving session with no git root.
-local function bound_session_cwd(slug)
+-- Inverse of bound_key: the NAME of the session bound to this plan slug. A name
+-- routes exactly; a cwd goes through the agent CLI's ancestor-tolerant matching,
+-- which once landed a vault plan's --finalize in whatever session owned ~/personal.
+local function bound_session_name(slug)
 	if not slug or slug == "" then return nil end
 	local base = vim.fn.expand("~/.local/state/agentd")
 	for _, f in ipairs(vim.fn.glob(base .. "/*-sessions.json", false, true)) do
 		local ok, data = pcall(function() return vim.json.decode(table.concat(vim.fn.readfile(f), "\n")) end)
 		if ok and type(data) == "table" then
 			for _, s in ipairs(data) do
-				if s.plan == slug and s.cwd and s.cwd ~= "" then return s.cwd end
+				if s.plan == slug and s.name and s.name ~= "" then return s.name end
 			end
 		end
 	end
 end
 
 local function dispatch(prompt, wait, cwd)
+	-- The plan's bound session wins, addressed BY NAME — exact routing.
+	local slug = state.plan_path and vim.fn.fnamemodify(state.plan_path, ":t:r")
+	local target = bound_session_name(slug)
+	if target then
+		vim.system({ "agent", "send", target, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
+			if res.code ~= 0 then
+				vim.schedule(function()
+					vim.notify("plan: couldn't reach session '" .. target .. "' — is its daemon up?", vim.log.levels.WARN)
+				end)
+			end
+		end)
+		return true
+	end
 	local root = cwd or state.root or git_root()
-		or bound_session_cwd(state.plan_path and vim.fn.fnamemodify(state.plan_path, ":t:r"))
-	if not root then
-		vim.notify("plan: no session bound to this plan — bind one (Shift+P in Cockpit) or open it from its repo", vim.log.levels.WARN)
+	-- A vault-rooted plan has no owning repo: cwd routing from there goes through
+	-- the CLI's ancestor matching and lands in arbitrary ~/personal sessions.
+	local vault = vim.fn.expand("~/personal/notes")
+	if not root or root:sub(1, #vault) == vault then
+		vim.notify("plan: no session bound to this plan — press P in the rail to bind one, then re-dispatch", vim.log.levels.WARN)
 		return false
 	end
 	vim.system({ "agent", "send", "--cwd", root, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
