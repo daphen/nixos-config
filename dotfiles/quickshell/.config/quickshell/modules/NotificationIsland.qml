@@ -304,14 +304,18 @@ PanelWindow {
             }
         }
 
-        Row {
+        Column {
             id: content
             // Center within the visible (below-bar) portion of the capsule.
             y: root.seamOverlap + (parent.height - root.seamOverlap - height) / 2
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 10
+            spacing: 8
             opacity: root.open ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+            Row {
+            id: contentTop
+            spacing: 10
 
             Item {
                 width: 30; height: 30
@@ -389,34 +393,6 @@ PanelWindow {
                 }
             }
 
-            Row {
-                visible: root.showingAsk && root.askOptions.length > 0
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 6
-                Repeater {
-                    model: root.askOptions
-                    Rectangle {
-                        required property string modelData
-                        required property int index
-                        width: optionText.implicitWidth + 18
-                        height: 28
-                        radius: height / 2
-                        color: optionTap.hovered ? Theme.fg : Theme.surface2
-                        Text {
-                            id: optionText
-                            anchors.centerIn: parent
-                            text: modelData
-                            color: optionTap.hovered ? Theme.bg : Theme.fg
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize - 1
-                            font.weight: 600
-                        }
-                        HoverHandler { id: optionTap; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { onTapped: root.answerAskOption(index, modelData) }
-                    }
-                }
-            }
-
             // Provenance marker: this arrived from the phone. Sits opposite the
             // avatar so the left badge can carry the caller's picture.
             Item {
@@ -455,6 +431,39 @@ PanelWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
                     font.weight: 700
+                }
+            }
+            }
+
+            // Answer buttons: their own bottom row, aligned under the text
+            // (avatar 30 + gap 10), not squeezed to the right of it.
+            Row {
+                visible: root.showingAsk && root.askOptions.length > 0
+                leftPadding: 40
+                spacing: 6
+                Repeater {
+                    model: root.askOptions
+                    Rectangle {
+                        required property string modelData
+                        required property int index
+                        width: Math.max(optionText.implicitWidth + 26, 64)
+                        height: 28
+                        radius: height / 2
+                        color: optionTap.hovered ? Theme.fg : Theme.surface2
+                        border.width: 1
+                        border.color: Theme.hairline
+                        Text {
+                            id: optionText
+                            anchors.centerIn: parent
+                            text: modelData
+                            color: optionTap.hovered ? Theme.bg : Theme.fg
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize - 1
+                            font.weight: 600
+                        }
+                        HoverHandler { id: optionTap; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.answerAskOption(index, modelData) }
+                    }
                 }
             }
         }
