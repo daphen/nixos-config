@@ -105,10 +105,17 @@ Item {
     // bright regions read as diffuse glow instead of colored paint.
     readonly property bool _warm: orb.hu < 0.45
     readonly property real _lift: 0.10 * Math.max(0, Math.min(1, (orb.hu - 0.565) / 0.06))
-    property color colA: Qt.hsla((orb.hu + (_warm ? 0.02 : 0.03)) % 1, orb.sat * 0.60,
-                                 (Theme.mode === "light" ? 0.30 : 0.24) + _lift * 0.6, 1)
-    property color colB: Qt.hsla(orb.hu, orb.sat * (_warm ? 0.70 : 0.55),
-                                 (Theme.mode === "light" ? 0.58 : 0.52) + _lift, 1)
+    // Warm hues can't use a dark anchor: darkened orange reads as BROWN. Their
+    // low stop is instead the saturated true hue at medium lightness, with the
+    // body pushed brighter above it; cool hues keep the deep-shadow ramp.
+    property color colA: _warm
+      ? Qt.hsla((orb.hu + 0.02) % 1, orb.sat * 0.85, Theme.mode === "light" ? 0.52 : 0.47, 1)
+      : Qt.hsla((orb.hu + 0.03) % 1, orb.sat * 0.60,
+                (Theme.mode === "light" ? 0.30 : 0.24) + _lift * 0.6, 1)
+    property color colB: _warm
+      ? Qt.hsla(orb.hu, orb.sat * 0.65, Theme.mode === "light" ? 0.72 : 0.68, 1)
+      : Qt.hsla(orb.hu, orb.sat * 0.55,
+                (Theme.mode === "light" ? 0.58 : 0.52) + _lift, 1)
     property color colC: Qt.hsla((orb.hu + (_warm ? 0.045 : 0.96)) % 1, orb.sat * 0.35,
                                  (Theme.mode === "light" ? 0.84 : 0.80) + _lift * 0.5, 1)
     Behavior on colA { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
