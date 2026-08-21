@@ -105,16 +105,18 @@ Item {
     // bright regions read as diffuse glow instead of colored paint.
     readonly property bool _warm: orb.hu < 0.45
     readonly property real _lift: 0.10 * Math.max(0, Math.min(1, (orb.hu - 0.565) / 0.06))
-    // Warm hues can't use a dark anchor: darkened orange reads as BROWN. Their
-    // low stop is instead the saturated true hue at medium lightness, with the
-    // body pushed brighter above it; cool hues keep the deep-shadow ramp.
-    property color colA: _warm
+    // ORANGE can't use a dark anchor: darkened orange reads as BROWN. Its low
+    // stop is the saturated true hue at medium lightness with a brighter body.
+    // Green darkens fine and keeps the original deep ramp (warm offsets); cool
+    // hues keep theirs untouched.
+    readonly property bool _orange: orb.hu < 0.17
+    property color colA: _orange
       ? Qt.hsla((orb.hu + 0.02) % 1, orb.sat * 0.85, Theme.mode === "light" ? 0.52 : 0.47, 1)
-      : Qt.hsla((orb.hu + 0.03) % 1, orb.sat * 0.60,
+      : Qt.hsla((orb.hu + (_warm ? 0.02 : 0.03)) % 1, orb.sat * 0.60,
                 (Theme.mode === "light" ? 0.30 : 0.24) + _lift * 0.6, 1)
-    property color colB: _warm
+    property color colB: _orange
       ? Qt.hsla(orb.hu, orb.sat * 0.65, Theme.mode === "light" ? 0.72 : 0.68, 1)
-      : Qt.hsla(orb.hu, orb.sat * 0.55,
+      : Qt.hsla(orb.hu, orb.sat * (_warm ? 0.70 : 0.55),
                 (Theme.mode === "light" ? 0.58 : 0.52) + _lift, 1)
     property color colC: Qt.hsla((orb.hu + (_warm ? 0.045 : 0.96)) % 1, orb.sat * 0.35,
                                  (Theme.mode === "light" ? 0.84 : 0.80) + _lift * 0.5, 1)
