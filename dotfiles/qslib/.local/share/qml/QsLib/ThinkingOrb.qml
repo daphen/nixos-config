@@ -44,7 +44,18 @@ Item {
   // Assigned in onCompleted, not a binding — JS globals aren't reliably there
   // during component creation (the old "Math is undefined" trap).
   property real seed: 0
-  Component.onCompleted: seed = Math.random()
+  // Deterministic when the caller names the orb (session name): a recreated
+  // delegate then resumes the SAME phase instead of teleporting the pattern.
+  property string seedKey: ""
+  Component.onCompleted: {
+    if (seedKey.length) {
+      var h = 0
+      for (var i = 0; i < seedKey.length; i++) h = ((h * 31) + seedKey.charCodeAt(i)) % 9973
+      seed = h / 9973
+    } else {
+      seed = Math.random()
+    }
+  }
   function _ph(P) { return ((Date.now() * flow) % P) / P * 2 * Math.PI }
   FrameAnimation {
     running: orb.running

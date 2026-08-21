@@ -76,7 +76,7 @@ void main() {
     float pl = smoothstep(0.30, 0.60, praw);
     // Same gradient floor as vb below, own phase: a saturated crest field made
     // the whole disc bright regardless of the base ramp.
-    float ga3 = ubuf.ph3 * 0.5 + 1.7;
+    float ga3 = ubuf.ph3 + 1.7;
     pl -= 0.18 * (dot(u, vec2(cos(ga3), sin(ga3))) * 0.5 + 0.5);
 
     // fluid-gradient color zones: deep ground -> swept mid body -> bright
@@ -86,7 +86,9 @@ void main() {
     // stretch and the whole disc lands in ONE zone (all-dark / all-light).
     // A slowly rotating linear ramp guarantees ~0.32 of spread across the
     // disc at all times; with healthy noise it is an invisible bias.
-    float ga2 = ubuf.ph2 * 0.5;
+    // FULL-rate phase: ph2*0.5 was 4pi-periodic, so the ramp direction snapped
+    // 180 degrees at every 2pi phase wrap — the visible "jank back".
+    float ga2 = ubuf.ph2;
     vb += 0.22 * dot(u, vec2(cos(ga2), sin(ga2)));
     // ...plus a radial term: tilt alone is planar and the wide feather washes
     // it out; center-vs-rim contrast survives the softest blend.
