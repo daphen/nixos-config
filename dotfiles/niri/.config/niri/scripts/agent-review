@@ -40,9 +40,43 @@ from agent_review_harness import (
 
 HOME = os.environ["HOME"]
 LOVABLE_DIR = Path(HOME) / "work" / "lovable"
-SCOPE = os.environ.get("AGENT_SCOPE", "lovable")
 RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-PR_URL_RE = re.compile(r"https?://github\.com/[^/]+/[^/]+/pull/(\d+)")
+PR_URL_RE = re.compile(r"https?://github\.com/([^/]+)/([^/]+)/pull/(\d+)")
+
+
+def detect_repo(pr_arg: str) -> Path:
+    """The repo the PR belongs to — reviews are not lovable-only.
+
+    A PR URL names its repo (find the local checkout); a bare number means the
+    CALLER's repo (agent_review runs in the calling session's cwd). Lovable
+    stays the fallback so every existing flow behaves exactly as before."""
+    m = PR_URL_RE.search(pr_arg)
+    if m:
+        name = m.group(2)
+        for cand in (Path(HOME) / "work" / name, Path(HOME) / "personal" / name):
+            if (cand / ".git").exists():
+                return cand
+        if name == "lovable":
+            return LOVABLE_DIR
+        raise SystemExit(f"no local checkout found for repo {name!r} (looked in ~/work and ~/personal)")
+    try:
+        root = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                              capture_output=True, text=True, check=True, timeout=10).stdout.strip()
+        if root and not root.startswith(str(LOVABLE_DIR)):
+            return Path(root)
+    except Exception:
+        pass
+    return LOVABLE_DIR
+
+
+REPO_DIR = LOVABLE_DIR   # resolved in main() once the PR arg is known
+SCOPE = os.environ.get("AGENT_SCOPE", "lovable")
+
+
+def scope_for_repo(repo: Path) -> str:
+    if os.environ.get("AGENT_SCOPE"):
+        return os.environ["AGENT_SCOPE"]
+    return "personal" if str(repo).startswith(str(Path(HOME) / "personal")) else "lovable"
 
 
 def notify(msg: str) -> None:
@@ -68,7 +102,7 @@ def slugify(title: str, max_segments: int = 3) -> str:
 def gh_pr_metadata(num: int) -> tuple[str, str]:
     result = subprocess.run(
         ["gh", "pr", "view", str(num), "--json", "title,headRefOid"],
-        capture_output=True, text=True, check=True, cwd=str(LOVABLE_DIR), timeout=30,
+        capture_output=True, text=True, check=True, cwd=str(REPO_DIR), timeout=30,
     )
     data = json.loads(result.stdout)
     sha = data.get("headRefOid", "")
@@ -86,13 +120,13 @@ def git_output(args: list[str], cwd: Path) -> str:
 
 def ensure_worktree(num: int, slug: str, sha: str) -> Path:
     subprocess.run(
-        ["git", "-C", str(LOVABLE_DIR), "fetch", "origin",
+        ["git", "-C", str(REPO_DIR), "fetch", "origin",
          "+refs/heads/main:refs/remotes/origin/main", f"pull/{num}/head"],
         capture_output=True, check=True, timeout=120,
     )
-    target = Path(HOME) / f"work/lovable.review-{num}-{slug}"
+    target = REPO_DIR.parent / f"{REPO_DIR.name}.review-{num}-{slug}"
     try:
-        return adopt_or_create_worktree(LOVABLE_DIR, num, sha, target)
+        return adopt_or_create_worktree(REPO_DIR, num, sha, target)
     except RuntimeError as error:
         raise SystemExit(str(error)) from error
 
@@ -223,6 +257,9 @@ def main() -> int:
         ap.error("browser harness options require --manual-test PROJECT_ID")
 
     num = parse_pr(a.pr)
+    global REPO_DIR, SCOPE
+    REPO_DIR = detect_repo(a.pr)
+    SCOPE = scope_for_repo(REPO_DIR)
     try:
         deterministic_path(Path(HOME))
     except RuntimeError as error:
