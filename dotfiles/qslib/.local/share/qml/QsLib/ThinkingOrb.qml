@@ -110,16 +110,21 @@ Item {
     // Green darkens fine and keeps the original deep ramp (warm offsets); cool
     // hues keep theirs untouched.
     readonly property bool _orange: orb.hu < 0.17
+    // Orange ramp tuned live 2026-08-21 (orb-tuner): saturated anchor, hot
+    // body, golden crest — dark orange reads as brown, so no deep stop.
+    readonly property real _oLift: Theme.mode === "light" ? 0.047 : 0
     property color colA: _orange
-      ? Qt.hsla((orb.hu + 0.02) % 1, orb.sat * 0.85, Theme.mode === "light" ? 0.52 : 0.47, 1)
+      ? Qt.hsla((orb.hu - 0.027 + 1.0) % 1, orb.sat * 1.0, 0.359 + _oLift, 1)
       : Qt.hsla((orb.hu + (_warm ? 0.02 : 0.03)) % 1, orb.sat * 0.60,
                 (Theme.mode === "light" ? 0.30 : 0.24) + _lift * 0.6, 1)
     property color colB: _orange
-      ? Qt.hsla(orb.hu, orb.sat * 0.65, Theme.mode === "light" ? 0.72 : 0.68, 1)
+      ? Qt.hsla(orb.hu, orb.sat * 0.867, 0.55 + _oLift, 1)
       : Qt.hsla(orb.hu, orb.sat * (_warm ? 0.70 : 0.55),
                 (Theme.mode === "light" ? 0.58 : 0.52) + _lift, 1)
-    property color colC: Qt.hsla((orb.hu + (_warm ? 0.045 : 0.96)) % 1, orb.sat * 0.35,
-                                 (Theme.mode === "light" ? 0.84 : 0.80) + _lift * 0.5, 1)
+    property color colC: _orange
+      ? Qt.hsla((orb.hu + 0.05) % 1, orb.sat * 0.789, 0.733 + _oLift, 1)
+      : Qt.hsla((orb.hu + (_warm ? 0.045 : 0.96)) % 1, orb.sat * 0.35,
+                (Theme.mode === "light" ? 0.84 : 0.80) + _lift * 0.5, 1)
     Behavior on colA { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
     Behavior on colB { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
     Behavior on colC { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
@@ -133,7 +138,11 @@ Item {
     radius: width / 2
     color: "transparent"
     border.width: Math.max(1.25, Math.min(width, height) * 0.065) + (Theme.mode === "light" ? 1 : 0)
-    border.color: Qt.hsla(orb.hu, orb.sat * 0.5, (Theme.mode === "light") !== orb.invertRing ? 0.34 : 0.82, 1)
+    // Dark-mode orange ring at L .82 / half-sat drifted PINK: pale desaturated
+    // orange loses its hue identity. Warmer nudge + more sat keeps it peach.
+    border.color: field._orange && (Theme.mode === "light") === orb.invertRing
+      ? Qt.hsla((orb.hu + 0.03) % 1, orb.sat * 0.75, 0.78, 1)
+      : Qt.hsla(orb.hu, orb.sat * 0.5, (Theme.mode === "light") !== orb.invertRing ? 0.34 : 0.82, 1)
     Behavior on border.color { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
     antialiasing: true
   }
