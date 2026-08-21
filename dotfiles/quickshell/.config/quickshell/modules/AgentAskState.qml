@@ -32,6 +32,11 @@ Singleton {
         const ask = Object.assign({}, message)
         ask.key = key
         ask.socketIndex = index
+        // Scope from the owning socket path (agentd-<scope>.sock) — clients pick
+        // per-scope identity (avatars) off it.
+        var sp = String(paths[index] || "")
+        var m = sp.match(/agentd-([^/]+)\.sock$/)
+        ask.scope = m ? m[1] : "personal"
         next.push(ask)
         asks = next
         gen++

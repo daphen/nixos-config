@@ -44,6 +44,14 @@ PanelWindow {
     property bool active: false
     property bool open: false
     property bool answerMode: false
+    // Per-scope, theme-aware avatar for agent questions: the personal cockpit's
+    // note-logo (ink follows the theme) vs the Lovable heart for work scopes.
+    readonly property string askAvatar: {
+        if (!showingAsk || !ask) return ""
+        const sc = ask.scope || "personal"
+        if (sc === "lovable" || sc === "work") return Qt.resolvedUrl("../assets/lovable-heart.svg")
+        return Qt.resolvedUrl(Theme.mode === "light" ? "../assets/icon-light.svg" : "../assets/icon-dark.svg")
+    }
     property int answerCur: 0   // which option the keyboard cursor sits on
     property var ask: null
     readonly property bool showingAsk: !!ask && nApp === "Agent" && notif === null
@@ -329,7 +337,7 @@ PanelWindow {
                     Image {
                         id: avatar
                         anchors.fill: parent
-                        source: root.nImage
+                        source: root.showingAsk ? root.askAvatar : root.nImage
                         visible: status === Image.Ready
                         sourceSize.width: 60; sourceSize.height: 60
                         fillMode: Image.PreserveAspectCrop
