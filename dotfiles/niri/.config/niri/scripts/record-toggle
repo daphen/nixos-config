@@ -7,6 +7,14 @@
 # to the clipboard when stopped.
 set -u
 
+# Debounce: a held keybind (or double-tap) fired start->stop->start, which read
+# as "the region selector over and over with nothing recorded".
+STAMP="${XDG_RUNTIME_DIR:-/tmp}/record-toggle.stamp"
+now=$(date +%s%N)
+last=$(cat "$STAMP" 2>/dev/null || echo 0)
+printf '%s' "$now" > "$STAMP"
+[ $(( (now - last) / 1000000 )) -lt 1000 ] && exit 0
+
 OUT_DIR="$HOME/Videos/Recordings"
 mkdir -p "$OUT_DIR"
 

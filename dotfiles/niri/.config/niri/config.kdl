@@ -951,7 +951,7 @@ binds {
     Super+Ctrl+Shift+e { spawn "/home/daphen/.config/niri/scripts/screenshot-to-clipboard"; }  // Screenshot selection to clipboard
 
     // Screen recording (wf-recorder + slurp). Same keybind toggles start/stop.
-    Super+Shift+r { spawn "/home/daphen/.config/niri/scripts/record-toggle" "region"; }   // Record region
+    Super+Shift+r repeat=false { spawn "/home/daphen/.config/niri/scripts/record-toggle" "region"; }   // Record region
 
     // Color picker
     Super+Ctrl+c { spawn "/home/daphen/.config/niri/scripts/pick-color"; }  // Pick color from screen
