@@ -49,9 +49,16 @@ Item {
   property string seedKey: ""
   Component.onCompleted: {
     if (seedKey.length) {
-      var h = 0
-      for (var i = 0; i < seedKey.length; i++) h = ((h * 31) + seedKey.charCodeAt(i)) % 9973
-      seed = h / 9973
+      // FNV-1a: the naive h*31 hash mapped sibling names (every-2741 vs
+      // every-2738) to near-identical seeds, so their orbs danced in sync.
+      // Avalanching spreads one-character differences across the whole cycle
+      // while staying deterministic (no phase teleport on delegate rebuild).
+      var h = 2166136261
+      for (var i = 0; i < seedKey.length; i++) {
+        h ^= seedKey.charCodeAt(i)
+        h = Math.imul(h, 16777619) >>> 0
+      }
+      seed = (h % 100000) / 100000
     } else {
       seed = Math.random()
     }
