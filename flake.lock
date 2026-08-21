@@ -150,11 +150,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782472279,
-        "narHash": "sha256-y8FjnKvdaMWq7MeQ+vIb+baVu7PmWGMl/r7zTZnGi8A=",
+        "lastModified": 1787233750,
+        "narHash": "sha256-70Rx8WSvDwcQRE55uO01KyHC88KgW/TB2mBIZzTL0IE=",
         "owner": "AlvaroParker",
         "repo": "helium-nix",
-        "rev": "46dbd8424ea62f65a22358b83788e6d764611529",
+        "rev": "165e62236f2f5793a9672204f966c2d12b6e2d3e",
         "type": "github"
       },
       "original": {
@@ -397,15 +397,15 @@
       "locked": {
         "lastModified": 1786960496,
         "narHash": "sha256-8Wvam9cgssahPFIH1Y3W+txCSOhUYBsVHM8sY4QaFyk=",
-        "ref": "refs/heads/main",
+        "owner": "daphen",
+        "repo": "opqs",
         "rev": "a71e8c2c731ca5cae68076f7df81a65d5d54f596",
-        "revCount": 11,
-        "type": "git",
-        "url": "ssh://git@github.com/daphen/opqs"
+        "type": "github"
       },
       "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/daphen/opqs"
+        "owner": "daphen",
+        "repo": "opqs",
+        "type": "github"
       }
     },
     "palette-daemon": {
