@@ -16,9 +16,9 @@ set -euo pipefail
 
 raw="${1:?usage: vm-wt <ticket>   e.g. vm-wt EVERY-2739}"
 t=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
-vm="${HEIDR_VM:-dev-heidr-2a39}"
-host="${HEIDR_VM_HOST:-$vm.workstation.lovable.net}"
-u="${HEIDR_VM_USER:-david_karlsson_lovable_dev}"
+vm="${COCKPIT_VM:-${HEIDR_VM:-dev-heidr-2a39}}"
+host="${COCKPIT_VM_HOST:-${HEIDR_VM_HOST:-$vm.workstation.lovable.net}}"
+u="${COCKPIT_VM_USER:-${HEIDR_VM_USER:-david_karlsson_lovable_dev}}"
 sock="${XDG_RUNTIME_DIR}/agentd-work.sock"
 repo="/home/$u/src/lovable"
 vmwt="/home/$u/src/lovable-$t"

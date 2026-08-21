@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Super+h/l "smart-splits" bridge: when the Cockpit is focused, move its
+# internal pane focus (nvim <-> rail) first; only fall through to niri window
+# focus at the pane edges (or when the cockpit isn't focused at all).
+set -u
+dir="${1:-right}"
+LOG=/tmp/cockpit-rail-focus.log
+
+niri_focus() {
+  if [ "$dir" = left ]; then niri msg action focus-column-left
+  else niri msg action focus-column-right; fi
+}
+
+title="$(niri msg --json focused-window 2>/dev/null | grep -o '"title": *"[^"]*"' | head -1)"
+res=""
+matched=no
+case "$title" in
+  *[Hh]eidr*)
+    matched=yes
+    fn="focusRight"; [ "$dir" = left ] && fn="focusLeft"
+    res="$(qs ipc -p "$HOME/personal/cockpit/qs-shell" call cockpit "$fn" 2>/dev/null)"
+    res="${res//[$'\t\r\n ']/}"   # trim any whitespace
+    ;;
+esac
+printf '%s dir=%s matched=%s res=[%s] title=%s\n' "$(date +%T)" "$dir" "$matched" "$res" "$title" >> "$LOG"
+
+if [ "$res" = consumed ]; then exit 0; fi
+niri_focus

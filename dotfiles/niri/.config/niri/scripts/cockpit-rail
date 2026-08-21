@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# cockpit-rail — open neovim with the Cockpit agent rail active.
+#
+# Two entry points, deliberately distinct:
+#   nvim    → plain editor, NO rail (quicknotes, config edits, quick diffs)
+#   cockpit-rail   → editor + the agent rail (mission control for the agentd sessions)
+#
+# COCKPIT_OPEN=1 is the signal cockpit/init.lua's autostart keys off. Which daemon
+# (scope) the rail attaches to is auto-detected independently (COCKPIT_SCOPE env, or
+# the niri workspace: lovable vs personal). Args pass through, so `cockpit-rail file.lua`
+# opens the rail with that file in the editor.
+exec env COCKPIT_OPEN=1 HEIDR_OPEN=1 nvim "$@"

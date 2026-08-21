@@ -37,20 +37,20 @@ function manifestPath(): string {
 
 function failClosed(pi: ExtensionAPI, reason: string): never {
   pi.setActiveTools([]);
-  throw new Error(`Heidr role policy failed closed: ${reason}`);
+  throw new Error(`Cockpit role policy failed closed: ${reason}`);
 }
 
 export default function rolePolicy(pi: ExtensionAPI) {
   const rawProfile = envAlias("AGENT_PROFILE") ?? "";
   // Inert for every NON-ROLE launch: no env at all (plain pi — the extension also
   // loads globally via the dotfiles symlink) and the daemon's builtin non-role
-  // profiles ("chat", "phtqs", "coding" — agentd stamps HEIDR_AGENT_PROFILE on every child).
+  // profiles ("chat", "phtqs", "coding" — agentd stamps COCKPIT_AGENT_PROFILE on every child).
   // Fail closed only when the value claims to be a role and isn't a known one:
   // that's a role launch with a broken contract. Failing closed on the global
   // path crash-looped every plain pi (setActiveTools during load hard-crashes
   // pi >= 0.83) — the newtab outage, twice.
   if (!rawProfile || rawProfile === "chat" || rawProfile === "phtqs" || rawProfile === "coding") return;
-  if (!isRoleProfile(rawProfile)) failClosed(pi, `unknown HEIDR_AGENT_PROFILE ${JSON.stringify(rawProfile)}`);
+  if (!isRoleProfile(rawProfile)) failClosed(pi, `unknown COCKPIT_AGENT_PROFILE ${JSON.stringify(rawProfile)}`);
   const profile: RoleProfile = rawProfile;
   const cwd = envAlias("AGENT_CWD") || process.cwd();
   const parent = envAlias("AGENT_PARENT") || "";
@@ -87,7 +87,7 @@ export default function rolePolicy(pi: ExtensionAPI) {
   pi.on("before_agent_start", (event) => {
     activateExpectedTools();
     return {
-      systemPrompt: `${event.systemPrompt}\n\n[Heidr role: ${profile} | cwd: ${cwd} | bundle: ${manifest.bundleVersion}]`,
+      systemPrompt: `${event.systemPrompt}\n\n[Cockpit role: ${profile} | cwd: ${cwd} | bundle: ${manifest.bundleVersion}]`,
     };
   });
 

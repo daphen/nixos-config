@@ -54,11 +54,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # heidr — cockpit: nvim (libghostty terminal) + agentd rail in one Quickshell
-    # window. Local path (actively developed); follows the system nixpkgs +
-    # quickshell so the C++ plugin's Qt matches the running qs.
-    heidr = {
-      url = "path:/home/daphen/personal/heidr/libghostty-spike";
+    # Cockpit: nvim terminal + agentd rail in one Quickshell window. Local path;
+    # follows system nixpkgs + Quickshell so the plugin uses the running Qt.
+    cockpit = {
+      url = "path:/home/daphen/personal/cockpit";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.quickshell.follows = "quickshell";
     };

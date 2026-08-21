@@ -19,9 +19,8 @@ let
     inherit pkgs;
     upstream = inputs.helium-nix.packages.${pkgs.system}.default;
   };
-  # heidr — cockpit launcher (bundles the libghostty terminal plugin; connects to
-  # the running agentd). `heidr` opens/focuses the Quickshell cockpit window.
-  heidrClient = inputs.heidr.packages.${pkgs.system}.heidr-qs;
+  # Cockpit launcher bundles the terminal plugin and connects to agentd.
+  cockpitClient = inputs.cockpit.packages.${pkgs.system}.cockpit-qs;
   # agentd — built in-repo from the flake=false source input (no flake.nix in
   # the repo). Lands `agentd` on PATH; the nvim rail + niri startup use it.
   agentd = import ../../pkgs/agentd { inherit pkgs; src = inputs.agentd; };
@@ -75,7 +74,7 @@ in
     # mpv — used by the media-viewer.sh (in ~/.config/qs-chat-clients/) that the native
     # QML chat clients (slqs/dsqrd) call to play gif-as-mp4 attachments.
     mpv
-    # autossh — supervises the heidr↔lovbox tunnel (cockpit-add-lovbox-heidr). Plain
+    # autossh — supervises the Cockpit↔lovbox tunnel (cockpit-rail-lovbox). Plain
     # `ssh -f` dies on any network blip and takes the remote agentd with it, leaving a
     # stale socket and a rail that silently shows nothing; autossh reconnects.
     autossh
@@ -99,7 +98,7 @@ in
     opqsDaemon
     opqsClient
     # heidr — the cockpit (nvim + agentd rail in one qs window).
-    heidrClient
+    cockpitClient
     # agentd — nvim agent-rail daemon (one instance per scope, started at login).
     agentd
   ];

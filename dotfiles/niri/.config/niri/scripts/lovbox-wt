@@ -3,7 +3,7 @@
 #
 #   1. git worktree in the box            ~/lovable-<ticket>  on branch daphen/<ticket>
 #   2. its `devenv wt` slice in tmux      (survives `lovbox exec`; tmux double-forks)
-#   3. a mutagen sync for that worktree   → ~/lovbox/heidr/lovable-<ticket> (local nvim)
+#   3. a mutagen sync for that worktree   → ~/lovbox/cockpit/lovable-<ticket> (local nvim)
 #   4. an agentd session rooted at it     → shows in the rail, live-follow works
 #
 # Prereqs: `cockpit-add-lovbox-heidr <name>` has run (tunnel + agentd + gcc + mutagen).
@@ -21,7 +21,7 @@ box="${LOVBOX_NAME:-lovbox-heidr}"
 lb="$HOME/work/lovable/bin/lovbox"
 sock="${XDG_RUNTIME_DIR}/agentd-work.sock"
 boxwt="/home/lovable/lovable-$t"
-mirror="$HOME/lovbox/heidr/lovable-$t"
+mirror="$HOME/lovbox/cockpit/lovable-$t"
 branch="daphen/$t"
 say() { printf '\033[36m[lovbox-wt]\033[0m %s\n' "$*"; }
 

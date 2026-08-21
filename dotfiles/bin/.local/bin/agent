@@ -266,7 +266,7 @@ def cmd_spawn(a) -> int:
               f"(worktree creation belongs in cockpit-add/cockpit-spawn)", file=sys.stderr)
         return 1
     d = d.resolve()
-    scope = a.scope or os.environ.get("HEIDR_SCOPE") or os.environ.get("AGENT_SCOPE")
+    scope = a.scope or os.environ.get("COCKPIT_SCOPE") or os.environ.get("HEIDR_SCOPE") or os.environ.get("AGENT_SCOPE")
     if not scope:
         s = str(d)
         scope = ("lovable" if s == str(LOVABLE) or s.startswith(str(LOVABLE) + ".") or s.startswith(str(LOVABLE) + "/")
@@ -316,8 +316,9 @@ SESSIONS_D = HOME / ".config/agentd/sessions.d"
 def _load_spec(path: Path) -> dict:
     import tomllib
     spec = tomllib.loads(path.read_text())
-    spec.setdefault("name", path.stem if path.parent.name != ".heidr" else path.parent.parent.name)
-    if "dir" not in spec and path.parent.name == ".heidr":
+    local_dir = path.parent.name in (".cockpit", ".heidr")
+    spec.setdefault("name", path.stem if not local_dir else path.parent.parent.name)
+    if "dir" not in spec and local_dir:
         spec["dir"] = str(path.parent.parent)
     if "dir" not in spec:
         raise SystemExit(f"agent up: spec {path} has no dir")
@@ -330,9 +331,10 @@ def _find_specs(target: str | None) -> list[dict]:
         return [_load_spec(f) for f in sorted(SESSIONS_D.glob("*.toml"))]
     t = Path(target).expanduser()
     if t.is_dir():
-        f = t / ".heidr/session.toml"
-        if not f.is_file():
-            raise SystemExit(f"agent up: no .heidr/session.toml in {t}")
+        candidates = (t / ".cockpit/session.toml", t / ".heidr/session.toml")
+        f = next((p for p in candidates if p.is_file()), None)
+        if f is None:
+            raise SystemExit(f"agent up: no .cockpit/session.toml (or legacy .heidr/session.toml) in {t}")
         return [_load_spec(f)]
     f = SESSIONS_D / f"{target}.toml"
     if f.is_file():

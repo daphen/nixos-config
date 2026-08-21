@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Super+T — roster focus, cockpit-aware:
+#   focused on a Cockpit, roster NOT focused → land on THIS window's roster
+#   already on this window's rail          → hop to the OTHER cockpit's roster
+#   focused elsewhere                      → jump-or-exec a Cockpit, then its roster
+set -uo pipefail
+IPC="$(dirname "$0")/cockpit-ipc"
+REG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell/by-id"
+
+# focused title + every Cockpit window title, one niri round-trip
+out=$(niri msg --json windows 2>/dev/null | python3 -c '
+import json, sys
+ws = json.load(sys.stdin)
+foc = next((str(w.get("title") or "") for w in ws if w.get("is_focused")), "")
+hs = [str(w.get("title") or "") for w in ws if str(w.get("title") or "").startswith("cockpit-qs")]
+print(foc); [print(h) for h in hs]' 2>/dev/null) || out=""
+focused=$(printf '%s\n' "$out" | head -1)
+mapfile -t heidrs < <(printf '%s\n' "$out" | tail -n +2)
+
+id_for_title() {   # instance id whose window title matches $1
+  local i t
+  for i in $(ls -1t "$REG" 2>/dev/null); do
+    t=$(timeout 2 qs ipc -i "$i" call cockpit title 2>/dev/null) || continue
+    [ "$t" = "$1" ] && { echo "$i"; return 0; }
+  done
+  return 1
+}
+focus_roster_of() {   # niri-focus the window titled $1 and land on its roster
+  niri msg action focus-window --id "$(niri msg --json windows | python3 -c '
+import json, sys
+t = sys.argv[1]
+for w in json.load(sys.stdin):
+    if (w.get("title") or "") == t: print(w["id"]); break' "$1")" 2>/dev/null || true
+  local i; i=$(id_for_title "$1") || return 1
+  timeout 3 qs ipc -i "$i" call cockpit focusRoster >/dev/null 2>&1
+}
+
+case "$focused" in
+  cockpit-qs*)
+    # One IPC does the whole in-window decision (land vs parked); the id comes from a
+    # per-title cache validated by that same call, so the common path is a single qs
+    # spawn — Super+T used to chain four and felt sluggish next to the in-app keys.
+    cachef="${XDG_RUNTIME_DIR:-/tmp}/cockpit-rail-roster.$(printf '%s' "$focused" | tr -c 'A-Za-z0-9' _)"
+    hop=""
+    if [ -r "$cachef" ]; then
+      cid=$(cat "$cachef" 2>/dev/null || true)
+      [ -n "${cid:-}" ] && hop=$(timeout 3 qs ipc -i "$cid" call cockpit rosterHop 2>/dev/null || true)
+      case "$hop" in landed|parked) id="$cid";; *) hop="";; esac
+    fi
+    if [ -z "$hop" ]; then
+      id=$(id_for_title "$focused") || exit 1
+      printf '%s' "$id" > "$cachef" 2>/dev/null || true
+      hop=$(timeout 3 qs ipc -i "$id" call cockpit rosterHop 2>/dev/null || true)
+    fi
+    [ "$hop" = "landed" ] && exit 0
+    # genuinely parked on this cockpit's roster → hop to the next OTHER cockpit's roster
+    for t in "${heidrs[@]}"; do
+      [ "$t" = "$focused" ] && continue
+      focus_roster_of "$t" && exit 0
+    done
+    exit 0   # only one cockpit: already on its roster, nothing to hop to
+    ;;
+  *)
+    "$HOME/.config/niri/scripts/niri-jump-or-exec" title:cockpit-qs "$HOME/personal/cockpit/run-qs.sh"
+    "$IPC" focusRoster 2>/dev/null || true
+    ;;
+esac

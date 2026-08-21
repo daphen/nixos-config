@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+result=$(qs ipc call -- agent-ask focus 2>/dev/null || true)
+if [[ "$result" == *focused* ]]; then
+    exit 0
+fi
+
+exec "$HOME/.config/niri/scripts/niri-jump-or-exec" \
+    title:cockpit-qs "$HOME/personal/cockpit/run-qs.sh"

@@ -18,7 +18,7 @@ import {
   stopSelf,
 } from "./agentd.ts";
 
-// Native coordination tools for pi agents driven by the Heidr rail / agentd.
+// Native coordination tools for pi agents driven by Cockpit / agentd.
 // The desktop (niri pickers, nvim keybinds, cockpit scripts) uses the sibling
 // `agent` CLI, which speaks the same agentd socket protocol. Both replace the
 // retired wt-* scripts; neither is worktree-coupled.

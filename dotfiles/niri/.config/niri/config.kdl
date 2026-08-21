@@ -264,13 +264,13 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#EDEDED"
+        active-color "#6F6F6E"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#3A3A3A"
+        inactive-color "#E2E2E1"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -294,13 +294,13 @@ layout {
         // If you enable the border, you probably want to disable the focus ring.
 
         width 4
-        active-color "#EDEDED"
+        active-color "#6F6F6E"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
-        active-gradient from="#EDEDED" to="#EDEDED" angle=180
+        active-gradient from="#6F6F6E" to="#6F6F6E" angle=180
         // Matches waybar-notch light theme hairline
         // (foreground.primary @ 50% alpha).
-        inactive-color "#3A3A3A"
+        inactive-color "#E2E2E1"
 
         // Color of the border around windows that request your attention.
         urgent-color "#9b0000"
@@ -510,9 +510,9 @@ window-rule {
 }
 
 window-rule {
-    // heidr instances (both modes): spawn wide — the rail + editor split needs
+    // Cockpit instances (both modes): spawn wide — the rail + editor split needs
     // more room than a default kitty column.
-    match app-id=r#"^org\.quickshell$"# title=r#"^heidr-qs"#
+    match app-id=r#"^org\.quickshell$"# title=r#"^cockpit-qs"#
     default-column-width { proportion 0.85; }
 }
 
@@ -805,13 +805,10 @@ binds {
     Super+f hotkey-overlay-title="Toggle Command Palette" { spawn-sh "$HOME/.config/niri/scripts/palette-toggle"; }
     Super+Shift+m hotkey-overlay-title="Add Quickmark" { spawn "palette-ipc" "add-quickmark"; }
     Super+m hotkey-overlay-title="Mail" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:mlqs $HOME/.config/niri/scripts/launch-mail-client"; }
-    // Heidr cockpit (nvim + agentd rail). Coexists with the kitty cockpit; the
-    // `heidr` launcher focuses an existing window or opens one.
-    // Both launch the DEV TREE (run-qs.sh): per-workspace mode, per-mode identity, and
-    // always the latest code — the packaged heidr-qs lags behind until a flake rebuild
-    // and kept skewing against the working tree while heidr is under heavy iteration.
-    Super+y hotkey-overlay-title="Answer agent question / Heidr cockpit" { spawn-sh "$HOME/.config/niri/scripts/agent-ask-or-heidr"; }
-    Super+Shift+y hotkey-overlay-title="Heidr for this workspace (mode-scoped relaunch)" { spawn-sh "$HOME/personal/heidr/libghostty-spike/run-qs.sh"; }
+    // Cockpit (nvim + agentd rail) coexists with the kitty cockpit.
+    // Both binds launch the dev tree so per-workspace mode and current QML stay aligned.
+    Super+y hotkey-overlay-title="Answer agent question / Cockpit" { spawn-sh "$HOME/.config/niri/scripts/agent-ask-or-cockpit"; }
+    Super+Shift+y hotkey-overlay-title="Cockpit for this workspace (mode-scoped relaunch)" { spawn-sh "$HOME/personal/cockpit/run-qs.sh"; }
     // Super+Ctrl+M: rebuild/repair the cockpit (windows + registered
     // contexts). Idempotent — replaces the old ws-startmain bind.
     Super+Ctrl+m { spawn-sh "$HOME/.config/niri/scripts/cockpit-restore"; }
@@ -819,7 +816,7 @@ binds {
     // Super+T — jump to the cockpit nvim rail and focus the roster (focuses the
     // roster in place when already there). Super+Ctrl+T opens the context picker
     // (Enter switch, Ctrl+N new, Ctrl+W close); Super+O flips to the last context.
-    Super+t hotkey-overlay-title="Focus rail roster" { spawn-sh "$HOME/.config/niri/scripts/heidr-roster"; }
+    Super+t hotkey-overlay-title="Focus rail roster" { spawn-sh "$HOME/.config/niri/scripts/cockpit-rail-roster"; }
     Super+Ctrl+t hotkey-overlay-title="Cockpit contexts" { spawn "qs" "ipc" "call" "cockpit" "toggle"; }
     // Super+O: flip to the previously used cockpit context (vim ctrl-o style).
     Super+o hotkey-overlay-title="Previous context" { spawn-sh "$HOME/.config/niri/scripts/cockpit-toggle"; }

@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# qs ipc to the running cockpit-qs instance (dev run-qs.sh OR installed Super+y).
+#   cockpit-ipc <fn> [args…]   → qs ipc -i <instance> call cockpit <fn> …
+#
+# Resolve by INSTANCE ID, not config path. Every relaunch leaves its registry dir
+# behind under by-id/, so one config path can map to several instances (mostly dead);
+# `qs ipc -p <path>` then picks one at random and blocks on a dead socket, which
+# silently wedges whichever keybind called us — the symptom is "Ctrl+l stopped
+# working". Probing `call cockpit pane` per id is self-validating: only a live Cockpit
+# answers it, so dead entries and the bar both fail fast.
+set -uo pipefail
+
+reg="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell/by-id"
+nvim_sock="${COCKPIT_NVIM_SOCK:-${HEIDR_NVIM_SOCK:-}}"
+
+# `qs ipc` exits 0 even when it prints "Target not found." — so the exit status alone
+# accepts ANY live instance, including the bar, and the focus call then no-ops. Judge
+# by the reply: a real Cockpit answers pane with nvim|rail.
+probe_id() {
+  local out
+  out=$(timeout 2 qs ipc -i "$1" call cockpit pane 2>&1) || return 1
+  case "$out" in nvim|rail) return 0;; *) return 1;; esac
+}
+
+resolve_id() {
+  local i t focused="$1" fallback=""
+  # Parent binding wins outright: a caller inside a cockpit's nvim passes that nvim's
+  # socket (cockpit-cross), which exactly one instance owns — no niri, no title heuristics.
+  if [ -n "$nvim_sock" ]; then
+    for i in $(ls -1t "$reg" 2>/dev/null); do
+      t=$(timeout 2 qs ipc -i "$i" call cockpit nvimSock 2>/dev/null) || continue
+      if [ "$t" = "$nvim_sock" ]; then echo "$i"; return 0; fi
+    done
+  fi
+  # With per-mode cockpits (work + private simultaneously), the instance you mean is
+  # the one whose window is FOCUSED — match its title to each instance's `title` fn.
+  # Fallback: newest live instance, the pre-multi behavior.
+  for i in $(ls -1t "$reg" 2>/dev/null); do
+    t=$(timeout 2 qs ipc -i "$i" call cockpit title 2>/dev/null) || continue
+    case "$t" in cockpit-qs*) ;; *) continue;; esac
+    [ -z "$fallback" ] && fallback="$i"
+    if [ -n "${focused:-}" ] && [ "$t" = "$focused" ]; then echo "$i"; return 0; fi
+  done
+  [ -n "$fallback" ] && { echo "$fallback"; return 0; }
+  return 1
+}
+
+# Cache the winning id. Probing before EVERY call cost two round-trips per keypress
+# (~100ms for what a single call does in ~40), and every relaunch adds another dead
+# by-id dir to walk. A stale cache costs one failed call, not a wedged keybind — and the
+# reply is validated the same way, so a dead id or the bar can never be mistaken for Cockpit.
+cache="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cockpit-ipc.id"
+
+call_id() {   # call_id <id> <fn> [args…] — echoes the reply, non-zero if not a live cockpit
+  local i="$1"; shift
+  local out
+  out=$(timeout 5 qs ipc -i "$i" call cockpit "$@" 2>&1) || return 1
+  case "$out" in *"not found"*|"") return 1;; esac
+  printf '%s\n' "$out"
+}
+
+# One niri round-trip: how many cockpit windows exist, and which title is focused.
+# grep -c was WRONG here — niri prints single-line JSON, so it counted 1 forever and
+# the cache short-circuited every call: all crossings went to whichever instance was
+# cached, focus ignored (Ctrl+l dead in exactly one cockpit, randomly).
+nwin=0; focused=""
+if out=$(niri msg --json windows 2>/dev/null | python3 -c '
+import json, sys
+ws = json.load(sys.stdin)
+hs = [w for w in ws if str(w.get("title") or "").startswith("cockpit-qs")]
+foc = next((str(w.get("title") or "") for w in ws if w.get("is_focused")), "")
+print(len(hs), foc)' 2>/dev/null); then
+  nwin="${out%% *}"; focused="${out#* }"
+fi
+# The cache only short-circuits when a SINGLE cockpit window exists: with two cockpits
+# the right target depends on which window is focused, so resolve every time (one
+# title probe per live instance — still fast).
+if [ -z "$nvim_sock" ] && [ "${nwin:-0}" -le 1 ] && [ -r "$cache" ]; then
+  cid=$(cat "$cache" 2>/dev/null || true)
+  if [ -n "${cid:-}" ] && call_id "$cid" "$@"; then exit 0; fi
+fi
+
+id=$(resolve_id "$focused") || { echo "cockpit-ipc: no live cockpit instance" >&2; exit 1; }
+printf '%s' "$id" > "$cache" 2>/dev/null || true
+call_id "$id" "$@"

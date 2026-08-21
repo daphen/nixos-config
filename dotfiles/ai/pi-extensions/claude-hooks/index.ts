@@ -4,9 +4,9 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
-// heidr writes the focused rail nvim's pid here (empty when none focused). If a
+// Cockpit writes the focused rail nvim's pid here (empty when none focused). If a
 // live rail holds focus you're at the cockpit and the roster already shows the
-// session settle — so a desktop toast would be noise (matches heidr's own guard).
+// session settle — so a desktop toast would be noise (matches Cockpit's own guard).
 function railFocused(): boolean {
   try {
     const pid = parseInt(readFileSync(join(process.env.XDG_RUNTIME_DIR ?? "/tmp", "agent-rail-focused"), "utf8").trim(), 10);
@@ -133,7 +133,7 @@ export default function (pi: ExtensionAPI) {
     const info = ctxInfo(ctx);
     if (!info) return; // stale ctx after --continue reload — skip the toast, never throw into the turn
     run(NOTIFY, [], JSON.stringify({
-      app: "Heidr", // brand the toast as Heidr, not Claude (the script also infers this)
+      app: "Cockpit",
       cwd: info.cwd,
       message: "Waiting for input",
       session_id: info.sessionId,

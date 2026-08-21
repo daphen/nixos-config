@@ -31,9 +31,9 @@ set -euo pipefail
 if [ "${1:-}" = "--align" ]; then
   raw="${2:?usage: vm-sync --align <ticket>}"
   t=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
-  u="${HEIDR_VM_USER:-david_karlsson_lovable_dev}"
-  vm="${HEIDR_VM:-dev-heidr-2a39}"
-  host="${HEIDR_VM_HOST:-$vm.workstation.lovable.net}"
+  u="${COCKPIT_VM_USER:-${HEIDR_VM_USER:-david_karlsson_lovable_dev}}"
+  vm="${COCKPIT_VM:-${HEIDR_VM:-dev-heidr-2a39}}"
+  host="${COCKPIT_VM_HOST:-${HEIDR_VM_HOST:-$vm.workstation.lovable.net}}"
   local_wt="$HOME/work/lovable.daphen-$t"
   [ -d "$local_wt" ] || exit 0
   # Cheap LOCAL gate before any network. Routine agent work is small, so unless the diff is
@@ -72,9 +72,9 @@ fi
 
 raw="${1:?usage: vm-sync <ticket>   e.g. vm-sync EVERY-2741}"
 t=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
-u="${HEIDR_VM_USER:-david_karlsson_lovable_dev}"
-vm="${HEIDR_VM:-dev-heidr-2a39}"
-host="${HEIDR_VM_HOST:-$vm.workstation.lovable.net}"
+u="${COCKPIT_VM_USER:-${HEIDR_VM_USER:-david_karlsson_lovable_dev}}"
+vm="${COCKPIT_VM:-${HEIDR_VM:-dev-heidr-2a39}}"
+host="${COCKPIT_VM_HOST:-${HEIDR_VM_HOST:-$vm.workstation.lovable.net}}"
 vmwt="/home/$u/src/lovable-$t"
 local_wt="$HOME/work/lovable.daphen-$t"
 repo="$HOME/work/lovable"

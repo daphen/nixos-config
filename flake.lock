@@ -16,6 +16,26 @@
         "url": "ssh://git@github.com/daphen/agentd"
       }
     },
+    "cockpit": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "quickshell": [
+          "quickshell"
+        ]
+      },
+      "locked": {
+        "lastModified": 1787299496,
+        "narHash": "sha256-Jw9YVtJxAi29RcFNmGj6FWdlEUaJwwISwSu9V6chmxo=",
+        "path": "/home/daphen/personal/cockpit",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/daphen/personal/cockpit",
+        "type": "path"
+      }
+    },
     "crane": {
       "locked": {
         "lastModified": 1767744144,
@@ -119,26 +139,6 @@
         "owner": "numtide",
         "repo": "flake-utils",
         "type": "github"
-      }
-    },
-    "heidr": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "quickshell": [
-          "quickshell"
-        ]
-      },
-      "locked": {
-        "lastModified": 1786951644,
-        "narHash": "sha256-QSAt/AV9Qu3U19os39sklMDT420+Hn71YX2RUEutzz8=",
-        "path": "/home/daphen/personal/heidr/libghostty-spike",
-        "type": "path"
-      },
-      "original": {
-        "path": "/home/daphen/personal/heidr/libghostty-spike",
-        "type": "path"
       }
     },
     "helium-nix": {
@@ -453,8 +453,8 @@
     "root": {
       "inputs": {
         "agentd": "agentd",
+        "cockpit": "cockpit",
         "dsqrd": "dsqrd",
-        "heidr": "heidr",
         "helium-nix": "helium-nix",
         "home-manager": "home-manager",
         "mlqs": "mlqs",

@@ -41,13 +41,13 @@ agent spawn "$dir" ${prompt:+"$prompt"} --name "$name" $oneshot
 # 2b) declare it: emit the session spec so the imperative kickoff converges to
 # the declarative world (`agent up <dir>` re-materializes it from now on).
 if [ -z "$oneshot" ]; then
-  mkdir -p "$dir/.heidr"
-  if [ ! -f "$dir/.heidr/session.toml" ]; then
+  mkdir -p "$dir/.cockpit"
+  if [ ! -f "$dir/.cockpit/session.toml" ]; then
     { printf 'name = "%s"\n' "$name"
       printf 'dir = "%s"\n' "$dir"
       printf 'scope = "lovable"\n'
       printf 'profile = "lovable-worker"\n'
-    } > "$dir/.heidr/session.toml"
+    } > "$dir/.cockpit/session.toml"
   fi
 fi
 
