@@ -253,7 +253,7 @@
     (mdformat.withPlugins (ps: [ ps.mdformat-gfm ps.mdformat-frontmatter ]))
     cargo
     rustc
-    goLatest   # go >= 1.26.2 for the lovable go.work (see the flake overlay note)
+    goLatest   # Go patch level required by lovable/go.work (see the flake overlay note)
   ];
 
   # Fonts
