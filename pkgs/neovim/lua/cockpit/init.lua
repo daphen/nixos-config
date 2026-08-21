@@ -6044,8 +6044,8 @@ function M.setup(opts)
   opts = opts or {}
   load_qsicons()
   target_editor_win()
-  -- Cockpit mode: the QML chin renders the statusline; feed it.
-  if cockpit_env("OPEN") ~= nil then pcall(function() require("cockpit.chin").setup() end) end
+  -- Embedded cockpit (TermView env): the QML chin renders the statusline; feed it.
+  if cockpit_env("COCKPIT") == "1" then pcall(function() require("cockpit.chin").setup() end) end
   if opts.scope then scope = opts.scope end
   if opts.scopes then ROOTS = opts.scopes end
   S.ns = api.nvim_create_namespace("agent_nvim")
