@@ -75,11 +75,14 @@ the plan; elsewhere, pass the key to `--finalize`/`--go`/`--reconcile` or open t
 `.md` directly.)
 
 **Plan location (`<plandir>`) — resolve once per run:**
-- If `~/personal/notes/storage/` exists (local) → **`~/personal/notes/storage/plans/`**.
-  The plan is then durable, synced (`notes-cli -watch`), searchable (`notes-memory`),
-  and referenceable across cycles — it outlives the worktree, and the `/cycle` skill
-  reads it. `mkdir -p` it.
-- Otherwise (lovbox sandbox, no vault) → **`<repo-root>/.plans/`**, gitignored via
+- If `~/personal/notes/storage/` exists **AND is the real synced vault** — verify with
+  `pgrep -f "notes-cli -watch" >/dev/null` (the sync watcher only runs on David's
+  machine) → **`~/personal/notes/storage/plans/`**. The plan is then durable, synced,
+  searchable (`notes-memory`), and referenceable across cycles. `mkdir -p` the plans
+  subdir. **Never `mkdir -p` the vault root itself**: on a VM/sandbox a bare directory
+  at that path is a PHANTOM — plans written there are invisible to David's nvim and
+  strand on the box (this happened; the pull-back was manual).
+- Otherwise (VM worker, lovbox sandbox — no watcher) → **`<repo-root>/.plans/`**, gitignored via
   `"$(git rev-parse --git-common-dir)"/info/exclude` (local-only, never committed).
   Use `--git-common-dir`, NOT a literal `.git/info/exclude`: in a git WORKTREE
   `.git` is a *file* pointing at the real gitdir, so the literal path does not
