@@ -77,7 +77,7 @@ void main() {
     // Same gradient floor as vb below, own phase: a saturated crest field made
     // the whole disc bright regardless of the base ramp.
     float ga3 = ubuf.ph3 * 0.5 + 1.7;
-    pl -= 0.14 * (dot(u, vec2(cos(ga3), sin(ga3))) * 0.5 + 0.5);
+    pl -= 0.18 * (dot(u, vec2(cos(ga3), sin(ga3))) * 0.5 + 0.5);
 
     // fluid-gradient color zones: deep ground -> swept mid body -> bright
     // islands, boundaries wide but DEFINED (satin, not fog)
@@ -87,7 +87,10 @@ void main() {
     // A slowly rotating linear ramp guarantees ~0.32 of spread across the
     // disc at all times; with healthy noise it is an invisible bias.
     float ga2 = ubuf.ph2 * 0.5;
-    vb += 0.16 * dot(u, vec2(cos(ga2), sin(ga2)));
+    vb += 0.22 * dot(u, vec2(cos(ga2), sin(ga2)));
+    // ...plus a radial term: tilt alone is planar and the wide feather washes
+    // it out; center-vs-rim contrast survives the softest blend.
+    vb += 0.10 * (0.6 - r);
     float fw = mix(0.10, 0.45, ubuf.feather);
     float s1 = smoothstep(0.55 - fw, 0.55 + fw, vb);
     vec3 col = mix(ubuf.colA.rgb, ubuf.colB.rgb, s1);

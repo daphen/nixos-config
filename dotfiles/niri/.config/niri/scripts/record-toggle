@@ -59,7 +59,8 @@ HW=(-c h264_vaapi -d "${vaapi_dev:-/dev/dri/renderD128}")
 
 case "$mode" in
     region)
-        geom=$(slurp) || exit 1
+        geom=$(slurp) || { notify-send -a "screen-recorder" "Recording cancelled" "no region selected (drag to select)"; exit 1; }
+        case "$geom" in *" 0x"*|*"x0") notify-send -a "screen-recorder" "Recording cancelled" "empty region — drag, don't click"; exit 1;; esac
         notify-send -a "screen-recorder" "Recording region (${fps}fps)" "Same shortcut to stop."
         exec wf-recorder "${HW[@]}" -g "$geom" -r "$fps" -f "$out"
         ;;
