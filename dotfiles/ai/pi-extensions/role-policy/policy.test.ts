@@ -183,6 +183,13 @@ describe("GitHub mutation delegation", () => {
     expect(commandDecision("lovable-reviewer", "gh pr merge 12 --auto", new Set())).toContain("explicit merge request");
     expect(commandDecision("lovable-reviewer", "gh pr checks 12 --watch", new Set())).toContain("foreground polling");
     expect(commandDecision("lovable-reviewer", "sleep 30", new Set())).toContain("foreground polling");
+    // Posting comments/reviews (incl. approve) is the reviewer's job — ungated.
+    expect(commandDecision("lovable-reviewer", "gh pr comment 12 --body 'lgtm'", new Set())).toBeNull();
+    expect(commandDecision("lovable-reviewer", "gh pr review 12 --approve", new Set())).toBeNull();
+    expect(commandDecision("lovable-reviewer", "gh pr review 12 --request-changes --body x", new Set())).toBeNull();
+    // …but PR edits and creation stay blocked for reviewers.
+    expect(commandDecision("lovable-reviewer", "gh pr edit 12 --title x", new Set())).toContain("may not mutate");
+    expect(commandDecision("lovable-reviewer", "gh pr create --fill", new Set())).toContain("may not mutate");
   });
 
   test("other roles cannot push and force operations are always blocked", () => {

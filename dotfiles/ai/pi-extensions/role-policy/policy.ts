@@ -215,6 +215,11 @@ export function commandDecision(profile: RoleProfile, command: string, grants: S
   if (profile === "lovable-reviewer" && mutation === "merge") {
     return grants.has("merge") ? null : "lovable-reviewer requires an explicit merge request in the current user turn";
   }
+  // Risk tiers, not ceremony (David, 2026-08-21): posting comments and reviews —
+  // including --approve — is the reviewer's whole job and is reversible on GitHub;
+  // a plain-words user request is enough, no card grammar. Merge stays gated
+  // above; pr-create/edit/push remain blocked for reviewers below.
+  if (profile === "lovable-reviewer" && mutation === "post") return null;
   if (profile !== "lovable-worker") return `${profile} may not mutate GitHub or merge`;
   if (!grants.has(mutation)) {
     // Risk tiers, not ceremony (David, 2026-08-17): PR creation and
