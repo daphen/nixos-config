@@ -131,6 +131,14 @@ return {
 					diagnostics = { globals = { "vim" } },
 					workspace = {
 						checkThirdParty = false,
+						-- Rooted at ~/nixos, lua_ls otherwise indexes the whole repo
+						-- (dotfiles, generated themes, vendored trees) — a 46-file
+						-- "Loading workspace" crawl that replays on every cockpit
+						-- session switch (the rail cd's nvim, which reloads the
+						-- workspace) and stacks overlapping progress rows.
+						ignoreDir = { "dotfiles", "build", "result", ".git", "tests" },
+						maxPreload = 800,
+						preloadFileSize = 200,
 						library = {
 							[vim.fn.expand("$VIMRUNTIME/lua")] = true,
 						},
