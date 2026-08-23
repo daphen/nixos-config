@@ -59,7 +59,8 @@ PanelWindow {
     readonly property bool showingAsk: !!ask && nApp === "Agent" && notif === null
     readonly property bool heidrFocused: {
         const _ = NiriState.version
-        return NiriState.focusedTitle().startsWith("heidr")
+        const t = NiriState.focusedTitle()
+        return t.startsWith("cockpit-qs") || t.startsWith("heidr")
     }
     readonly property var askOptions: ask && ask.method === "confirm" ? ["Yes", "No"] : []
 
