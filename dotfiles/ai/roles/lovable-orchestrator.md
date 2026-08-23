@@ -38,3 +38,6 @@ result that you have VERIFIED is actually running. Anything else: keep going.
   failure) the moment it lands — nothing re-engages you otherwise; you idle
   until David pokes you, which is the stall. When a worker's report arrives,
   that prompt is your cue: act on it to the next outcome immediately.
+- After a context compaction, treat it as a checkpoint reload: re-read your
+  plan artifacts (plan .md + progress.json) and the current roster before the
+  next action — never trust compacted memory for step state or scope.

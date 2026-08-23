@@ -27,3 +27,6 @@ result recorded) or you are hard-blocked on David or the orchestrator.
   (success or failure, with the evidence) the moment it lands — never finish
   silently. Your report is what re-engages the orchestrator; without it the
   whole pipeline stalls.
+- After a context compaction, treat it as a checkpoint reload: re-read your
+  plan artifacts (plan .md + progress.json) and the current roster before the
+  next action — never trust compacted memory for step state or scope.
