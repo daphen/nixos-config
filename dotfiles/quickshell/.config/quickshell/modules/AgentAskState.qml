@@ -16,6 +16,8 @@ Singleton {
     property var _sockets: ({})
     property var _orchestrators: ({})
     property var _pendingEscalations: []
+    property var _rosterSessions: ({})
+    property var _pendingReports: []
     signal focusConfirmRequested(var ask)
 
     function discover() {
@@ -64,7 +66,9 @@ Singleton {
         for (const session of sessions || [])
             if (session.profile === "lovable-orchestrator") { orchestrator = session; break }
         _orchestrators[index] = orchestrator
+        _rosterSessions[index] = sessions || []
         _routeEscalations()
+        _routeReports()
         const waiting = ({})
         for (const session of sessions || [])
             if (session.ask) waiting[session.name || session.id || ""] = true
@@ -87,6 +91,25 @@ Singleton {
         }
     }
 
+    function _routeReports() {
+        if (!_pendingReports.length) return
+        const remaining = []
+        for (const report of _pendingReports) {
+            let delivered = false
+            for (const index in _sockets) {
+                const socket = _sockets[index]
+                if (!socket || !socket.connected) continue
+                const sessions = _rosterSessions[index] || []
+                if (!sessions.some(s => (s.name || s.id) === report.driver)) continue
+                socket.write(JSON.stringify({ type: "prompt", session: report.driver, message: report.prompt }) + "\n")
+                delivered = true
+                break
+            }
+            if (!delivered) remaining.push(report)
+        }
+        _pendingReports = remaining
+    }
+
     function onLine(data, index) {
         let message
         try { message = JSON.parse(data) } catch (e) { return }
@@ -94,6 +117,15 @@ Singleton {
         if (message.type === "ask_escalation") {
             _pendingEscalations = _pendingEscalations.concat([message])
             _routeEscalations()
+            return
+        }
+        // Cross-daemon turn report: a driven session settled on a daemon that
+        // doesn't host its driver (a VM worker driven by the local
+        // orchestrator). Route the nudge to the socket that owns the driver —
+        // the ask-escalation pattern, pointed the other way.
+        if (message.type === "turn_report") {
+            _pendingReports = _pendingReports.concat([message])
+            _routeReports()
             return
         }
         if (message.type === "extension_ui_request"
