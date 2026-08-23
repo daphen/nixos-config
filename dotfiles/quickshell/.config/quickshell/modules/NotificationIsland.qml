@@ -145,7 +145,10 @@ PanelWindow {
     }
 
     function show(n) {
-        if (showingAsk) return
+        // An ask that is SUPPRESSED (cockpit focused shows it in the rail
+        // instead) must not also swallow ordinary notifications — that muted
+        // Slack/calendar entirely whenever any agent held a question.
+        if (showingAsk && !heidrFocused) return
         const wasOpen = open
         if (notif && nId !== (n.id || 0)) endShowing()
         notif = n
