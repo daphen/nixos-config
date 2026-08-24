@@ -329,6 +329,8 @@ end
 -- keep_focus: open the plan in the editor window WITHOUT moving focus there (used
 -- by autostart so the agent rail stays active by default); otherwise switch to it.
 local function open_path(path, keep_focus)
+	-- Breadcrumb: who opened which plan (cross-scope plan bleed debugging).
+	vim.g.plan_last_open_trace = debug.traceback("plan open: " .. tostring(path), 2)
 	state.plan_path = path
 	state.root = plan_worktree_root() or git_root()
 	-- Open in the editor window — never the agent rail, a float, or a special
