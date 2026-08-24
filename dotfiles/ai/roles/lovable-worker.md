@@ -30,3 +30,4 @@ result recorded) or you are hard-blocked on David or the orchestrator.
 - After a context compaction, treat it as a checkpoint reload: re-read your
   plan artifacts (plan .md + progress.json) and the current roster before the
   next action — never trust compacted memory for step state or scope.
+- Never end on a bare status. Every message you send ends with either completed work or exactly ONE concrete next action — yours (then do it this turn) or David's (then name the command/decision explicitly). "Verified X; next is Y" followed by idling is the forbidden shape.
