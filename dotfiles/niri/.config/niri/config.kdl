@@ -423,6 +423,17 @@ spawn-sh-at-startup "/home/daphen/.config/niri/scripts/ensure-chat-workspace"
 // so its window stays mapped + audio alive but is never shown.
 workspace "voice"
 
+// The work cockpit's home — DECLARED so it survives reboots (it used to be
+// ad-hoc named and vanished with every boot, stranding the work cockpit).
+workspace "lovable"
+
+// Cockpits at boot: daemons are systemd services, the UI layer was the one
+// manual survivor of a reboot. Explicit scope AND sockets — scope alone left
+// the work cockpit dialing whatever the focused workspace implied. The
+// window-rules place each title on its home workspace.
+spawn-sh-at-startup "COCKPIT_SCOPE=lovable COCKPIT_NEW_CWD=$HOME/work/lovable COCKPIT_AGENTD_SOCKS=$XDG_RUNTIME_DIR/agentd-lovable.sock,$XDG_RUNTIME_DIR/agentd-work.sock $HOME/personal/ai-cockpit/run-qs.sh"
+spawn-sh-at-startup "COCKPIT_SCOPE=personal COCKPIT_AGENTD_SOCKS=$XDG_RUNTIME_DIR/agentd-personal.sock $HOME/personal/ai-cockpit/run-qs.sh"
+
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
 // spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"
