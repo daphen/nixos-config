@@ -4602,7 +4602,14 @@ end
 -- rail is the only component that sees every scope's events AND maps a remote session's
 -- paths onto the local mirror — this nvim's own client spans one scope, so cockpit
 -- live-follow cannot originate in here. Both args are LOCAL absolute paths.
-function M.follow_remote(cwd, path, force, line)
+function M.follow_remote(cwd, path, force, line, needle_b64)
+  -- Optional hunk locator from the rail: the edit's most distinctive inserted
+  -- line, base64ed so quoting can't break the --remote-expr transport.
+  local snippet
+  if type(needle_b64) == "string" and needle_b64 ~= "" and vim.base64 then
+    local ok, dec = pcall(vim.base64.decode, needle_b64)
+    if ok and type(dec) == "string" and dec ~= "" then snippet = dec end
+  end
   local ed = target_editor_win()
   if not ed then return "" end
   if force then
@@ -4620,7 +4627,7 @@ function M.follow_remote(cwd, path, force, line)
         end
       end
     end
-    S._follow_paused = nil; follow_edit(cwd, path, line, true, true); return ""
+    S._follow_paused = nil; follow_edit(cwd, path, line, true, true, snippet); return ""
   end
   local bn = api.nvim_buf_get_name(api.nvim_win_get_buf(ed))
   -- Follow only while the editor rests on session context — never yank the user out
@@ -4633,7 +4640,7 @@ function M.follow_remote(cwd, path, force, line)
   if bn ~= "" and not (cwd and cwd ~= "" and bn:sub(1, #cwd) == cwd)
      and bn:sub(1, #plans) ~= plans and not bn:find("/%.plans/")
      and bn ~= ours then return "" end
-  follow_edit(cwd, path, line, true)
+  follow_edit(cwd, path, line, true, nil, snippet)
   return ""
 end
 
