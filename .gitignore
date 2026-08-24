@@ -37,3 +37,4 @@ secrets.nix
 
 # codex-managed system skills, dropped into the symlinked skills dir
 dotfiles/ai/skills/.system/
+dotfiles/niri/.config/cockpit/bridge-token

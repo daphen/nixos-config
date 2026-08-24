@@ -16,7 +16,7 @@ print(str(foc.get("title") or "") if foc else "")
 print(foc.get("workspace_id") if foc else "")
 for w in ws:
     if str(w.get("title") or "").startswith("cockpit-qs"):
-        print(f"{w[\"id\"]}\t{w.get(\"workspace_id\")}\t{w.get(\"title\")}")' 2>/dev/null) || exit 0
+        print("%s\t%s\t%s" % (w["id"], w.get("workspace_id"), w.get("title")))' 2>/dev/null) || exit 0
 focused=$(printf '%s\n' "$out" | sed -n 1p)
 focws=$(printf '%s\n' "$out" | sed -n 2p)
 
@@ -51,8 +51,8 @@ case "$focused" in
     # Cockpit on the FOCUSED workspace only — never jump workspaces.
     line=$(printf '%s\n' "$out" | tail -n +3 | awk -F'\t' -v ws="$focws" '$2 == ws { print; exit }')
     [ -n "$line" ] || exit 0
-    wid=${line%%	*}
-    title=${line##*	}
+    wid=${line%%$'\t'*}
+    title=${line##*$'\t'}
     niri msg action focus-window --id "$wid" >/dev/null 2>&1
     ipc_for_title "$title" rosterHop
     ;;
