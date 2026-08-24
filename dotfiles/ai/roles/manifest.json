@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "bundleVersion": "2026-08-23.1",
+  "bundleVersion": "2026-08-24.1",
   "profiles": {
     "lovable-orchestrator": {
       "prompt": "lovable-orchestrator.md",
@@ -39,7 +39,8 @@
         "../skills/notes/SKILL.md",
         "../skills/cycle/SKILL.md",
         "../skills/daily/SKILL.md",
-        "../skills/standup/SKILL.md"
+        "../skills/standup/SKILL.md",
+        "../skills/handoff/SKILL.md"
       ],
       "promptTemplates": []
     },
@@ -78,7 +79,8 @@
       "skills": [
         "../skills/i-have-adhd/SKILL.md",
         "../skills/plan-ticket/SKILL.md",
-        "../skills/watch-pr/SKILL.md"
+        "../skills/watch-pr/SKILL.md",
+        "../skills/handoff/SKILL.md"
       ],
       "promptTemplates": [
         "../prompts/plan-ticket.md"
