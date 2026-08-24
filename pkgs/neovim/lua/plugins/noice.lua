@@ -18,6 +18,18 @@ return {
 			},
 			routes = {
 				{
+					-- lua_ls emits parallel progress streams (one Loading token per
+					-- workspace folder — the VIMRUNTIME library adds a second — plus
+					-- workspace + per-file Diagnosing), each rendered as its own row:
+					-- the "double LSP notification" on every buffer open. All noise.
+					filter = {
+						event = "lsp",
+						kind = "progress",
+						find = "lua_ls",
+					},
+					opts = { skip = true },
+				},
+				{
 					filter = {
 						event = "notify",
 						find = "No information available",
