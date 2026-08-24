@@ -48,12 +48,50 @@ def read_tail(ref, n=8):
     except Exception:
         return ""
 
+HANDOFF_PROMPT = (
+    "HANDOVER PREP: the orchestrator role is about to move to another host. "
+    "Reply with a COMPLETE handoff document — your reply IS the handoff the successor "
+    "receives, so write it for an orchestrator with no transcript access. Sections: "
+    "1) Goal state (verbatim goal + how far along); "
+    "2) Each worker: name, exact current state, last verified evidence, what it was told; "
+    "3) Decisions in force (approvals given, constraints, things explicitly forbidden); "
+    "4) Pending actions with owners (worker/orchestrator/David); "
+    "5) Gotchas a successor would trip on. "
+    "Also save the same content to the vault handoffs/ folder if you have vault access. "
+    "End the turn after the document — no tool work beyond the optional vault write."
+)
+
+def status_of(scope, name):
+    return (roster(scope).get(name) or {}).get("status", "")
+
+def request_handoff(scope, name):
+    """Ask the outgoing orchestrator to author its own handoff; fall back to a
+    transcript tail if it cannot deliver within the window."""
+    s = dial(scope)
+    send(s, {"type": "prompt", "session": name, "message": HANDOFF_PROMPT})
+    s.close()
+    saw_work = False
+    deadline = time.time() + 300
+    while time.time() < deadline:
+        st = status_of(scope, name)
+        if st == "streaming":
+            saw_work = True
+        elif saw_work and st == "idle":
+            doc = read_tail(name, 1)
+            if len(doc) > 400:
+                return doc
+            break
+        time.sleep(5)
+    print("note: handoff authoring timed out/thin — falling back to transcript tail", file=sys.stderr)
+    return read_tail(name, 8)
+
 def handover(src_scope, src_name, dst_scope, dst_name, dst_cwd, label):
     src = roster(src_scope).get(src_name) or {}
     goal = src.get("goal") or ""
-    context = read_tail(src_name if src_scope != "work" else src_name)
     if not goal:
         print(f"note: {src_name} holds no goal — handing over context only")
+    print("asking the outgoing orchestrator to author its handoff (up to ~5 min)…")
+    context = request_handoff(src_scope, src_name)
 
     # 1. Stand the source down BEFORE the target drives (never two drivers).
     s = dial(src_scope)
@@ -70,7 +108,7 @@ def handover(src_scope, src_name, dst_scope, dst_name, dst_cwd, label):
     seed = ("HANDOVER: you are taking over as THE orchestrator (the other host stood down). "
             "Re-read your plan/progress artifacts and agent_read every worker before acting. "
             + (f"The standing goal follows as your pinned watchdog goal: {goal} " if goal else "")
-            + "Recent context from the outgoing orchestrator:\n" + context)
+            + "The outgoing orchestrator's handoff document follows:\n" + context)
     if dst_name not in dst:
         send(d, {"type": "spawn", "session": dst_name, "cwd": dst_cwd,
                  "profile": "lovable-orchestrator", "prompt": seed})
