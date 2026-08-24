@@ -4603,6 +4603,11 @@ end
 -- paths onto the local mirror — this nvim's own client spans one scope, so cockpit
 -- live-follow cannot originate in here. Both args are LOCAL absolute paths.
 function M.follow_remote(cwd, path, force, line, needle_b64)
+  -- v:null over --remote-expr arrives as vim.NIL, which is TRUTHY in Lua —
+  -- unnormalized it read as "a line was given", skipping both the snippet
+  -- search and the git fallback (every follow landed at the file top).
+  if line == vim.NIL or line == 0 then line = nil end
+  if needle_b64 == vim.NIL then needle_b64 = nil end
   -- Optional hunk locator from the rail: the edit's most distinctive inserted
   -- line, base64ed so quoting can't break the --remote-expr transport.
   local snippet
