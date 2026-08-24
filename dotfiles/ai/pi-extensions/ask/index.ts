@@ -26,6 +26,17 @@ export default function (pi: ExtensionAPI) {
     async execute(_id: string, params: any, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext) {
       if (!ctx.hasUI) return say("No interactive UI available — ask the user in plain text instead.");
       const { kind, title, message, options } = params;
+      // A question the user cannot act on is worse than no question: an input/confirm
+      // card with only a terse title ("reconnect linear") renders as an inexplicable
+      // blank box. Bounce it back to the agent instead of surfacing it.
+      if (kind !== "choice" && (!message || message.trim().length < 20)) {
+        return say(
+          "ask_user rejected: `message` is required and must explain what you need — " +
+          "what happened, what the user should do, and (for input) what to type. " +
+          "Re-ask with a complete message, or if the user cannot act on it (e.g. an MCP " +
+          "re-auth that needs a desktop pi session), report it in prose and continue without."
+        );
+      }
       if (kind === "confirm") {
         return say((await ctx.ui.confirm(title, message ?? title)) ? "approved" : "declined");
       }
