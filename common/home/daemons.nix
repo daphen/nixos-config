@@ -132,6 +132,25 @@ in
     extraArgs = "--repo %h/personal";
   };
 
+  # The cockpit's phone bridge: serves the PWA + WS↔agentd-socket proxy on
+  # loopback (tailscale serve fronts it). Daily phone→laptop access must not
+  # depend on remembering run.sh after a reboot. run.sh rebuilds stale web/
+  # bridge artifacts itself; PATH needs node+go for that.
+  systemd.user.services.cockpit-bridge = {
+    Unit = {
+      Description = "cockpit-bridge — phone PWA + agentd WS gateway";
+      After = [ "network-online.target" "graphical-session.target" ];
+    };
+    Service = {
+      Type = "simple";
+      Environment = "PATH=/etc/profiles/per-user/daphen/bin:/run/current-system/sw/bin";
+      ExecStart = "%h/personal/ai-cockpit/bridge/run.sh";
+      Restart = "on-failure";
+      RestartSec = "5s";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+
   # The VM work-scope daemon reaches this machine as a unix-socket forward over ssh.
   # It was a bare hand-started `ssh -L`, so every suspend/network change killed it and
   # left a corpse socket refusing connections — the rail then re-dialed it every 2s,
