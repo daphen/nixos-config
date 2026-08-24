@@ -448,7 +448,18 @@ local function tool_edit(c)
   local a = c.arguments or c.input or c.args or {}
   local path = a.path or a.file_path or a.filePath
   if not path then return nil, nil end
-  return "⚙ edit " .. fn.fnamemodify(path, ":."), { { path = path } }
+  -- Locator snippet: the text the edit INSERTS, so live-follow can land on the
+  -- actual hunk instead of the file's first one. Covers pi's edit arg spellings
+  -- and multi-edit payloads (last block wins — it is the freshest position).
+  local snip = a.newText or a.new_text or a.new_string or a.newStr
+  if not snip and type(a.edits) == "table" and #a.edits > 0 then
+    local e = a.edits[#a.edits]
+    if type(e) == "table" then snip = e.newText or e.new_text or e.new_string end
+  end
+  if not snip and c.name == "write" then snip = a.content or a.text end
+  if type(snip) ~= "string" or snip == "" then snip = nil end
+  if snip and #snip > 4000 then snip = snip:sub(1, 4000) end
+  return "⚙ edit " .. fn.fnamemodify(path, ":."), { { path = path, snippet = snip } }
 end
 
 -- Flatten a message's content blocks into displayable text. Beyond the final
@@ -2019,7 +2030,11 @@ handle = function(obj)
         S.edited[obj.session] = S.edited[obj.session] or {}
         for _, h in ipairs(hunks) do
           local abs = edit_abs(scwd, h.path)
-          if abs and fn.filereadable(abs) == 1 then S.edited[obj.session][abs] = true end
+          -- Value is the freshest locator snippet (or true when the tool gave
+          -- none) — the inotify follow uses it to land on the edited hunk.
+          if abs and fn.filereadable(abs) == 1 then
+            S.edited[obj.session][abs] = h.snippet or S.edited[obj.session][abs] or true
+          end
         end
       end
       if obj.session == S.selected then render_stream() end
@@ -2040,11 +2055,11 @@ handle = function(obj)
       local scwd = session_cwd(obj.session)
       for _, h in ipairs(hunks) do
         local abs = edit_abs(scwd, h.path)
-        if abs then S.edited[obj.session][abs] = true end
+        if abs then S.edited[obj.session][abs] = h.snippet or S.edited[obj.session][abs] or true end
       end
       if obj.session == S.selected then
         local last = hunks[#hunks]
-        if last and last.path then follow_edit(scwd, last.path, nil) end
+        if last and last.path then follow_edit(scwd, last.path, nil, nil, nil, last.snippet) end
       end
     end
     if obj.session == S.selected then render_chat(true) end
@@ -3381,7 +3396,7 @@ end
 -- plan while other files were edited). Only fires when focus is in the rail (an
 -- agent-* window): if you've clicked into the code to read/edit, it leaves you
 -- alone. Skips when the target buffer has unsaved changes. Toggle: S.follow_edits.
-follow_edit = function(cwd, path, line, external, external_force)
+follow_edit = function(cwd, path, line, external, external_force, snippet)
   if not path or S.follow_edits == false then return end
   -- Never follow into plan machinery sidecars: a /plan-ticket turn writes the
   -- reviewable .md and THEN its progress.json, so following the last edit would
@@ -3399,6 +3414,25 @@ follow_edit = function(cwd, path, line, external, external_force)
   -- Avante-style reveal: pi's edit tool carries NO line numbers, so resolve the
   -- reveal line from the authoritative git diff instead — jump to the file's first
   -- changed hunk so the change is on-screen (signs mark the rest), not the file top.
+  -- Hunk-accurate reveal: find the freshly-inserted text on disk and land THERE.
+  -- Pick the snippet's most distinctive line (longest trimmed, ≥8 chars, falling
+  -- back to ≥3) and take its LAST occurrence — under repeated edits the newest
+  -- insertion is the one further down more often than not.
+  if not line and snippet then
+    local needle
+    for _, sl in ipairs(vim.split(snippet, "\n", { plain = true })) do
+      local tl = sl:gsub("^%s+", ""):gsub("%s+$", "")
+      if #tl >= 3 and (not needle or #tl > #needle) then needle = tl end
+    end
+    if needle and #needle >= 3 then
+      local ok, flines = pcall(fn.readfile, file)
+      if ok and type(flines) == "table" then
+        for i = #flines, 1, -1 do
+          if flines[i]:find(needle, 1, true) then line = i; break end
+        end
+      end
+    end
+  end
   if not line and cwd then
     local rel = file:sub(1, #cwd + 1) == cwd .. "/" and file:sub(#cwd + 2) or path
     if not S.gitdiff[cwd] then git_changes(cwd) end
@@ -6229,7 +6263,8 @@ function M.setup(opts)
           local rel = abs:sub(1, #p.cwd + 1) == p.cwd .. "/" and abs:sub(#p.cwd + 2) or abs
           local g = S.gitdiff[p.cwd]
           if not (g and g.bypath[rel]) then return end
-          follow_edit(p.cwd, abs, nil)
+          local snip = ed[abs]
+          follow_edit(p.cwd, abs, nil, nil, nil, type(snip) == "string" and snip or nil)
         end
         vim.defer_fn(fire, 130)
         S.follow_cd = uv.new_timer()
