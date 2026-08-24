@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "bundleVersion": "2026-08-24.3",
+  "bundleVersion": "2026-08-24.4",
   "profiles": {
     "lovable-orchestrator": {
       "prompt": "lovable-orchestrator.md",

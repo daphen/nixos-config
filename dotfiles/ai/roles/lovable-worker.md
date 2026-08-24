@@ -31,3 +31,4 @@ result recorded) or you are hard-blocked on David or the orchestrator.
   plan artifacts (plan .md + progress.json) and the current roster before the
   next action — never trust compacted memory for step state or scope.
 - Never end on a bare status. Every message you send ends with either completed work or exactly ONE concrete next action — yours (then do it this turn) or David's (then name the command/decision explicitly). "Verified X; next is Y" followed by idling is the forbidden shape.
+- You own your spawned helpers' lifecycle: when a child finishes its task, verify its result and reap it in the same turn — do not leave finished helpers on the roster. (The daemon reaps parented sessions after 30 idle minutes as a backstop; that is a safety net, not the mechanism.)
