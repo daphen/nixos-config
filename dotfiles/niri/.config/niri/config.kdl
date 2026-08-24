@@ -511,6 +511,17 @@ window-rule {
     default-column-width { proportion 0.85; }
 }
 
+// Boot placement: each cockpit lands on its home workspace even when startup
+// focus is elsewhere.
+window-rule {
+    match app-id=r#"^org\.quickshell$"# title=r#"^cockpit-qs · lovable$"#
+    open-on-workspace "lovable"
+}
+window-rule {
+    match app-id=r#"^org\.quickshell$"# title=r#"^cockpit-qs · private$"#
+    open-on-workspace "chat"
+}
+
 window-rule {
     match app-id=r#"^file-chooser$"#
     open-floating true
