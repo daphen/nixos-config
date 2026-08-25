@@ -423,6 +423,10 @@ spawn-sh-at-startup "/home/daphen/.config/niri/scripts/ensure-chat-workspace"
 // so its window stays mapped + audio alive but is never shown.
 workspace "voice"
 
+// The work cockpit's home — special and permanent, like chat/voice. An empty
+// pill while the cockpit is closed is accepted (David's call, 2026-08-25).
+workspace "lovable"
+
 
 // Cockpits at boot: daemons are systemd services, the UI layer was the one
 // manual survivor of a reboot. Explicit scope AND sockets — scope alone left
