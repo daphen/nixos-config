@@ -66,6 +66,9 @@ PanelWindow {
         function onPaletteGesture(phase, progress, velocity, shouldOpen) {
             root.handlePaletteGesture(phase, progress, velocity, shouldOpen)
         }
+        function onPaletteTabCycle(direction, commit) {
+            root.handlePaletteTabCycle(direction, commit)
+        }
     }
 
     function gestureSettleDuration(target, velocity) {
@@ -321,19 +324,15 @@ PanelWindow {
         previewTab(filmEntry(filmIndex))
     }
 
-    function handlePaletteCycle(steps) {
+    function handlePaletteTabCycle(direction, commit) {
+        if (commit) {
+            if (tabCycleActive && open) runEntry(filmEntry(filmIndex), false)
+            tabCycleActive = false
+            return
+        }
         tabCycleActive = true
         if (!open) PaletteState.show()
-        Qt.callLater(() => cycleFilm(steps))
-    }
-
-    function handleKeyRelease(event) {
-        if (tabCycleActive
-                && (event.key === Qt.Key_Control || event.key === Qt.Key_Meta)) {
-            tabCycleActive = false
-            if (open) runEntry(filmEntry(filmIndex), false)
-            event.accepted = true
-        }
+        Qt.callLater(() => cycleFilm(direction))
     }
 
     function focusFilmMatch() {
@@ -903,9 +902,6 @@ PanelWindow {
                 : result === "dupe" ? "already in Synced"
                 : "save failed")
         }
-        function onPaletteCycle(steps) {
-            root.handlePaletteCycle(steps)
-        }
     }
 
     function selectChinWindow(w) {
@@ -1146,7 +1142,6 @@ PanelWindow {
                     font.pixelSize: 18
                     clip: true
                     Keys.onPressed: event => root.handleKeys(event)
-                    Keys.onReleased: event => root.handleKeyRelease(event)
                     onTextChanged: {
                         if (text.length > 0) root.filterNavFocused = false
                         if (!root.settingAddress) root.addressPristine = false
