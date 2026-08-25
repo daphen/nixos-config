@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Boot-time cockpit launcher: spawn one cockpit mode and MOVE its window to its
+# home workspace. A window-rule pin did this before, but it also hijacked
+# manual relaunches to the pinned workspace — moving once at boot doesn't.
+set -u
+mode="${1:?usage: cockpit-boot lovable|personal}"
+case "$mode" in
+  lovable)
+    export COCKPIT_SCOPE=lovable COCKPIT_NEW_CWD="$HOME/work/lovable"
+    export COCKPIT_AGENTD_SOCKS="$XDG_RUNTIME_DIR/agentd-lovable.sock,$XDG_RUNTIME_DIR/agentd-work.sock"
+    title="cockpit-qs · lovable"; ws="lovable" ;;
+  personal)
+    export COCKPIT_SCOPE=personal
+    export COCKPIT_AGENTD_SOCKS="$XDG_RUNTIME_DIR/agentd-personal.sock"
+    title="cockpit-qs · private"; ws="chat" ;;
+esac
+setsid -f "$HOME/personal/ai-cockpit/run-qs.sh" >/dev/null 2>&1
+for _ in $(seq 1 30); do
+  wid=$(niri msg --json windows 2>/dev/null | python3 -c "
+import json,sys
+for w in json.load(sys.stdin):
+    if (w.get('title') or '') == '$title': print(w['id']); break" 2>/dev/null)
+  [ -n "${wid:-}" ] && break
+  sleep 1
+done
+[ -n "${wid:-}" ] && niri msg action move-window-to-workspace --window-id "$wid" --focus false "$ws" >/dev/null 2>&1
