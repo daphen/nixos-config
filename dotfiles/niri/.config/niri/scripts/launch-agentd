@@ -5,8 +5,12 @@
 set -euo pipefail
 scope="${1:?usage: launch-agentd <scope> [agentd args…]}"; shift || true
 st=$(command -v secret-tool || echo /run/current-system/sw/bin/secret-tool)
-OPENAI_API_KEY=$("$st" lookup service agentd secret openai-api-key || true)
-SLACK_MCP_CLIENT_SECRET=$("$st" lookup service agentd secret slack-mcp || true)
+# TIMEOUT is load-bearing: a locked/wedged keyring makes secret-tool block
+# forever, which meant the daemon never started at all — the whole fleet died
+# with the keyring (2026-08-25). Degrade to a keyless start instead; the unit
+# gets restarted after the keyring unlocks.
+OPENAI_API_KEY=$(timeout 10 "$st" lookup service agentd secret openai-api-key || true)
+SLACK_MCP_CLIENT_SECRET=$(timeout 10 "$st" lookup service agentd secret slack-mcp || true)
 [ -n "$OPENAI_API_KEY" ] || echo "launch-agentd: WARNING no openai key in keyring — pi will fail its self-check" >&2
 export OPENAI_API_KEY SLACK_MCP_CLIENT_SECRET
 exec "$HOME/.local/bin/agentd" --scope "$scope" "$@"
