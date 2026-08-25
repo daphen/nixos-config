@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Post-boot keyring unwedge: give D-Bus the display so the keyring's password
+# prompt can actually appear, then force an unlock prompt by storing a probe
+# secret. Run from any terminal inside niri; enter your keyring password in
+# the dialog. Browsers + agent keys unwedge the moment it unlocks.
+set -u
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP 2>/dev/null
+echo probe | /nix/store/rv8pqqhcgrbfbn8bbma5axj7k2x7kfqf-libsecret-0.21.7/bin/secret-tool store --label="keyring-unlock-probe" service probe account probe 2>&1 | head -1
+/nix/store/rv8pqqhcgrbfbn8bbma5axj7k2x7kfqf-libsecret-0.21.7/bin/secret-tool clear service probe account probe 2>/dev/null
+echo "If a password dialog appeared and you unlocked: done — browsers work."
+echo "If NO dialog appeared: the prompter is still broken — tell Claude."
