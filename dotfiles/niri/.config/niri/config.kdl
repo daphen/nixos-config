@@ -380,6 +380,12 @@ blur {
 // which may be more convenient to use.
 // See the binds section below for more spawn examples.
 
+// FIRST: teach D-Bus (and systemd) the session's display before anything can
+// need a keyring prompt — gcr-prompter activates via D-Bus and exits instantly
+// without WAYLAND_DISPLAY, which silently wedged every secret consumer
+// (browsers, agentd keys) after the 2026-08-24 crash reboot.
+spawn-sh-at-startup "dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE"
+
 spawn-at-startup "qs"
 
 // Native Slack client daemon — RETIRED: lovable-dev (enterprise) signs out any
