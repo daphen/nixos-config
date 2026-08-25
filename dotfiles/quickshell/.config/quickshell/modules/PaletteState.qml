@@ -19,6 +19,8 @@ Singleton {
     property var chin: []
     property var quickmarks: []
     property var currentTabId: null
+    property var _paletteCycleSeq: null
+    property int _paletteCycleOffset: 0
     // Bumped on every state push so bindings recompute.
     property int gen: 0
 
@@ -46,6 +48,7 @@ Singleton {
 
     // Result of a save-synced roundtrip: "ok" | "dupe" | "fail".
     signal saveResult(string result)
+    signal paletteCycle(int steps)
     function searchHistory(query) {
         _histReq++
         send({ cmd: "history-search", reqId: _histReq, query: query || "" })
@@ -72,7 +75,15 @@ Singleton {
         root.chin = m.chin || []
         root.quickmarks = m.quickmarks || []
         root.currentTabId = (m.currentTabId === undefined) ? null : m.currentTabId
+        const cycleSeq = m.paletteCycleSeq || 0
+        const cycleOffset = m.paletteCycleOffset || 0
+        const previousSeq = root._paletteCycleSeq
+        const previousOffset = root._paletteCycleOffset
+        root._paletteCycleSeq = cycleSeq
+        root._paletteCycleOffset = cycleOffset
         root.gen++
+        if (previousSeq !== null && cycleSeq !== previousSeq)
+            root.paletteCycle(cycleOffset - previousOffset)
     }
 
     // The Socket lives in a Loader so every re-dial gets a BRAND-NEW object:

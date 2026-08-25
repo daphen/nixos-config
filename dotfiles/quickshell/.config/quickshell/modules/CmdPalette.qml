@@ -26,6 +26,7 @@ PanelWindow {
     property bool active: false
     property bool gestureActive: false
     property bool gestureSettling: false
+    property bool tabCycleActive: false
     property real slideProgress: 0
     visible: active
     readonly property bool open: PaletteState.open
@@ -130,6 +131,7 @@ PanelWindow {
                 })
             })
         } else {
+            tabCycleActive = false
             openSlide.stop()
             if (!gestureSettling) {
                 gestureSlide.stop()
@@ -309,6 +311,29 @@ PanelWindow {
         filmIndex = Math.max(0, Math.min(filmTabs.length - 1, filmIndex + delta))
         syncAddressToFilm(filmIndex)
         previewTab(filmEntry(filmIndex))
+    }
+
+    function cycleFilm(steps) {
+        if (filmTabs.length === 0) return
+        filmFocused = true
+        filmIndex = (filmIndex + steps % filmTabs.length + filmTabs.length) % filmTabs.length
+        syncAddressToFilm(filmIndex)
+        previewTab(filmEntry(filmIndex))
+    }
+
+    function handlePaletteCycle(steps) {
+        tabCycleActive = true
+        if (!open) PaletteState.show()
+        Qt.callLater(() => cycleFilm(steps))
+    }
+
+    function handleKeyRelease(event) {
+        if (tabCycleActive
+                && (event.key === Qt.Key_Control || event.key === Qt.Key_Meta)) {
+            tabCycleActive = false
+            if (open) runEntry(filmEntry(filmIndex), false)
+            event.accepted = true
+        }
     }
 
     function focusFilmMatch() {
@@ -878,6 +903,9 @@ PanelWindow {
                 : result === "dupe" ? "already in Synced"
                 : "save failed")
         }
+        function onPaletteCycle(steps) {
+            root.handlePaletteCycle(steps)
+        }
     }
 
     function selectChinWindow(w) {
@@ -1118,6 +1146,7 @@ PanelWindow {
                     font.pixelSize: 18
                     clip: true
                     Keys.onPressed: event => root.handleKeys(event)
+                    Keys.onReleased: event => root.handleKeyRelease(event)
                     onTextChanged: {
                         if (text.length > 0) root.filterNavFocused = false
                         if (!root.settingAddress) root.addressPristine = false
