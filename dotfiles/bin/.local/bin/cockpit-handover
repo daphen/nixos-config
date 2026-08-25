@@ -85,6 +85,50 @@ def request_handoff(scope, name):
     print("note: handoff authoring timed out/thin — falling back to transcript tail", file=sys.stderr)
     return read_tail(name, 8)
 
+# What the incoming host can and cannot PROVE. Delivery work (code, CI, git, PRs,
+# tickets) is location-independent; verification is not — only proart has a browser
+# authenticated for the sandbox origin and the local devenv lane the branch runtime is
+# served from. A remote orchestrator that does not know this claims verdicts it cannot
+# support (the conditional PASS of 2026-08-25), so the boundary ships WITH the role.
+CAPABILITIES = {
+    "lovable": (
+        "CAPABILITIES HERE (proart, local): you have David's authenticated Helium work "
+        "profile on CDP 127.0.0.1:9333 — the only session authenticated for BOTH "
+        "localhost:2015 and the *.lovableproject-dev.com sandbox origin — plus the local "
+        "devenv lane serving the branch runtime on :8001. So in-browser certification IS "
+        "yours: DOM-only measurement, no keyboard input, clicks only on named canvas "
+        "elements. "
+    ),
+    "work": (
+        "CAPABILITIES HERE (dev VM): delivery ONLY. You have no display, no browser "
+        "session authenticated for the sandbox origin, and no local devenv lane, so "
+        "in-browser certification is IMPOSSIBLE from here — never claim a browser verdict. "
+        "Code, CI, rebases, PRs, reviews and tickets are all yours. Leave anything needing "
+        "a real browser to the local orchestrator and hand it a verified-vs-pending list. "
+    ),
+}
+
+
+def holder():
+    """Which side currently holds the role: the armed orchestrator wins, else the live one."""
+    sides = [("lovable", "lovable"), ("work", "orchestrator")]
+    live = []
+    for scope, name in sides:
+        entry = roster(scope).get(name)
+        if not entry:
+            continue
+        live.append((scope, name, bool(entry.get("goal")), entry.get("status")))
+    armed = [x for x in live if x[2]]
+    if len(armed) == 1:
+        return armed[0][0]
+    if armed:
+        return None  # both armed: ambiguous, refuse rather than guess
+    awake = [x for x in live if x[3] not in ("asleep", None)]
+    if len(awake) == 1:
+        return awake[0][0]
+    return None
+
+
 def handover(src_scope, src_name, dst_scope, dst_name, dst_cwd, label):
     src = roster(src_scope).get(src_name) or {}
     goal = src.get("goal") or ""
@@ -108,6 +152,7 @@ def handover(src_scope, src_name, dst_scope, dst_name, dst_cwd, label):
     seed = ("HANDOVER: you are taking over as THE orchestrator (the other host stood down). "
             "Re-read your plan/progress artifacts and agent_read every worker before acting. "
             + (f"The standing goal follows as your pinned watchdog goal: {goal} " if goal else "")
+            + CAPABILITIES[dst_scope]
             + "The outgoing orchestrator's handoff document follows:\n" + context)
     if dst_name not in dst:
         send(d, {"type": "spawn", "session": dst_name, "cwd": dst_cwd,
@@ -119,8 +164,16 @@ def handover(src_scope, src_name, dst_scope, dst_name, dst_cwd, label):
         send(d, {"type": "set_goal", "session": dst_name, "goal": goal})
     d.close()
 
-    # 3. Verify the goal landed.
-    ok = bool((roster(dst_scope).get(dst_name) or {}).get("goal")) if goal else True
+    # 3. Verify the goal landed. Poll: set_goal is async on the daemon side, so a single
+    # immediate read reported a false negative on a handover that had in fact worked.
+    ok = True
+    if goal:
+        ok = False
+        for _ in range(10):
+            if (roster(dst_scope).get(dst_name) or {}).get("goal"):
+                ok = True
+                break
+            time.sleep(1)
     print(f"handover → {label}: {'goal pinned, driving' if ok and goal else 'seeded'}"
           f" ({dst_scope}:{dst_name}); {src_name} stood down")
     if goal and not ok:
@@ -129,9 +182,19 @@ def handover(src_scope, src_name, dst_scope, dst_name, dst_cwd, label):
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
+    if mode in ("", "toggle"):
+        # No argument = flip to the other side. Direction is derived from who holds the
+        # role, so the same keypress works in both directions.
+        here = holder()
+        if here is None:
+            sys.exit("cockpit-handover: cannot tell which side holds the role "
+                     "(none armed, or both) — run explicitly: cockpit-handover vm|local")
+        mode = "vm" if here == "lovable" else "local"
+        print(f"toggle: role is on {'proart' if here == 'lovable' else 'the VM'} → moving to "
+              f"{'the VM' if mode == 'vm' else 'proart'}")
     if mode == "vm":
         handover("lovable", "lovable", "work", "orchestrator", VM_CWD, "the VM orchestrator")
     elif mode == "local":
         handover("work", "orchestrator", "lovable", "lovable", os.path.expanduser("~/work/lovable"), "the local orchestrator")
     else:
-        sys.exit("usage: cockpit-handover vm|local")
+        sys.exit("usage: cockpit-handover [vm|local]   (no argument = toggle)")

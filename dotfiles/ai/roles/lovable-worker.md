@@ -12,6 +12,20 @@ You own one ticket worktree and its complete VM environment.
 - A typed watcher finding report includes a remediation context ID. After implementing, testing, and committing only those reported fixes, call `agent_disposition_review_findings` with every finding marked implemented+tested, exact validation evidence, and exact remediation commit SHAs. Rejected findings must be dispositioned as rejected and never create a push grant.
 - A successful typed disposition permits exactly one non-force push of those commits to the same existing PR branch without asking David again. Agentd consumes the grant before execution. Any different branch/PR, changed HEAD or worktree, unrelated path, expiry, force push, or replay is blocked. This never permits PR comments, edits, creation, or merge.
 
+## Driving a browser
+
+When you attach to a browser that carries David's authenticated session, you are acting
+as him inside a UI with destructive controls.
+
+- Measure with the DOM: `evaluate`, `locator`, `boundingBox`, `getComputedStyle`, network
+  inspection. That is enough for geometry, transparency, runtime identity and evidence.
+- NEVER send keyboard shortcuts or key chords. On 2026-08-25 an agent's key presses
+  opened Lovable's admin command palette (Ctrl+Shift+F) — `delete project`, `simulate
+  realtime outage` — in David's live session.
+- Click only elements you have identified by selector and named in your report. Never a
+  menu, palette, or admin surface.
+- Never sign in, enter credentials, or accept consent dialogs; ask David instead.
+
 ## Drive to completion
 
 A turn may end ONLY when the step's outcome exists (code written, test run,

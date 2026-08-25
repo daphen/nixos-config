@@ -4,6 +4,15 @@
 # Usage: niri-jump-or-exec <app-id-or-title-pattern> <command>
 # If app-id starts with "title:" it matches against window title instead
 
+# --here: bring the window to the CURRENT workspace instead of teleporting you to
+# its workspace. For single-window companions (chat, mail) you want the app to come
+# to you; plain focus-window yanked you off whatever you were working on.
+HERE=false
+if [ "${1:-}" = "--here" ]; then
+    HERE=true
+    shift
+fi
+
 APP_ID="$1"
 COMMAND="$2"
 TRACKER_STATE="/tmp/niri-focus-tracker/app-${APP_ID}"
@@ -124,7 +133,22 @@ if [ "$RESULT" = "NONE" ]; then
 elif [ "$RESULT" = "ERROR" ]; then
     exit 1
 else
-    # Window exists, focus it
+    # Window exists. With --here, pull it onto the workspace you're looking at
+    # before focusing, so the app joins you instead of dragging you elsewhere.
+    if [ "$HERE" = true ]; then
+        # A workspace REFERENCE is a name or an index — a bare number is read as
+        # the index, never the id, so prefer the name and fall back to idx.
+        WS=$(niri msg --json workspaces | python3 -c "
+import sys, json
+for w in json.load(sys.stdin):
+    if w.get('is_focused'):
+        print(w.get('name') or w.get('idx') or '')
+        break
+")
+        if [ -n "$WS" ]; then
+            niri msg action move-window-to-workspace --window-id "$RESULT" --focus false "$WS" >/dev/null 2>&1 || true
+        fi
+    fi
     niri msg action focus-window --id "$RESULT"
     # Save this window as our last cycled position
     echo "$RESULT" > "$CYCLE_STATE"

@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# helium-cert — the authenticated browser an agent may drive for certification runs.
+#
+# Launches Helium on the WORK profile with a loopback CDP port, so Playwright (and
+# @playwright/mcp via --cdp-endpoint) attaches to a browser that is already signed in.
+# That sidesteps the whole profile-cloning dance: cookies stay encrypted against the
+# real keyring under the browser that owns them, instead of being copied into a
+# mock-keychain Chromium where they are unreadable (the "You don't have access…"
+# wall, 2026-08-25).
+#
+# Loopback only — the port is never reachable off this machine. Anything driving it
+# acts as David in that session, so this is for certification runs, not casual use.
+set -euo pipefail
+
+port="${COCKPIT_CERT_CDP_PORT:-9333}"
+cdp_up() { curl -sf -m 2 "http://127.0.0.1:$1/json/version" >/dev/null 2>&1; }
+profile="${COCKPIT_CERT_PROFILE:-$HOME/.config/helium-work}"
+
+# Already up on this port? Reuse it — a second launch on the same user-data-dir just
+# hands the URL to the running instance and exits, leaving no debuggable target.
+if curl -sf -m 2 "http://127.0.0.1:$port/json/version" >/dev/null 2>&1; then
+    echo "helium-cert: already listening on 127.0.0.1:$port"
+    curl -s -m 2 "http://127.0.0.1:$port/json/version" | head -c 200; echo
+    exit 0
+fi
+
+# The work browser (Super+W → browser-work) now launches WITH this CDP port, so the
+# normal case is that it is already running: attach, never fight it for the profile.
+# Chromium forks are single-instance per user-data-dir, so a second launch would be a
+# silent no-op — which is exactly how the 9333 lane vanished when David pressed Super+W.
+if pgrep -af "user-data-dir=$profile" 2>/dev/null | grep -qv "helium-cert" >/dev/null; then
+    if cdp_up "$port"; then
+        echo "helium-cert: attached to the running work browser on 127.0.0.1:$port"
+        exit 0
+    fi
+    echo "helium-cert: $profile is in use by a browser started WITHOUT --remote-debugging-port." >&2
+    echo "  Close every work-profile window and press Super+W once; browser-work now adds it." >&2
+    exit 1
+fi
+
+# Stale single-instance locks from a crashed session block startup; the target they
+# point at is gone, so removing them is safe once no process holds the profile.
+for lock in SingletonLock SingletonSocket SingletonCookie; do
+    [ -L "$profile/$lock" ] && rm -f "$profile/$lock"
+done
+
+# Private Network Access: Chromium blocks an HTTPS page from fetching a loopback URL,
+# which is exactly how branch-runtime injection works (an HTTPS sandbox origin loading
+# http://localhost:8001/lovable.js). Without this the runtime never executes, the tile
+# stays at its default 1280x832 and no DS_PREVIEW_SIZE reaches the parent — the whole
+# certification reads as a product failure when it is a browser policy (2026-08-25).
+setsid helium \
+    --user-data-dir="$profile" \
+    --remote-debugging-port="$port" \
+    --remote-allow-origins=* \
+    --disable-features=LocalNetworkAccessChecks,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults \
+    --no-first-run --no-default-browser-check \
+    "${@:-about:blank}" >/dev/null 2>&1 &
+
+for _ in $(seq 1 40); do
+    if curl -sf -m 2 "http://127.0.0.1:$port/json/version" >/dev/null 2>&1; then
+        echo "helium-cert: CDP ready → http://127.0.0.1:$port"
+        curl -s -m 2 "http://127.0.0.1:$port/json/version" | head -c 200; echo
+        exit 0
+    fi
+    sleep 0.5
+done
+echo "helium-cert: browser did not expose CDP on $port within 20s" >&2
+exit 1

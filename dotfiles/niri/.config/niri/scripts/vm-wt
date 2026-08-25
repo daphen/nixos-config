@@ -71,10 +71,34 @@ say "local worktree + sync via vm-sync …"
 # Local deps for the mirror: mutagen doesn't carry node_modules, so ts_ls in
 # the mirror drowns in "Cannot find module" until an install links them from
 # the shared pnpm store. Background — the rail doesn't wait on it.
+# pnpm lives INSIDE the devenv, so this must run through direnv (a bare `pnpm`
+# fails instantly with "command not found" into the log — how every mirror
+# shipped dep-less until 2026-08-25), and a fresh .envrc is blocked until allowed.
 if [ -f "$mirror/package.json" ] && [ ! -d "$mirror/node_modules" ]; then
     say "pnpm install (background) for mirror deps …"
-    (cd "$mirror" && nohup pnpm install --prefer-offline >"$mirror/.pnpm-install.log" 2>&1 &)
+    (cd "$mirror" && direnv allow . 2>/dev/null; nohup direnv exec "$mirror" pnpm install --frozen-lockfile --prefer-offline >"$mirror/.pnpm-install.log" 2>&1 &)
 fi
+
+# ── 3b. browser tool for the VM worker ───────────────────────────────────────
+# The repo's tracked .mcp.json declares Playwright as a bare `npx @playwright/mcp`,
+# which defaults to the Chrome CHANNEL (/opt/google/chrome) — absent on the VM, so
+# the agent had no browser and rented LLM subagents as a proxy (hours per check,
+# 2026-08-25). Project .pi/mcp.json is the highest-precedence MCP source, so pin
+# Playwright's own bundled chromium there. Untracked + locally excluded.
+say "playwright override (.pi/mcp.json) on the box …"
+"${SSH[@]}" "mkdir -p '$vmwt/.pi' && cat > '$vmwt/.pi/mcp.json' <<'JSON'
+{
+  \"mcpServers\": {
+    \"playwright\": {
+      \"command\": \"npx\",
+      \"args\": [\"-y\", \"@playwright/mcp@latest\", \"--headless\", \"--browser\", \"chromium\"],
+      \"env\": { \"PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD\": \"1\", \"PLAYWRIGHT_BROWSERS_PATH\": \"/nix/store/6n74mm97b8f8gfra77hiz9q4ffiianpy-playwright-browsers\" },
+      \"lifecycle\": \"lazy\"
+    }
+  }
+}
+JSON
+gd=\$(git -C '$vmwt' rev-parse --git-common-dir 2>/dev/null) && mkdir -p \"\$gd/info\" && (grep -qx '.pi/' \"\$gd/info/exclude\" 2>/dev/null || echo '.pi/' >> \"\$gd/info/exclude\")" 2>/dev/null || say "  ✗ playwright override failed (non-fatal)"
 
 # ── 4. agentd session rooted at the VM worktree ──────────────────────────────
 # Seed the session with /skill:plan-ticket so a fresh ticket lands in PLAN, not an

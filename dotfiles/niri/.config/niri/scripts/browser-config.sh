@@ -53,8 +53,28 @@ BROWSER_PROCESS_NAME="helium"
 # browser uses glibc's resolver instead of its own — glibc honors the
 # unloaded-IPv6-module state and skips ::1; the built-in resolver
 # adds it via RFC 6761 and pays a Happy Eyeballs penalty per fetch.
+# Features disabled for EVERY profile. Kept as a variable so the work profile can
+# extend it — Chromium takes the LAST --disable-features occurrence, so the work
+# launcher passes a SUPERSET of this list rather than a second, competing flag.
+BROWSER_DISABLE_FEATURES="AsyncDns"
+
+# Work profile only: the authenticated browser that Playwright drives.
+#   * remote-debugging-port — a stable CDP endpoint, so agents attach to THIS
+#     already-signed-in instance instead of cloning the profile (cookies are
+#     encrypted against the real keyring and unreadable in a copy).
+#   * Local/Private Network Access — an HTTPS sandbox origin must be allowed to
+#     fetch the loopback branch runtime (http://localhost:8001/lovable.js), or the
+#     runtime never executes and every measurement reflects the default tile.
+# Loopback-bound, work profile only: the personal browser never gets a CDP port.
+BROWSER_CDP_PORT="${COCKPIT_CERT_CDP_PORT:-9333}"
+BROWSER_FLAGS_WORK=(
+    --remote-debugging-port="$BROWSER_CDP_PORT"
+    --remote-allow-origins=*
+    --disable-features="$BROWSER_DISABLE_FEATURES,LocalNetworkAccessChecks,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults"
+)
+
 BROWSER_FLAGS=(
-    --disable-features=AsyncDns
+    --disable-features="$BROWSER_DISABLE_FEATURES"
     # Run natively on Wayland (niri) instead of XWayland. Without this
     # Chromium defaults to X11 ozone, so getDisplayMedia uses the X11
     # capturer — which has no real desktop to grab under niri, breaking

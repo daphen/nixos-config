@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# playwright-mcp-launch — one MCP command that picks the right browser per machine.
+#
+# Order of preference:
+#   1. A running helium-cert CDP endpoint  → attach to David's AUTHENTICATED session.
+#      No profile cloning, no keychain translation, no repeated sign-ins.
+#   2. Helium installed but not listening   → start helium-cert, then attach.
+#   3. No Helium (the dev VM)               → nix-built chromium, headless.
+#
+# The VM has no Helium and cannot run Playwright's bundled generic-linux browsers
+# (it is NixOS), hence the explicit PLAYWRIGHT_BROWSERS_PATH there.
+set -euo pipefail
+
+port="${COCKPIT_CERT_CDP_PORT:-9333}"
+mcp=(npx -y @playwright/mcp@latest)
+
+cdp_up() { curl -sf -m 2 "http://127.0.0.1:$1/json/version" >/dev/null 2>&1; }
+
+if command -v helium >/dev/null 2>&1; then
+    cdp_up "$port" || helium-cert >/dev/null 2>&1 || true
+    if cdp_up "$port"; then
+        exec "${mcp[@]}" --cdp-endpoint "http://127.0.0.1:$port" "$@"
+    fi
+    # Helium exists but would not expose CDP: fall through rather than fail closed,
+    # so a browser check still runs (unauthenticated) instead of the agent renting
+    # LLM subagents as a browser proxy.
+    echo "playwright-mcp-launch: helium present but no CDP on $port — falling back" >&2
+fi
+
+# NOTE: @playwright/mcp exposes no way to pass raw browser flags, so the Private
+# Network Access exemption (HTTPS origin -> loopback branch runtime) can only be set
+# where WE launch the browser: helium-cert. That is another reason the Helium CDP lane
+# above is the preferred path — this Chromium fallback will hit PNA on a fresh profile
+# and needs "Local network access: Allow" granted once in site settings.
+if [ -x /run/current-system/sw/bin/chromium ]; then
+    exec "${mcp[@]}" --headless --executable-path /run/current-system/sw/bin/chromium \
+        --user-data-dir "$HOME/.local/share/playwright-mcp-profile" "$@"
+fi
+
+# The VM: nix-built browsers, but --browser chromium goes through Playwright's
+# registry, which demands the build number ITS version pins (1237) while nixpkgs
+# ships 1194 — "Executable doesn't exist … chromium_headless_shell-1237".
+# --executable-path skips the registry entirely and runs the browser we have.
+nixbrowsers="${PLAYWRIGHT_BROWSERS_PATH:-/nix/store/6n74mm97b8f8gfra77hiz9q4ffiianpy-playwright-browsers}"
+export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+nixchrome=$(ls -d "$nixbrowsers"/chromium-*/chrome-linux/chrome 2>/dev/null | head -1)
+if [ -n "$nixchrome" ]; then
+    exec "${mcp[@]}" --headless --executable-path "$nixchrome" "$@"
+fi
+export PLAYWRIGHT_BROWSERS_PATH="$nixbrowsers"
+exec "${mcp[@]}" --headless --browser chromium "$@"

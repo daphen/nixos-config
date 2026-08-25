@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Refuses to restart an agentd scope while one of ITS OWN sessions is streaming.
+#
+# Scope-aware on purpose: the roster spans every daemon, including `work`, which
+# lives on the dev VM behind a tunnel. Counting those blocked local restarts for
+# sessions a local restart cannot touch — on 2026-08-25 three VM workers held the
+# guard shut for 40 minutes while five local fixes sat undeployed.
+#
+# With no unit arguments the old all-scopes behaviour is kept, since we cannot tell
+# what is about to be restarted.
+set -euo pipefail
+
+roster=$(agent roster 2>/dev/null || true)
+
+if [ "$#" -eq 0 ]; then
+    blocking=$(printf '%s\n' "$roster" | grep streaming || true)
+else
+    # agentd-lovable.service -> lovable. Anything we cannot parse is left in, so an
+    # unrecognised unit name fails safe (refuses) rather than restarting blindly.
+    scopes=""
+    for unit in "$@"; do
+        s=${unit#agentd-}; s=${s%.service}
+        case "$s" in
+            work-tunnel) s=work ;;   # the tunnel carries the work scope's traffic
+        esac
+        scopes="${scopes:+$scopes|}$s"
+    done
+    blocking=$(printf '%s\n' "$roster" | grep streaming | grep -E "^(${scopes})[[:space:]]" || true)
+fi
+
+if [ -n "$blocking" ]; then
+    n=$(printf '%s\n' "$blocking" | grep -c . || true)
+    echo "REFUSED: $n session(s) streaming in the scope(s) being restarted:" >&2
+    printf '%s\n' "$blocking" >&2
+    exit 1
+fi
+
+exec systemctl --user restart "$@"

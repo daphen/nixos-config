@@ -30,7 +30,7 @@ port="${COCKPIT_VM_AGENTD_PORT:-${HEIDR_VM_AGENTD_PORT:-17840}}"
 sock="${XDG_RUNTIME_DIR}/agentd-work.sock"
 krpw="${COCKPIT_KEYRING_PW:-${HEIDR_KEYRING_PW:-heidr-vm}}"
 say() { printf '\033[36m[vm-cockpit]\033[0m %s\n' "$*"; }
-SSH=(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25 "$u@$host")
+SSH=(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=25 "$u@$host")
 ai="$HOME/nixos/dotfiles/ai"
 restart_marker="${XDG_RUNTIME_DIR}/cockpit-role-bundle-work.restart-required"
 legacy_restart_marker="${XDG_RUNTIME_DIR}/heidr-role-bundle-work.restart-required"
@@ -89,10 +89,10 @@ else
   for rel in "${role_files[@]}"; do
     if [ -d "$ai/$rel" ]; then
       "${SSH[@]}" "mkdir -p \$HOME/.pi/agent/'$rel'" || { sync_failed=1; break; }
-      rsync -az --delete -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25' "$ai/$rel/" "$u@$host:.pi/agent/$rel/" || { sync_failed=1; break; }
+      rsync -az --delete -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=25' "$ai/$rel/" "$u@$host:.pi/agent/$rel/" || { sync_failed=1; break; }
     else
       "${SSH[@]}" "mkdir -p \$HOME/.pi/agent/'$(dirname "$rel")'" || { sync_failed=1; break; }
-      rsync -az -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25' "$ai/$rel" "$u@$host:.pi/agent/$rel" || { sync_failed=1; break; }
+      rsync -az -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=25' "$ai/$rel" "$u@$host:.pi/agent/$rel" || { sync_failed=1; break; }
     fi
   done
   if [ "$sync_failed" -ne 0 ]; then
@@ -130,6 +130,7 @@ say "agentd on $vm (dbus + unlocked keyring) …"
   # credential store — re-authenticates every MCP server on every session.
   export XDG_DATA_DIRS=\"\$HOME/.nix-profile/share:/run/current-system/sw/share:/usr/local/share:/usr/share\"
   if [ '$restart_requested' = yes ] && pgrep -x agentd >/dev/null 2>&1; then
+    echo \"  restart requested — stopping agentd (pid \$(pgrep -x agentd | tr '\\n' ' '))\"
     kill -TERM \"\$(pgrep -x agentd)\"
     for _ in \$(seq 1 30); do pgrep -x agentd >/dev/null 2>&1 || break; sleep 1; done
     pgrep -x agentd >/dev/null 2>&1 && { echo '  agentd did not stop'; exit 1; }
@@ -140,15 +141,20 @@ say "agentd on $vm (dbus + unlocked keyring) …"
     mkdir -p ~/.local/share/keyrings
     eval \"\$(printf %s '$krpw' | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null)\" || true
     setsid env OPENAI_API_KEY='$key' SLACK_MCP_CLIENT_SECRET='$slack' \
+      COCKPIT_SLICE_REAP_HOOK=\$HOME/.local/bin/vm-slice-reaper \
       DBUS_SESSION_BUS_ADDRESS=\"\$DBUS_SESSION_BUS_ADDRESS\" XDG_DATA_DIRS=\"\$XDG_DATA_DIRS\" \
       PATH=\"\$PATH\" \$HOME/.local/bin/agentd --scope work --repo \$HOME/src/lovable \
       --listen 127.0.0.1:$port >\$HOME/agentd.log 2>&1 </dev/null &
     sleep 4
-  else echo '  already running'; fi
+  else echo \"  already running (pid \$(pgrep -x agentd | tr '\\n' ' '), up \$(ps -o etime= -p \$(pgrep -x agentd | head -1) 2>/dev/null | tr -d ' '))\"; fi
   # pgrep -x, not -f: an -f pattern also matches this very bash -lc wrapper, so the
   # guard read as true while agentd was dead and the tunnel forwarded to nothing.
-  (ss -tln 2>/dev/null || netstat -tln) | grep -q :$port && echo '  listening ✓' || tail -4 \$HOME/agentd.log
+  (ss -tln 2>/dev/null || netstat -tln 2>/dev/null) | grep -q :$port && echo '  listening ✓' || tail -4 \$HOME/agentd.log
 " 2>&1 | grep -viE "^Warning: Permanently"
+
+# A daemon that just came up has read the synced bundle, so the gate can lift. Without
+# this, vm-wt refused every ticket spawn after a bundle change even post-restart.
+if [ "$restart_requested" = yes ]; then rm -f "$restart_marker"; fi
 
 # Keep the tunnel a PURE forward. When agentd ran AS the ssh command, every dropped
 # connection took the daemon (and its pi sessions) with it.
@@ -160,7 +166,7 @@ s.connect('$sock'); s.recv(64)" >/dev/null 2>&1; then
 else
   say "tunnel $sock → $vm:$port …"
   rm -f "$sock"
-  setsid ssh -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  setsid ssh -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
     -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
     -L "$sock:127.0.0.1:$port" "$u@$host" >/dev/null 2>&1 &
   for _ in 1 2 3 4 5 6 7 8; do [ -S "$sock" ] && break; sleep 1; done

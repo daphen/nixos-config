@@ -1893,7 +1893,8 @@ handle = function(obj)
         if not d then return end
         S.selected = d.id
         local ed = target_editor_win()
-        if ed and d.cwd and d.cwd ~= "" then show_scratch(ed, d.cwd) end
+        local landing = scope == "personal" and scope_root() or d.cwd
+        if ed and landing and landing ~= "" then show_scratch(ed, landing) end
       end)
     end
     -- reconcile with the cockpit active context: adopts the persisted active on
@@ -2356,7 +2357,14 @@ try_connect = function(cb, tries)
     -- from here, and a reconnect after a drop means it's normally already up.
     if not rhost and tries == 0 and not S.ever_connected then
       vim.schedule(function()
-        fn.jobstart({ agentd_bin(), "--scope", scope, "--repo", scope_root() }, { detach = true })
+        -- Start it THROUGH SYSTEMD, never as a detached child. Launching the binary
+        -- directly created a second daemon that bound the same socket outside the
+        -- unit's cgroup, so `systemctl restart` replaced only one of them and the
+        -- rail talked to whichever bound last — a split brain where the restarted
+        -- daemon showed an empty roster while the orphan still owned the live pi
+        -- processes (hit twice on 2026-08-25). systemd is idempotent here: if the
+        -- unit is already running this is a no-op.
+        fn.jobstart({ "systemctl", "--user", "start", "agentd-" .. scope }, { detach = true })
       end)
     end
     -- Never give up: fast retries (200ms) for the first ~6s while a
@@ -3446,7 +3454,7 @@ follow_edit = function(cwd, path, line, external, external_force, snippet)
   -- (this function) are marked so the BufEnter watcher can tell them apart.
   if S._follow_paused and not external_force then return end
   local key = file .. ":" .. tostring(line or 0)
-  if S._follow == key then return end
+  if S._follow == key and fn.fnamemodify(api.nvim_buf_get_name(api.nvim_win_get_buf(target)), ":p") == file then return end
   S._follow = key
   S._program_nav = true
   api.nvim_win_call(target, function()
@@ -3458,6 +3466,7 @@ follow_edit = function(cwd, path, line, external, external_force, snippet)
   vim.schedule(function() S._program_nav = nil end)
   editor_gutter(target, true) -- a real file is showing → restore number/sign/fold cols (the dashboard turned them off)
   if hide_banner then hide_banner() end
+  pcall(function() require("cockpit.chin").refresh() end)
 end
 
 -- reverse bridge: open the file referenced in the nearest fenced-code header
@@ -3805,611 +3814,255 @@ local function read_cycle()
 end
 
 local dash_keys
--- The session dashboard: the editor's resting view when a session has no file
--- open. A session HUD — its plan status + flow, its worktree's changed files, and
--- a bottom-right action box whose rows exist ONLY when their target does (devenv/
--- app only for a registered cockpit context, plan only with a plan, ticket only
--- with a ticket id). Reused across sessions; unnamed so lualine shows no filename.
--- Cockpit masthead banner — theme-aware PNG (light/dark electric) rendered inline
--- via snacks.image (kitty graphics). Wrapped so a missing file or a terminal
--- without image support never breaks the resting view.
-local COCKPIT_BANNER_DIR = fn.expand("~/personal/ai-cockpit/assets")
-local COCKPIT_BANNER_W = 22 -- minimum banner width in cells
--- The banner scales with the WINDOW: a fixed cell count renders physically
--- smaller on denser screens (the private instance's masthead looked half the
--- work one's size). ~26% of the pane, clamped sane.
-local function banner_w(win)
-  local ww = (win and api.nvim_win_is_valid(win)) and api.nvim_win_get_width(win) or 80
-  return math.max(COCKPIT_BANNER_W, math.min(44, math.floor(ww * 0.26)))
-end
--- Rows from the asset aspect (790x184 = 4.29) and the REAL cell pixel size
--- (snacks queries the terminal): an assumed cell aspect made the float box a
--- wrong shape at most window widths and the image squished to fit it.
-local BANNER_ASPECT = 790 / 184
-local function banner_h(w)
-  local ok, term = pcall(require, "snacks.image.terminal")
-  if ok and term.size then
-    local oks, sz = pcall(term.size)
-    if oks and sz and sz.cell_width and sz.cell_height and sz.cell_height > 0 then
-      -- +2 slack rows on top of ceil: under Cockpit's device-pixel renderer
-      -- snacks spans MORE rows than the reported cell size predicts (#73), so
-      -- an exact box still clipped glyph bottoms. The image draws from the
-      -- float's top; extra rows are an invisible gap, clipping is not.
-      return math.max(3, math.ceil(w * sz.cell_width / BANNER_ASPECT / sz.cell_height)) + 2
-    end
-  end
-  return math.max(3, math.ceil(w / 8.6)) + 2
-end
--- 790×184 scaled to 22 cells ≈ 3 text rows. Declared before place_banner so its
--- float config captures the local (a later declaration resolved to a nil global →
--- height=nil → open_win threw under pcall → the banner never rendered).
-local COCKPIT_BANNER_ROWS = 3
--- The banner lives in its OWN floating window over the dashboard's reserved top
--- rows — NOT inline in the card buffer. An inline image shares the card's buffer, so
--- every set_lines re-render wiped + re-placed it and its virtual columns offset the
--- content rows (the recurring jagged-border bug, unfixable while it's inline). In a
--- float the image is physically isolated: the card's set_lines can't touch it, and it
--- can't shift a single content column. `win` = the editor window showing the dashboard.
-local function place_banner(_buf, win)
-  if not (win and api.nvim_win_is_valid(win)) then hide_banner(); return end
-  -- The banner draws ONLY over the dashboard. If the target window isn't currently
-  -- showing the scratch buffer (a file is open — including a stray re-place from a
-  -- ColorScheme/User autocmd), never draw it over code.
-  if not (S.scratchbuf and api.nvim_win_get_buf(win) == S.scratchbuf) then hide_banner(); return end
-  local ok, Placement = pcall(require, "snacks.image.placement")
-  if not ok then return end
-  local variant = vim.o.background == "light" and "light" or "dark"
-  -- Per-scope identity: work flies the LOVABLE masthead, the private cockpit
-  -- flies David's own mark + "cockpit"; missing files fall back to HEIÐR.
-  local ident = (scope == "lovable") and "lovable" or "cockpit"
-  local src = COCKPIT_BANNER_DIR .. "/" .. ident .. "-" .. variant .. ".png"
-  if fn.filereadable(src) == 0 then src = COCKPIT_BANNER_DIR .. "/cockpit-" .. variant .. ".png" end
-  if fn.filereadable(src) == 0 then hide_banner(); return end
-  if S.banner_placing then return end
-  S.banner_placing = true
-  if not (S.banner_buf and api.nvim_buf_is_valid(S.banner_buf)) then
-    S.banner_buf = api.nvim_create_buf(false, true)
-    vim.bo[S.banner_buf].bufhidden = "hide"; vim.bo[S.banner_buf].swapfile = false
-  end
-  local bw = banner_w(win)
-  local col = math.max(0, math.floor((api.nvim_win_get_width(win) - bw) / 2))
-  local cfg = {
-    relative = "win", win = win, anchor = "NW", row = 0, col = col,
-    width = bw, height = banner_h(bw),
-    -- border=none EXPLICITLY: a global `winborder` (e.g. "rounded") otherwise leaks a box
-    -- onto this float, framing the banner in an ugly outline over the card.
-    focusable = false, style = "minimal", zindex = 45, border = "none",
-    -- NO noautocmd: snacks.image hooks window autocmds to draw the inline image, so
-    -- suppressing them left the float empty (the "no header" bug).
-  }
-  if S.banner_placement and S.banner_src ~= src then
-    pcall(function() S.banner_placement:close() end)
-    S.banner_placement, S.banner_src = nil, nil
-  end
-  local geometry_changed = true
-  if S.banner_win and api.nvim_win_is_valid(S.banner_win) then
-    local old = api.nvim_win_get_config(S.banner_win)
-    geometry_changed = old.width ~= cfg.width or old.height ~= cfg.height
-      or old.row ~= cfg.row or old.col ~= cfg.col
-    if geometry_changed and S.banner_placement then
-      local terminal = _G.Snacks and Snacks.image and Snacks.image.terminal
-      if terminal then
-        pcall(terminal.request, {
-          a = "d", d = "i", i = S.banner_placement.img.id, p = S.banner_placement.id,
-        })
-      end
-    end
-    pcall(api.nvim_win_set_config, S.banner_win, cfg)
-  else
-    S.banner_win = api.nvim_open_win(S.banner_buf, false, cfg)
-    pcall(function() vim.wo[S.banner_win].winhighlight = "Normal:Normal,NormalFloat:Normal" end)
-  end
-  if S.banner_placement then
-    S.banner_placement.opts.width = bw
-    S.banner_placement.hidden = false
-    S.banner_placement._state = nil
-  else
-    pcall(Placement.clean, S.banner_buf)
-    local okp, placement = pcall(Placement.new, S.banner_buf, src,
-      { pos = { 1, 0 }, inline = true, width = bw, auto_resize = false })
-    if okp then S.banner_placement, S.banner_src = placement, src end
-  end
-  S.banner_placing = false
-  vim.schedule(function()
-    if S.banner_placement then pcall(function() S.banner_placement:update() end) end
-  end)
-end
+local dashboard_view = require("cockpit.dashboard")
 
 hide_banner = function()
   if S.banner_placement then
-    local terminal = _G.Snacks and Snacks.image and Snacks.image.terminal
-    if terminal then
-      pcall(terminal.request, {
-        a = "d", d = "i", i = S.banner_placement.img.id, p = S.banner_placement.id,
-      })
-    end
-    S.banner_placement.hidden = true
-    S.banner_placement._state = nil
+    pcall(function() S.banner_placement:close() end)
+    S.banner_placement = nil
   end
-  if S.banner_win and api.nvim_win_is_valid(S.banner_win) then pcall(api.nvim_win_close, S.banner_win, true) end
+  if S.banner_win and api.nvim_win_is_valid(S.banner_win) then
+    pcall(api.nvim_win_close, S.banner_win, true)
+  end
   S.banner_win = nil
 end
 
--- 0 when the banner won't render (no snacks / missing PNG), so the reserved top
--- rows collapse and the layout stays exact in a plain terminal too.
-local function banner_rows(win)
-  if not pcall(require, "snacks.image.placement") then return 0 end
-  local variant = vim.o.background == "light" and "light" or "dark"
-  local ident = (scope == "lovable") and "lovable" or "cockpit"
-  if fn.filereadable(COCKPIT_BANNER_DIR .. "/" .. ident .. "-" .. variant .. ".png") == 0
-     and fn.filereadable(COCKPIT_BANNER_DIR .. "/cockpit-" .. variant .. ".png") == 0 then return 0 end
-  return banner_h(banner_w(win))
-end
-
 local function show_scratch(win, cwd)
-  local _d = vim.g.cockpit_debug_switch and { vim.loop.hrtime() } or nil -- switch-timing marks
   if not (S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf)) then
     S.scratchbuf = api.nvim_create_buf(false, true)
     vim.bo[S.scratchbuf].buftype = "nofile"
     vim.bo[S.scratchbuf].bufhidden = "hide"
     vim.bo[S.scratchbuf].swapfile = false
   end
+
   local buf = S.scratchbuf
-  -- text width = window minus its gutter (number/sign/fold cols). Using the full
-  -- window width right-aligned the +/− columns past the text area, clipping −dels.
-  local wi = fn.getwininfo(win)[1]
-  local W = math.max(48, api.nvim_win_get_width(win) - ((wi and wi.textoff) or 0))
-  local H = math.max(12, api.nvim_win_get_height(win))
-  local lines, decor = {}, {}
-  local function push(l) lines[#lines + 1] = l or ""; return #lines - 1 end
-  local function hl(ln, grp, cs, ce) decor[#decor + 1] = { ln = ln, grp = grp, cs = cs or 0, ce = ce or -1 } end
-  -- Centered card matching the rail's box(): surface fill + hairpin border + titled
-  -- top, drawn in a centered content column of width CW at left margin LM. Reuses
-  -- box() verbatim (same glyphs/colours as the rail) via a thin adapter: box writes
-  -- {line,fg,bg,cs,ce} decor with group-name attrs → we replay it as add_highlight
-  -- offset by LM, so the surface fills only the card columns, not the whole row.
-  local CW = math.max(40, math.min(W - 8, 96))
-  local LM = math.max(0, math.floor((W - CW) / 2))
-  local LMS = string.rep(" ", LM)
-  local function card(ic, title, bodyfn)
-    local bd, first = {}, nil
-    local function bpush(line) local ln = push(LMS .. line); first = first or ln; return ln end -- nav is the caller's job (via add's return)
-    box(bpush, bd, CW, ic, title, bodyfn, "CockpitBox", false, true, true) -- nofill: outline-only, no surface fill (cleaner, esp. light mode)
-    for _, d in ipairs(bd) do
-      if d.bg then hl(d.line, d.bg, LM, -1) end
-      if d.fg then hl(d.line, d.fg, (d.cs or 0) + LM, d.ce and (d.ce + LM) or -1) end
-    end
-    return first -- the top-border line, so callers can overlay accents on the title
-  end
-  local CARD_INNER = CW - 6 -- box()'s content width (W minus "│  " + "  │")
-  local nm = short_name(S.selected) or fn.fnamemodify(cwd, ":t")
-  -- the worktree name carries the ticket too, which is what keeps the identity (and the
-  -- `l` linear action) when an external driver renders a session this nvim never selected
-  local tik = (S.selected or ""):match("%a+%-%d+") or fn.fnamemodify(cwd or "", ":t"):match("%a+%-%d+")
+  local width = math.max(32, api.nvim_win_get_width(win) - 4)
+  local height = math.max(12, api.nvim_win_get_height(win))
+  local name = (S.selected and short_name(S.selected)) or fn.fnamemodify(cwd, ":t")
+  local ticket = (S.selected or ""):match("%a+%-%d+")
+    or fn.fnamemodify(cwd or "", ":t"):match("%a+%-%d+")
   local ctx = cockpit_ctx_registered(cwd)
-  local private_root = scope == "personal" and cwd == scope_root()
-  local root = ctx == "main" or private_root -- the scope's main checkout → a fleet dashboard
-
-  -- masthead: the inline Cockpit banner IS the header — reserve its rows, nothing else.
-  -- The session identity lives in the PLAN card title (Electric); no path, no id line.
-  local br = banner_rows(win)
-  local topN = math.max(2, br) -- banner-reserved rows preserved across re-renders (no image re-place)
-  for _ = 1, topN do push("") end
-  for _ = 1, 3 do push("") end -- breathing room between the banner image and the HUD card
-
-  -- PLAN + CHANGES share one tabbed HUD card, rendered in the non-root branch below
-  -- (after the action box is sized so the file list can be capped). pl is loaded here
-  -- because the action row needs it too.
-  local pl = load_plan(cwd)
-  if _d then _d[#_d + 1] = vim.loop.hrtime() end -- [2]: after banner_rows + load_plan (git)
-
-  -- ACTIONS — built BEFORE the changes list so the box height is known and the
-  -- list can be capped to leave room. (A long diff used to push the box off the
-  -- bottom of the window.) One source of truth drives both the box and the keymaps;
-  -- a row is present only when its target exists.
+  local root = ctx == "main" or (scope == "personal" and cwd == scope_root())
+  local plan = load_plan(cwd)
+  -- A session dash for a path with nothing to show (no plan, no registered
+  -- context, clean or non-local repo — e.g. a VM session's remote cwd) renders
+  -- as a blank page; fall back to the scope home view instead.
+  if not root and not ctx and not plan and #(git_changes(cwd) or {}) == 0 then
+    root = true
+    cwd = scope_root()
+  end
   local home = os.getenv("HOME") or ""
-  local acts = {}
-  local function act(k, l, f) acts[#acts + 1] = { key = k, label = l, fn = f } end
-  if pl and pl.key then
-    act("p", "plan", function() pcall(function() require("plan-nvim").open(pl.key) end) end)
+  local acts, handlers = {}, {}
+
+  local function act(key, label, callback)
+    acts[#acts + 1] = { id = "key:" .. key, key = key, label = label }
+    handlers["key:" .. key] = callback
+  end
+
+  if plan and plan.key then
+    act("p", "plan", function() pcall(function() require("plan-nvim").open(plan.key) end) end)
   end
   if ctx then
     act("d", "devenv", function()
-      -- re-establish the session↔devenv link: ensure the tab exists, start the slice
-      -- if it's down, route the fixed ports here, focus. Idempotent however it broke.
       fn.jobstart({ home .. "/.config/niri/scripts/cockpit-devenv", ctx }, { detach = true })
       vim.defer_fn(function() if refresh_devenv then refresh_devenv() end end, 1500)
     end)
   end
-  -- a: open the session's dev preview. cockpit-app takes the SESSION name, asks agentd for
-  -- its webPort and routes accordingly — local sessions via the wt-proxy, remote ones get
-  -- an ssh -L first. NOT gated on a registered cockpit context like devenv above: a VM
-  -- ticket's mirror is never cockpit-add'ed, so that gate hid the action on exactly the
-  -- sessions whose app you cannot reach any other way.
-  -- The session's name, derived without a roster: this nvim's roster only spans its own
-  -- scope, so a VM session (work scope) is invisible here — but ticket sessions are NAMED
-  -- their ticket id and review sessions review-pr-<n>, and cockpit-app searches every agentd
-  -- socket by name. A live roster hit still wins (covers ad-hoc session names).
-  local apr = (cwd or ""):match("lovable%.review%-(%d+)") or (S.selected or ""):match("^review%-pr%-(%d+)")
-  local target = apr and ("review-pr-" .. apr) or (tik and tik:lower()) or (ctx and ctx ~= "main" and ctx or nil)
-  for _, a in ipairs(S.roster) do if a.id == S.selected then target = a.name; break end end
+
+  local review_number = (cwd or ""):match("lovable%.review%-(%d+)")
+    or (S.selected or ""):match("^review%-pr%-(%d+)")
+  local target = review_number and ("review-pr-" .. review_number)
+    or (ticket and ticket:lower()) or (ctx and ctx ~= "main" and ctx or nil)
+  for _, agent in ipairs(S.roster) do
+    if agent.id == S.selected then target = agent.name; break end
+  end
   if target then
     act("a", "app", function()
       fn.jobstart({ home .. "/.config/niri/scripts/cockpit-app", target }, {
         detach = true,
-        -- cockpit-app fails fast when the session isn't live or has no devenv port; a
-        -- detached silent exit read as "the button does nothing".
         on_exit = function(_, code)
-          if code ~= 0 then
-            vim.schedule(function() vim.notify("app: no live session/port for " .. target) end)
-          end
+          if code ~= 0 then vim.schedule(function() vim.notify("app: no live session/port for " .. target) end) end
         end,
       })
     end)
   end
-  if root then
-    act("n", "session", function() if open_picker then open_picker() end end) -- start/pick a session
-  end
-  -- l: the session's external link. A review worktree (review/pr-<n>) opens the PR;
-  -- a ticket session opens Linear. Reviews have no Linear ticket, so never try one.
-  -- review worktree cwd is ~/work/lovable.review-<n>-<slug>; session name is review-pr-<n>.
-  -- Match either (the old `review-pr-` cwd pattern never hit → reviews wrongly said "linear").
-  local pr = (cwd or ""):match("lovable%.review%-(%d+)") or (S.selected or ""):match("^review%-pr%-(%d+)")
-  if pr then
+  if root then act("n", "session", function() if open_picker then open_picker() end end) end
+
+  if review_number then
     act("l", "open PR", function()
-      fn.jobstart({ "gh", "pr", "view", pr, "--web" }, { cwd = cwd, detach = true })
+      fn.jobstart({ "gh", "pr", "view", review_number, "--web" }, { cwd = cwd, detach = true })
     end)
-    -- r: reopen the review-pr artifact (the skill writes ~/…/reviews/pr-<n>.md). Set it as
-    -- the session's editor file so reflect_context restores it on every switch back — the
-    -- review IS a review session's deliverable, so it should stick, not vanish to the dash.
-    local rv = (os.getenv("HOME") or "") .. "/personal/notes/storage/reviews/pr-" .. pr .. ".md"
-    if fn.filereadable(rv) == 1 then
+    local artifact = home .. "/personal/notes/storage/reviews/pr-" .. review_number .. ".md"
+    if fn.filereadable(artifact) == 1 then
       act("r", "review", function()
         S.editor = S.editor or {}
-        if S.selected then S.editor[S.selected] = rv end
-        open_in_editor(cwd, rv, nil)
+        if S.selected then S.editor[S.selected] = artifact end
+        open_in_editor(cwd, artifact, nil)
       end)
     end
-  elseif tik then
+  elseif ticket then
     act("l", "linear", function()
-      local u = "https://linear.app/lovable/issue/" .. tik:upper()
-      if vim.ui.open then vim.ui.open(u) else fn.jobstart({ "xdg-open", u }, { detach = true }) end
+      local url = "https://linear.app/lovable/issue/" .. ticket:upper()
+      if vim.ui.open then vim.ui.open(url) else fn.jobstart({ "xdg-open", url }, { detach = true }) end
     end)
   end
-  -- (no `c`/`r`: <Tab> swaps to the CHANGES view in the card, and the resize
-  -- autocmd re-renders automatically — so a manual changes/refresh hint is dead weight.)
-  local FOOTER_H = 1 -- the horizontal hint row pinned to the bottom
 
-  local openmap, expand_ln, sessmap, ticketmap, planmap, teardownmap = {}, nil, {}, {}, {}, {} -- file/toggle/session/ticket/plan/teardown rows
-  local dash_views -- the HUD card's tab order (non-root), exposed to <Tab> via S.dash
-  if root then
-    -- ORCHESTRATOR dashboard — the cycle's tickets in the same centered bordered cards
-    -- as the worktree HUD (card()/box()), so both dashboards read as one system. Live
-    -- sessions are NOT listed here (the rail roster shows them permanently); a ticket
-    -- being worked on is flagged "in progress" in the list below instead.
+  local spec = {
+    scope = scope,
+    kind = root and "home" or "session",
+    identity = root and (scope == "personal" and "HOME" or "LOVABLE") or (name or "SESSION"),
+    cwd = cwd,
+    actions = acts,
+    expanded = S.dash_expand,
+  }
 
-    if scope == "personal" then
-      local inv = S.plan_inventory or { needs = {}, implementing = {}, reconciled = {} }
-      local slugw = 0
-      for _, group in ipairs({ inv.needs, inv.implementing, inv.reconciled }) do
-        for _, row in ipairs(group or {}) do slugw = math.max(slugw, #row.slug) end
-      end
-      slugw = math.min(slugw, math.max(12, CARD_INNER - 22))
-      card(nil, "PLANS", function(add)
-        local summary = #inv.needs .. " need you · " .. #inv.implementing .. " implementing"
-        add(summary, { { 0, #summary, "CockpitMuted" } })
-        local function add_group(label, rows, color)
-          if #rows == 0 then return end
-          add("")
-          add(label, { { 0, #label, color } })
-          for _, row in ipairs(rows) do
-            local session = row.session and (row.session.name or short_name(row.session.id)) or "unbound"
-            local slug = row.slug
-            if #slug > slugw then slug = slug:sub(1, slugw - 1) .. "…" end
-            local mark = "●"
-            local left = mark .. " " .. slug .. string.rep(" ", slugw - #slug)
-              .. "   ◆ " .. row.done .. "/" .. row.total
-            local suffix = " · " .. session
-            local text = left .. suffix
-            local basehl = label == "RECENTLY RECONCILED" and "CockpitMuted" or "CockpitFile"
-            planmap[add(text, {
-              { 0, #text, basehl },
-              { 0, #mark, color },
-              { #left, #text, "CockpitMuted" },
-            })] = row
-          end
+  if root and scope == "personal" then
+    spec.inventory = S.plan_inventory or { needs = {}, implementing = {}, reconciled = {} }
+    for _, group in ipairs({ spec.inventory.needs or {}, spec.inventory.implementing or {}, spec.inventory.reconciled or {} }) do
+      for _, item in ipairs(group) do
+        handlers["plan:" .. item.slug] = function()
+          if item.session then view_session(item.session.id, item.session.cwd)
+          else vim.notify("unbound — P in the rail binds it") end
+          pcall(function() require("plan-nvim").open(item.slug) end)
         end
-        add_group("NEEDS YOU", inv.needs, "CockpitErr")
-        add_group("IMPLEMENTING", inv.implementing, "CockpitElectric")
-        add_group("RECENTLY RECONCILED", inv.reconciled, "CockpitMuted")
-        if #inv.needs + #inv.implementing + #inv.reconciled == 0 then
-          add("")
-          local empty = "No plan artifacts"
-          add(empty, { { 0, #empty, "CockpitMuted" } })
-        end
-      end)
-    else
-      -- CYCLE + TICKETS from the agent-cached cycle.json, in the same card chrome. Tickets
-      -- in priority order; <CR>/o confirms + cockpit-adds a session. Live ones flagged.
-      local cyc = read_cycle()
-      if cyc and cyc.cycle then
-      local cy = cyc.cycle
-      local span = (cy.starts and cy.ends) and (" · " .. cy.starts .. "–" .. cy.ends) or ""
-      local cprog = (cy.progress and cy.progress.total and cy.progress.total > 0)
-        and ("  ◆ " .. (cy.progress.done or 0) .. "/" .. cy.progress.total) or ""
-      -- split OPEN (actionable) from DONE — a finished ticket isn't something you kick
-      -- off, so it goes in a dim group below, not mixed into the priority list.
-      local open, done = {}, {}
-      for _, t in ipairs(cyc.tickets or {}) do
-        if t.done then done[#done + 1] = t else open[#open + 1] = t end
-      end
-      table.sort(open, function(x, y)
-        local px = (x.priority == 0 or x.priority == nil) and 99 or x.priority
-        local py = (y.priority == 0 or y.priority == nil) and 99 or y.priority
-        if px ~= py then return px < py end
-        return (x.id or "") < (y.id or "") -- stable tiebreak within a priority
-      end)
-      local have = {} -- ticket id → its live roster session entry (●-marker + teardown)
-      for _, a in ipairs(S.roster) do
-        local t = (a.name or ""):match("%a+%-%d+"); if t then have[t:upper()] = a end
-      end
-      local prigrp = { [1] = "CockpitErr", [2] = "CockpitElectric", [3] = "CockpitFile", [4] = "CockpitMuted" }
-      local idw = 0
-      for _, t in ipairs(open) do idw = math.max(idw, #(t.id or "")) end
-      -- cap the open list to the room left, reserving for this card's head+tail chrome
-      -- and the DONE card below (each card adds borders/pad the flat layout didn't).
-      local reserve = 7 + ((#done > 0) and (4 + math.min(#done, 5)) or 0)
-      local fit = math.max(1, math.min(#open, H - #lines - FOOTER_H - br - reserve))
-      local cap = S.dash_expand and #open or fit
-      card(nil, "TICKETS", function(add)
-        local cd = (cy.name or "current") .. span .. cprog
-        add(cd, { { 0, #cd, "CockpitMuted" } })
-        local od = #open .. " open · ⏎ starts a session"
-        add(od, { { 0, #od, "CockpitMuted" } })
-        add("")
-        for i = 1, cap do
-          local t = open[i]
-          local id = t.id or "?"
-          local live = have[id:upper()]
-          local mark = live and "●" or "○" -- ● = a session already exists for it
-          local badge = live and "  · in progress" or "" -- a worktree/session is open for it
-          local avail = math.max(10, CARD_INNER - (#mark + 1 + idw + 3) - #badge)
-          local title = t.title or ""
-          if #title > avail then title = title:sub(1, avail - 1) .. "…" end
-          local text = mark .. " " .. id .. string.rep(" ", idw - #id) .. "   " .. title .. badge
-          local segs = {
-            { 0, #text, "CockpitFile" },                         -- id + title, neutral
-            { 0, #mark, prigrp[t.priority] or "CockpitMuted" },  -- priority-coloured marker
-          }
-          if live then segs[#segs + 1] = { #text - #badge, #text, "CockpitElectric" } end -- in-progress flag
-          ticketmap[add(text, segs)] = { id = id, slug = t.slug, live = live, title = t.title }
-        end
-        if #open > fit then
-          local more = S.dash_expand and "⏶ show less   ⏎" or ("… " .. (#open - fit) .. " more   ⏎")
-          expand_ln = add(more, { { 0, #more, "CockpitMuted" } })
-        end
-      end)
-
-      -- DONE — dim. A done ticket that STILL has a session/worktree is offered for
-      -- teardown (⊘ + ⏎); the rest are just ✓. Teardown-able ones sort first.
-      if #done > 0 then
-        push("")
-        table.sort(done, function(x, y)
-          local hx = have[(x.id or ""):upper()] and 0 or 1
-          local hy = have[(y.id or ""):upper()] and 0 or 1
-          if hx ~= hy then return hx < hy end
-          return (x.id or "") < (y.id or "")
-        end)
-        card(nil, "DONE", function(add)
-          for i = 1, math.min(#done, 5) do
-            local t = done[i]
-            local sess = have[(t.id or ""):upper()]
-            local mark = sess and "⊘" or ICON.check
-            local suffix = sess and "   ⏎ teardown" or ""
-            local text = mark .. " " .. (t.id or "?") .. "  " .. (t.title or "") .. suffix
-            local segs = { { 0, #text, "CockpitMuted" } }
-            if sess then segs[#segs + 1] = { 0, #mark, "CockpitErr" } end -- ⊘ = lingering session
-            local ln = add(text, segs)
-            if sess then teardownmap[ln] = { id = sess.id, cwd = sess.cwd, ticket = t.id } end
-          end
-          if #done > 5 then local m = "… " .. (#done - 5) .. " more"; add(m, { { 0, #m, "CockpitMuted" } }) end
-        end)
       end
     end
+  elseif root then
+    spec.cycle = read_cycle()
+    spec.live_tickets = {}
+    for _, agent in ipairs(S.roster) do
+      local id = (agent.name or ""):match("%a+%-%d+")
+      if id then spec.live_tickets[id:upper()] = agent end
+    end
+    spec.ticket_limit = math.max(1, height - 18)
+    if spec.cycle then
+      for _, item in ipairs(spec.cycle.tickets or {}) do
+        local id = item.id or ""
+        local live = spec.live_tickets[id:upper()]
+        handlers["ticket:" .. id] = function()
+          if live then
+            vim.notify("agent: " .. id .. " already has a session")
+          elseif id ~= "" then
+            local seed = "Work " .. id .. (item.title and item.title ~= "" and (": " .. item.title) or "")
+              .. "\n\nStart with /plan-ticket " .. id .. " to scope it, then implement."
+            if vim.fn.confirm("Spawn a session for " .. id .. "?", "&Yes\n&No", 2) == 1 then
+              fn.jobstart({ home .. "/.local/bin/cockpit-spawn", id:lower(), seed }, { detach = true })
+              vim.notify("agent: spawning session · " .. id:lower())
+            end
+          else
+            vim.notify("agent: ticket has no id in cycle.json")
+          end
+        end
+        if live then
+          handlers["teardown:" .. live.id] = function()
+            teardown_session(live.id, live.cwd)
+            vim.defer_fn(function() if api.nvim_win_is_valid(win) then show_scratch(win, cwd) end end, 500)
+          end
+        end
+      end
     end
   else
-    -- Unified HUD card: PLAN and CHANGES in ONE card; <Tab> swaps the active view.
-    -- Only the views that exist become tabs (a plan-less session shows just CHANGES).
-    local ch = git_changes(cwd)
-    -- manual (MT#) checks from review.json = the tests YOU run by hand (no `command`).
+    local changes = git_changes(cwd)
     local tests = {}
-    if pl and pl.review and type(pl.review.verification) == "table" then
-      for _, v in ipairs(pl.review.verification) do
-        if not (v.command and v.command ~= "") then tests[#tests + 1] = v end
+    if plan and plan.review and type(plan.review.verification) == "table" then
+      for _, verification in ipairs(plan.review.verification) do
+        if not (verification.command and verification.command ~= "") then tests[#tests + 1] = verification end
       end
     end
-    local pending_tests = 0
-    for _, v in ipairs(tests) do if (v.result or "pending") ~= "pass" then pending_tests = pending_tests + 1 end end
-    local has_plan = pl and pl.progress
-    local has_tests = #tests > 0
-    local has_changes = ctx or #ch > 0
-    local views = {}
-    if has_plan then views[#views + 1] = "plan" end
-    if has_tests then views[#views + 1] = "tests" end
-    if has_changes then views[#views + 1] = "changes" end
-    dash_views = views
-    if #views > 0 then
-      -- auto-switch to TESTS the moment manual tests first appear (the testing stage),
-      -- once per session so you can still Tab away afterward.
-      S.dash_tests_seen = S.dash_tests_seen or {}
-      local sid = S.selected
-      if sid and pending_tests > 0 and not S.dash_tests_seen[sid] then
-        S.dash_view = "tests"; S.dash_tests_seen[sid] = true
-      elseif sid and pending_tests == 0 then
-        S.dash_tests_seen[sid] = nil
-      end
-      local view = S.dash_view
-      if not vim.tbl_contains(views, view) then view = views[1] end
-      S.dash_view = view
-      -- title layout: PLAN · TESTS · CHANGES (white, box() titles them) with a ` ⇥ `
-      -- keycap so it's obvious Tab swaps them; the ticket key is spliced to the
-      -- RIGHTMOST edge of the border (Electric) as the session's identity.
-      local parts = {}
-      if has_plan then parts[#parts + 1] = ICON.plan .. " PLAN" end
-      if has_tests then parts[#parts + 1] = ICON.tests .. " TESTS" end
-      if has_changes then parts[#parts + 1] = ICON.changes .. " CHANGES" end
-      local title = table.concat(parts, "    ")
-      if #views >= 2 then title = title .. "    ⇥ " end -- Tab-swap hint (keycap-styled below)
-      local topln = card(nil, title, function(add)
-        if view == "plan" then
-          local pg = pl.progress
-          local done, total = 0, 0
-          for _, s in ipairs(pg.flow or {}) do total = total + 1; if s.status == "done" then done = done + 1 end end
-          add(pg.phase or "?", { { 0, #(pg.phase or "?"), "CockpitMuted" } }) -- key is in the border now
-          if total > 0 then
-            local label = done .. "/" .. total .. " "
-            local barw = math.max(8, math.min(CARD_INNER - #label, 48))
-            local btext, bsegs = progress_bar(done, total, barw, "CockpitElectric", "CockpitDivider")
-            local segs = { { 0, #label, "CockpitMuted" } }
-            for _, sg in ipairs(bsegs) do segs[#segs + 1] = { sg[1] + #label, sg[2] + #label, sg[3] } end
-            add(label .. btext, segs)
-            add("") -- margin between the gauge and the step list
-          end
-          local savail = math.max(12, CARD_INNER - 3)
-          for _, s in ipairs(pg.flow or {}) do
-            local g = s.status == "done" and ICON.step_done or (s.status == "active" and ICON.step_active or ICON.step_todo)
-            local grp = s.status == "done" and "CockpitStream" or (s.status == "active" and "CockpitTitle" or "CockpitIdle")
-            local step = s.step or ""
-            if #step > savail then step = step:sub(1, savail - 1) .. "…" end
-            local row = g .. " " .. step
-            add(row, { { 0, #row, "CockpitFile" }, { 0, #g, grp } })
-          end
-        elseif view == "tests" then
-          local detail = pending_tests .. " to run"
-            .. (#tests > pending_tests and ("  ·  " .. (#tests - pending_tests) .. " done") or "")
-          add(detail, { { 0, #detail, "CockpitMuted" } })
-          add("")
-          local savail = math.max(12, CARD_INNER - 3)
-          for _, v in ipairs(tests) do
-            local res = v.result or "pending"
-            local g = res == "pass" and ICON.step_done or (res == "fail" and ICON.xmark or ICON.step_todo)
-            local grp = res == "pass" and "CockpitStream" or (res == "fail" and "CockpitErr" or "CockpitIdle")
-            local txt = v.check or v.name or "(test)"
-            if #txt > savail then txt = txt:sub(1, savail - 1) .. "…" end
-            local row = g .. " " .. txt
-            add(row, { { 0, #row, "CockpitFile" }, { 0, #g, grp } })
-          end
-        else
-          if #ch == 0 then
-            add("working tree clean", { { 0, 18, "CockpitMuted" } })
-          else
-            local ta, td = 0, 0
-            for _, c in ipairs(ch) do ta = ta + c.add; td = td + c.del end
-            local detail = #ch .. (#ch == 1 and " file  ·  +" or " files  ·  +") .. ta .. " -" .. td
-            add(detail, { { 0, #detail, "CockpitMuted" } })
-            local aw, dw = 0, 0
-            for _, c in ipairs(ch) do aw = math.max(aw, #("+" .. c.add)); dw = math.max(dw, #("-" .. c.del)) end
-            local fitcap = math.max(1, math.min(#ch, H - FOOTER_H - br - #lines - 4)) -- rows left above the footer
-            local cap = S.dash_expand and #ch or fitcap
-            for i = 1, cap do
-              local c = ch[i]
-              local acol = string.rep(" ", aw - #("+" .. c.add)) .. "+" .. c.add
-              local dcol = string.rep(" ", dw - #("-" .. c.del)) .. "-" .. c.del
-              local line = file_row(CARD_INNER, "• ", c.path, acol, dcol)
-              local segs = { { 0, #line, "CockpitFile" }, { 0, 3, "CockpitMuted" } } -- • bullet muted
-              local ps, pe = line:find("%+%d+"); if ps then segs[#segs + 1] = { ps - 1, pe, "CockpitStream" } end
-              local ms, me = line:find("%-%d+", (pe or 0) + 1); if ms then segs[#segs + 1] = { ms - 1, me, "CockpitErr" } end
-              openmap[add(line, segs)] = c.path -- <CR>/o opens it
-            end
-            if #ch > fitcap then
-              local more = S.dash_expand and "⏶ show less   ⏎" or ("… " .. (#ch - fitcap) .. " more   ⏎")
-              expand_ln = add(more, { { 0, #more, "CockpitMuted" } })
-            end
-          end
-        end
-      end)
-      if topln then
-        -- active tab reads as an Electric pill; the others dim, so the selected view is
-        -- obvious. Located by plain-find on the top-border line (robust to the LM/prefix
-        -- offset), overriding box()'s uniform CockpitTitle for each tab's span.
-        local tabmap = {}
-        if has_plan then tabmap.plan = ICON.plan .. " PLAN" end
-        if has_tests then tabmap.tests = ICON.tests .. " TESTS" end
-        if has_changes then tabmap.changes = ICON.changes .. " CHANGES" end
-        local tbl = lines[topln + 1] or ""
-        for v, lbl in pairs(tabmap) do
-          local s, e = tbl:find(lbl, 1, true)
-          if s then
-            -- active tab gets a padded pill (extend the bg one space each side, into the
-            -- separator/border spaces); inactive tabs just dim, no bg.
-            if v == view then hl(topln, "CockpitTabActive", s - 2, e + 1)
-            else hl(topln, "CockpitMuted", s - 1, e) end
-          end
-        end
-        -- splice the ticket key onto the RIGHT edge of the top border (replace the
-        -- trailing dashes with " KEY ─┐"), coloured Electric. Same display width in,
-        -- same out, so the border stays a perfect rectangle.
-        if has_plan and pl.key then
-          local ln, key = lines[topln + 1] or "", pl.key
-          local strip = 3 + (#key + 3) * 3 -- ┐ (3B) + (kw+3) dashes (3B each)
-          if #ln > strip + 30 then
-            local base = ln:sub(1, #ln - strip)
-            lines[topln + 1] = base .. " " .. key .. " ─┐"
-            hl(topln, "CockpitElectric", #base + 1, #base + 1 + #key)
-          end
-        end
-        -- the ` ⇥ ` Tab-swap hint reads as a keycap pill (shown when there's >1 tab).
-        if #views >= 2 then
-          local hs, he = (lines[topln + 1] or ""):find(" ⇥ ", 1, true)
-          if hs then hl(topln, "CockpitKeyCap", hs - 1, he) end
-        end
-      end
+    local pending = 0
+    for _, test in ipairs(tests) do if (test.result or "pending") ~= "pass" then pending = pending + 1 end end
+    local tabs = {}
+    if plan and plan.progress then tabs[#tabs + 1] = "plan" end
+    if #tests > 0 then tabs[#tabs + 1] = "tests" end
+    if ctx or #changes > 0 then tabs[#tabs + 1] = "changes" end
+
+    S.dash_tests_seen = S.dash_tests_seen or {}
+    if S.selected and pending > 0 and not S.dash_tests_seen[S.selected] then
+      S.dash_view = "tests"
+      S.dash_tests_seen[S.selected] = true
+    elseif S.selected and pending == 0 then
+      S.dash_tests_seen[S.selected] = nil
+    end
+    if not vim.tbl_contains(tabs, S.dash_view) then S.dash_view = tabs[1] end
+    spec.plan = plan
+    spec.tests = tests
+    spec.changes = changes
+    spec.tabs = tabs
+    spec.active_tab = S.dash_view
+    spec.change_limit = math.max(1, height - 12)
+    for index, change in ipairs(changes) do
+      handlers["file:" .. index] = function() open_in_editor(cwd, change.path, nil) end
     end
   end
 
-  -- horizontal hint footer, pinned to the bottom row so a long changes list fills the
-  -- space above without ever shoving the hints. Roster-style: ` k ` CockpitKeyCap pill +
-  -- muted label, laid out left-to-right and centered.
-  local ftext, fsegs = "", {}
-  for i, a in ipairs(acts) do
-    if i > 1 then ftext = ftext .. "      " end
-    local cap = " " .. a.key .. " "
-    local cs = #ftext; ftext = ftext .. cap; fsegs[#fsegs + 1] = { cs, #ftext, "CockpitKeyCap" }
-    ftext = ftext .. " "
-    local ls = #ftext; ftext = ftext .. a.label; fsegs[#fsegs + 1] = { ls, #ftext, "CockpitMuted" }
+  handlers.expand = function()
+    S.dash_expand = not S.dash_expand
+    if api.nvim_win_is_valid(win) then show_scratch(win, cwd) end
   end
-  local fpad = math.max(0, math.floor((W - fn.strdisplaywidth(ftext)) / 2))
-  -- pin to one row above the bottom edge (matching the composer's 1-row bottom pad). The
-  -- old `- br` wrongly subtracted the TOP banner reservation here, floating it rows high.
-  local target = math.max(#lines + 1, H - FOOTER_H - 1)
-  while #lines < target do push("") end
-  local fln = push(string.rep(" ", fpad) .. ftext)
-  for _, s in ipairs(fsegs) do hl(fln, s[3], fpad + s[1], fpad + s[2]) end
 
-  -- Full render every time + re-place the banner. (An earlier optimization preserved
-  -- the top banner rows on same-width re-renders to avoid a Tab-swap flicker, but a
-  -- STALE inline-image placement offset the rows below and left the card border
-  -- jagged — "tab away and back" fixed it because that forced a full re-place. A
-  -- correct card beats dodging a tiny flicker.)
-  if _d then _d[#_d + 1] = vim.loop.hrtime() end -- [3]: after the dashboard body build
+  local model = dashboard_view.build(spec)
+  local lines, line_actions = dashboard_view.text(model, width)
   vim.bo[buf].modifiable = true
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
   api.nvim_buf_clear_namespace(buf, S.ns, 0, -1)
-  for _, d in ipairs(decor) do pcall(api.nvim_buf_add_highlight, buf, S.ns, d.grp, d.ln, d.cs, d.ce) end
-  S.dash = { open = openmap, sessions = sessmap, tickets = ticketmap, plans = planmap, teardown = teardownmap, expand_ln = expand_ln, cwd = cwd, win = win, views = dash_views } -- <CR>/o targets; views = the card's tab order
+
+  S.dash = {
+    cwd = cwd,
+    win = win,
+    views = model.tabs or {},
+    acts = acts,
+    model = model,
+    handlers = handlers,
+    line_actions = line_actions,
+  }
   dash_keys(buf, acts)
   pcall(api.nvim_win_set_buf, win, buf)
-  editor_gutter(win, false) -- clean resting view: no number/sign/fold columns
-  if _d then _d[#_d + 1] = vim.loop.hrtime() end -- [4]: before place_banner
-  pcall(place_banner, buf, win)
-  if _d then
-    local ms = function(a, b) return (_d[b] - _d[a]) / 1e6 end
-    pcall(fn.writefile, { string.format("  show_scratch(%s): pre+loadplan=%.1fms body=%.1fms commit=%.1fms place_banner=%.1fms",
-      root and "root" or "worktree", ms(1, 2), ms(2, 3), ms(3, 4), (vim.loop.hrtime() - _d[4]) / 1e6) },
-      "/tmp/cockpit-switch-timing.log", "a")
+  editor_gutter(win, false)
+  hide_banner()
+  pcall(function() require("cockpit.chin").refresh() end)
+  S.dash_w = api.nvim_win_is_valid(win) and api.nvim_win_get_width(win) or nil
+end
+
+dash_keys = function(buf, acts)
+  for _, key in ipairs({ "p", "d", "a", "l", "n", "r", "i", "<CR>", "o", "<Tab>" }) do
+    pcall(vim.keymap.del, "n", key, { buffer = buf })
   end
-  S.dash_w = (win and api.nvim_win_is_valid(win)) and api.nvim_win_get_width(win) or nil -- for the resize guard
+  local function map(lhs, callback)
+    vim.keymap.set("n", lhs, callback, { buffer = buf, nowait = true, silent = true })
+  end
+  local function dispatch(id)
+    local handler = S.dash and S.dash.handlers and S.dash.handlers[id]
+    if handler then handler() end
+  end
+  for _, item in ipairs(acts) do map(item.key, function() dispatch(item.id) end) end
+  map("i", function()
+    fn.jobstart({ fn.expand("~/.config/niri/scripts/cockpit-ipc"), "focusComposer" }, {
+      env = { COCKPIT_NVIM_SOCK = vim.env.NVIM_LISTEN_ADDRESS or "", HEIDR_NVIM_SOCK = vim.env.NVIM_LISTEN_ADDRESS or "" },
+      detach = true,
+    })
+  end)
+  local function next_tab()
+    local dash = S.dash or {}
+    local views = dash.views or {}
+    if #views < 2 then return end
+    local current = 1
+    for index, view in ipairs(views) do if view == S.dash_view then current = index; break end end
+    S.dash_view = views[(current % #views) + 1]
+    if dash.win and api.nvim_win_is_valid(dash.win) then show_scratch(dash.win, dash.cwd) end
+  end
+  local function enter(line)
+    local dash = S.dash or {}
+    local line_number = line or (api.nvim_win_get_cursor(0)[1] - 1)
+    local id = dash.line_actions and dash.line_actions[line_number]
+    if id then dispatch(id)
+    elseif acts[1] then dispatch(acts[1].id) end
+  end
+  S.dash_tab = next_tab
+  S.dash_enter = enter
+  map("<Tab>", next_tab)
+  map("<CR>", enter)
+  map("o", enter)
 end
 
 -- Re-render the dashboard if it's the editor's current view — called on turn-end so
@@ -4430,78 +4083,61 @@ refresh_dashboard = function()
   end
 end
 
--- Bind the dashboard's action keys buffer-locally. Clear the full known set first
--- so a row that vanished (e.g. devenv when the session isn't a cockpit context)
--- can't leave a stale keymap behind. <CR>/o are context-sensitive: open the file
--- row under the cursor, toggle the …more/less line, else run the first action.
-dash_keys = function(buf, acts)
-  for _, k in ipairs({ "p", "d", "a", "l", "n", "c", "r", "i", "<CR>", "o", "<Tab>" }) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
-  local function map(lhs, f) vim.keymap.set("n", lhs, f, { buffer = buf, nowait = true, silent = true }) end
-  for _, a in ipairs(acts) do map(a.key, a.fn) end
-  -- `i` on the read-only dash means "talk to the agent": focus the rail composer.
-  map("i", function()
-    vim.fn.jobstart({ vim.fn.expand("~/.config/niri/scripts/cockpit-ipc"), "focusComposer" },
-      { env = { COCKPIT_NVIM_SOCK = vim.env.NVIM_LISTEN_ADDRESS or "", HEIDR_NVIM_SOCK = vim.env.NVIM_LISTEN_ADDRESS or "" }, detach = true })
-  end)
-  -- <Tab> cycles the HUD card through its available views (PLAN · TESTS · CHANGES).
-  map("<Tab>", function()
+function M.dashboard_snapshot()
+  local d = S.dash
+  local active = false
+  if d and d.win and api.nvim_win_is_valid(d.win) and S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf) then
+    active = api.nvim_win_get_buf(d.win) == S.scratchbuf
+  end
+  return { active = active, model = (d and d.model) or {} }
+end
+
+function M.git_summary(cwd)
+  cwd = cwd or fn.getcwd()
+  local cache = S.gitdiff[cwd]
+  if not cache then
+    if not S.diff_jobs[cwd] then refresh_git_changes(cwd) end
+    return nil
+  end
+  -- Externally-changed trees (a mutagen mirror sync) never fire an nvim event, so a
+  -- diff computed mid-sync would otherwise be reported forever. Re-run in the
+  -- background once the value ages out; the stale number still renders this frame.
+  if (os.time() - (cache.at or 0)) > 20 and not S.diff_jobs[cwd] then
+    refresh_git_changes(cwd)
+  end
+  local add, del = 0, 0
+  for _, change in ipairs(cache.files or {}) do
+    add = add + (change.add or 0)
+    del = del + (change.del or 0)
+  end
+  return { add = add, del = del }
+end
+
+function M.dashboard_action(id)
+  id = tostring(id or "")
+  local handler = S.dash and S.dash.handlers and S.dash.handlers[id]
+  if handler then
+    handler()
+  elseif id == "tab" then
+    if S.dash_tab then S.dash_tab() end
+  elseif id:sub(1, 4) == "tab:" then
+    local want = id:sub(5)
     local d = S.dash or {}
-    local vs = d.views or {}
-    if #vs > 1 then
-      local i = 1
-      for k, v in ipairs(vs) do if v == S.dash_view then i = k; break end end
-      S.dash_view = vs[(i % #vs) + 1]
+    if vim.tbl_contains(d.views or {}, want) then
+      S.dash_view = want
       if d.win and api.nvim_win_is_valid(d.win) then show_scratch(d.win, d.cwd) end
     end
-  end)
-  local function enter()
-    local d = S.dash or {}
-    local ln0 = api.nvim_win_get_cursor(0)[1] - 1
-    if d.teardown and d.teardown[ln0] then
-      local t = d.teardown[ln0]
-      teardown_session(t.id, t.cwd)
-      if d.win and api.nvim_win_is_valid(d.win) then vim.defer_fn(function() show_scratch(d.win, d.cwd) end, 500) end
-    elseif d.plans and d.plans[ln0] then
-      local p = d.plans[ln0]
-      if p.session then
-        view_session(p.session.id, p.session.cwd)
-      else
-        vim.notify("unbound — P in the rail binds it")
-      end
-      pcall(function() require("plan-nvim").open(p.slug) end)
-    elseif d.tickets and d.tickets[ln0] then
-      local t = d.tickets[ln0]
-      if t.live then
-        vim.notify("agent: " .. t.id .. " already has a session")
-      elseif t.id and t.id ~= "" then
-        -- name the worktree JUST the ticket id (lowercase, e.g. "every-2662") — no
-        -- title slug. Linear still auto-links (it matches the identifier in the branch
-        -- daphen/every-2662, case-insensitive) and GitHub closes from the PR body.
-        -- cockpit-spawn = the full kickoff: worktree + devenv + nvim tab + seeded agent.
-        local name = t.id:lower()
-        local seed = "Work " .. t.id .. (t.title and t.title ~= "" and (": " .. t.title) or "")
-          .. "\n\nStart with /plan-ticket " .. t.id .. " to scope it, then implement."
-        if vim.fn.confirm("Spawn a session for " .. t.id .. "?", "&Yes\n&No", 2) == 1 then
-          local home = os.getenv("HOME") or ""
-          fn.jobstart({ home .. "/.local/bin/cockpit-spawn", name, seed }, { detach = true })
-          vim.notify("agent: spawning session · " .. name)
-        end
-      else
-        vim.notify("agent: ticket has no id in cycle.json")
-      end
-    elseif d.sessions and d.sessions[ln0] then
-      local s = d.sessions[ln0]; view_session(s.id, s.cwd) -- switch to the session under the cursor
-    elseif d.open and d.open[ln0] then
-      open_in_editor(d.cwd, d.open[ln0], nil) -- open the changed file under the cursor
-    elseif d.expand_ln and ln0 == d.expand_ln then
-      S.dash_expand = not S.dash_expand
-      if d.win and api.nvim_win_is_valid(d.win) then show_scratch(d.win, d.cwd) end
-    elseif acts[1] then
-      acts[1].fn()
+  elseif id:sub(1, 4) == "row:" then
+    local line = tonumber(id:sub(5))
+    if line and S.dash_enter then S.dash_enter(line) end
+  elseif id:sub(1, 4) == "key:" then
+    local key = id:sub(5)
+    if key == "i" then
+      vim.fn.jobstart({ vim.fn.expand("~/.config/niri/scripts/cockpit-ipc"), "focusComposer" },
+        { env = { COCKPIT_NVIM_SOCK = vim.env.NVIM_LISTEN_ADDRESS or "", HEIDR_NVIM_SOCK = vim.env.NVIM_LISTEN_ADDRESS or "" }, detach = true })
     end
   end
-  map("<CR>", enter) -- also shadows the global treesitter <CR>
-  map("o", enter)
+  return ""
 end
 
 -- Capture what the editor pane is showing for a session, so switching back
@@ -4536,7 +4172,10 @@ reflect_context = function(cwd)
   if not (want and fn.filereadable(want) == 1) then
     local plan = load_plan(cwd)
     local phase = plan and plan.progress and plan.progress.phase
-    if plan and phase ~= "implementing" and phase ~= "reconciled" then
+    -- Pin the plan only in its KNOWN planning phases. Matching "anything that
+    -- isn't implementing/reconciled" meant an off-schema phase a worker invented
+    -- ("amendment-approved") pinned the plan over the dash forever.
+    if plan and (phase == "draft" or phase == "planned" or phase == nil) then
       local pfile = fn.expand("~/personal/notes/storage/plans/") .. plan.key .. ".md"
       if fn.filereadable(pfile) == 0 then pfile = cwd .. "/.plans/" .. plan.key .. ".md" end
       if fn.filereadable(pfile) == 1 then
@@ -4574,6 +4213,19 @@ local function default_session()
 end
 
 local function to_dashboard()
+  if scope == "personal" then
+    local ed = target_editor_win()
+    if not ed then return end
+    local cwd = scope_root()
+    local buf = api.nvim_win_get_buf(ed)
+    local path = api.nvim_buf_get_name(buf)
+    if path ~= "" and vim.bo[buf].buftype == "" then
+      local ok, root = pcall(vim.fs.root, path, ".git")
+      if ok and root and root ~= "" then cwd = root end
+    end
+    show_scratch(ed, cwd)
+    return
+  end
   -- Nothing selected happens in a FRESH cockpit nvim (only the QML rail selects, and it
   -- only drives this nvim on a switch): fall back to the orchestrator instead of a
   -- silent no-op — that silent return was "<leader>D stopped opening the dash".
@@ -4859,7 +4511,7 @@ refresh_git_changes = function(cwd, path)
       -- shows its files as added instead of an empty CHANGES view.
       local unt = fn.systemlist({ "git", "-C", cwd, "ls-files", "--others", "--exclude-standard" })
       for _, f in ipairs(unt or {}) do
-        if f ~= "" and not f:match("^%.heidr%-pastes/") then
+        if f ~= "" and not f:match("^%.heidr%-pastes/") and not f:match("^agents/") then
           local n = tonumber(fn.system({ "wc", "-l", cwd .. "/" .. f }):match("%d+") or "0") or 0
           n = math.min(n, 500)
           output[#output + 1] = "diff --git a/" .. f .. " b/" .. f
@@ -4881,7 +4533,8 @@ refresh_git_changes = function(cwd, path)
           for _, change in pairs(cache.bypath) do cache.files[#cache.files + 1] = change end
           table.sort(cache.files, function(a, b) return a.path < b.path end)
         else
-          S.gitdiff[cwd] = parsed
+          parsed.at = os.time()
+        S.gitdiff[cwd] = parsed
         end
         if S.selected and session_cwd(S.selected) == cwd then
           if S.view == "changes" then render_changes() else render_chat(false) end
@@ -4892,6 +4545,7 @@ refresh_git_changes = function(cwd, path)
         -- the dash's OWN cwd, not the selection: the cockpit rail renders dashboards for
         -- sessions this nvim has never selected, and gating on S.selected skipped them all.
         if refresh_dashboard and S.dash and S.dash.cwd == cwd then refresh_dashboard() end
+        pcall(function() require("cockpit.chin").refresh() end)
       end)
     end,
   })
@@ -6299,14 +5953,6 @@ function M.setup(opts)
   end, {})
   api.nvim_create_user_command("CockpitReroot", function(o) reroot(o.args) end, { nargs = 1 })
   api.nvim_create_user_command("CockpitDash", to_dashboard, {}) -- editor back to the session dashboard
-  -- Swap the masthead banner light/dark when the theme flips, if it's showing.
-  api.nvim_create_autocmd("ColorScheme", {
-    callback = function()
-      if S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf) then
-        pcall(place_banner, S.scratchbuf, S.dash and S.dash.win)
-      end
-    end,
-  })
   -- global: jump the editor to the active session's dashboard from ANY buffer
   -- (no-ops when there's no session, so it's a safe always-on binding). <leader>D
   -- rather than gd — bare gd is LSP go-to-definition.
@@ -6448,9 +6094,6 @@ function M.setup(opts)
             if api.nvim_win_get_width(w) ~= S.dash_w then -- width changed → reflow; else no-op
               local cwd = (S.dash and S.dash.cwd) or (S.selected and session_cwd(S.selected))
               if cwd then pcall(show_scratch, w, cwd) end
-            else
-              -- Height-only resize: re-place the banner without re-rendering the card.
-              pcall(place_banner, S.scratchbuf, w)
             end
           end
         end
@@ -6529,6 +6172,12 @@ function M.setup(opts)
     else
       api.nvim_create_autocmd("VimEnter", { once = true, callback = function() vim.schedule(boot) end })
     end
+  elseif cockpit_env("TITLE") then
+    -- Cockpit-shell nvim (QML rail drives it over RPC): render the at-rest home
+    -- dash on boot so the pane is never blank before the rail's first drive.
+    local function first_dash() vim.schedule(function() M.dashboard(scope_root()) end) end
+    if vim.v.vim_did_enter == 1 then first_dash()
+    else api.nvim_create_autocmd("VimEnter", { once = true, callback = first_dash }) end
   end
 end
 

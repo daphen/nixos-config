@@ -82,9 +82,15 @@ local function gather()
 		if ok and sc.total and sc.total > 0 then search = sc.current .. "/" .. sc.total end
 	end
 	local plan = ""
+	local dashboard = { active = false, model = {} }
+	local shared_diff
 	pcall(function()
 		local m = require("cockpit")
 		plan = (m.plan_chip and m.plan_chip() or "")
+		dashboard = (m.dashboard_snapshot and m.dashboard_snapshot()) or dashboard
+		local model = type(dashboard.model) == "table" and dashboard.model or {}
+		local git_cwd = dashboard.active and model.cwd or vim.fn.getcwd()
+		shared_diff = m.git_summary and m.git_summary(git_cwd) or nil
 	end)
 	-- SESSION-scoped only: the plan-nvim statusline fallback reported the
 	-- last-opened plan BUFFER regardless of session (inline-user-bash showing
@@ -92,25 +98,19 @@ local function gather()
 	-- The chin is a glance, not a coach: keep ticket + progress, drop the
 	-- lifecycle hint ("→ g implement") and the status word.
 	plan = plan:gsub("%s*→.*$", ""):gsub("%s*·%s*%a+%s*$", "")
-	local fticon, fticolor = "", ""
-	pcall(function()
-		local di = require("nvim-web-devicons")
-		local ic, color = di.get_icon_color_by_filetype(vim.bo[buf].filetype, { default = true })
-		fticon, fticolor = ic or "", color or ""
-	end)
 	return {
 		path = rel,
-		fticon = fticon,
-		fticolor = fticolor,
 		err = diag[vim.diagnostic.severity.ERROR] or 0,
 		warn = diag[vim.diagnostic.severity.WARN] or 0,
 		info = diag[vim.diagnostic.severity.INFO] or 0,
 		search = search,
 		rec = vim.fn.reg_recording(),
 		ft = vim.bo[buf].filetype or "",
-		add = diff_cache.add, del = diff_cache.del,
+		add = shared_diff and shared_diff.add or diff_cache.add,
+		del = shared_diff and shared_diff.del or diff_cache.del,
 		plan = vim.trim(plan),
 		root = root_chip(),
+		dashboard = dashboard,
 		line = vim.api.nvim_win_get_cursor(0)[1],
 		lines = vim.api.nvim_buf_line_count(buf),
 	}
@@ -135,6 +135,10 @@ local function schedule()
 end
 local function schedule_with_diff()
 	refresh_diff(schedule)
+	schedule()
+end
+
+function M.refresh()
 	schedule()
 end
 

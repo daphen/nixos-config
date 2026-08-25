@@ -9,6 +9,7 @@ source "$(dirname "$0")/browser-config.sh"
 
 exec "$BROWSER_BIN" \
     "${BROWSER_FLAGS[@]}" \
+    "${BROWSER_FLAGS_WORK[@]}" \
     --user-data-dir="$BROWSER_USER_DATA_WORK" \
     --profile-directory="$BROWSER_PROFILE" \
     --class="$BROWSER_CLASS_WORK" \

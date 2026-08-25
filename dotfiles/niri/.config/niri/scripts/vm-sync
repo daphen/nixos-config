@@ -36,6 +36,16 @@ if [ "${1:-}" = "--align" ]; then
   host="${COCKPIT_VM_HOST:-${HEIDR_VM_HOST:-$vm.workstation.lovable.net}}"
   local_wt="$HOME/work/lovable.daphen-$t"
   [ -d "$local_wt" ] || exit 0
+  # Self-heal missing mirror deps on every switch: mirrors created before the
+  # vm-wt install fix (or whose install failed) leave ts_ls resolving nothing.
+  # Guarded on node_modules absence, so the switch hot path stays free.
+  # (the log's mtime debounces retries — one attempt per 10 min, so a failing
+  # install can't re-fire on every switch, and a stuck one isn't doubled.)
+  if [ -f "$local_wt/package.json" ] && [ ! -d "$local_wt/node_modules" ] \
+     && ! find "$local_wt/.pnpm-install.log" -mmin -10 2>/dev/null | grep -q .; then
+    (cd "$local_wt" && direnv allow . 2>/dev/null
+     nohup direnv exec "$local_wt" pnpm install --frozen-lockfile --prefer-offline >"$local_wt/.pnpm-install.log" 2>&1 &)
+  fi
   # Cheap LOCAL gate before any network. Routine agent work is small, so unless the diff is
   # pathological there is nothing to repair and we never touch the box.
   #

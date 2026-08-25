@@ -50,6 +50,7 @@ print(' '.join(str(w['id']) for w in json.load(sys.stdin)
 
 "$BROWSER_BIN" \
     "${BROWSER_FLAGS[@]}" \
+    "${BROWSER_FLAGS_WORK[@]}" \
     --user-data-dir="$BROWSER_USER_DATA_WORK" \
     --profile-directory="$BROWSER_PROFILE" \
     --class="$BROWSER_CLASS_WORK" &

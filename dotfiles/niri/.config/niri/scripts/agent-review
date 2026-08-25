@@ -31,6 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from agent_review_harness import (
+    FULL_READINESS_TIMEOUT_SECONDS,
     HarnessPorts,
     ManualHarness,
     adopt_or_create_worktree,
@@ -89,7 +90,9 @@ def parse_pr(s: str) -> int:
         return int(s)
     m = PR_URL_RE.search(s)
     if m:
-        return int(m.group(1))
+        # group(1)/group(2) are org/repo; the NUMBER is group(3). Reading group(1) made
+        # every full PR URL die with "invalid literal for int(): 'lovablelabs'".
+        return int(m.group(3))
     raise SystemExit(f"could not parse PR number from: {s!r}")
 
 
@@ -236,6 +239,8 @@ def main() -> int:
                     help="authenticated stopped Chromium profile cloned into the context")
     ap.add_argument("--allow-sandbox-start", action="store_true",
                     help="one bounded browser-flow sandbox start if no live iframe exists")
+    ap.add_argument("--runtime-contract", choices=("production", "exact-branch"),
+                    help="required manual-test runtime provenance: explicit production CDN or exact branch-built script_tag")
     ap.add_argument("--teardown", metavar="CONTEXT_ID",
                     help="stop and remove one owned manual-test context")
     ap.add_argument("--prepare-only", action="store_true",
@@ -243,7 +248,7 @@ def main() -> int:
     a = ap.parse_args()
 
     if a.teardown:
-        if a.pr or a.devenv or a.manual_test or a.browser_profile_seed or a.allow_sandbox_start:
+        if a.pr or a.devenv or a.manual_test or a.browser_profile_seed or a.allow_sandbox_start or a.runtime_contract:
             ap.error("--teardown cannot be combined with PR startup options")
         try:
             teardown_context(Path(HOME), a.teardown)
@@ -253,8 +258,10 @@ def main() -> int:
         return 0
     if not a.pr:
         ap.error("PR is required unless --teardown is used")
-    if (a.browser_profile_seed or a.allow_sandbox_start) and not a.manual_test:
+    if (a.browser_profile_seed or a.allow_sandbox_start or a.runtime_contract) and not a.manual_test:
         ap.error("browser harness options require --manual-test PROJECT_ID")
+    if a.manual_test and not a.runtime_contract:
+        ap.error("--manual-test requires explicit --runtime-contract production|exact-branch")
 
     num = parse_pr(a.pr)
     global REPO_DIR, SCOPE
@@ -281,13 +288,14 @@ def main() -> int:
             vm_user=os.environ.get("COCKPIT_VM_USER", os.environ.get("HEIDR_VM_USER", "david_karlsson_lovable_dev")),
             browser_profile_seed=a.browser_profile_seed,
             allow_sandbox_start=a.allow_sandbox_start,
+            runtime_contract=a.runtime_contract,
         )
         context = harness.write()
         if not a.prepare_only:
             try:
                 harness.prepare_vm()
                 harness.start()
-                subprocess.run(shlex.split(context.readiness), check=True, timeout=70)
+                subprocess.run(shlex.split(context.readiness), check=True, timeout=FULL_READINESS_TIMEOUT_SECONDS)
             except (RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
                 raise SystemExit(f"manual-test context is not ready: {error}") from error
         print(f"{context.context_id}: context written at {harness.root}")
