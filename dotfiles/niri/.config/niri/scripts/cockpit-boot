@@ -23,4 +23,26 @@ for w in json.load(sys.stdin):
   [ -n "${wid:-}" ] && break
   sleep 1
 done
-[ -n "${wid:-}" ] && niri msg action move-window-to-workspace --window-id "$wid" --focus false "$ws" >/dev/null 2>&1
+[ -n "${wid:-}" ] || exit 0
+# Move to the named workspace if it exists; otherwise claim the trailing empty
+# workspace on the window's output and name it. The workspace is therefore
+# born WITH the cockpit instead of being declared (a declared one lingered as
+# an empty pill whenever the cockpit was closed).
+if niri msg --json workspaces | python3 -c "
+import json,sys
+sys.exit(0 if any((w.get('name') or '') == '$ws' for w in json.load(sys.stdin)) else 1)"; then
+  niri msg action move-window-to-workspace --window-id "$wid" --focus false "$ws" >/dev/null 2>&1
+else
+  tail_idx=$(niri msg --json workspaces | python3 -c "
+import json,sys
+ws = json.load(sys.stdin)
+win_ws = '$(niri msg --json windows | python3 -c "
+import json,sys
+for w in json.load(sys.stdin):
+    if w['id'] == int('$wid'): print(w.get('workspace_id')); break")'
+out = next((w.get('output') for w in ws if str(w.get('id')) == win_ws), None)
+cand = [w for w in ws if w.get('output') == out]
+print(max(w['idx'] for w in cand))")
+  niri msg action move-window-to-workspace --window-id "$wid" --focus false "$tail_idx" >/dev/null 2>&1
+  niri msg action set-workspace-name --workspace "$tail_idx" "$ws" >/dev/null 2>&1
+fi
