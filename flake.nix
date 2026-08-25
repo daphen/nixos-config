@@ -57,7 +57,7 @@
     # Cockpit: nvim terminal + agentd rail in one Quickshell window. Local path;
     # follows system nixpkgs + Quickshell so the plugin uses the running Qt.
     cockpit = {
-      url = "path:/home/daphen/personal/cockpit";
+      url = "path:/home/daphen/personal/ai-cockpit";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.quickshell.follows = "quickshell";
     };

@@ -26,13 +26,13 @@
         ]
       },
       "locked": {
-        "lastModified": 1787299496,
-        "narHash": "sha256-Jw9YVtJxAi29RcFNmGj6FWdlEUaJwwISwSu9V6chmxo=",
-        "path": "/home/daphen/personal/cockpit",
+        "lastModified": 1787583586,
+        "narHash": "sha256-oPdm6TaywXJrfFm5Ae0JcOE6k8cQEDwHXvEZqcOFAUs=",
+        "path": "/home/daphen/personal/ai-cockpit",
         "type": "path"
       },
       "original": {
-        "path": "/home/daphen/personal/cockpit",
+        "path": "/home/daphen/personal/ai-cockpit",
         "type": "path"
       }
     },
