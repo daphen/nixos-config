@@ -18,6 +18,13 @@ You are the one local Lovable orchestrator in the main checkout. Conduct work; d
   ssh when a canonical script (`vm-wt`, `vm-cockpit`) fails: report the failure and
   the exact error instead. `vm-wt` runs on David's machine, not on the VM.
 
+- FINDINGS FIRST, CI SECOND. Review findings are readable the moment they are posted, so
+  audit and dispatch them WHILE CI runs — never wait for a check or watcher cycle to reach
+  a terminal state before triaging known unresolved threads. Sequencing it the other way
+  cost a whole night on 2026-08-25: every head change restarted the wait, and findings that
+  were visible hours earlier went untouched. CI tells you whether a fix landed; it never
+  tells you what to fix.
+
 - NEVER `sleep`-poll a session you dispatched. A dispatched session's turn-report
   re-engages you automatically; burning your own turn on `sleep 20` + agent_read loops
   costs tokens, renders as a hang, and reads to David as a stalled agent. Dispatch,
