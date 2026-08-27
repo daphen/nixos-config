@@ -6,6 +6,9 @@ import net from "node:net";
 
 import rolePolicy from "./index.ts";
 import {
+  approvalResultIsApproved,
+  approvalResultIsDeclined,
+  approvalResultText,
   commandDecision,
   grantsFromPrompt,
   isRoleProfile,
@@ -51,6 +54,21 @@ describe("GitHub mutation delegation", () => {
     expect(mutationForCommand("gh pr edit 1 --title x")).toBe("pr-update");
     expect(mutationForCommand("gh pr comment 1 -b ok")).toBe("post");
     expect(mutationForCommand("gh pr merge 1")).toBe("merge");
+  });
+
+  test("a GraphQL read is a read, a GraphQL mutation is not", () => {
+    // -f query= is the ONLY way to pass a GraphQL document, so classifying -f as a
+    // write made every review-thread read raise an approval card.
+    const read = `gh api graphql -f query='query { repository(owner:"l",name:"r"){ pullRequest(number:1){ reviewThreads(first:100){ nodes{ isResolved } } } } }'`;
+    expect(mutationForCommand(read)).toBeNull();
+    expect(commandDecision("lovable-worker", read, new Set())).toBeNull();
+
+    const write = `gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"x"}){ thread { id } } }'`;
+    expect(mutationForCommand(write)).toBe("post");
+    expect(commandDecision("lovable-worker", write, new Set())).toContain("needs approval");
+
+    // REST writes are untouched by the graphql carve-out.
+    expect(mutationForCommand("gh api repos/o/r/pulls/1/comments -f body=hi")).toBe("post");
   });
 
   test("worker permission is current-turn and action-specific", () => {
@@ -368,13 +386,13 @@ describe("watcher containment and manifest", () => {
   });
 
   test("manifest tools are locked to names inventoried from pi.getAllTools", () => {
-    const known = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "agent_roster", "agent_read", "agent_send", "agent_answer", "agent_steer", "agent_review", "agent_spawn", "agent_whoami", "agent_set_plan", "agent_report_review_findings", "agent_disposition_review_findings", "agent_schedule_self", "agent_stop_self", "ask_user", "mcp"]);
+    const known = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "agent_roster", "agent_read", "agent_send", "agent_answer", "agent_steer", "agent_review", "agent_spawn", "agent_whoami", "agent_set_plan", "agent_report_review_findings", "agent_disposition_review_findings", "agent_schedule_self", "agent_stop_self", "ask_user", "request_user_bash", "mcp"]);
     const manifest = JSON.parse(fs.readFileSync(path.join(AI, "roles/manifest.json"), "utf8"));
     for (const [profile, spec] of Object.entries<any>(manifest.profiles)) {
       expect(isRoleProfile(profile)).toBe(true);
       for (const tool of spec.tools) expect(known.has(tool)).toBe(true);
     }
-    expect(manifest.profiles["lovable-watcher"].tools).toEqual(["bash", "agent_send", "agent_report_review_findings", "agent_schedule_self", "agent_stop_self"]);
+    expect(manifest.profiles["lovable-watcher"].tools).toEqual(["bash", "agent_send", "agent_report_review_findings", "agent_schedule_self", "agent_stop_self", "request_user_bash"]);
   });
 });
 
@@ -426,5 +444,22 @@ describe("inline-command approvals", () => {
 
   test("approved card with inline command grants", () => {
     expect(grantsFromApprovalCard("Approve running: gh pr create --fill").has("pr-create")).toBe(true);
+  });
+});
+
+describe("approval result vocabulary", () => {
+  const card = (text: string) => [{ type: "text", text }];
+  test("recognises approval and decline, and nothing else", () => {
+    expect(approvalResultIsApproved(card("approved"))).toBe(true);
+    expect(approvalResultIsApproved(card("Approved"))).toBe(true);
+    expect(approvalResultIsDeclined(card("declined"))).toBe(true);
+    expect(approvalResultIsDeclined(card("cancelled"))).toBe(true);
+    // An unknown vocabulary is neither: the caller must keep the pending approval
+    // instead of consuming it and granting nothing.
+    for (const unknown of ["yes", "confirmed", "ok", "true", "approved by orchestrator"]) {
+      expect(approvalResultIsApproved(card(unknown))).toBe(false);
+      expect(approvalResultIsDeclined(card(unknown))).toBe(false);
+    }
+    expect(approvalResultText(card("  approved  "))).toBe("approved");
   });
 });

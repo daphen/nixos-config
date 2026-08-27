@@ -12,6 +12,8 @@ function envAlias(name: string): string | undefined {
 import { consumeReviewPush } from "../agents/agentd.ts";
 import {
   approvalResultIsApproved,
+  approvalResultIsDeclined,
+  approvalResultText,
   commandFromCardText,
   commandDecision,
   grantsFromApprovalCard,
@@ -132,8 +134,18 @@ export default function rolePolicy(pi: ExtensionAPI) {
   pi.on("tool_result", (event) => {
     if (event.toolName !== "ask_user") return undefined;
     const approved = pendingApprovals.get(event.toolCallId);
+    if (!approved) return undefined;
+    const isApproved = approvalResultIsApproved(event.content);
+    // Only a result we UNDERSTAND settles the card. An unrecognised one (a pi release
+    // changing the wording, a new card kind) leaves the pending approval in place so a
+    // retry can still settle it — deleting it here granted nothing and left the worker
+    // blocked on an approval it had already been given.
+    if (!event.isError && !isApproved && !approvalResultIsDeclined(event.content)) {
+      console.error(`[role-policy] unrecognised ask_user result ${JSON.stringify(approvalResultText(event.content)).slice(0, 120)} — keeping the pending approval`);
+      return undefined;
+    }
     pendingApprovals.delete(event.toolCallId);
-    if (!event.isError && approved && approvalResultIsApproved(event.content)) {
+    if (!event.isError && isApproved) {
       for (const grant of approved) grants.add(grant);
     }
     return undefined;

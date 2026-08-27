@@ -154,15 +154,26 @@ export function grantsFromApprovalCard(text: string): Set<MutationGrant> {
   return grantsFromLanguage(text, true);
 }
 
-export function approvalResultIsApproved(content: unknown): boolean {
-  if (!Array.isArray(content)) return false;
-  const text = content
+export function approvalResultText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
     .filter((item): item is { type: string; text: string } => typeof item === "object" && item !== null && "type" in item && "text" in item)
     .filter((item) => item.type === "text")
     .map((item) => item.text)
     .join("\n")
     .trim();
-  return /^approved$/i.test(text);
+}
+
+export function approvalResultIsApproved(content: unknown): boolean {
+  return /^approved$/i.test(approvalResultText(content));
+}
+
+// A decline we RECOGNISE. Anything that is neither this nor "approved" is pi speaking a
+// vocabulary we do not know — a pi upgrade, a new card kind — and must NOT be treated as
+// a settled answer: consuming it would burn the approval and grant nothing, which is
+// exactly the "the guard consumed the first approval without executing" loop.
+export function approvalResultIsDeclined(content: unknown): boolean {
+  return /^(declined|cancelled|canceled|rejected|denied)$/i.test(approvalResultText(content));
 }
 
 // The literal git/gh command an approval card is asking about. Cards quote the
@@ -179,6 +190,10 @@ export function mutationForCommand(command: string): MutationGrant | null {
   if (/\bgh\s+pr\s+edit\b/i.test(command)) return "pr-update";
   if (/\bgh\s+pr\s+(?:comment|review)\b/i.test(command)) return "post";
   if (/\bgh\s+pr\s+merge\b/i.test(command) || /\bgit\b[^;&|\n]*\bmerge\b/i.test(command)) return "merge";
+  // `gh api graphql` can only pass its document as -f query=…, so the -f rule below read
+  // every GraphQL READ as a POST: inspecting a PR's review threads demanded a human
+  // approval card, over and over, all evening. Only a mutation document mutates.
+  if (/\bgh\s+api\b[^\n]*\bgraphql\b/i.test(command)) return /\bmutation\b/i.test(command) ? "post" : null;
   if (/\bgh\s+api\b[^\n]*(?:(?:--method|-X)\s*(?:POST|PUT|PATCH|DELETE)\b|(?:-f|--field|--raw-field|--input)(?:\s|=))/i.test(command)) return "post";
   if (/\bcurl\b(?=[^\n]*(?:api\.github\.com|github\.com\/api))(?=[^\n]*(?:(?:-X|--request)\s*(?:POST|PUT|PATCH|DELETE)\b|(?:-d|--data|--json)(?:\s|=)))[^\n]*/i.test(command)) return "post";
   return null;
