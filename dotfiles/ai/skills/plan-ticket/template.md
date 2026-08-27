@@ -51,6 +51,19 @@ top-to-bottom in execution order.
 
 *New: N · Modified: N · Touched: N*
 
+**Budget: ~N lines changed.** The size this SHOULD cost, decided before writing code.
+`--reconcile` fails if the real diff exceeds 1.5× — and the required response is to
+STOP and report what must shrink, never to raise the budget. EVERY-2739/2741/3064
+spent +970 lines answering "how big is this component?", whose correct answer was
+"store w/h when you snapshot it". A budget is what makes that visible on day one.
+
+**Simplest alternative** — one line per ◆ step that introduces a MECHANISM (a
+protocol, a cache, mirrored state, a version gate, a new module):
+- ◆N: simplest alternative was <X>; rejected because <falsifiable reason>.
+If the reason is not falsifiable ("more flexible", "future-proof", "cleaner"), the
+mechanism does not go in the plan. A postMessage handshake with version negotiation
+would never have survived this line.
+
 Placement (new files sit next to what already exists — sanity-check the shape):
 ```
 internal/foo/
@@ -79,3 +92,16 @@ _(filled by `--reconcile`; full detail in review.json)_
 - Missing steps (planned, no change): none / …
 - Drift: none / <explanation>
 - Verification: X/Y passed · manual pending: …
+- Budget: ~N planned vs N actual lines (over 1.5× ⇒ STOP and report what shrinks)
+
+### Simplicity pass — answer with evidence, delete what you cannot answer
+- New exported symbols → **name each one's production caller.** No caller means it is
+  dead on arrival: inline it or delete it, with its tests. (`candidatePreviewRevisionMessage`
+  shipped exported, 160 lines of tests, and zero production callers.)
+- New files → **why couldn't this live in an existing file?** One sentence each.
+- Any state mirroring the server or the DOM (`*Ref`, a pending queue, a cache) →
+  **why can it not be read at the point of use?** (`revisionRef` + `pendingStatusRef`
+  existed only to manage a race the design itself created.)
+- Any test asserting a helper's internals rather than behaviour through the public
+  entry point → rewrite or delete it.
+- Anything that needs a dev-only flag or override to work → not done. Say so plainly.

@@ -329,6 +329,20 @@ verification are the product here, not per-line explanation.
      no corresponding change is flagged `missing` (silently dropped work).
 3. **Drift:** any file/hunk outside the surface-area boundary, or any change that
    maps to no step, is flagged. This is the containment check.
+3b. **Budget + simplicity pass — the slop check.** Compare `git diff --shortstat`
+   against the plan's declared budget: over 1.5× is a STOP, reported as what must
+   SHRINK (never a raised budget). Then answer the plan's Simplicity pass with
+   evidence, and act on it in the same run rather than reporting it:
+   - every new exported symbol → name its production caller; no caller ⇒ inline or
+     delete it, tests included
+   - every new file → one sentence on why it couldn't live in an existing file
+   - any `*Ref`/cache/pending-queue mirroring server or DOM state → why it can't be
+     read at the point of use
+   - any test asserting a helper's internals ⇒ rewrite through the public entry point
+   - anything needing a dev-only flag or override ⇒ not done; say so plainly
+   Correct-but-oversized is a finding. A diff can pass every test and still be slop:
+   EVERY-2739/2741/3064 shipped +970 lines, 97 review threads and a dead exported
+   helper for a feature whose answer was "store w/h at snapshot time".
 4. **Verification → the test checklist.** The `verification[]` array IS the panel's
    checklist: items WITH a `command` render as `AT#` (automated), items without as
    `MT#` (manual). `--go` may have already written AT# results here; re-run every `AT#`

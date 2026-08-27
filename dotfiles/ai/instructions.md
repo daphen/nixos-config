@@ -152,6 +152,30 @@ Specifically don't write:
 
 When you DO write one, one line. Two lines max.
 
+# Code you may not write
+
+Simplest thing that works, always. These are hard rules, not preferences — each one
+names a real failure that shipped and had to be reverted:
+
+- **No exported symbol without a production caller.** Tests-only ⇒ inline or delete it,
+  tests included.
+- **No client-side mirror of server or DOM state** — no `*Ref` shadowing a field, no
+  pending queue for values that "arrive out of order".
+- **No new protocol between components in one repo.** No handshake, hello/ack, version
+  negotiation or session matching to ask a component about itself.
+- **`useEffect` only to synchronize with something OUTSIDE React** (subscription, socket,
+  imperative API, timer, DOM measurement). Never to derive state from props/state
+  (compute in render), reset state on a prop change (use `key`), react to a user action
+  (do it in the handler), or store a received value for later re-derivation. **If an
+  effect's body sets state computable from what you already have, delete the effect.**
+- **No code for a case you cannot produce today** — no unreachable defensive branch, no
+  option nobody passes.
+- **Tests assert behaviour through the public entry point**, never a helper's internals.
+- **Nothing that needs a dev-only flag or override to work.** If it needs one, it isn't
+  done — say so rather than shipping the override.
+
+When a plan carries a line budget, exceeding 1.5× is a STOP: report what must shrink.
+
 # Subsystems map (proart)
 
 For anything touching the desktop, look here before guessing:
