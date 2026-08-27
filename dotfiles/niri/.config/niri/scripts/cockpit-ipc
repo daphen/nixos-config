@@ -29,7 +29,12 @@ probe_id() {
 # qs client commands abort in LogManager::init. Alive-but-not-ours = skip, keep.
 probe() { # probe <id> <fn> -> stdout or failure (+reap only if dead)
   local out rc
-  out=$(timeout 1 qs ipc -i "$1" call cockpit "$2" 2>&1); rc=$?
+  out=$(timeout 2 qs ipc -i "$1" call cockpit "$2" 2>&1); rc=$?
+  # A TIMEOUT (124) is not death — a busy cockpit answers late. Reaping on it deleted
+  # the registry dir of a LIVE cockpit, which is what made Ctrl+l "break" the cockpit:
+  # anything that then checked `qs list` for liveness concluded nothing was running
+  # (2026-08-27). Only a definitive connect failure reaps.
+  if [ "$rc" -eq 124 ]; then return 1; fi
   if [ "$rc" -ne 0 ]; then rm -rf "${reg:?}/$1"; return 1; fi
   case "$out" in
     *"not found"*|"") return 1;;

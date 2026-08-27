@@ -17,6 +17,32 @@ import json, os, socket, subprocess, sys, time
 RT = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
 VM_CWD = "/home/david_karlsson_lovable_dev/src/lovable"
 
+# The RECORDED role holder — "lovable" (proart) or "work" (the VM). Only a completed
+# handover writes it, so the role moves when David toggles and at no other time.
+# Inferring it from "whoever holds an armed goal" meant a goal clearing silently
+# reassigned the orchestrator to the other machine: on 2026-08-26 the rail showed the
+# local session as the orchestrator, with the VM's workers listed underneath it.
+HOLDER_FILE = os.path.join(
+    os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
+    "cockpit", "orchestrator-holder")
+
+
+def recorded_holder():
+    try:
+        with open(HOLDER_FILE) as fh:
+            value = fh.read().strip()
+        return value if value in ("lovable", "work") else None
+    except OSError:
+        return None
+
+
+def record_holder(scope):
+    os.makedirs(os.path.dirname(HOLDER_FILE), exist_ok=True)
+    tmp = HOLDER_FILE + ".tmp"
+    with open(tmp, "w") as fh:
+        fh.write(scope + "\n")
+    os.replace(tmp, HOLDER_FILE)
+
 def dial(scope):
     s = socket.socket(socket.AF_UNIX)
     s.connect(os.path.join(RT, f"agentd-{scope}.sock"))
@@ -110,7 +136,10 @@ CAPABILITIES = {
 
 
 def holder():
-    """Which side currently holds the role: the armed orchestrator wins, else the live one."""
+    """Which side holds the role. The RECORD wins; inference is only a first-run seed."""
+    recorded = recorded_holder()
+    if recorded:
+        return recorded
     sides = [("lovable", "lovable"), ("work", "orchestrator")]
     live = []
     for scope, name in sides:
@@ -174,6 +203,9 @@ def handover(src_scope, src_name, dst_scope, dst_name, dst_cwd, label):
                 ok = True
                 break
             time.sleep(1)
+    # The role has actually moved now — record it. Everything that displays or toggles
+    # the role reads this file, so nothing else can reassign the role behind David's back.
+    record_holder(dst_scope)
     print(f"handover → {label}: {'goal pinned, driving' if ok and goal else 'seeded'}"
           f" ({dst_scope}:{dst_name}); {src_name} stood down")
     if goal and not ok:
@@ -182,6 +214,27 @@ def handover(src_scope, src_name, dst_scope, dst_name, dst_cwd, label):
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
+    if mode == "--status":
+        rec = recorded_holder()
+        where = {"lovable": "proart (local)", "work": "the VM"}.get(rec)
+        if where:
+            print(f"orchestrator role: {where}  [recorded in {HOLDER_FILE}]")
+        else:
+            print("orchestrator role: NOT RECORDED — the next toggle or handover will set it")
+        for scope, name in (("lovable", "lovable"), ("work", "orchestrator")):
+            e = roster(scope).get(name)
+            if e:
+                print(f"  {scope}:{name} status={e.get('status')} "
+                      f"goal={'armed' if e.get('goal') else 'none'}")
+        sys.exit(0)
+    if mode == "--set":
+        # Adopt reality without performing a handover (seeding, or after a manual fix).
+        target = sys.argv[2] if len(sys.argv) > 2 else ""
+        if target not in ("lovable", "work"):
+            sys.exit("usage: cockpit-handover --set lovable|work")
+        record_holder(target)
+        print(f"recorded orchestrator role: {target} (no handover performed)")
+        sys.exit(0)
     if mode in ("", "toggle"):
         # No argument = flip to the other side. Direction is derived from who holds the
         # role, so the same keypress works in both directions.
@@ -197,4 +250,4 @@ if __name__ == "__main__":
     elif mode == "local":
         handover("work", "orchestrator", "lovable", "lovable", os.path.expanduser("~/work/lovable"), "the local orchestrator")
     else:
-        sys.exit("usage: cockpit-handover [vm|local]   (no argument = toggle)")
+        sys.exit("usage: cockpit-handover [vm|local|--status|--set lovable|work]   (no argument = toggle)")

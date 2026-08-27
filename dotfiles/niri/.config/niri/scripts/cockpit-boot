@@ -14,12 +14,24 @@ case "$mode" in
     export COCKPIT_AGENTD_SOCKS="$XDG_RUNTIME_DIR/agentd-personal.sock"
     title="cockpit-qs · private"; ws="chat" ;;
 esac
+# A crashed cockpit leaves its frame mapped, so "first window with this title" can be
+# the corpse — we then moved the dying window and left the new one wherever the focus
+# happened to be. Wait for an id that was not already there.
+before=$(niri msg --json windows 2>/dev/null | WANT_TITLE="$title" python3 -c '
+import json, os, sys
+want = os.environ.get("WANT_TITLE", "")
+print(" ".join(str(w["id"]) for w in json.load(sys.stdin) if (w.get("title") or "") == want))' 2>/dev/null)
+
 setsid -f "$HOME/personal/ai-cockpit/run-qs.sh" >/dev/null 2>&1
 for _ in $(seq 1 30); do
-  wid=$(niri msg --json windows 2>/dev/null | python3 -c "
-import json,sys
+  wid=$(OLD_IDS="$before" WANT_TITLE="$title" niri msg --json windows 2>/dev/null | \
+    OLD_IDS="$before" WANT_TITLE="$title" python3 -c '
+import json, os, sys
+old = set(os.environ.get("OLD_IDS", "").split())
+want = os.environ.get("WANT_TITLE", "")
 for w in json.load(sys.stdin):
-    if (w.get('title') or '') == '$title': print(w['id']); break" 2>/dev/null)
+    if (w.get("title") or "") == want and str(w["id"]) not in old:
+        print(w["id"]); break' 2>/dev/null)
   [ -n "${wid:-}" ] && break
   sleep 1
 done

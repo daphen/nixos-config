@@ -26,8 +26,8 @@
         ]
       },
       "locked": {
-        "lastModified": 1787583586,
-        "narHash": "sha256-oPdm6TaywXJrfFm5Ae0JcOE6k8cQEDwHXvEZqcOFAUs=",
+        "lastModified": 1787857024,
+        "narHash": "sha256-yAWmBnqRl3qGjlWxrOprpcT9Jh1qk9dSbFQitQbLPZ8=",
         "path": "/home/daphen/personal/ai-cockpit",
         "type": "path"
       },
@@ -246,11 +246,11 @@
     "niri-unstable": {
       "flake": false,
       "locked": {
-        "lastModified": 1787131680,
-        "narHash": "sha256-E4rIyu9AlowAE/8k9vLEvVzlZk7DGYqFEsHihsdDtUE=",
+        "lastModified": 1787665214,
+        "narHash": "sha256-Itx2IrLFDZseJAP2t4FJGOxIyTvOO7tLK8hUdS2czA0=",
         "owner": "daphen",
         "repo": "niri",
-        "rev": "5c2dae3f11f39a45a74e528e7c5299fb196c4898",
+        "rev": "a84810570ab5f76c592ac37938fc005a1c6d5c77",
         "type": "github"
       },
       "original": {
@@ -310,11 +310,11 @@
     },
     "nixpkgs-latest": {
       "locked": {
-        "lastModified": 1785967620,
-        "narHash": "sha256-IItrdb7Puk05RqOBWZYFC5X6Wl1sJmCfh5MWVHw5iMM=",
+        "lastModified": 1787498568,
+        "narHash": "sha256-9i/VTdusq/+NM/tz+J1Re+ojkMB8MBf0QshnYfzHz30=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "b7c2ada94fe99c15b0dbcf4d11fd7850b957a436",
+        "rev": "56c02bc00adcf003215cc4bd996d6efaf4cff188",
         "type": "github"
       },
       "original": {
@@ -416,11 +416,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787228815,
+        "lastModified": 1787665205,
         "narHash": "sha256-5pMnqQHR0SNDJYxUAtUYlVk8HNqM1uVl5moqiY0D7ko=",
         "ref": "refs/heads/main",
-        "rev": "929790bc9a317f7e62968b80311d847ddad30b58",
-        "revCount": 68,
+        "rev": "81a216ccfad444c07b041c599669441286aad8cf",
+        "revCount": 70,
         "type": "git",
         "url": "ssh://git@github.com/daphen/palette-daemon"
       },

@@ -36,6 +36,11 @@ restart_marker="${XDG_RUNTIME_DIR}/cockpit-role-bundle-work.restart-required"
 legacy_restart_marker="${XDG_RUNTIME_DIR}/heidr-role-bundle-work.restart-required"
 [ -e "$legacy_restart_marker" ] && mv -f "$legacy_restart_marker" "$restart_marker"
 role_files=(
+  # instructions.md IS the global agent preamble (~/.pi/agent/AGENTS.md locally, and
+  # ~/.claude/CLAUDE.md — all three are the same file). It was never synced, so the VM
+  # carried a stale Aug-13 copy and every rule added to it silently missed the VM
+  # workers (2026-08-27).
+  instructions.md
   roles prompts/plan-ticket.md prompts/review-pr.md
   pi-extensions/role-policy pi-extensions/agents pi-extensions/ask pi-extensions/user-bash pi-extensions/tool-compress
   skills/i-have-adhd skills/notes skills/cycle skills/daily skills/standup
@@ -77,6 +82,16 @@ PY
 }
 
 [ -d "$ai/roles" ] || { say "sync failed, do not spawn ticket sessions: $ai/roles missing"; exit 1; }
+# pi itself is NOT part of the bundle: local comes from nixpkgs-latest, the VM from npm,
+# so they drift silently. That matters because role-policy keys mutation grants off the
+# exact text pi puts in an ask_user result — a pi release can change it and every
+# approval then grants nothing (2026-08-27: local 0.83.0 vs VM 0.84.1, undetected).
+pi_local=$(pi --version 2>/dev/null | head -1)
+pi_vm=$("${SSH[@]}" 'export PATH=$HOME/.npm-global/bin:$PATH; pi --version 2>/dev/null | head -1' 2>/dev/null || true)
+if [ -n "$pi_local" ] && [ -n "$pi_vm" ] && [ "$pi_local" != "$pi_vm" ]; then
+  say "WARNING: pi version skew — local $pi_local, VM $pi_vm (behaviour here does not predict the VM)"
+fi
+
 local_hash=$(bundle_hash "$ai")
 remote_hash=$(remote_bundle_hash 2>/dev/null || true)
 was_running=$("${SSH[@]}" 'pgrep -x agentd >/dev/null && echo yes || echo no' 2>/dev/null || echo no)
@@ -95,6 +110,12 @@ else
       rsync -az -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=25' "$ai/$rel" "$u@$host:.pi/agent/$rel" || { sync_failed=1; break; }
     fi
   done
+  # pi DISCOVERS AGENTS.md — instructions.md is only the name it has in this repo, so
+  # the same bytes have to land under both names or the global preamble never loads.
+  if [ "$sync_failed" -eq 0 ]; then
+    rsync -az -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=25' \
+      "$ai/instructions.md" "$u@$host:.pi/agent/AGENTS.md" || sync_failed=1
+  fi
   if [ "$sync_failed" -ne 0 ]; then
     say "sync failed, do not spawn ticket sessions"
     touch "$restart_marker"
