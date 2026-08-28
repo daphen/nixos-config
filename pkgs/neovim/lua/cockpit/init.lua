@@ -212,6 +212,7 @@ local S = {
 }
 
 local render, render_roster, render_chat, render_changes, handle, on_read, try_connect, connect, send, git_changes, refresh_git_changes, parse_git_diff
+local decorate_paths -- underline the file paths in chat text that can actually be opened
 local refresh_dashboard, hide_banner
 local start_session, view_session, open_picker, ensure_buf, focus_composer, refresh_plans, refresh_plan_one, refresh_plan_bindings, refresh_devenv, sync_approval_keys
 local session_cwd, load_plan, answer, apply_prompt_mode
@@ -315,6 +316,8 @@ local function set_hl()
   hl("CockpitMuted", { fg = p.fg_muted or "#5c6773" })
   hl("CockpitFile", { fg = p.fg or "#c7ccd1" }) -- neutral file-path text (status lives on the dot)
   hl("CockpitHunkRange", { fg = p.blue or p.cyan or "#5aa9e6" }) -- hunk line-range in the chat
+  -- Only paths that actually RESOLVE get this, so the underline is a promise: <CR> opens it.
+  hl("CockpitPathRef", { fg = p.blue or p.cyan or "#5aa9e6", underline = true })
   -- approval-card key caps (a subtle elevated pill behind the key char)
   hl("CockpitKeyOk", { fg = p.green or "#5fca8b", bg = cardbg, bold = true })
   hl("CockpitKeyNo", { fg = p.red or "#e5675f", bg = cardbg, bold = true })
@@ -1675,6 +1678,8 @@ render_chat = function(scroll)
    end
   end
 
+  decorate_paths(p)
+
   S.chat_line_msg = line_msg
   S.chat_blocks = blocks
 
@@ -2090,8 +2095,8 @@ handle = function(obj)
   elseif t == "changes" and obj.session then
     -- Server-streamed working-tree diff from a REMOTE agentd: populate the diff
     -- cache + re-render CHANGES without the files being local. Same parser + re-render
-    -- path as the local git watcher. (follow_edit still can't OPEN a remote file — it
-    -- early-returns on filereadable — so remote live-follow is diff-visibility for now.)
+    -- path as the local git watcher. follow_edit resolves a remote path through the
+    -- vm-sync mirror, so a remote session live-follows into the mirrored file.
     local cwd = obj.cwd or session_cwd(obj.session)
     if cwd and type(obj.diff) == "string" then
       S.gitdiff[cwd] = parse_git_diff(vim.split(obj.diff, "\n", { plain = true }))
@@ -3360,10 +3365,102 @@ local function editor_gutter(win, on)
   end)
 end
 
+-- A remote session's cwd is a VM path; vm-sync keeps a local mirror of the same
+-- worktree, so translate before giving up on a file that "isn't readable".
+local function mirror_of(p)
+  if not p then return nil end
+  local t = p:match("^/home/[^/]+/src/lovable%-([%w%-%.]+)")
+  local root = t and (fn.expand("~/work/lovable.daphen-" .. t))
+    or (p:match("^/home/[^/]+/src/lovable$") and fn.expand("~/work/lovable"))
+  if root and fn.isdirectory(root) == 1 then return root end
+  return nil
+end
+
+-- Resolve a path the agent named into something openable here: as given, then
+-- rebased onto the local mirror (both for a bare path under a remote cwd and for
+-- an absolute VM path).
+local function resolvable(cwd, path)
+  local direct = fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path))
+  if fn.filereadable(direct) == 1 then return direct end
+  local m = mirror_of(cwd)
+  if m and not path:match("^/") then
+    local rebased = fn.expand(m .. "/" .. path)
+    if fn.filereadable(rebased) == 1 then return rebased end
+  end
+  local vroot, rest = path:match("^(/home/[^/]+/src/lovable[%w%-%.]*)/(.+)$")
+  local vm = vroot and mirror_of(vroot)
+  if vm then
+    local rebased = fn.expand(vm .. "/" .. rest)
+    if fn.filereadable(rebased) == 1 then return rebased end
+  end
+  return nil
+end
+
+-- Underline every chat path that resolves to a real file, so a navigable reference
+-- is visually distinct from prose. Resolvability is memoized per cwd+token: a chat
+-- re-render is frequent and filereadable is a syscall.
+local path_ok = {}
+decorate_paths = function(from)
+  if not (S.chatbuf and api.nvim_buf_is_valid(S.chatbuf)) then return end
+  local cwd = S.selected and session_cwd(S.selected) or nil
+  local lines = api.nvim_buf_get_lines(S.chatbuf, from or 0, -1, false)
+  local base = from or 0
+  for i, ln in ipairs(lines) do
+    local at, stat_done = 1, false
+    while true do
+      local st, en, tok = ln:find("([%w%._%-/]+%.%w+:?%d*)", at)
+      if not st then break end
+      at = en + 1
+      -- guard on the path WITHOUT any :line suffix, else "foo.test.ts:41" fails the
+      -- extension check. A bare word.word ("e.g", "2.21.0") is prose, not a path.
+      local bare = tok:match("^([^:]+):%d+$") or tok
+      if bare:find("/") or bare:match("%.(%a%a+)$") then
+        local key = (cwd or "") .. "\0" .. bare
+        local ok = path_ok[key]
+        if ok == nil then
+          ok = resolvable(cwd, bare) ~= nil
+          path_ok[key] = ok
+        end
+        if ok then
+          pcall(api.nvim_buf_add_highlight, S.chatbuf, S.ns, "CockpitPathRef", base + i - 1, st - 1, en)
+          -- A mentioned file carries its own change summary, so the message answers
+          -- "what happened to it" without a trip to the changes view. One per line:
+          -- the eol slot is shared, and two stats on one line read as noise.
+          if not stat_done then
+            local d = cwd and S.gitdiff[cwd]
+            local f = d and d.bypath and d.bypath[bare]
+            if f then
+              local chunks = {
+                { "  ", "CockpitMuted" },
+                { "+" .. f.add, "CockpitStream" },
+                { " ", "CockpitMuted" },
+                { "-" .. f.del, "CockpitErr" },
+              }
+              local n = #(f.hunks or {})
+              if n > 0 then
+                local spans = {}
+                for hi = 1, math.min(n, 3) do
+                  local h = f.hunks[hi]
+                  spans[#spans + 1] = (h.l1 == h.l2) and tostring(h.l1) or (h.l1 .. "-" .. h.l2)
+                end
+                local tail = n .. (n == 1 and " hunk " or " hunks ") .. table.concat(spans, ", ")
+                if n > 3 then tail = tail .. ", …" end
+                chunks[#chunks + 1] = { " · " .. tail, "CockpitMuted" }
+              end
+              pcall(api.nvim_buf_set_extmark, S.chatbuf, S.ns, base + i - 1, 0,
+                { virt_text = chunks, virt_text_pos = "eol", priority = 210 })
+              stat_done = true
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
 local function open_in_editor(cwd, path, line)
-  local file = path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)
-  file = fn.expand(file)
-  if fn.filereadable(file) == 0 then vim.notify("Cockpit: not readable — " .. path, vim.log.levels.WARN); return end
+  local file = resolvable(cwd, path)
+  if not file then vim.notify("Cockpit: not readable — " .. path, vim.log.levels.WARN); return end
   local target = target_editor_win()
   if not target then
     vim.cmd("topleft vsplit")
@@ -3417,8 +3514,9 @@ follow_edit = function(cwd, path, line, external, external_force, snippet)
   -- what current-buffer==agent-* means. An EXTERNAL driver (the cockpit rail) has no
   -- agent buffers at all; its equivalent gate lives in M.follow_remote.
   if not external and not api.nvim_buf_get_name(api.nvim_win_get_buf(cur)):match("agent%-") then return end
-  local file = fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
-  if fn.filereadable(file) ~= 1 then return end
+  local file = resolvable(cwd, path)
+  if not file then return end
+  file = fn.fnamemodify(file, ":p")
   -- Avante-style reveal: pi's edit tool carries NO line numbers, so resolve the
   -- reveal line from the authoritative git diff instead — jump to the file's first
   -- changed hunk so the change is on-screen (signs mark the rest), not the file top.
@@ -3474,14 +3572,18 @@ end
 -- find a `path[:line]` token spanning the cursor column on one line (agent prose
 -- often names files inline: "see cockpit/init.lua:409"). Requires a .ext or a
 -- :line so ordinary words don't match. col is 0-indexed byte.
+-- Path at the cursor, else the line's SOLE path — same reason link_at does it:
+-- landing on the message should be enough, without pixel-precise cursoring.
 local function inline_ref(line, col)
-  local i = 1
+  local i, hits = 1, {}
   while true do
     local s, e, tok = line:find("([%w%._%-/]+%.%w+:?%d*)", i)
-    if not s then return nil end
+    if not s then break end
     if col + 1 >= s and col + 1 <= e then return tok end
+    hits[#hits + 1] = tok
     i = e + 1
   end
+  return #hits == 1 and hits[1] or nil
 end
 
 local function chat_open_ref()
@@ -3844,12 +3946,20 @@ local function show_scratch(win, cwd)
   local ctx = cockpit_ctx_registered(cwd)
   local root = ctx == "main" or (scope == "personal" and cwd == scope_root())
   local plan = load_plan(cwd)
-  -- A session dash for a path with nothing to show (no plan, no registered
-  -- context, clean or non-local repo — e.g. a VM session's remote cwd) renders
-  -- as a blank page; fall back to the scope home view instead.
-  if not root and not ctx and not plan and #(git_changes(cwd) or {}) == 0 then
-    root = true
-    cwd = scope_root()
+  -- A session dash for a path with nothing to show renders as a blank page, so fall
+  -- back to the scope home view. But a REMOTE session's cwd (a VM path that does not
+  -- exist here) is a different problem wearing the same clothes: falling through
+  -- silently showed the ticket list while the session's real diff sat unreachable on
+  -- the VM, which is how EVERY-2447 looked like "no files" for hours. Name it instead.
+  local remote_missing = not root and cwd ~= "" and vim.fn.isdirectory(cwd) == 0
+  if remote_missing then
+    S.remote_cwd = cwd
+  else
+    S.remote_cwd = nil
+    if not root and not ctx and not plan and #(git_changes(cwd) or {}) == 0 then
+      root = true
+      cwd = scope_root()
+    end
   end
   local home = os.getenv("HOME") or ""
   local acts, handlers = {}, {}
@@ -3914,6 +4024,7 @@ local function show_scratch(win, cwd)
     cwd = cwd,
     actions = acts,
     expanded = S.dash_expand,
+    remote_cwd = S.remote_cwd,
   }
 
   if root and scope == "personal" then
@@ -4102,7 +4213,21 @@ function M.git_summary(cwd)
   -- Externally-changed trees (a mutagen mirror sync) never fire an nvim event, so a
   -- diff computed mid-sync would otherwise be reported forever. Re-run in the
   -- background once the value ages out; the stale number still renders this frame.
-  if (os.time() - (cache.at or 0)) > 20 and not S.diff_jobs[cwd] then
+  --
+  -- The TTL alone was not enough: when the VM merged origin/main into every-2447 the
+  -- mirror's HEAD jumped ~320 commits ahead of the LOCAL origin/main, the base resolved
+  -- against a pre-merge trunk, and the chin reported +96602/-25739 for a four-file diff.
+  -- HEAD is the honest invalidator — one rev-parse, and it catches a mutagen write the
+  -- moment it lands rather than up to 20s later.
+  local head = (fn.systemlist({ "git", "-C", cwd, "rev-parse", "HEAD" }) or {})[1]
+  local moved = head and cache.head and head ~= cache.head
+  if moved and not S.diff_jobs[cwd] then
+    -- A HEAD that outran the local trunk ref makes merge-base — and therefore the whole
+    -- diff — meaningless. Refresh the ref first, in the background, then recompute.
+    fn.jobstart({ "git", "-C", cwd, "fetch", "--quiet", "--no-tags", "origin", "main" }, {
+      on_exit = function() vim.schedule(function() refresh_git_changes(cwd) end) end,
+    })
+  elseif (os.time() - (cache.at or 0)) > 20 and not S.diff_jobs[cwd] then
     refresh_git_changes(cwd)
   end
   local add, del = 0, 0
@@ -4534,7 +4659,10 @@ refresh_git_changes = function(cwd, path)
           table.sort(cache.files, function(a, b) return a.path < b.path end)
         else
           parsed.at = os.time()
-        S.gitdiff[cwd] = parsed
+          -- Stamp the HEAD this diff describes, so git_summary can tell a mutagen-driven
+          -- HEAD change from a merely-aged cache entry.
+          parsed.head = (fn.systemlist({ "git", "-C", cwd, "rev-parse", "HEAD" }) or {})[1]
+          S.gitdiff[cwd] = parsed
         end
         if S.selected and session_cwd(S.selected) == cwd then
           if S.view == "changes" then render_changes() else render_chat(false) end

@@ -67,13 +67,19 @@ return {
 			end,
 		})
 
-		-- Set conceallevel for markdown files specifically
-		vim.api.nvim_create_autocmd("FileType", {
-			pattern = "markdown",
-			callback = function()
-				vim.opt_local.conceallevel = 2
-				vim.opt_local.concealcursor = ""
-			end,
+		-- conceallevel is WINDOW-local, so setting it on FileType only covers the window
+		-- that happened to be current when the buffer loaded. The cockpit displays files
+		-- in its own editor window, where it stayed 0: markview still drew its heading
+		-- pills while the raw "# " markers remained visible, so every heading appeared
+		-- twice. BufWinEnter fires per window showing the buffer, which is the right
+		-- granularity.
+		local function markdown_conceal(buf)
+			if vim.bo[buf].filetype ~= "markdown" then return end
+			vim.opt_local.conceallevel = 2
+			vim.opt_local.concealcursor = ""
+		end
+		vim.api.nvim_create_autocmd({ "FileType", "BufWinEnter" }, {
+			callback = function(ev) markdown_conceal(ev.buf) end,
 		})
 	end,
 }

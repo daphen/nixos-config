@@ -14,20 +14,37 @@ local path = dir .. "/chin-" .. scope .. ".json"
 -- bar showed) — async + cached; refreshed on the same events lualine used.
 local diff_cache = { add = 0, del = 0 }
 local diff_refreshing = false
+-- dir -> git toplevel (or "" for none). The chin re-renders constantly; a rev-parse
+-- per render would be a syscall on every keystroke.
+local root_memo = {}
+local function repo_root(dir)
+	if dir == nil or dir == "" then return "" end
+	local hit = root_memo[dir]
+	if hit ~= nil then return hit end
+	local r = vim.trim((vim.fn.systemlist({ "git", "-C", dir, "rev-parse", "--show-toplevel" })[1]) or "")
+	root_memo[dir] = r
+	return r
+end
 local function refresh_diff(done)
 	if diff_refreshing then return end
 	diff_refreshing = true
 	local cwd = vim.fn.getcwd()
 	local file = vim.fn.expand("%:p")
 	local editable = vim.bo.buftype == ""
-	local root = vim.trim((vim.fn.systemlist({ "git", "-C", cwd, "rev-parse", "--show-toplevel" })[1]) or "")
+	-- Resolve the root from the FILE, not the session cwd: the cockpit opens vault
+	-- notes and other checkouts, and a cwd-scoped count then described a repo the
+	-- viewer wasn't looking at (a niri file reading ~/nixos's +3013). cwd stays the
+	-- fallback for non-file buffers (dashboard, rail panes).
+	local anchor = (editable and file ~= "") and vim.fn.fnamemodify(file, ":h") or cwd
+	local root = repo_root(anchor)
+	if root == "" and anchor ~= cwd then root = repo_root(cwd) end
 	if root == "" then
 		diff_cache = { add = 0, del = 0 }
 		diff_refreshing = false
 		if done then done() end
 		return
 	end
-	local branch = vim.trim((vim.fn.systemlist({ "git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD" })[1]) or "")
+	local branch = vim.trim((vim.fn.systemlist({ "git", "-C", root, "rev-parse", "--abbrev-ref", "HEAD" })[1]) or "")
 	local base = "HEAD"
 	if branch ~= "main" and branch ~= "master" then
 		local ok, signs = pcall(require, "hunk-nvim.signs")
@@ -90,6 +107,15 @@ local function gather()
 		dashboard = (m.dashboard_snapshot and m.dashboard_snapshot()) or dashboard
 		local model = type(dashboard.model) == "table" and dashboard.model or {}
 		local git_cwd = dashboard.active and model.cwd or vim.fn.getcwd()
+		-- The chin describes what you are LOOKING at. When the buffer's file lives in a
+		-- different repo than the session cwd — a vault note, another checkout — the
+		-- session-scoped summary described a repo the viewer wasn't in (a niri file
+		-- reporting ~/nixos's +3462). Prefer the file's own worktree.
+		local fpath = vim.fn.expand("%:p")
+		if vim.bo.buftype == "" and fpath ~= "" then
+			local fr = repo_root(vim.fn.fnamemodify(fpath, ":h"))
+			if fr ~= "" then git_cwd = fr end
+		end
 		shared_diff = m.git_summary and m.git_summary(git_cwd) or nil
 	end)
 	-- SESSION-scoped only: the plan-nvim statusline fallback reported the
