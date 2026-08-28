@@ -171,10 +171,36 @@ names a real failure that shipped and had to be reverted:
 - **No code for a case you cannot produce today** — no unreachable defensive branch, no
   option nobody passes.
 - **Tests assert behaviour through the public entry point**, never a helper's internals.
+- **When you move logic across a boundary, the OLD implementation is the spec.** Porting
+  to another language, process, or layer is not a rewrite: enumerate every input the old
+  code read and every branch it took, and prove each one survives. If the target type
+  lacks a field the old code used, ADD the field — never generalise the output to hide
+  the loss. Escaping is not sanitising (`strconv.Quote` keeps an injection payload that a
+  strip-to-allowlist regex removes), and a validate-or-empty check is behaviour, not
+  decoration. A port that reads as faithful while silently dropping a branch or a defence
+  is the most expensive slop there is, because tests written against the new code pass.
+- **A hot-reloaded config is not "live" until you have loaded it.** QML, nvim Lua, a
+  unit file: when the target reloads on change, a file that fails to parse leaves the
+  OLD version running, so your edit is invisible and every later diagnosis is about code
+  that never ran. Load it in an isolated instance (a copy, a scratch path, a probe
+  process with the real import/runtime env) and read the loader's own error output before
+  you report anything. QML's "Property value set multiple times" — a second handler for a
+  signal that already had one — silently cost several rounds of wrong diagnosis this way.
+- **A verification result must name the commit it ran against.** Re-running tests after a
+  change and recording "pass" against an earlier state is worse than not testing: it reads
+  as evidence. When you record a result, record the sha; when you read one, check it
+  postdates the change it claims to cover.
 - **Nothing that needs a dev-only flag or override to work.** If it needs one, it isn't
   done — say so rather than shipping the override.
 
 When a plan carries a line budget, exceeding 1.5× is a STOP: report what must shrink.
+
+**Write approval cards and reports in plain language.** Anything addressed to David is
+human-facing text, not agent shorthand: no internal band/gate vocabulary (`b:soon`,
+`b:half`, `stale-gate`), no tool jargon, no noun stacks. State the fact, then the ask —
+"main is 320 of 400 commits behind and the gate blocks at 400; merge main once now?"
+beats "push stale-b merge". The rule that tells YOU to read `b:soon` from a status tail
+is not the rule for how to describe it to him.
 
 # Subsystems map (proart)
 
