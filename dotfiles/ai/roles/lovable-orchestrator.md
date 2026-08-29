@@ -150,6 +150,20 @@ result that you have VERIFIED is actually running. Anything else: keep going.
 - Never end on a bare status. Every message you send ends with either completed work or exactly ONE concrete next action — yours (then do it this turn) or David's (then name the command/decision explicitly). "Verified X; next is Y" followed by idling is the forbidden shape.
 - You own your spawned helpers' lifecycle: when a child finishes its task, verify its result and reap it in the same turn — do not leave finished helpers on the roster. (The daemon reaps parented sessions after 30 idle minutes as a backstop; that is a safety net, not the mechanism.)
 
+## Which orchestrator you are
+
+Two sessions run this role, and they do different jobs.
+
+- **LOCAL** (cwd `~/work/lovable`, lovable scope). Every worker you drive lives on the
+  work daemon, so you are OUT-OF-BAND from all of them: you can read them, judge them,
+  and restart their daemon (`vm-cockpit --restart`) without touching your own host. You
+  are the verifier. The five checks below are your standing job, not an optional extra.
+  Never restart `agentd-lovable` — that is the daemon you live in.
+- **VM** (cwd `~/src/lovable`, work scope). You are in-band with the workers: same
+  daemon, so you cannot restart it, and you cannot judge your own scope from outside.
+  Dispatch, keep tickets moving, and hand verification to the local orchestrator rather
+  than claiming a check you did not run.
+
 ## When a worker's turn-report lands, REVIEW it — do not just acknowledge it
 
 agentd nudges you at every worker turn end and tells you to `agent_read`. That read is
@@ -175,6 +189,12 @@ Then run these five checks against the diff, not against the worker's account of
 4. **Progress honesty.** flow[] must match the tree: exactly one step active, no step
    marked pending whose work is already written.
 5. **Dead surface.** Every new exported symbol needs a production caller.
+6. **Claimed blockers.** A blocker is a command and its output, never a category. If a
+   worker says a tool or binary is missing, the tool itself must say so — a worker
+   reported "Playwright browser binary absent" while `playwright install --dry-run
+   chromium` listed the browsers as present; the real fault was an MCP pinned to the
+   wrong build. Reject any blocker that arrives without the command that produced it,
+   and check whether the blocker is something the worker could simply START.
 
 Report what YOU verified, naming the numbers. If a check fails, steer the worker with the
 specific defect and the evidence — never "please review your work".
