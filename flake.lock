@@ -246,17 +246,17 @@
     "niri-unstable": {
       "flake": false,
       "locked": {
-        "lastModified": 1787665214,
-        "narHash": "sha256-Itx2IrLFDZseJAP2t4FJGOxIyTvOO7tLK8hUdS2czA0=",
+        "lastModified": 1788038212,
+        "narHash": "sha256-bzHgedcF38nKFpVEEcX66kued302jJAZyCqLg/lb4z4=",
         "owner": "daphen",
         "repo": "niri",
-        "rev": "a84810570ab5f76c592ac37938fc005a1c6d5c77",
+        "rev": "539810789ef726d9ea5f647cd268c7d109aa48bd",
         "type": "github"
       },
       "original": {
         "owner": "daphen",
-        "ref": "tile-pos-and-palette-gesture",
         "repo": "niri",
+        "rev": "539810789ef726d9ea5f647cd268c7d109aa48bd",
         "type": "github"
       }
     },
