@@ -19,6 +19,7 @@ Singleton {
     property int version: 0
 
     signal paletteGesture(string phase, real progress, real velocity, bool open)
+    signal paletteTabCycle(int direction, bool commit)
 
     readonly property var relevantEvents: [
         "WorkspacesChanged",
@@ -124,6 +125,8 @@ Singleton {
             }
         } else if (name === "PaletteGesture") {
             paletteGesture(data.phase || "", data.progress || 0, data.velocity || 0, data.open === true)
+        } else if (name === "PaletteTabCycle") {
+            paletteTabCycle(data.direction || 0, data.commit === true)
         }
     }
 
