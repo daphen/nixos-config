@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Reap per-ticket infrastructure whose ticket is over: mutagen syncs and devenv
+# stacks outlive the work that created them, and each one keeps scanning or
+# serving forever (18h of clickhouse CPU, 30h of mutagen CPU over four days).
+# A ticket is LIVE if any agentd scope has a session in its worktree.
+# Dry-run by default; --yes terminates.
+set -uo pipefail
+yes=0; [ "${1:-}" = "--yes" ] && yes=1
+
+live_tickets() {
+  for s in /run/user/1000/agentd-*.sock; do
+    [ -S "$s" ] || continue
+    AGENTD_SOCK="$s" agent roster 2>/dev/null | awk '{print $NF}'
+  done | grep -oE '(every|lovable)-[0-9]+' | sed 's/^lovable-//' | sort -u
+}
+LIVE=$(live_tickets)
+is_live() { printf '%s\n' "$LIVE" | grep -qx "$1"; }
+
+# If no daemon answered, we cannot tell live from dead — reaping then would kill the
+# syncs of the tickets actually being worked on (agentd is not up yet at cockpit
+# launch, which is exactly when this runs).
+if [ -z "$LIVE" ]; then
+  echo "no agentd roster available — refusing to reap"; exit 0
+fi
+
+echo "live tickets: $(printf '%s ' $LIVE)"
+
+# 1. mutagen syncs named for a ticket
+mutagen sync list 2>/dev/null | awk '/^Name:/{print $2}' | while read -r name; do
+  t=$(printf '%s' "$name" | grep -oE 'every-[0-9]+') || continue
+  [ -n "$t" ] || continue
+  if is_live "$t"; then continue; fi
+  if [ "$yes" = 1 ]; then
+    mutagen sync terminate "$name" >/dev/null 2>&1 && echo "  terminated sync $name ($t)"
+  else
+    echo "  STALE sync $name ($t)"
+  fi
+done
+
+# 2. devenv stacks (process-compose) rooted in a ticket worktree
+pgrep -f process-compose 2>/dev/null | while read -r p; do
+  cwd=$(readlink "/proc/$p/cwd" 2>/dev/null) || continue
+  case "$cwd" in *lovable.*) ;; *) continue ;; esac
+  t=$(printf '%s' "$cwd" | grep -oE 'every-[0-9]+' | head -1)
+  # A stack in a worktree naming no ticket (integration branches, abandoned dirs)
+  # is stale too — nothing is driving it.
+  if [ -n "$t" ] && is_live "$t"; then continue; fi
+  if [ "$yes" = 1 ]; then
+    kill "$p" 2>/dev/null && echo "  stopped devenv stack $p ($cwd)"
+  else
+    echo "  STALE devenv stack $p ($cwd)"
+  fi
+done
