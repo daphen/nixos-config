@@ -771,7 +771,7 @@ binds {
     Super+Alt+S allow-when-locked=true hotkey-overlay-title=null { spawn-sh "pkill orca || exec orca"; }
 
     // Jump-or-exec keybinds for quick app access
-    Super+c { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here title:dsqrd $HOME/.config/niri/scripts/launch-discord-client"; }
+    Super+c { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:dsqrd $HOME/.config/niri/scripts/launch-discord-client"; }
     Super+e { spawn-sh "$HOME/.config/niri/scripts/spawn-terminal-with-yazi"; }
     // Open the notification-center picker (active + recently-dismissed);
     // pick one to jump to its window/app.
@@ -787,8 +787,8 @@ binds {
     Super+g { spawn-sh "$HOME/.config/niri/scripts/cockpit-focus nvim"; }
     Super+d { spawn-sh "$HOME/.config/niri/scripts/focus-kitty-cycle"; }
     Super+Shift+d { spawn-sh "SHOW_FASTFETCH=1 kitty"; }
-    Super+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here Slack slack"; }
-    Super+Shift+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here Slack slack"; }
+    Super+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
+    Super+Shift+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
     Super+a { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 'spotify_player' 'kitty --class spotify_player /home/daphen/.config/niri/scripts/spotify-player-launch'"; }
     // Browser keybinds. Browser binary lives in browser-config.sh —
     // these scripts are browser-agnostic.
@@ -828,6 +828,7 @@ binds {
     // Super+O: flip to the previously used cockpit context (vim ctrl-o style).
     Super+o hotkey-overlay-title="Previous context" { spawn-sh "$HOME/.config/niri/scripts/cockpit-toggle"; }
     Super+Ctrl+Shift+t { spawn "qs" "ipc" "call" "todos" "toggle"; }  // permanent quick-todo list
+    Super+Slash hotkey-overlay-title="Switch to TTY2" { spawn-sh "for s in $(loginctl list-sessions --no-legend | awk '{print $1}'); do if [ \"$(loginctl show-session \"$s\" -p VTNr --value)\" = 2 ]; then exec loginctl activate \"$s\"; fi; done"; }
 
     // Super+B: jump to an already-running lovbox workspace.
     Super+b       { spawn "qs" "ipc" "call" "lovbox" "toggle"; }
