@@ -26,6 +26,7 @@ PanelWindow {
     property bool active: false
     property bool gestureActive: false
     property bool gestureSettling: false
+    property bool tabCycleActive: false
     property real slideProgress: 0
     visible: active
     readonly property bool open: PaletteState.open
@@ -64,6 +65,9 @@ PanelWindow {
         target: NiriState
         function onPaletteGesture(phase, progress, velocity, shouldOpen) {
             root.handlePaletteGesture(phase, progress, velocity, shouldOpen)
+        }
+        function onPaletteTabCycle(direction, commit) {
+            root.handlePaletteTabCycle(direction, commit)
         }
     }
 
@@ -130,6 +134,7 @@ PanelWindow {
                 })
             })
         } else {
+            tabCycleActive = false
             openSlide.stop()
             if (!gestureSettling) {
                 gestureSlide.stop()
@@ -309,6 +314,25 @@ PanelWindow {
         filmIndex = Math.max(0, Math.min(filmTabs.length - 1, filmIndex + delta))
         syncAddressToFilm(filmIndex)
         previewTab(filmEntry(filmIndex))
+    }
+
+    function cycleFilm(steps) {
+        if (filmTabs.length === 0) return
+        filmFocused = true
+        filmIndex = (filmIndex + steps % filmTabs.length + filmTabs.length) % filmTabs.length
+        syncAddressToFilm(filmIndex)
+        previewTab(filmEntry(filmIndex))
+    }
+
+    function handlePaletteTabCycle(direction, commit) {
+        if (commit) {
+            if (tabCycleActive && open) runEntry(filmEntry(filmIndex), false)
+            tabCycleActive = false
+            return
+        }
+        tabCycleActive = true
+        if (!open) PaletteState.show()
+        Qt.callLater(() => cycleFilm(direction))
     }
 
     function focusFilmMatch() {
