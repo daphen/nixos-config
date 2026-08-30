@@ -35,5 +35,4 @@ ShellRoot {
     AgentAskPicker {}
     CockpitPicker {}
     WpmBadge {}
-    WindowFocusDot {}
 }
