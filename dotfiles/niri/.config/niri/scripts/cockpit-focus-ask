@@ -1,17 +1,55 @@
 #!/usr/bin/env bash
-# Focus the cockpit window owning an agent question and select that session.
-# Usage: cockpit-focus-ask <scope> <session>
-set -u
-scope="${1:?scope}"; session="${2:?session}"
+set -euo pipefail
+scope="${1:?scope}"
+session="${2:?session}"
 case "$scope" in
-  personal) title="cockpit-qs · private";  shelldir="$HOME/.local/state/cockpit/private-shell" ;;
-  *)        title="cockpit-qs · lovable";  shelldir="$HOME/personal/ai-cockpit/qs-shell" ;;
+  personal) want=personal ;;
+  *) want=work ;;
 esac
-wid=$(niri msg --json windows 2>/dev/null | python3 -c "
-import json,sys
-t=sys.argv[1]
-for w in json.load(sys.stdin):
-    if (w.get('title') or '') == t: print(w['id']); break
-" "$title")
-[ -n "$wid" ] && niri msg action focus-window --id "$wid"
-exec qs -p "$shelldir" ipc call cockpit selectSession "$session"
+
+rows=""
+while IFS= read -r qid; do
+  [ -n "$qid" ] || continue
+  title=$(timeout 2 qs ipc -i "$qid" call cockpit title 2>/dev/null | tail -1 || true)
+  mode=$(timeout 2 qs ipc -i "$qid" call cockpit scopeMode 2>/dev/null | tail -1 || true)
+  [ -n "$title" ] || continue
+  rows+="$qid"$'\t'"$mode"$'\t'"$title"$'\n'
+done < <(qs list -a --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    print("\n".join(x["id"] for x in json.load(sys.stdin) if x.get("pid") and x.get("id")))
+except Exception:
+    pass
+')
+
+pick=$(niri msg --json windows 2>/dev/null | CANDIDATES="$rows" WANT_MODE="$want" python3 -c '
+import json, os, sys
+entries = []
+for line in os.environ.get("CANDIDATES", "").splitlines():
+    parts = line.split("\t", 2)
+    if len(parts) == 3:
+        entries.append(tuple(parts))
+windows = json.load(sys.stdin)
+by_title = {w.get("title") or "": w for w in windows}
+live = [(qid, mode, title, by_title[title]) for qid, mode, title in entries if title in by_title]
+matching = [x for x in live if x[1] == os.environ.get("WANT_MODE")]
+pool = matching or live
+if not pool:
+    raise SystemExit
+def stamp(x):
+    t = x[3].get("focus_timestamp") or {}
+    return (t.get("secs") or 0, t.get("nanos") or 0)
+qid, mode, title, window = max(pool, key=stamp)
+wid = window.get("id")
+print(f"{qid}\t{wid}\t{int(not matching)}")
+' 2>/dev/null || true)
+
+if [ -z "$pick" ]; then
+  exit 1
+fi
+IFS=$'\t' read -r qid wid switch <<< "$pick"
+niri msg action focus-window --id "$wid" >/dev/null 2>&1 || true
+if [ "$switch" = 1 ]; then
+  timeout 3 qs ipc -i "$qid" call cockpit switchScope >/dev/null
+fi
+exec timeout 3 qs ipc -i "$qid" call cockpit selectSession "$session"

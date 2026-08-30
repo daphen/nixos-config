@@ -1,39 +1,17 @@
 #!/usr/bin/env bash
-# Boot-time cockpit launcher: spawn one cockpit mode and MOVE its window to its
-# home workspace. A window-rule pin did this before, but it also hijacked
-# manual relaunches to the pinned workspace — moving once at boot doesn't.
-set -u
-mode="${1:?usage: cockpit-boot lovable|personal}"
-case "$mode" in
-  lovable)
-    export COCKPIT_SCOPE=lovable COCKPIT_NEW_CWD="$HOME/work/lovable"
-    export COCKPIT_AGENTD_SOCKS="$XDG_RUNTIME_DIR/agentd-lovable.sock,$XDG_RUNTIME_DIR/agentd-work.sock"
-    title="cockpit-qs · lovable"; ws="lovable" ;;
-  personal)
-    export COCKPIT_SCOPE=personal
-    export COCKPIT_AGENTD_SOCKS="$XDG_RUNTIME_DIR/agentd-personal.sock"
-    title="cockpit-qs · private"; ws="chat" ;;
-esac
-# A crashed cockpit leaves its frame mapped, so "first window with this title" can be
-# the corpse — we then moved the dying window and left the new one wherever the focus
-# happened to be. Wait for an id that was not already there.
-before=$(niri msg --json windows 2>/dev/null | WANT_TITLE="$title" python3 -c '
-import json, os, sys
-want = os.environ.get("WANT_TITLE", "")
-print(" ".join(str(w["id"]) for w in json.load(sys.stdin) if (w.get("title") or "") == want))' 2>/dev/null)
+set -euo pipefail
 
-setsid -f "$HOME/personal/ai-cockpit/run-qs.sh" >/dev/null 2>&1
-for _ in $(seq 1 30); do
-  wid=$(OLD_IDS="$before" WANT_TITLE="$title" niri msg --json windows 2>/dev/null | \
-    OLD_IDS="$before" WANT_TITLE="$title" python3 -c '
-import json, os, sys
-old = set(os.environ.get("OLD_IDS", "").split())
-want = os.environ.get("WANT_TITLE", "")
-for w in json.load(sys.stdin):
-    if (w.get("title") or "") == want and str(w["id"]) not in old:
-        print(w["id"]); break' 2>/dev/null)
-  [ -n "${wid:-}" ] && break
-  sleep 1
-done
-[ -n "${wid:-}" ] || exit 0
-niri msg action move-window-to-workspace --window-id "$wid" --focus false "$ws" >/dev/null 2>&1
+instance="${1:?usage: cockpit-boot work|personal}"
+case "$instance" in
+  work) default_scope=lovable ;;
+  personal) default_scope=personal ;;
+  *) echo "cockpit-boot: expected work or personal" >&2; exit 2 ;;
+esac
+
+export COCKPIT_INSTANCE="$instance"
+mode_file="$HOME/.local/state/cockpit/mode-$instance"
+if [ ! -r "$mode_file" ]; then
+  export COCKPIT_SCOPE="$default_scope"
+fi
+
+exec "$HOME/personal/ai-cockpit/run-qs.sh"

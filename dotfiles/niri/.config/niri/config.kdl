@@ -418,11 +418,9 @@ spawn-sh-at-startup "/home/daphen/.config/niri/scripts/niri-hotplug-handler >> /
 workspace "lovable"
 
 
-// Cockpits at boot: daemons are systemd services, the UI layer was the one
-// manual survivor of a reboot. Explicit scope AND sockets — scope alone left
-// the work cockpit dialing whatever the focused workspace implied. The
-// window-rules place each title on its home workspace.
-spawn-sh-at-startup "$HOME/.config/niri/scripts/cockpit-boot lovable"
+// Two stable Cockpit instances restore their own Personal/Work selection.
+// Their mode and placement are independent of whichever workspace starts niri.
+spawn-sh-at-startup "$HOME/.config/niri/scripts/cockpit-boot work"
 spawn-sh-at-startup "$HOME/.config/niri/scripts/cockpit-boot personal"
 
 
@@ -800,9 +798,8 @@ binds {
     Super+Shift+m hotkey-overlay-title="Add Quickmark" { spawn "palette-ipc" "add-quickmark"; }
     Super+m hotkey-overlay-title="Mail" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here title:mlqs $HOME/.config/niri/scripts/launch-mail-client"; }
     // Cockpit (nvim + agentd rail) coexists with the kitty cockpit.
-    // Both binds launch the dev tree so per-workspace mode and current QML stay aligned.
     Super+y hotkey-overlay-title="Answer agent question / Cockpit" { spawn-sh "$HOME/.config/niri/scripts/agent-ask-or-cockpit"; }
-    Super+Shift+y hotkey-overlay-title="Cockpit for this workspace (mode-scoped relaunch)" { spawn-sh "$HOME/personal/ai-cockpit/run-qs.sh"; }
+    Super+Shift+y hotkey-overlay-title="Focus Cockpit" { spawn-sh "$HOME/.config/niri/scripts/cockpit-show"; }
 
     // Super+Ctrl+Y — flip the ORCHESTRATOR role between proart and the dev VM. Direction
     // is derived from whichever side currently holds it, so one key works both ways. The
