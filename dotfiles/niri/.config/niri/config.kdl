@@ -901,6 +901,8 @@ binds {
 
     // Resize windows with Super+Ctrl+hjkl
     Super+Ctrl+h { set-column-width "-5%"; }
+    Super+Ctrl+j { set-window-height "-5%"; }
+    Super+Ctrl+k { set-window-height "+5%"; }
     Super+Ctrl+l { set-column-width "+5%"; }
 
     // Maximize window (take full screen space) with Super+Ctrl+F
@@ -952,7 +954,6 @@ binds {
 
     // Rofi keybinds
     Super+Ctrl+V { spawn "qs" "ipc" "call" "clipboard" "toggle"; }  // Clipboard history (quickshell picker over clipse's store)
-    Super+Ctrl+J { spawn "qs" "ipc" "call" "emoji" "toggle"; }  // Open emoji picker (copy + auto-type)
     Super+Ctrl+I { spawn "qs" "ipc" "call" "timers" "toggle"; }  // Timers (set/cancel countdowns)
     Super+Ctrl+B { spawn "qs" "ipc" "call" "bluetooth" "toggle"; }  // Open bluetooth menu
     Super+Ctrl+N { spawn "qs" "ipc" "call" "network" "toggle"; }    // Open wifi picker
