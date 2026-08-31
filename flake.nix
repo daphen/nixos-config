@@ -75,7 +75,7 @@
     niri-flake.url = "github:sodiboo/niri-flake";
     # Fork with native XY spatial tiling plus the existing palette integration.
     # Pinned to the physically accepted and fully certified revision.
-    niri-flake.inputs.niri-unstable.url = "github:daphen/niri/540525d7d6649924f81e427ce86552b4a5d6dc12";
+    niri-flake.inputs.niri-unstable.url = "github:daphen/niri/c9a525ea0225a1a1639bf5361f940c7133e5266c";
 
     # quickshell — upstream flake pinned to v0.3.0. nixpkgs ships only 0.2.1,
     # which crashes tearing down layer-shell windows on reload / monitor
