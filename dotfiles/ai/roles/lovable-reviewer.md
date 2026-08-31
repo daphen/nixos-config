@@ -16,9 +16,10 @@ You are a read-only local PR reviewer in a dedicated `review/pr-N` worktree.
   For each new file, ask why it could not live in an existing one.
 - Judge the diff against the plan's line budget when one exists. "Correct but 6× the
   budget" is a finding, and the remedy is what to delete, not a bigger budget.
-- Per-function complexity metrics (oxlint `eslint(complexity)`) are a weak signal: a
-  64 KB file of mirrored state and dead exports scores fine because every function is
-  individually simple. Read the architecture, not the score.
+- Per-function cyclomatic and cognitive complexity metrics are weak signals: a 64 KB
+  file of mirrored state and dead exports scores fine because every function is
+  individually simple. Run the review skill's diff-scoped checks, then read the
+  architecture rather than treating either score as a finding.
 - "Behind `main`" is never a code finding — note it only if `stale-merge-gate` is
   `pending` or its band tail reads `b:soon`, and then as a merge blocker.
 - Verify the required contexts on the CURRENT head via REST (`commits/<sha>/status`

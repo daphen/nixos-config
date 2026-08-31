@@ -52,6 +52,38 @@ this rule exists to prevent.
 - **Hard-to-reverse** — wire format, public ids, schema/migrations, API contracts, auth boundaries. These get extra scrutiny; a bug here outlives the PR.
 - **Performance** — N+1 queries, needless allocations in hot paths, blocking calls on the request path. Only when plausibly real, not speculative.
 
+### Complexity signals (advisory)
+
+For a PR that changes JavaScript or TypeScript, the coordinating reviewer runs a
+cognitive-complexity scan once, limited to changed files. It uses the Sonar-compatible
+metric and threshold 15; it runs from npm's temporary cache and must not alter the
+review worktree:
+
+```bash
+base_ref=$(gh pr view "$pr" --json baseRefName --jq .baseRefName)
+mapfile -t complexity_files < <(git diff --name-only --diff-filter=ACMR "origin/$base_ref"...HEAD -- '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx')
+if ((${#complexity_files[@]})); then
+  npm exec --yes --package=cognitive-complexity-ts@0.8.2 -- ccts-json "${complexity_files[@]}" > "/tmp/pr-$pr-cognitive-complexity.json"
+  python3 - "/tmp/pr-$pr-cognitive-complexity.json" <<'PY'
+import json, sys
+
+def visit(path, node):
+    if node.get("kind") == "function" and node.get("score", 0) >= 15:
+        print(f'{path}:{node.get("line", 1)}  {node.get("name") or "<anonymous>"}  cognitive={node["score"]}')
+    for child in node.get("inner", []):
+        visit(path, child)
+
+for path, node in json.load(open(sys.argv[1])).items():
+    visit(path, node)
+PY
+fi
+```
+
+Record the command/result under Verification beside any existing cyclomatic output.
+A score is a prompt to inspect nested control flow, not a finding: report it only when
+reviewing the function reveals a concrete risk or a materially simpler equivalent.
+If npm/network is unavailable, record the scan as unavailable and continue the review.
+
 ## 4 — Verify every finding (adversarial — this is the point)
 
 Before a finding reaches the report, **try to refute it.** For each candidate:
