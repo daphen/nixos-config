@@ -99,7 +99,7 @@ Item {
                 ? (column - (root.columns - 1) / 2) / ((root.columns - 1) / 2)
                 : 0
             readonly property real normalizedY: root.rows > 1
-                ? (row - (root.rows - 1) / 2) / ((root.rows - 1) / 2)
+                ? (row - (root.rows - 1) / 2) / ((root.rows + 1) / 2)
                 : 0
             readonly property real radialDistance: Math.min(1,
                 Math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY))
