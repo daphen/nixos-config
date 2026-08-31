@@ -174,7 +174,7 @@ output "Samsung Electric Company S34C65xV HNTY700216" {
 // https://yalter.github.io/niri/Configuration:-Layout
 layout {
     // Set gaps around windows in logical pixels.
-    gaps 4
+    gaps 12
 
     // Transparent background so the static wallpaper shows through
     background-color "transparent"
@@ -350,7 +350,7 @@ layout {
     struts {
         left 0
         right 0
-        top 0
+        top -8
         bottom 0
     }
 }

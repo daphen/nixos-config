@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
-import Quickshell.Wayland
 import "."
 import "../QsLib" as Lib
 
@@ -9,10 +8,11 @@ import "../QsLib" as Lib
 // h/l picks the H:MM:SS segment, j/k or scroll adjusts it, digits type
 // into it microwave-style, preset pills load common durations, Enter
 // starts. Running timers below: Ctrl+J/K selects, Ctrl+W cancels.
-PanelWindow {
+Item {
     id: root
 
     readonly property bool open: TimerState.open
+    implicitHeight: presetsRow.height + dialWrap.height + labelWrap.height + runningWrap.height + footer.height
     function close() { TimerState.open = false }
 
     // dial state ────────────────────────────────────────────────────
@@ -64,25 +64,9 @@ PanelWindow {
     }
     Timer { id: closeDelay; interval: 300; onTriggered: root.active = false }
 
-    anchors { top: true; bottom: true; left: true; right: true }
-    color: "transparent"
-    exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.namespace: "qs-picker"
-    WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-
     readonly property color panelBorder: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b,
                                                  Theme.mode === "light" ? 0.15 : 0.10)
     component KeyCap: Lib.KeyCap { anchors.verticalCenter: parent.verticalCenter }
-
-    Rectangle {
-        id: dim
-        anchors.fill: parent
-        color: "#000000"
-        opacity: root.open ? 0.35 : 0
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-        MouseArea { anchors.fill: parent; onClicked: root.close() }
-    }
 
     Item {
         id: keys
@@ -122,26 +106,10 @@ PanelWindow {
         }
     }
 
-    Rectangle {
+    Item {
         id: notch
-        anchors {
-            bottom: parent.bottom
-            bottomMargin: root.open ? 80 : -(height + 40)
-            horizontalCenter: parent.horizontalCenter
-            Behavior on bottomMargin {
-                NumberAnimation { duration: 280; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.32, 0.72, 0.0, 1.0, 1.0, 1.0] }
-            }
-        }
-        width: 560
-        height: presetsRow.height + dialWrap.height + labelWrap.height + runningWrap.height + footer.height
-        color: Theme.bg
-        radius: 24
-        border.color: root.panelBorder
-        border.width: 1
-        clip: true
-        scale: root.open ? 1.0 : 0.96
+        anchors.fill: parent
         opacity: root.open ? 1.0 : 0.0
-        Behavior on scale { NumberAnimation { duration: 190; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.26, 0.08, 0.25, 1.0, 1.0, 1.0] } }
         Behavior on opacity { NumberAnimation { duration: 190; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.26, 0.08, 0.25, 1.0, 1.0, 1.0] } }
 
         readonly property string sans: Theme.fontFamily

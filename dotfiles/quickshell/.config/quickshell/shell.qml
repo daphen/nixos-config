@@ -11,7 +11,7 @@ ShellRoot {
     // toplevel with an empty transparent body).
     Variants {
         model: Quickshell.screens
-        Bar { required property var modelData; screen: modelData }
+        RoundedBar { required property var modelData; screen: modelData }
     }
 
     // Dynamic-island notification capsule under the bar notch.
@@ -19,20 +19,5 @@ ShellRoot {
 
     Launcher {}
     CmdPalette {}
-    ReviewCreatePicker {}
-    LovboxPicker {}
-    BluetoothPicker {}
-    TimerPicker {}
-    NetworkPicker {}
-    AsusProfilePicker {}
-    EmojiPicker {}
-    ClaudeRenamePicker {}
-    ColorFormatPicker {}
-    NotesPicker {}
-    ClipboardPicker {}
-    TodoListPicker {}
-    NotificationJumpPicker {}
-    AgentAskPicker {}
-    CockpitPicker {}
     WpmBadge {}
 }

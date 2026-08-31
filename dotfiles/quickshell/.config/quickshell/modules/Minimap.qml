@@ -34,24 +34,39 @@ Item {
         const positions = []
         let minColumn = Infinity
         let maxColumn = -Infinity
+        let fallbackActiveCell = null
+        let hasFocusedWindow = false
+        for (const group of groups) {
+            if (group.windows.some(window => window.is_focused === true)) {
+                hasFocusedWindow = true
+                break
+            }
+        }
         for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
             const group = groups[groupIndex]
+            const row = groups.length === 1
+                ? Math.floor(root.rows / 2)
+                : Math.round(groupIndex * (root.rows - 1) / (groups.length - 1))
             for (const window of group.windows) {
                 if (positions.length >= 256) break
+                const active = window.is_focused === true
+                    || (!hasFocusedWindow && group.ws.is_active === true
+                        && window.id === group.ws.active_window_id)
                 const column = root.nativeColumn(window)
-                if (column === null) continue
+                if (column === null) {
+                    if (active) fallbackActiveCell = { column: Math.floor(root.columns / 2), row: row }
+                    continue
+                }
                 positions.push({
                     column: column,
-                    row: groups.length === 1
-                        ? Math.floor(root.rows / 2)
-                        : Math.round(groupIndex * (root.rows - 1) / (groups.length - 1)),
-                    focused: window.is_focused === true,
+                    row: row,
+                    focused: active,
                 })
                 minColumn = Math.min(minColumn, column)
                 maxColumn = Math.max(maxColumn, column)
             }
         }
-        if (positions.length === 0) return ({ cells: ({}), activeCell: null })
+        if (positions.length === 0) return ({ cells: ({}), activeCell: fallbackActiveCell })
 
         const columnSpan = maxColumn - minColumn + 1
         const columnOffset = Math.floor((root.columns - columnSpan) / 2)
@@ -63,7 +78,7 @@ Item {
             cells[position.row * root.columns + column] = true
             if (position.focused) activeCell = { column: column, row: position.row }
         }
-        return ({ cells: cells, activeCell: activeCell })
+        return ({ cells: cells, activeCell: activeCell || fallbackActiveCell })
     }
 
     readonly property var activeCell: occupancy.activeCell
@@ -115,7 +130,7 @@ Item {
                 color: Theme.fg
                 opacity: parent.occupied
                     ? 0.62
-                    : 0.18 * Math.pow(1 - parent.radialDistance, 0.8)
+                    : 0.24 * Math.pow(1 - parent.radialDistance, 0.8)
             }
         }
     }

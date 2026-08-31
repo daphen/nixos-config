@@ -5,9 +5,8 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import "."
 
-// Dynamic-island notification capsule — the sole presentation surface.
-// Springs down out of the bar's centered notch when a notification
-// arrives (Notifications.present), holds a few seconds, springs back.
+// Floating notification capsule — the sole presentation surface.
+// Appears near the top edge when a notification arrives.
 // Click = the same activation the Super+i picker does (open channel /
 // focus window). Owns the ephemeral lifecycle: non-tray notifications
 // (screenshots, notify-send) are dismissed once their showing ends.
@@ -24,15 +23,10 @@ PanelWindow {
         return scrs.length ? scrs[0] : null
     }
 
-    // Overlaps the bar region (Overlay layer renders above it) so the
-    // capsule can cover the notch's bottom border where it attaches and
-    // read as one continuous shape growing out of the notch.
     anchors.top: true
-    margins.top: 0
+    margins.top: Theme.barHeight + 16
     implicitWidth: 600
-    // Track the capsule: the fixed 130 clipped tall ask capsules (button row +
-    // multi-line body) at the window edge, eating the bottom border.
-    implicitHeight: Theme.barHeight + Math.max(130, capsule.height + 24)
+    implicitHeight: Math.max(174, capsule.height + 24)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -240,35 +234,14 @@ PanelWindow {
         hide()
     }
 
-    // Same two-rectangle construction as the bar's notch (outer =
-    // hairline, inner = fill inset 1px on left/right/bottom, flush top)
-    // so the joint is invisible: the capsule's top overlaps the notch's
-    // bottom border and shares its exact colors.
-    // 4 logical px so the capsule's top edge lands on an integer physical
-    // Fullscreen content covers the bar (top layer), so there is no notch
-    // to grow out of — detach: sit flush near the top edge as a free
-    // capsule, fully rounded, with its own top border. Fullscreen is
-    // inferred from the focused window filling the screen height (nothing
-    // else reaches past the bar's exclusive zone).
-    readonly property bool detached: {
-        const _ = NiriState.version
-        const g = NiriState.focusedWindowGeom()
-        if (!g || g.floating || !root.screen) return false
-        return NiriState.focusedIsFullscreen(root.screen.height)
-    }
-
-    // pixel at 1.75 scale — a fractional edge leaves an antialiased row
-    // that lets the notch border bleed through.
-    readonly property int seamOverlap: detached ? 0 : 4
     Rectangle {
         id: capsule
         anchors.horizontalCenter: parent.horizontalCenter
-        y: root.detached ? 8 : Theme.barHeight - root.seamOverlap
-        height: root.open ? Math.max(52, content.implicitHeight + 22) + root.seamOverlap : 0
-        // floor keeps one-word notifications from rendering as stubby pills
+        y: 0
+        height: root.open ? Math.max(52, content.implicitHeight + 22) : 0
         width: root.open ? Math.min(Math.max(content.implicitWidth + 32, 300), 560) : 48
-        topLeftRadius: root.detached ? bottomLeftRadius : 0
-        topRightRadius: root.detached ? bottomRightRadius : 0
+        topLeftRadius: bottomLeftRadius
+        topRightRadius: bottomRightRadius
         bottomLeftRadius: Math.min(height / 2, Theme.notchRadius + 6)
         bottomRightRadius: Math.min(height / 2, Theme.notchRadius + 6)
         // Root is fill-colored so the part tucked inside the notch is
@@ -279,7 +252,6 @@ PanelWindow {
 
         Rectangle {
             anchors.fill: parent
-            anchors.topMargin: root.seamOverlap
             color: Theme.hairline
             topLeftRadius: capsule.topLeftRadius
             topRightRadius: capsule.topRightRadius
@@ -292,14 +264,10 @@ PanelWindow {
                 anchors.leftMargin: 1
                 anchors.rightMargin: 1
                 anchors.bottomMargin: 1
-                // Rounded rects antialias every edge; a flush top edge
-                // leaves a partial-alpha row that tints the seam. Overshoot
-                // the top so the parent's clip cuts it with a hard edge —
-                // except detached, where the top border is real.
-                anchors.topMargin: root.detached ? 1 : -2
+                anchors.topMargin: 1
                 color: Theme.notch
-                topLeftRadius: root.detached ? Math.max(0, capsule.topLeftRadius - 1) : 0
-                topRightRadius: root.detached ? Math.max(0, capsule.topRightRadius - 1) : 0
+                topLeftRadius: Math.max(0, capsule.topLeftRadius - 1)
+                topRightRadius: Math.max(0, capsule.topRightRadius - 1)
                 bottomLeftRadius: Math.max(0, capsule.bottomLeftRadius - 1)
                 bottomRightRadius: Math.max(0, capsule.bottomRightRadius - 1)
             }
@@ -322,8 +290,7 @@ PanelWindow {
 
         Column {
             id: content
-            // Center within the visible (below-bar) portion of the capsule.
-            y: root.seamOverlap + (parent.height - root.seamOverlap - height) / 2
+            y: (parent.height - height) / 2
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 8
             opacity: root.open ? 1 : 0

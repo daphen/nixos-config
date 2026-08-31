@@ -2,11 +2,10 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
 import Quickshell
-import Quickshell.Wayland
 import "."
 import "../QsLib" as Lib
 
-PanelWindow {
+Item {
     id: root
 
     property bool open: false
@@ -154,6 +153,9 @@ PanelWindow {
     property string query: search ? search.text : ""
     function clearQuery() { if (search) search.text = "" }
     property int selectedIndex: 0
+    implicitHeight: Math.min(480, inputWrap.height + tabsRow.height
+                             + (listVisible ? listContentHeight : 0) + footer.height)
+                    + previewPane.height
     readonly property color panelBorder: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b,
                                                  Theme.mode === "light" ? 0.15 : 0.10)
 
@@ -291,80 +293,10 @@ PanelWindow {
         onAltAction(filtered[idx])
     }
 
-    anchors {
-        top: true
-        bottom: true
-        left: true
-        right: true
-    }
-    color: "transparent"
-
-    exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.namespace: "qs-picker"
-    WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-
-    Rectangle {
-        id: dim
-        anchors.fill: parent
-        color: "#000000"
-        opacity: root.open ? 0.35 : 0
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-        Keys.onEscapePressed: root.closeRequested()
-        MouseArea {
-            anchors.fill: parent
-            onClicked: root.closeRequested()
-        }
-    }
-
-    Rectangle {
+    Item {
         id: notch
-        anchors {
-            bottom: parent.bottom
-            bottomMargin: root.open ? 80 : -(height + 40)
-            horizontalCenter: parent.horizontalCenter
-
-            Behavior on bottomMargin {
-                NumberAnimation {
-                    duration: 280
-                    easing.type: Easing.BezierSpline
-                    easing.bezierCurve: [0.32, 0.72, 0.0, 1.0, 1.0, 1.0]
-                }
-            }
-        }
-        width: 760
-        // Hug the content like the reference — footer sits right under the
-        // last row; 480 caps long lists (the ListView scrolls past that).
-        // Preview users leave animateHeight off because that pane owns its reveal;
-        // tabbed pickers can opt in when the list itself appears and disappears.
-        height: Math.min(480, inputWrap.height + tabsRow.height
-                         + (root.listVisible ? root.listContentHeight : 0) + footer.height)
-                + previewPane.height
-        Behavior on height {
-            enabled: root.animateHeight
-            NumberAnimation {
-                duration: 200
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: [0.165, 0.84, 0.44, 1.0, 1.0, 1.0]
-            }
-        }
-
-        color: Theme.bg
-        // Radii from the reference palette: panel 24, field 15, cards 13.
-        radius: 24
-        border.color: root.panelBorder
-        border.width: 1
-        clip: true
-
-        scale: root.open ? 1.0 : 0.96
+        anchors.fill: parent
         opacity: root.open ? 1.0 : 0.0
-        Behavior on scale {
-            NumberAnimation {
-                duration: 190
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: [0.26, 0.08, 0.25, 1.0, 1.0, 1.0]
-            }
-        }
         Behavior on opacity {
             NumberAnimation {
                 duration: 190
