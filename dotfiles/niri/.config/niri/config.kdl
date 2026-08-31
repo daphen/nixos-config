@@ -809,7 +809,7 @@ binds {
     Super+m hotkey-overlay-title="Mail" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here title:mlqs $HOME/.config/niri/scripts/launch-mail-client"; }
     // Cockpit (nvim + agentd rail) coexists with the kitty cockpit.
     Super+y hotkey-overlay-title="Answer agent question / Cockpit" { spawn-sh "$HOME/.config/niri/scripts/agent-ask-or-cockpit"; }
-    Super+Shift+y hotkey-overlay-title="Focus Cockpit" { spawn-sh "$HOME/.config/niri/scripts/cockpit-show"; }
+    Super+Shift+y hotkey-overlay-title="Focus Personal Cockpit" { spawn-sh "$HOME/.config/niri/scripts/cockpit-show personal"; }
 
     // Super+Ctrl+Y — flip the ORCHESTRATOR role between proart and the dev VM. Direction
     // is derived from whichever side currently holds it, so one key works both ways. The

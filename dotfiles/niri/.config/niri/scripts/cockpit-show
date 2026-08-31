@@ -1,22 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+instance="${1:-personal}"
+case "$instance" in
+  work|personal) ;;
+  *) echo "cockpit-show: expected work or personal" >&2; exit 2 ;;
+esac
+
 wid=$(niri msg --json windows 2>/dev/null | python3 -c '
 import json, sys
-windows = [w for w in json.load(sys.stdin) if (w.get("title") or "").startswith("cockpit-qs")]
+suffix = " · " + sys.argv[1]
+windows = [w for w in json.load(sys.stdin)
+           if (w.get("title") or "").startswith("cockpit-qs · ")
+           and (w.get("title") or "").endswith(suffix)]
 if not windows:
     raise SystemExit
-a = next((w for w in windows if w.get("is_focused")), None)
-if a is None:
+focused = next((w for w in windows if w.get("is_focused")), None)
+if focused is None:
     def stamp(w):
         t = w.get("focus_timestamp") or {}
         return (t.get("secs") or 0, t.get("nanos") or 0)
-    a = max(windows, key=stamp)
-print(a["id"])
-' 2>/dev/null || true)
+    focused = max(windows, key=stamp)
+print(focused["id"])
+' "$instance" 2>/dev/null || true)
 
 if [ -n "$wid" ]; then
   exec niri msg action focus-window --id "$wid"
 fi
 
-exec env COCKPIT_INSTANCE=main "$HOME/personal/ai-cockpit/run-qs.sh"
+exec "$HOME/.config/niri/scripts/cockpit-boot" "$instance"
