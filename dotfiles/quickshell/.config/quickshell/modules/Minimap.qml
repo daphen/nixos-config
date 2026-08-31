@@ -5,96 +5,146 @@ Item {
     id: root
 
     property string output: ""
-    readonly property int maxSlots: 64
+    readonly property int columns: 13
+    readonly property int rows: 3
+    readonly property int dotSize: 3
+    readonly property int gap: 6
+    readonly property int pitch: dotSize + gap
 
-    implicitWidth: Math.max(row.implicitWidth, 100)
+    implicitWidth: Math.max(grid.implicitWidth, 100)
     implicitHeight: parent ? parent.height : Theme.barHeight
 
-    readonly property var entries: {
-        const _ = NiriState.version
-        return NiriState.minimapEntries(root.output)
+    function nativePosition(window) {
+        const position = window && window.layout && window.layout.pos_in_scrolling_layout
+        if (!position || position.length < 2) return null
+
+        const column = Number(position[0])
+        const row = Number(position[1])
+        if (!Number.isFinite(column) || !Number.isFinite(row)
+                || column < 1 || row < 1
+                || column !== Math.floor(column) || row !== Math.floor(row)) return null
+
+        const limit = 4096
+        return {
+            column: Math.min(limit, column),
+            row: Math.min(limit, row),
+        }
     }
 
-    Row {
-        id: row
-        anchors.top: parent.top
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.topMargin: 1
-        spacing: 6
+    readonly property var occupancy: {
+        const _ = NiriState.version
+        let workspace = null
+        for (const id in NiriState.workspaces) {
+            const candidate = NiriState.workspaces[id]
+            if (candidate.output === root.output && candidate.is_active === true) {
+                workspace = candidate
+                break
+            }
+        }
+        if (!workspace) return ({ cells: ({}), activeCell: null })
+
+        const positions = []
+        let minColumn = Infinity
+        let maxColumn = -Infinity
+        let minRow = Infinity
+        let maxRow = -Infinity
+        for (const id in NiriState.windows) {
+            if (positions.length >= 256) break
+            const window = NiriState.windows[id]
+            if (window.workspace_id !== workspace.id) continue
+            const position = root.nativePosition(window)
+            if (!position) continue
+            positions.push({
+                column: position.column,
+                row: position.row,
+                focused: window.is_focused === true,
+            })
+            minColumn = Math.min(minColumn, position.column)
+            maxColumn = Math.max(maxColumn, position.column)
+            minRow = Math.min(minRow, position.row)
+            maxRow = Math.max(maxRow, position.row)
+        }
+        if (positions.length === 0) return ({ cells: ({}), activeCell: null })
+
+        const columnSpan = maxColumn - minColumn + 1
+        const rowSpan = maxRow - minRow + 1
+        const columnOffset = Math.floor((root.columns - columnSpan) / 2)
+        const rowOffset = Math.floor((root.rows - rowSpan) / 2)
+        const cells = {}
+        let activeCell = null
+        for (const position of positions) {
+            const column = Math.max(0, Math.min(root.columns - 1,
+                position.column - minColumn + columnOffset))
+            const row = Math.max(0, Math.min(root.rows - 1,
+                position.row - minRow + rowOffset))
+            cells[row * root.columns + column] = true
+            if (position.focused) activeCell = { column: column, row: row }
+        }
+        return ({ cells: cells, activeCell: activeCell })
+    }
+
+    readonly property var activeCell: occupancy.activeCell
+
+    Grid {
+        id: grid
+        anchors.centerIn: parent
+        columns: root.columns
+        columnSpacing: root.gap
+        rowSpacing: root.gap
 
         Repeater {
-            model: root.maxSlots
+            model: root.columns * root.rows
 
-            Item {
-                id: cell
+            Rectangle {
                 required property int index
-                readonly property var entry: index < root.entries.length ? root.entries[index] : null
-                visible: entry !== null
-
-                readonly property string kind: entry ? entry.kind : "gap"
-                readonly property bool isBar: kind === "bar"
-                readonly property bool isFocused: isBar && entry.focused === true
-                readonly property bool isWsActive: isBar && entry.wsActive === true
-
-                width: kind === "gap" ? 12 : 3
-                height: Theme.barHeight - 4
-
-                Rectangle {
-                    visible: cell.isBar
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    color: cell.isFocused ? Theme.cursor
-                         : cell.isWsActive ? Theme.fg
-                         : Theme.dimmedFg
-                    width: {
-                        if (cell.isFocused) return 3
-                        if (cell.isWsActive) return 2
-                        return 2
-                    }
-                    height: {
-                        if (cell.isFocused) return 28
-                        if (cell.isWsActive) return 21
-                        return 17
-                    }
-                    y: {
-                        const baseline = 22
-                        if (cell.isFocused) return baseline - 18
-                        if (cell.isWsActive) return baseline - 17
-                        return baseline - 15
-                    }
-                    radius: 1
-                    Behavior on width {
-                        NumberAnimation {
-                            duration: 110
-                            easing.type: Easing.BezierSpline
-                            easing.bezierCurve: [0.34, 1.56, 0.64, 1.0, 1.0, 1.0]
-                        }
-                    }
-                    Behavior on height {
-                        NumberAnimation {
-                            duration: 110
-                            easing.type: Easing.BezierSpline
-                            easing.bezierCurve: [0.34, 1.56, 0.64, 1.0, 1.0, 1.0]
-                        }
-                    }
-                    Behavior on y {
-                        NumberAnimation {
-                            duration: 110
-                            easing.type: Easing.BezierSpline
-                            easing.bezierCurve: [0.34, 1.56, 0.64, 1.0, 1.0, 1.0]
-                        }
-                    }
-                    Behavior on color { ColorAnimation { duration: 110 } }
-                }
-
-                Rectangle {
-                    visible: cell.kind === "dot"
-                    anchors.centerIn: parent
-                    width: 3
-                    height: 3
-                    radius: 1.5
-                    color: Theme.fg
-                }
+                readonly property bool occupied: root.occupancy.cells[index] === true
+                width: root.dotSize
+                height: root.dotSize
+                radius: root.dotSize / 2
+                color: Theme.fg
+                opacity: occupied ? 0.62 : 0.16
             }
+        }
+    }
+
+    Item {
+        id: marker
+        visible: root.activeCell !== null
+        width: 10
+        height: 10
+        x: grid.x + (root.activeCell ? root.activeCell.column : Math.floor(root.columns / 2)) * root.pitch
+            + (root.dotSize - width) / 2
+        y: grid.y + (root.activeCell ? root.activeCell.row : Math.floor(root.rows / 2)) * root.pitch
+            + (root.dotSize - height) / 2
+
+        Behavior on x {
+            NumberAnimation {
+                duration: 110
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: [0.34, 1.56, 0.64, 1.0, 1.0, 1.0]
+            }
+        }
+        Behavior on y {
+            NumberAnimation {
+                duration: 110
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: [0.34, 1.56, 0.64, 1.0, 1.0, 1.0]
+            }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: width / 2
+            color: Theme.surface2
+        }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: 4
+            height: 4
+            radius: 2
+            color: Theme.cursor
+            Behavior on color { ColorAnimation { duration: 110 } }
         }
     }
 }
