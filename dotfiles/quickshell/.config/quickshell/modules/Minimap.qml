@@ -13,7 +13,7 @@ Item {
         const _ = NiriState.version
         return NiriState.visibleWorkspaces(root.output)
     }
-    readonly property int rows: workspaceGroups.length
+    readonly property int rows: Math.max(3, workspaceGroups.length)
 
     implicitWidth: Math.max(grid.implicitWidth, 100)
     implicitHeight: parent ? parent.height : Theme.barHeight
@@ -42,7 +42,9 @@ Item {
                 if (column === null) continue
                 positions.push({
                     column: column,
-                    row: groupIndex,
+                    row: groups.length === 1
+                        ? Math.floor(root.rows / 2)
+                        : Math.round(groupIndex * (root.rows - 1) / (groups.length - 1)),
                     focused: window.is_focused === true,
                 })
                 minColumn = Math.min(minColumn, column)
