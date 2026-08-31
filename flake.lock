@@ -246,17 +246,17 @@
     "niri-unstable": {
       "flake": false,
       "locked": {
-        "lastModified": 1788124257,
-        "narHash": "sha256-Rr0D6xD//AVR/ArX6dAfFUwoq2PD4mcxq11iGNH/OaI=",
+        "lastModified": 1788092828,
+        "narHash": "sha256-kW9kmKAYeS/30hKX+0t2RDLM3KbqiZyb6Zm5WpPliNU=",
         "owner": "daphen",
         "repo": "niri",
-        "rev": "9b98a883194034bf01b8ebd49d2407ac5827557d",
+        "rev": "c5ecd47ce72f6b776b2751a6b5587bf33e389264",
         "type": "github"
       },
       "original": {
         "owner": "daphen",
         "repo": "niri",
-        "rev": "9b98a883194034bf01b8ebd49d2407ac5827557d",
+        "rev": "c5ecd47ce72f6b776b2751a6b5587bf33e389264",
         "type": "github"
       }
     },
