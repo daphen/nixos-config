@@ -174,7 +174,7 @@ output "Samsung Electric Company S34C65xV HNTY700216" {
 // https://yalter.github.io/niri/Configuration:-Layout
 layout {
     // Set gaps around windows in logical pixels.
-    gaps 16
+    gaps 4
 
     // Transparent background so the static wallpaper shows through
     background-color "transparent"
@@ -458,6 +458,10 @@ screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
 // The wiki explains how to configure individual animations:
 // https://yalter.github.io/niri/Configuration:-Animations
 animations {
+    workspace-switch {
+        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
+    }
+
     // Uncomment to turn off all animations.
     // off
 
@@ -858,21 +862,31 @@ binds {
     XF86AudioNext allow-when-locked=true { spawn "playerctl" "next"; }
     XF86AudioPrev allow-when-locked=true { spawn "playerctl" "previous"; }
 
-    // Spatial window navigation; the cockpit uses Ctrl+h/l for nvim↔rail.
+    // Window navigation with Super+hl — plain column focus (the cockpit uses
+    // Ctrl+h/l to cross nvim<->rail now, so no heidr bridge here).
     Super+h { focus-column-left; }
-    Super+j { focus-window-down; }
-    Super+k { focus-window-up; }
     Super+l { focus-column-right; }
     // Toggle focus to the other monitor. Super+hl no longer crosses, and
     // Alt+hl needs the laptop keyboard's Alt — this flips between the two
     // displays without leaving the home row.
     Super+u { focus-monitor-next; }
 
-    // Move the focused window spatially; placement repacks surrounding windows.
-    Super+Shift+h { move-column-left; }
-    Super+Shift+j { move-window-down; }
-    Super+Shift+k { move-window-up; }
-    Super+Shift+l { move-column-right; }
+    // Move windows with Super+Shift+hl. Also pokes the niri-minimap
+    // daemon (SIGUSR1) because niri's event-stream doesn't emit any
+    // event for column reorders — without this the minimap stays stale.
+    Super+Shift+h { spawn-sh "niri msg action move-column-left  && pkill -USR1 -f 'niri-minimap.sh'"; }
+    Super+Shift+l { spawn-sh "niri msg action move-column-right && pkill -USR1 -f 'niri-minimap.sh'"; }
+
+    // Move windows to workspace up/down with Super+Shift+jk
+    Super+Shift+j { move-window-to-workspace-down; }
+    Super+Shift+k { move-window-to-workspace-up; }
+
+    // Switch workspaces with Super+jk
+    // These scripts focus the adjacent monitor at edge workspaces and treat
+    // the lovable-* workspace group as a *single* navigable entry — only the
+    // currently-active stack participates; inactive lovable-* are hidden.
+    Super+j { spawn "/home/daphen/.config/niri/scripts/ws-focus-workspace-down"; }
+    Super+k { spawn "/home/daphen/.config/niri/scripts/ws-focus-workspace-up"; }
 
     // Move windows to different monitors with Super+Ctrl+Shift+hjkl
     Super+Ctrl+Shift+h { move-window-to-monitor-left; }
