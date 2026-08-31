@@ -14,71 +14,61 @@ Item {
     implicitWidth: Math.max(grid.implicitWidth, 100)
     implicitHeight: parent ? parent.height : Theme.barHeight
 
-    function nativePosition(window) {
+    function nativeColumn(window) {
         const position = window && window.layout && window.layout.pos_in_scrolling_layout
-        if (!position || position.length < 2) return null
+        if (!position || position.length < 1) return null
 
         const column = Number(position[0])
-        const row = Number(position[1])
-        if (!Number.isFinite(column) || !Number.isFinite(row)
-                || column < 1 || row < 1
-                || column !== Math.floor(column) || row !== Math.floor(row)) return null
-
-        const limit = 4096
-        return {
-            column: Math.min(limit, column),
-            row: Math.min(limit, row),
-        }
+        if (!Number.isFinite(column) || column < 1 || column !== Math.floor(column)) return null
+        return Math.min(4096, column)
     }
 
     readonly property var occupancy: {
         const _ = NiriState.version
-        let workspace = null
-        for (const id in NiriState.workspaces) {
-            const candidate = NiriState.workspaces[id]
-            if (candidate.output === root.output && candidate.is_active === true) {
-                workspace = candidate
-                break
-            }
+        const groups = NiriState.visibleWorkspaces(root.output)
+        if (groups.length === 0) return ({ cells: ({}), activeCell: null })
+
+        let firstGroup = 0
+        if (groups.length > root.rows) {
+            let activeGroup = groups.findIndex(group => group.ws.is_active === true)
+            if (activeGroup < 0) activeGroup = 0
+            firstGroup = Math.max(0, Math.min(groups.length - root.rows,
+                activeGroup - Math.floor(root.rows / 2)))
         }
-        if (!workspace) return ({ cells: ({}), activeCell: null })
+        const visibleGroups = groups.slice(firstGroup, firstGroup + root.rows)
+        const rowOffset = groups.length < root.rows
+            ? Math.floor((root.rows - groups.length) / 2)
+            : 0
 
         const positions = []
         let minColumn = Infinity
         let maxColumn = -Infinity
-        let minRow = Infinity
-        let maxRow = -Infinity
-        for (const id in NiriState.windows) {
-            if (positions.length >= 256) break
-            const window = NiriState.windows[id]
-            if (window.workspace_id !== workspace.id) continue
-            const position = root.nativePosition(window)
-            if (!position) continue
-            positions.push({
-                column: position.column,
-                row: position.row,
-                focused: window.is_focused === true,
-            })
-            minColumn = Math.min(minColumn, position.column)
-            maxColumn = Math.max(maxColumn, position.column)
-            minRow = Math.min(minRow, position.row)
-            maxRow = Math.max(maxRow, position.row)
+        for (let groupIndex = 0; groupIndex < visibleGroups.length; groupIndex++) {
+            const group = visibleGroups[groupIndex]
+            for (const window of group.windows) {
+                if (positions.length >= 256) break
+                const column = root.nativeColumn(window)
+                if (column === null) continue
+                positions.push({
+                    column: column,
+                    row: groupIndex + rowOffset,
+                    focused: window.is_focused === true,
+                })
+                minColumn = Math.min(minColumn, column)
+                maxColumn = Math.max(maxColumn, column)
+            }
         }
         if (positions.length === 0) return ({ cells: ({}), activeCell: null })
 
         const columnSpan = maxColumn - minColumn + 1
-        const rowSpan = maxRow - minRow + 1
         const columnOffset = Math.floor((root.columns - columnSpan) / 2)
-        const rowOffset = Math.floor((root.rows - rowSpan) / 2)
         const cells = {}
         let activeCell = null
         for (const position of positions) {
             const column = Math.max(0, Math.min(root.columns - 1,
                 position.column - minColumn + columnOffset))
-            const row = Math.max(0, Math.min(root.rows - 1,
-                position.row - minRow + rowOffset))
-            cells[row * root.columns + column] = true
-            if (position.focused) activeCell = { column: column, row: row }
+            cells[position.row * root.columns + column] = true
+            if (position.focused) activeCell = { column: column, row: position.row }
         }
         return ({ cells: cells, activeCell: activeCell })
     }
