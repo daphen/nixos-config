@@ -5,4 +5,5 @@ if [[ "$result" == *focused* ]]; then
     exit 0
 fi
 
-exec "$HOME/.config/niri/scripts/cockpit-show" personal
+exec "$HOME/.config/niri/scripts/niri-jump-or-exec" \
+    title:cockpit-qs "$HOME/.config/niri/scripts/cockpit-boot personal"
