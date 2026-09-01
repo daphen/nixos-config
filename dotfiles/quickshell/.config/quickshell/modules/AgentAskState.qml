@@ -182,12 +182,12 @@ Singleton {
             rosterGen++
             return
         }
-        if (message.type === "turn_end" || message.type === "agent_end") {
+        if (message.type === "tool_execution_end" || message.type === "turn_end" || message.type === "agent_end") {
             const next = Object.assign({}, _liveActivities)
             delete next[_key(index, message.session || "")]
             _liveActivities = next
             rosterGen++
-            _remove(index, message.session || "")
+            if (message.type !== "tool_execution_end") _remove(index, message.session || "")
             return
         }
         if (message.type === "roster") _reconcileRoster(index, message.sessions || [])

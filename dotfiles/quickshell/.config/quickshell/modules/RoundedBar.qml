@@ -24,7 +24,12 @@ PanelWindow {
         || Modules.AgentAskState.inputOpen
         || Modules.CockpitState.open
     readonly property var workingRoots: Modules.AgentAskState.workingRoots
-    property int workingRootRevision: 0
+    readonly property var workingActivities: {
+        const activities = []
+        for (const root of workingRoots)
+            activities.push(...(root.activities || []))
+        return activities
+    }
     readonly property real activePickerHeight: Math.max(
         reviewCreatePicker.open ? reviewCreatePicker.implicitHeight : 0,
         lovboxPicker.open ? lovboxPicker.implicitHeight : 0,
@@ -42,44 +47,6 @@ PanelWindow {
         agentAskPicker.open ? agentAskPicker.implicitHeight : 0,
         cockpitPicker.open ? cockpitPicker.implicitHeight : 0
     )
-
-    ListModel {
-        id: workingRootModel
-        dynamicRoles: true
-    }
-
-    function syncWorkingRoots() {
-        const desired = workingRoots || []
-        for (let i = 0; i < desired.length; i++) {
-            const root = desired[i]
-            let found = -1
-            for (let j = i; j < workingRootModel.count; j++) {
-                if (workingRootModel.get(j).key === root.key) { found = j; break }
-            }
-            const activitiesJson = JSON.stringify(root.activities || [])
-            if (found < 0) workingRootModel.insert(i, { key: root.key, activitiesJson: activitiesJson })
-            else {
-                if (found !== i) workingRootModel.move(found, i, 1)
-                workingRootModel.set(i, { key: root.key, activitiesJson: activitiesJson })
-            }
-        }
-        while (workingRootModel.count > desired.length)
-            workingRootModel.remove(workingRootModel.count - 1)
-        workingRootRevision++
-    }
-
-    function workingRootAt(index) {
-        workingRootRevision
-        return index >= 0 && index < workingRootModel.count ? workingRootModel.get(index) : null
-    }
-
-    function workingRootActivities(index) {
-        const root = workingRootAt(index)
-        return root ? JSON.parse(root.activitiesJson) : []
-    }
-
-    onWorkingRootsChanged: syncWorkingRoots()
-    Component.onCompleted: syncWorkingRoots()
 
     anchors {
         top: true
@@ -190,10 +157,10 @@ PanelWindow {
 
             Lib.Crossfade {
                 id: activitySwap
-                visible: Modules.TodoListPickerState.openCount > 0 || workingRootModel.count > 0
+                visible: Modules.TodoListPickerState.openCount > 0 || bar.workingActivities.length > 0
                 width: Math.max(18, quickNotes.implicitWidth)
                 height: parent.height
-                showSecond: workingRootModel.count > 0
+                showSecond: bar.workingActivities.length > 0
                 enterDuration: 250
                 exitDuration: 250
                 shift: 8
@@ -201,52 +168,17 @@ PanelWindow {
                 first: Modules.Todos {
                     id: quickNotes
                     anchors.centerIn: parent
-                    enabled: workingRootModel.count === 0
+                    enabled: bar.workingActivities.length === 0
                 }
 
                 second: Lib.ThinkingOrb {
                     width: 18
                     height: 18
                     anchors.centerIn: parent
-                    readonly property var rootData: bar.workingRootAt(0)
-                    readonly property var rootActivities: bar.workingRootActivities(0)
-                    running: workingRootModel.count > 0
-                    seedKey: rootData ? rootData.key : ""
-                    glow: Lib.AgentActivity.colorFor(rootActivities[0])
-                    activityColors: Lib.AgentActivity.colorsFor(rootActivities)
-                }
-            }
-
-            Row {
-                spacing: 5
-                anchors.verticalCenter: parent.verticalCenter
-
-                Repeater {
-                    model: Math.max(0, workingRootModel.count - 1)
-
-                    Lib.Crossfade {
-                        id: orbSwap
-                        required property int index
-                        readonly property var rootData: bar.workingRootAt(index + 1)
-                        readonly property var rootActivities: bar.workingRootActivities(index + 1)
-                        width: 18
-                        height: parent.height
-                        enterDuration: 250
-                        exitDuration: 250
-                        shift: 8
-                        Component.onCompleted: Qt.callLater(function() { showSecond = true })
-
-                        first: Item {}
-
-                        second: Lib.ThinkingOrb {
-                            width: 18
-                            height: 18
-                            anchors.centerIn: parent
-                            seedKey: orbSwap.rootData ? orbSwap.rootData.key : ""
-                            glow: Lib.AgentActivity.colorFor(orbSwap.rootActivities[0])
-                            activityColors: Lib.AgentActivity.colorsFor(orbSwap.rootActivities)
-                        }
-                    }
+                    running: bar.workingActivities.length > 0
+                    seedKey: "rounded-bar-aggregate"
+                    glow: Lib.AgentActivity.colorFor(bar.workingActivities[0])
+                    activityColors: Lib.AgentActivity.colorsFor(bar.workingActivities)
                 }
             }
         }
