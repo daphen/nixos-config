@@ -9,6 +9,8 @@ Item {
   id: orb
   property bool running: true
   property color glow: Theme.fg
+  property var activityColors: []
+  readonly property bool combined: activityColors.length > 1
   // Flip the ring's light/dark pick — for orbs sitting on an inverted ground
   // (the roster's cursor pill), where the normal ring melts into the fill.
   property bool invertRing: false
@@ -64,6 +66,22 @@ Item {
     }
   }
   function _ph(P) { return ((Date.now() * flow) % P) / P * 2 * Math.PI }
+  function activityBucket(bucket, lightnessShift) {
+    const colors = activityColors
+    if (!colors.length) return glow
+    let r = 0, g = 0, b = 0, count = 0
+    for (let i = bucket; i < colors.length; i += 3) {
+      r += colors[i].r; g += colors[i].g; b += colors[i].b; count++
+    }
+    if (!count) {
+      const color = colors[bucket % colors.length]
+      r = color.r; g = color.g; b = color.b; count = 1
+    }
+    const mixed = Qt.rgba(r / count, g / count, b / count, 1)
+    return Qt.hsla(mixed.hslHue < 0 ? 0 : mixed.hslHue,
+                   Math.max(0.65, mixed.hslSaturation),
+                   Math.max(0.18, Math.min(0.82, mixed.hslLightness + lightnessShift)), 1)
+  }
   FrameAnimation {
     running: orb.running
     onTriggered: {
@@ -131,15 +149,15 @@ Item {
     // Orange ramp tuned live 2026-08-21 (orb-tuner): saturated anchor, hot
     // body, golden crest — dark orange reads as brown, so no deep stop.
     readonly property real _oLift: Theme.mode === "light" ? 0.047 : 0
-    property color colA: _orange
+    property color colA: orb.combined ? orb.activityBucket(0, -0.16) : _orange
       ? Qt.hsla((orb.hu - 0.027 + 1.0) % 1, orb.sat * 1.0, 0.359 + _oLift, 1)
       : Qt.hsla((orb.hu + (_warm ? 0.02 : 0.03)) % 1, orb.sat * 0.60,
                 (Theme.mode === "light" ? 0.30 : 0.24) + _lift * 0.6, 1)
-    property color colB: _orange
+    property color colB: orb.combined ? orb.activityBucket(1, 0) : _orange
       ? Qt.hsla(orb.hu, orb.sat * 0.867, 0.55 + _oLift, 1)
       : Qt.hsla(orb.hu, orb.sat * (_warm ? 0.70 : 0.55),
                 (Theme.mode === "light" ? 0.58 : 0.52) + _lift, 1)
-    property color colC: _orange
+    property color colC: orb.combined ? orb.activityBucket(2, 0.18) : _orange
       ? Qt.hsla((orb.hu + 0.05) % 1, orb.sat * 0.789, 0.733 + _oLift, 1)
       : Qt.hsla((orb.hu + (_warm ? 0.045 : 0.96)) % 1, orb.sat * 0.35,
                 (Theme.mode === "light" ? 0.84 : 0.80) + _lift * 0.5, 1)

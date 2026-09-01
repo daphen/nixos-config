@@ -2,6 +2,7 @@ module QsLib
 singleton Theme Theme.qml
 singleton Html Html.qml
 singleton Motion Motion.qml
+singleton AgentActivity AgentActivity.qml
 Icon Icon.qml
 KeyCap KeyCap.qml
 CapLabel CapLabel.qml

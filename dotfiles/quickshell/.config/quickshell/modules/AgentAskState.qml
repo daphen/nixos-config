@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../QsLib" as Lib
 
 Singleton {
     id: root
@@ -17,7 +18,10 @@ Singleton {
     property var _orchestrators: ({})
     property var _pendingEscalations: []
     property var _rosterSessions: ({})
+    property var _liveActivities: ({})
+    property int rosterGen: 0
     property var _pendingReports: []
+    readonly property var workingRoots: _workingRoots(rosterGen)
     signal focusConfirmRequested(var ask)
 
     function discover() {
@@ -27,6 +31,43 @@ Singleton {
     }
 
     function _key(index, session) { return String(index) + ":" + session }
+
+    function _scope(index) {
+        const match = String(paths[index] || "").match(/agentd-([^/]+)\.sock$/)
+        return match ? match[1] : "personal"
+    }
+
+    function _workingRoots(_) {
+        const roots = ({})
+        for (const index in _rosterSessions) {
+            const sessions = _rosterSessions[index] || []
+            const byName = ({})
+            for (const session of sessions)
+                byName[session.name || session.id || ""] = session
+            for (const session of sessions) {
+                if (session.status !== "streaming") continue
+                let top = session
+                const seen = ({})
+                while (top.parent && byName[top.parent] && !seen[top.parent]) {
+                    seen[top.parent] = true
+                    top = byName[top.parent]
+                }
+                const name = top.name || top.id || session.name || session.id || "agent"
+                const key = _key(index, name)
+                if (!roots[key]) roots[key] = {
+                    key: _scope(index) + ":" + name,
+                    name: name,
+                    scope: _scope(index),
+                    workers: 0,
+                    activities: []
+                }
+                roots[key].workers++
+                roots[key].activities.push(_liveActivities[_key(index, session.name || session.id || "")]
+                    || session.currentTool || "thinking")
+            }
+        }
+        return Object.values(roots)
+    }
 
     function _upsert(index, message) {
         const key = _key(index, message.session || "")
@@ -67,6 +108,7 @@ Singleton {
             if (session.profile === "lovable-orchestrator") { orchestrator = session; break }
         _orchestrators[index] = orchestrator
         _rosterSessions[index] = sessions || []
+        rosterGen++
         _routeEscalations()
         _routeReports()
         const waiting = ({})
@@ -133,7 +175,18 @@ Singleton {
             _upsert(index, message)
             return
         }
+        if (message.type === "tool_execution_start") {
+            const next = Object.assign({}, _liveActivities)
+            next[_key(index, message.session || "")] = Lib.AgentActivity.classify(message.toolName, message.args)
+            _liveActivities = next
+            rosterGen++
+            return
+        }
         if (message.type === "turn_end" || message.type === "agent_end") {
+            const next = Object.assign({}, _liveActivities)
+            delete next[_key(index, message.session || "")]
+            _liveActivities = next
+            rosterGen++
             _remove(index, message.session || "")
             return
         }
