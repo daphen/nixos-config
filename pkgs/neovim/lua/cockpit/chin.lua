@@ -6,9 +6,9 @@
 -- chip, ticket/root chip, scrollbar position.
 local M = {}
 
-local scope = vim.env.COCKPIT_SCOPE or vim.env.HEIDR_SCOPE or "personal"
+local instance = vim.env.COCKPIT_INSTANCE or vim.env.HEIDR_INSTANCE or "main"
 local dir = vim.fn.expand("~/.local/state/cockpit")
-local path = dir .. "/chin-" .. scope .. ".json"
+local path = dir .. "/chin-" .. instance .. ".json"
 
 -- Worktree-scoped diff vs the hunk-nvim base (the same numbers the old lualine
 -- bar showed) — async + cached; refreshed on the same events lualine used.
