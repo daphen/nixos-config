@@ -611,7 +611,19 @@ local function bound_session_name(slug)
 	end
 end
 
-local function dispatch(prompt, wait, cwd)
+local function dispatch(prompt, wait, cwd, exact_session, exact_scopes)
+	if exact_session then
+		local argv = { "agent", "send", exact_session, "--wait", tostring(wait or 8) }
+		if exact_scopes then vim.list_extend(argv, { "--scope", exact_scopes }) end
+		vim.system(argv, { stdin = prompt }, function(res)
+			if res.code ~= 0 then
+				vim.schedule(function()
+					vim.notify("plan: couldn't reach active session '" .. exact_session .. "'", vim.log.levels.WARN)
+				end)
+			end
+		end)
+		return true
+	end
 	-- The plan's bound session wins, addressed BY NAME — exact routing.
 	local slug = state.plan_path and vim.fn.fnamemodify(state.plan_path, ":t:r")
 	local target = bound_session_name(slug)
@@ -682,6 +694,24 @@ function M.ask()
 	ask_at(vim.api.nvim_win_get_cursor(0)[1], "ask the agent")
 end
 
+local function active_window_session()
+	local instance = vim.env.COCKPIT_INSTANCE or vim.env.HEIDR_INSTANCE
+	if not instance then return nil end
+	local config = instance == "main"
+		and vim.fn.expand("~/personal/ai-cockpit/qs-shell")
+		or vim.fn.expand("~/.local/state/cockpit/instance-" .. instance .. "-shell")
+	local result = vim.system({ "qs", "-p", config, "ipc", "call", "cockpit", "railState" },
+		{ text = true }):wait(1000)
+	if result.code ~= 0 then return nil end
+	local ok, state = pcall(vim.json.decode, vim.trim(result.stdout or ""))
+	if not ok or not state.sel or state.sel == "" then return nil end
+	local mode = "personal"
+	local ok_mode, lines = pcall(vim.fn.readfile,
+		vim.fn.expand("~/.local/state/cockpit/mode-" .. instance))
+	if ok_mode and lines[1] then mode = vim.trim(lines[1]) end
+	return state.sel, mode == "work" and "lovable,work" or "personal"
+end
+
 -- Visual variant: the x-mode map presses <Esc> first, so '> holds the selection end.
 -- Visual Ctrl+P from ANY buffer: ask the repo's agent about the highlighted
 -- text. Chat-only — the selection travels as context in the prompt, nothing
@@ -692,11 +722,15 @@ function M.ask_visual()
 	local abs = vim.api.nvim_buf_get_name(0)
 	-- Route to the active rail session ("the agent") whenever one is open, so
 	-- <C-p> works from ANY buffer, not just a plan; fall back to the plan's repo.
+	local target_session, target_scopes = active_window_session()
 	local target_cwd
 	local ok, agent = pcall(require, "cockpit")
 	if ok and agent.active_session then
 		local a = agent.active_session()
-		if a then target_cwd = a.cwd end
+		if a and (not target_session or a.id == target_session) then
+			target_cwd = a.cwd
+			target_session = target_session or a.id
+		end
 	end
 	local root = target_cwd or state.root or git_root()
 	-- pretty ref: repo-relative under the routed cwd, else just the filename
@@ -718,7 +752,7 @@ function M.ask_visual()
 			or "_(answer in chat)_"
 		local prompt = ("`%s:%d-%d`\n```\n%s\n```\n\n%s\n\n%s")
 			:format(ref, l1, l2, block, text, guard)
-		if dispatch(prompt, nil, target_cwd) then
+		if dispatch(prompt, nil, target_cwd, target_session, target_scopes) then
 			vim.notify("plan: question sent — answer in the agent chat")
 		end
 	end)

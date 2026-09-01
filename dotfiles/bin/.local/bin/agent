@@ -94,13 +94,16 @@ def all_sessions() -> list[tuple[str, str, dict]]:
     return out
 
 
-def resolve(ref: str, cwd_path: str | None = None):
+def resolve(ref: str, cwd_path: str | None = None, scope_filter: str | None = None):
     """Match a ref (name/id/cwd) — or an explicit --cwd path — to one session.
     Returns (scope, sock_path, session) or None."""
     abs_target = str(Path(cwd_path or ref).expanduser().resolve()) if (cwd_path or _looks_pathy(ref)) else None
+    allowed = set(scope_filter.split(",")) if scope_filter else None
     by_cwd = None
     by_sub = None
     for sc, sp, s in all_sessions():
+        if allowed is not None and sc not in allowed:
+            continue
         sid = str(s.get("id", "") or "")
         name = str(s.get("name", "") or "")
         cwd = str(s.get("cwd", "") or "")
@@ -204,10 +207,10 @@ def cmd_send(a) -> int:
         print("agent send: empty message", file=sys.stderr)
         return 2
     deadline = time.time() + (a.wait or 0.0)
-    hit = resolve(a.ref or "", cwd_path=a.cwd) if (a.ref or a.cwd) else None
+    hit = resolve(a.ref or "", cwd_path=a.cwd, scope_filter=a.scope) if (a.ref or a.cwd) else None
     while hit is None and time.time() < deadline:
         time.sleep(0.5)
-        hit = resolve(a.ref or "", cwd_path=a.cwd)
+        hit = resolve(a.ref or "", cwd_path=a.cwd, scope_filter=a.scope)
     if hit is None:
         who = a.cwd if a.cwd else repr(a.ref)
         print(f"agent send: no session driving {who}", file=sys.stderr)
@@ -424,6 +427,7 @@ def main() -> int:
     p_send.add_argument("ref", nargs="?", help="session name, id, or cwd")
     p_send.add_argument("text", nargs="*", help="prompt text (stdin if omitted)")
     p_send.add_argument("--cwd", help="target the session driving PATH")
+    p_send.add_argument("--scope", help="comma-separated agentd scopes to search")
     p_send.add_argument("--wait", type=float, default=0.0, help="retry until a session appears, up to SEC")
     p_send.set_defaults(fn=cmd_send)
 
