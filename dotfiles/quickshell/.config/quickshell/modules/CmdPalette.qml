@@ -1315,10 +1315,47 @@ PanelWindow {
                             visible: filmCard.focused && root.filmFocused
                         }
 
+                        Rectangle {
+                            id: mediaControl
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.margins: 10
+                            width: 34
+                            height: 34
+                            radius: 17
+                            z: 30
+                            visible: String(filmCard.modelData.url || "")
+                                .match(/^https?:\/\/(www\.)?(youtube\.com\/watch|youtu\.be\/)/) !== null
+                            color: mediaControlHover.hovered
+                                ? Theme.cursor : Qt.rgba(0, 0, 0, 0.76)
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "⏯"
+                                color: mediaControlHover.hovered ? Theme.bg : "#ffffff"
+                                font.family: root.sans
+                                font.pixelSize: 17
+                            }
+
+                            HoverHandler {
+                                id: mediaControlHover
+                                cursorShape: Qt.PointingHandCursor
+                            }
+                        }
+
                         HoverHandler { id: filmHover; cursorShape: Qt.PointingHandCursor }
 
                         TapHandler {
-                            onTapped: {
+                            onTapped: eventPoint => {
+                                const p = eventPoint.position
+                                if (mediaControl.visible
+                                        && p.x >= mediaControl.x
+                                        && p.x <= mediaControl.x + mediaControl.width
+                                        && p.y >= mediaControl.y
+                                        && p.y <= mediaControl.y + mediaControl.height) {
+                                    PaletteState.playPauseMedia()
+                                    return
+                                }
                                 root.filmFocused = true
                                 root.filmIndex = filmCard.index
                                 root.runEntry(root.filmEntry(filmCard.index), false)
@@ -1609,9 +1646,9 @@ PanelWindow {
                                 Text {
                                     anchors.centerIn: parent
                                     text: "⏯"
-                                    color: Theme.fg_muted
+                                    color: mediaHover.hovered ? Theme.fg : Theme.fg_muted
                                     font.family: root.sans
-                                    font.pixelSize: 16
+                                    font.pixelSize: 18
                                 }
                             }
                             HoverHandler { id: mediaHover; cursorShape: Qt.PointingHandCursor }
