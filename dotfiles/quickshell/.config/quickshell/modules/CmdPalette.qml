@@ -370,7 +370,7 @@ PanelWindow {
 
     function tabContentKey(tabs) {
         return JSON.stringify(tabs.map(t => [
-            t.id, t.windowId, t.title, t.url, t.faviconPath, t.audible
+            t.id, t.windowId, t.title, t.url, t.faviconPath
         ]))
     }
 
@@ -1340,7 +1340,7 @@ PanelWindow {
                                 Text {
                                     anchors.centerIn: parent
                                     anchors.horizontalCenterOffset: 1
-                                    visible: filmCard.modelData.audible !== true
+                                    visible: !PaletteState.mediaPlaying
                                     text: "▶"
                                     color: mediaControlHover.hovered ? Theme.bg : "#ffffff"
                                     font.family: root.sans
@@ -1350,7 +1350,7 @@ PanelWindow {
                                 Row {
                                     anchors.centerIn: parent
                                     spacing: 4
-                                    visible: filmCard.modelData.audible === true
+                                    visible: PaletteState.mediaPlaying
 
                                     Repeater {
                                         model: 2
