@@ -9,6 +9,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -70,7 +71,8 @@ class LauncherPayloadTests(unittest.TestCase):
         script = ROOT / "dotfiles/niri/.config/niri/scripts/agent-review"
         loader = importlib.machinery.SourceFileLoader("agent_review", str(script))
         spec = importlib.util.spec_from_loader("agent_review", loader)
-        module = importlib.util.module_from_spec(spec); loader.exec_module(module)
+        assert spec is not None
+        module: Any = importlib.util.module_from_spec(spec); loader.exec_module(module)
         left, right = socket.socketpair()
         module.agentd_connect = lambda: left
         payloads = []
@@ -94,7 +96,8 @@ class LauncherPayloadTests(unittest.TestCase):
         script = ROOT / "dotfiles/niri/.config/niri/scripts/agent-review"
         loader = importlib.machinery.SourceFileLoader("agent_review_error", str(script))
         spec = importlib.util.spec_from_loader("agent_review_error", loader)
-        module = importlib.util.module_from_spec(spec); loader.exec_module(module)
+        assert spec is not None
+        module: Any = importlib.util.module_from_spec(spec); loader.exec_module(module)
         left, right = socket.socketpair()
         module.agentd_connect = lambda: left
 
