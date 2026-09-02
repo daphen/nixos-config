@@ -24,6 +24,7 @@ let
   # agentd — built in-repo from the flake=false source input (no flake.nix in
   # the repo). Lands `agentd` on PATH; the nvim rail + niri startup use it.
   agentd = import ../../pkgs/agentd { inherit pkgs; src = inputs.agentd; };
+  mutagenEvented = import ../../pkgs/mutagen-evented.nix { inherit pkgs; };
   # nvim — the converged config (0.12, lz.n, native LSP), with the desktop
   # "full" profile (extras like pyright gated behind NVIM_PROFILE=full and
   # layered onto PATH). Lua lives in ~/nixos/pkgs/neovim and is read live from
@@ -80,7 +81,7 @@ in
     autossh
     # sshfs/mutagen — mutagen syncs the lovbox worktree to the local mirror so the
     # local nvim edits the box's files at native speed (sshfs hung on the monorepo).
-    mutagen
+    mutagenEvented
   ]) ++ [
     # Helium browser via the upstream auto-bumped flake. Ships its own
     # .desktop and icon, so no xdg.desktopEntries needed.

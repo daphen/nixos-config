@@ -1,0 +1,83 @@
+diff --git a/pkg/filesystem/watching/watch_non_recursive_linux.go b/pkg/filesystem/watching/watch_non_recursive_linux.go
+index dd07967..a647f53 100644
+--- a/pkg/filesystem/watching/watch_non_recursive_linux.go
++++ b/pkg/filesystem/watching/watch_non_recursive_linux.go
+@@ -22,7 +22,7 @@ const (
+ 	inotifyChannelCapacity = 50
+ 	// inotifyDefaultMaximumWatches is the default maximum number of inotify
+ 	// watches that will be allowed to exist per-watcher.
+-	inotifyDefaultMaximumWatches = 50
++	inotifyDefaultMaximumWatches = 131072
+ )
+ 
+ // nonRecursiveWatcher implements NonRecursiveWatcher using inotify, with paths
+diff --git a/pkg/mutagen/version.go b/pkg/mutagen/version.go
+index 0c9ec44..37844a0 100644
+--- a/pkg/mutagen/version.go
++++ b/pkg/mutagen/version.go
+@@ -19,7 +19,7 @@ const (
+ 	// VersionTag represents a tag to be appended to the Mutagen version string.
+ 	// It must not contain spaces. If empty, no tag is appended to the version
+ 	// string.
+-	VersionTag = ""
++	VersionTag = "evented"
+ )
+ 
+ // DevelopmentModeEnabled indicates that development mode is active. This is
+diff --git a/pkg/synchronization/endpoint/local/endpoint.go b/pkg/synchronization/endpoint/local/endpoint.go
+index 1bf3150..b578762 100644
+--- a/pkg/synchronization/endpoint/local/endpoint.go
++++ b/pkg/synchronization/endpoint/local/endpoint.go
+@@ -592,6 +592,22 @@ func (e *endpoint) saveCache(ctx context.Context, cachePath string, signal <-cha
+ 	}
+ }
+ 
++func updateDirectoryWatches(watcher watching.NonRecursiveWatcher, root, path string, entry *core.Entry, add bool) {
++	if entry == nil || entry.Kind != core.EntryKind_Directory {
++		return
++	}
++	fullPath := filepath.Join(root, path)
++	if add {
++		watcher.Watch(fullPath)
++	} else {
++		watcher.Unwatch(fullPath)
++	}
++	prefix := fastpath.Joinable(path)
++	for name, child := range entry.GetContents() {
++		updateDirectoryWatches(watcher, root, prefix+name, child, add)
++	}
++}
++
+ // watchPoll is the watch loop for poll-based watching, with optional support
+ // for using native non-recursive watching facilities to reduce notification
+ // latency on frequently updated contents.
+@@ -609,6 +625,7 @@ func (e *endpoint) watchPoll(ctx context.Context, pollingInterval uint32, nonRec
+ 
+ 	// Track the previous snapshot.
+ 	previous := &core.Snapshot{}
++	directoryWatchesInitialized := false
+ 
+ 	// If non-recursive watching is available, then set up a non-recursive
+ 	// watcher (and ensure its termination). Since non-recursive watching is a
+@@ -775,12 +792,17 @@ func (e *endpoint) watchPoll(ctx context.Context, pollingInterval uint32, nonRec
+ 		// errors will be reported on the watch errors channel.
+ 		if watcher != nil || logger.Level() >= logging.LevelTrace {
+ 			changes := core.Diff(previous.Content, snapshot.Content)
++			justInitialized := false
++			if watcher != nil && !directoryWatchesInitialized {
++				updateDirectoryWatches(watcher, e.root, "", snapshot.Content, true)
++				directoryWatchesInitialized = true
++				justInitialized = true
++			}
+ 			for _, change := range changes {
+ 				logger.Tracef("Observed change at \"%s\"", change.Path)
+-				if watcher != nil && change.New != nil &&
+-					(change.New.Kind == core.EntryKind_Directory ||
+-						change.New.Kind == core.EntryKind_File) {
+-					watcher.Watch(filepath.Join(e.root, change.Path))
++				if watcher != nil && !justInitialized {
++					updateDirectoryWatches(watcher, e.root, change.Path, change.Old, false)
++					updateDirectoryWatches(watcher, e.root, change.Path, change.New, true)
+ 				}
+ 			}
+ 		}
