@@ -7,6 +7,7 @@ let
   # path is forbidden in pure flake eval, and the old `~/dotfiles` didn't even
   # exist (dotfiles live at ~/nixos/dotfiles) — so this package silently stopped
   # picking up new/changed scripts. `inputs.self` tracks every git-tracked file.
+  desktopctl = import ../../pkgs/desktopctl { inherit pkgs; };
   sessionctl = import ../../pkgs/sessionctl { inherit pkgs; };
   vmctl = import ../../pkgs/vmctl { inherit pkgs; };
   niri-scripts = pkgs.stdenv.mkDerivation {
@@ -35,5 +36,5 @@ let
     '';
   };
 in {
-  home.packages = [ niri-scripts sessionctl vmctl ];
+  home.packages = [ desktopctl niri-scripts sessionctl vmctl ];
 }
