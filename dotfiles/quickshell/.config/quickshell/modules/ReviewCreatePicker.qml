@@ -65,7 +65,12 @@ Picker {
             return
         }
         if (!item.number) return
-        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/agent", "review", String(item.number)])
+        // Pass the URL, not the bare number: agent-review resolves a bare number against
+        // the CALLER's repo, and execDetached inherits quickshell's cwd — so a lovable PR
+        // was looked up in the cockpit repo, gh failed, and the review died before it
+        // ever reached the roster.
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/agent", "review",
+            String(item.url && item.url.length ? item.url : item.number)])
     }
 
     // Ctrl+Enter: same rail review, plus boot devenv for the worktree — for PRs
@@ -73,7 +78,8 @@ Picker {
     onAltAction: item => {
         if (!item || !item.number) return
         ReviewCreatePickerState.open = false
-        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/agent", "review", String(item.number), "--devenv"])
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/agent", "review",
+            String(item.url && item.url.length ? item.url : item.number), "--devenv"])
     }
 
     Process {

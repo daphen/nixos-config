@@ -66,18 +66,51 @@ class LauncherPayloadTests(unittest.TestCase):
             self.assertEqual(spawn["profile"], "lovable-worker")
             self.assertEqual(spawn["prompt"], "/skill:plan-ticket EVERY-1234")
 
-    def test_agent_review_spawns_reviewer_with_review_seed(self):
+    def test_agent_review_spawns_reviewer_with_review_seed_and_waits_for_roster(self):
         script = ROOT / "dotfiles/niri/.config/niri/scripts/agent-review"
         loader = importlib.machinery.SourceFileLoader("agent_review", str(script))
         spec = importlib.util.spec_from_loader("agent_review", loader)
         module = importlib.util.module_from_spec(spec); loader.exec_module(module)
         left, right = socket.socketpair()
         module.agentd_connect = lambda: left
+        payloads = []
+
+        def acknowledge():
+            payloads.append(json.loads(right.recv(65536).split(b"\n", 1)[0]))
+            right.sendall((json.dumps({"type": "roster", "sessions": [{
+                "id": "review-pr-77", "name": "review-pr-77", "cwd": "/tmp/review",
+            }]}) + "\n").encode())
+            right.close()
+
+        responder = threading.Thread(target=acknowledge)
+        responder.start()
         module.start_rail_session("review-pr-77", Path("/tmp/review"), "/review-pr 77")
-        payload = json.loads(right.recv(65536).split(b"\n", 1)[0])
-        right.close()
-        self.assertEqual(payload["profile"], "lovable-reviewer")
-        self.assertEqual(payload["prompt"], "/review-pr 77")
+        responder.join(2)
+        self.assertFalse(responder.is_alive())
+        self.assertEqual(payloads[0]["profile"], "lovable-reviewer")
+        self.assertEqual(payloads[0]["prompt"], "/review-pr 77")
+
+    def test_agent_review_surfaces_agentd_spawn_error(self):
+        script = ROOT / "dotfiles/niri/.config/niri/scripts/agent-review"
+        loader = importlib.machinery.SourceFileLoader("agent_review_error", str(script))
+        spec = importlib.util.spec_from_loader("agent_review_error", loader)
+        module = importlib.util.module_from_spec(spec); loader.exec_module(module)
+        left, right = socket.socketpair()
+        module.agentd_connect = lambda: left
+
+        def reject():
+            right.recv(65536)
+            right.sendall(b'{"type":"error","session":"review-pr-77","error":"spawn refused"}\n')
+            right.close()
+
+        responder = threading.Thread(target=reject)
+        responder.start()
+        notifications = []
+        module.notify = notifications.append
+        with self.assertRaisesRegex(SystemExit, "spawn refused"):
+            module.start_rail_session("review-pr-77", Path("/tmp/review"), "/review-pr 77")
+        responder.join(2)
+        self.assertEqual(notifications, ["review failed: spawn refused"])
 
     def test_orchestrator_seed_spawns_orchestrator(self):
         with tempfile.TemporaryDirectory() as td:

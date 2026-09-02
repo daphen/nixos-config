@@ -11,6 +11,7 @@ from pathlib import Path
 
 NIX_PACKAGES = {"git-lfs": "nixpkgs#git-lfs", "wt": "nixpkgs#worktrunk"}
 SYSTEM_PATH = ("/run/current-system/sw/bin", "/usr/bin", "/bin")
+FULL_READINESS_TIMEOUT_SECONDS = 500
 
 
 def run(args: list[str], *, cwd: Path | None = None, timeout: int = 30, check: bool = True) -> subprocess.CompletedProcess[str]:
