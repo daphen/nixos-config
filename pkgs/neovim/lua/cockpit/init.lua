@@ -4426,7 +4426,7 @@ function M.follow_remote(cwd, path, force, line, needle_b64)
   return ""
 end
 
-function M.dashboard(cwd)
+function M.dashboard(cwd, id)
   S._follow_paused = nil  -- back at rest: live-follow may drive again
   -- Capture the OUTGOING session's editor file before adopting the new one:
   -- rail-driven switches used to always land on the dashboard, losing the file
@@ -4437,7 +4437,9 @@ function M.dashboard(cwd)
   -- restores, the tests auto-switch), so leaving it unset made every externally-driven
   -- dashboard sessionless. Match on the worktree's NAME, not the path: agentd reports a
   -- remote session's cwd as the box sees it, while we are handed the local mirror.
-  if cwd and cwd ~= "" then
+  if id and id ~= "" then
+    S.selected = id
+  elseif cwd and cwd ~= "" then
     local want = fn.fnamemodify(cwd, ":t")
     for _, a in ipairs(S.roster or {}) do
       if a.cwd and fn.fnamemodify(a.cwd, ":t") == want then S.selected = a.id; break end
