@@ -2,18 +2,9 @@
 # The theme files themselves are symlinked via symlinks.nix
 { config, pkgs, ... }:
 let
-  theme-generator = pkgs.writeShellScriptBin "theme-manager" ''
-    THEMES_DIR="$HOME/.config/themes"
-    if [ -f "$THEMES_DIR/theme-manager.sh" ]; then
-      cd "$THEMES_DIR"
-      exec ./theme-manager.sh "$@"
-    else
-      echo "Theme manager not found at $THEMES_DIR/theme-manager.sh"
-      exit 1
-    fi
-  '';
+  themectl = pkgs.callPackage ../../pkgs/themectl {};
 in {
-  home.packages = [ theme-generator pkgs.jq ];
+  home.packages = [ themectl pkgs.jq ];
 
   # Regenerate + reapply themes on every activation. Pre-rebuild this hook
   # always applied `dark` regardless of state, which flipped any tool whose
@@ -25,9 +16,8 @@ in {
     if [ -f "$HOME/.config/themes/theme-manager.sh" ]; then
       mode="$(cat "$HOME/.config/theme_mode" 2>/dev/null || echo dark)"
       echo "Regenerating themes for $mode mode..."
-      cd "$HOME/.config/themes"
-      ./theme-manager.sh generate "$mode" || true
-      ./theme-manager.sh apply "$mode" || true
+      ${themectl}/bin/theme-manager generate "$mode" || true
+      ${themectl}/bin/theme-manager apply "$mode" || true
     fi
   '';
 }
