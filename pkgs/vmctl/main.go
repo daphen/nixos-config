@@ -33,10 +33,31 @@ func main() {
 }
 
 func command(args []string, out, errOut io.Writer) error {
-	if len(args) < 1 || args[0] != "sync" {
-		return fmt.Errorf("usage: vmctl sync [--align] EVERY-N")
+	if len(args) == 0 {
+		return fmt.Errorf("usage: vmctl <sync|worktree> [arguments]")
 	}
-	args = args[1:]
+	a, err := newApp(out, errOut)
+	if err != nil {
+		return err
+	}
+	switch args[0] {
+	case "sync":
+		return syncCommand(a, args[1:])
+	case "worktree":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: vmctl worktree EVERY-N")
+		}
+		ticket, err := parseTicket(args[1])
+		if err != nil {
+			return err
+		}
+		return runWorktree(a, ticket, args[1])
+	default:
+		return fmt.Errorf("usage: vmctl <sync|worktree> [arguments]")
+	}
+}
+
+func syncCommand(a app, args []string) error {
 	align := len(args) > 0 && args[0] == "--align"
 	if align {
 		args = args[1:]
@@ -44,13 +65,27 @@ func command(args []string, out, errOut io.Writer) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: vmctl sync [--align] EVERY-N")
 	}
-	if !ticketPattern.MatchString(args[0]) {
-		return fmt.Errorf("invalid ticket %q: expected EVERY-N", args[0])
+	ticket, err := parseTicket(args[0])
+	if err != nil {
+		return err
 	}
-	ticket := strings.ToLower(args[0])
-	home, e := os.UserHomeDir()
-	if e != nil {
-		return e
+	if align {
+		return a.align(ticket)
+	}
+	return a.sync(ticket, args[0])
+}
+
+func parseTicket(raw string) (string, error) {
+	if !ticketPattern.MatchString(raw) {
+		return "", fmt.Errorf("invalid ticket %q: expected EVERY-N", raw)
+	}
+	return strings.ToLower(raw), nil
+}
+
+func newApp(out, errOut io.Writer) (app, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return app{}, err
 	}
 	a := app{
 		out: out, err: errOut, home: home,
@@ -58,10 +93,7 @@ func command(args []string, out, errOut io.Writer) error {
 		vm:   envFallback("COCKPIT_VM", "HEIDR_VM", "dev-heidr-2a39"),
 	}
 	a.host = envFallback("COCKPIT_VM_HOST", "HEIDR_VM_HOST", a.vm+".workstation.lovable.net")
-	if align {
-		return a.align(ticket)
-	}
-	return a.sync(ticket, args[0])
+	return a, nil
 }
 
 func envFallback(primary, legacy, fallback string) string {
