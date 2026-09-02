@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   consumeReviewPush,
   dispositionReviewFindings,
+  promptMessage,
   readRemoteTurns,
   readSessionTurns,
   readTurns,
@@ -17,6 +18,16 @@ import {
 } from "./agentd.ts";
 
 describe("spawn profile payload", () => {
+  test("user-approved prompts carry an explicit auditable override", () => {
+    const identity = { from: "nixos", fromProfile: "coding" };
+    expect(promptMessage("ai-cockpit", "inspect", identity)).toEqual({
+      type: "prompt", session: "ai-cockpit", message: "inspect", ...identity,
+    });
+    expect(promptMessage("ai-cockpit", "inspect", identity, true)).toEqual({
+      type: "prompt", session: "ai-cockpit", message: "inspect", ...identity, userApproved: true,
+    });
+  });
+
   test("generic child omits profile for server-side inheritance", () => {
     expect(spawnMessage("child", "/repo", { prompt: "audit" }, "worker")).toEqual({
       type: "spawn", session: "child", cwd: "/repo", prompt: "audit", from: "worker",

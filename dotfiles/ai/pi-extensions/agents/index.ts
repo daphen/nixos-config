@@ -82,15 +82,16 @@ export default function (pi: ExtensionAPI) {
     name: "agent_send",
     label: "Send to agent",
     description:
-      "Dispatch a prompt to another agent's session. If you are the ORCHESTRATOR (running in the main checkout), you may send to ANY session in your scope — so to give a ticket session new context or direction, agent_send THAT session DIRECTLY (e.g. send the finalized direction to every-2661); it will spawn its own sub-workers if it needs them. Do NOT spawn a parallel planning/audit/direction agent just to deliver context to a session that already exists — send to the existing session. WORKERS (not the orchestrator) remain spawn-lineage-gated: you may only message a session you spawned or the one that spawned you; to bring in a NEW helper, agent_spawn it first (full context in the seed prompt), then converse.",
-    promptSnippet: "agent_send: dispatch a prompt to a session (orchestrator: any; worker: own lineage)",
+      "Dispatch a prompt to another agent's session. If you are the ORCHESTRATOR (running in the main checkout), you may send to ANY session in your scope — so to give a ticket session new context or direction, agent_send THAT session DIRECTLY (e.g. send the finalized direction to every-2661); it will spawn its own sub-workers if it needs them. Do NOT spawn a parallel planning/audit/direction agent just to deliver context to a session that already exists — send to the existing session. WORKERS remain spawn-lineage-gated unless the user explicitly requested the exact cross-lineage send in the current turn; only then set userApproved=true. Watchers remain parent-only.",
+    promptSnippet: "agent_send: dispatch a prompt to a session (cross-lineage requires explicit current-turn user approval)",
     parameters: Type.Object({
       agent: Type.String({ description: "session name, id, or cwd" }),
       message: Type.String({ description: "the prompt to deliver" }),
+      userApproved: Type.Optional(Type.Boolean({ description: "set true only when the user explicitly requested this exact cross-lineage send in the current turn" })),
     }),
     async execute(_id, params: any) {
       try {
-        const r = await sendPrompt(params.agent, params.message);
+        const r = await sendPrompt(params.agent, params.message, params.userApproved === true);
         return say(`Delivered to ${r.session.name ?? r.cwd} (${r.scope}).`);
       } catch (e) {
         return say(String((e as Error).message ?? e));

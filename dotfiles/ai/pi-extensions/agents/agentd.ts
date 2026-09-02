@@ -333,11 +333,15 @@ export async function answerSession(ref: string, answer: string): Promise<Resolv
   return r;
 }
 
-export async function sendPrompt(ref: string, text: string): Promise<Resolved> {
+export function promptMessage(sid: string, text: string, identity: Record<string, string>, userApproved = false): Record<string, unknown> {
+  return { type: "prompt", session: sid, message: text, ...identity, ...(userApproved ? { userApproved: true } : {}) };
+}
+
+export async function sendPrompt(ref: string, text: string, userApproved = false): Promise<Resolved> {
   const r = await resolveSession(ref);
   if (!r) throw new Error(`no agent session matching ${JSON.stringify(ref)}`);
   const sid = r.session.id || r.session.name;
-  await writeThenClose(r.sockPath, { type: "prompt", session: sid, message: text, ...callerIdentity(await selfName()) }, 800);
+  await writeThenClose(r.sockPath, promptMessage(sid, text, callerIdentity(await selfName()), userApproved), 800);
   return r;
 }
 
