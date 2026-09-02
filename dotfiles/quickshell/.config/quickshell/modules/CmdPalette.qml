@@ -370,7 +370,7 @@ PanelWindow {
 
     function tabContentKey(tabs) {
         return JSON.stringify(tabs.map(t => [
-            t.id, t.windowId, t.title, t.url, t.faviconPath, t.audible, t.muted
+            t.id, t.windowId, t.title, t.url, t.faviconPath
         ]))
     }
 
