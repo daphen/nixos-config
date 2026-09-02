@@ -370,7 +370,7 @@ PanelWindow {
 
     function tabContentKey(tabs) {
         return JSON.stringify(tabs.map(t => [
-            t.id, t.windowId, t.title, t.url, t.faviconPath
+            t.id, t.windowId, t.title, t.url, t.faviconPath, t.audible
         ]))
     }
 
@@ -1329,12 +1329,36 @@ PanelWindow {
                             color: mediaControlHover.hovered
                                 ? Theme.cursor : Qt.rgba(0, 0, 0, 0.76)
 
-                            Text {
+                            Item {
                                 anchors.centerIn: parent
-                                text: "⏯"
-                                color: mediaControlHover.hovered ? Theme.bg : "#ffffff"
-                                font.family: root.sans
-                                font.pixelSize: 17
+                                width: 16
+                                height: 16
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    anchors.horizontalCenterOffset: 1
+                                    visible: filmCard.modelData.audible !== true
+                                    text: "▶"
+                                    color: mediaControlHover.hovered ? Theme.bg : "#ffffff"
+                                    font.family: root.sans
+                                    font.pixelSize: 16
+                                }
+
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: 4
+                                    visible: filmCard.modelData.audible === true
+
+                                    Repeater {
+                                        model: 2
+                                        Rectangle {
+                                            width: 3
+                                            height: 13
+                                            radius: 1
+                                            color: mediaControlHover.hovered ? Theme.bg : "#ffffff"
+                                        }
+                                    }
+                                }
                             }
 
                             HoverHandler {
