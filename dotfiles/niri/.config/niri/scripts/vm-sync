@@ -149,7 +149,8 @@ if "$mut" sync list "$name" >/dev/null 2>&1; then
   say "resume sync …"; "$mut" sync resume "$name" >/dev/null 2>&1 || true
 else
   say "create sync (two-way-resolved, VM wins) …"
-  "$mut" sync create --name="$name" --sync-mode=two-way-resolved "${IGN[@]}" \
+  # Linux uses full-tree polling as its recursive-watch fallback; native path events still propagate immediately.
+  "$mut" sync create --name="$name" --sync-mode=two-way-resolved --watch-polling-interval=60 "${IGN[@]}" \
     "$u@$host:$vmwt" "$local_wt" >/dev/null 2>&1 && say "  created" || say "  ✗ create failed"
 fi
 
