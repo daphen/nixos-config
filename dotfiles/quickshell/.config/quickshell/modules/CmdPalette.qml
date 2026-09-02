@@ -1328,7 +1328,7 @@ PanelWindow {
                                 || filmCard.modelData.muted === true
                             color: Qt.rgba(0, 0, 0, 0.72)
 
-                            Icon {
+                            Lib.Icon {
                                 anchors.centerIn: parent
                                 width: 16
                                 height: 16
