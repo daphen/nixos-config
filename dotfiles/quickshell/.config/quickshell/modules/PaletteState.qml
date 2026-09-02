@@ -41,6 +41,7 @@ Singleton {
     function activateWindow(profile, windowId) { send({ cmd: "activate-window", profile: profile, windowId: windowId }) }
     function quickmarkAdd(name, url)      { send({ cmd: "quickmark-add", name: name, url: url }) }
     function closeTab(tabId)              { send({ cmd: "close-tab", tabId: tabId }) }
+    function setMuted(tabId, muted)       { send({ cmd: "set-muted", tabId: tabId, muted: !!muted }) }
     function saveSynced()                 { send({ cmd: "save-synced" }) }
     function refresh()                    { send({ cmd: "refresh" }) }
 
