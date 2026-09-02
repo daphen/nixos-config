@@ -231,9 +231,6 @@ if [ -x "$mut" ]; then
   # mutagen's ssh is non-interactive: the pod host key must be in known_hosts.
   ssh-keyscan -p 2222 -H "${direct#*@}" 2>/dev/null >> "$HOME/.ssh/known_hosts" || true
   sync_name=cockpit-lovbox
-  "$mut" sync list "$sync_name" >/dev/null 2>&1 || {
-    "$mut" sync list lovbox-heidr >/dev/null 2>&1 && sync_name=lovbox-heidr
-  }
   if "$mut" sync list "$sync_name" >/dev/null 2>&1; then
     say "  session exists — resuming"; "$mut" sync resume "$sync_name" >/dev/null 2>&1 || true
   else
@@ -253,5 +250,14 @@ fi
 # AgentdState.qml prefers COCKPIT_AGENTD_SOCK, so the rail talks to the in-box
 # agentd as if local. Per-ticket previews: https://${box}--<port>.sandcastle.lovable.net
 [ -n "${COCKPIT_LOVBOX_NO_LAUNCH:-${HEIDR_LOVBOX_NO_LAUNCH:-}}" ] && { say "NO_LAUNCH set — socket ready: COCKPIT_AGENTD_SOCK=$sock"; exit 0; }
+cleanup() {
+  [ -n "${mut:-}" ] && [ -n "${sync_name:-}" ] && "$mut" sync pause "$sync_name" >/dev/null 2>&1 || true
+  { pgrep -f "$sock:localhost:$port" 2>/dev/null || true; } | while read -r pp; do
+    c=$(cat "/proc/$pp/comm" 2>/dev/null || true)
+    case "$c" in ssh|autossh) kill "$pp" 2>/dev/null || true ;; esac
+  done
+  rm -f "$sock"
+}
+trap cleanup EXIT INT TERM
 say "launch cockpit-qs → COCKPIT_AGENTD_SOCK=$sock"
-COCKPIT_AGENTD_SOCK="$sock" HEIDR_AGENTD_SOCK="$sock" exec cockpit-qs
+COCKPIT_AGENTD_SOCK="$sock" HEIDR_AGENTD_SOCK="$sock" cockpit-qs
