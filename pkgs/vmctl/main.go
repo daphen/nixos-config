@@ -34,13 +34,18 @@ func main() {
 
 func command(args []string, out, errOut io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: vmctl <sync|worktree> [arguments]")
+		return fmt.Errorf("usage: vmctl <sync|worktree|cockpit> [arguments]")
 	}
 	a, err := newApp(out, errOut)
 	if err != nil {
 		return err
 	}
 	switch args[0] {
+	case "cockpit":
+		if len(args) > 2 || (len(args) == 2 && args[1] != "--restart") {
+			return fmt.Errorf("usage: vmctl cockpit [--restart]")
+		}
+		return runCockpit(a, len(args) == 2)
 	case "sync":
 		return syncCommand(a, args[1:])
 	case "worktree":
@@ -53,7 +58,7 @@ func command(args []string, out, errOut io.Writer) error {
 		}
 		return runWorktree(a, ticket, args[1])
 	default:
-		return fmt.Errorf("usage: vmctl <sync|worktree> [arguments]")
+		return fmt.Errorf("usage: vmctl <sync|worktree|cockpit> [arguments]")
 	}
 }
 
