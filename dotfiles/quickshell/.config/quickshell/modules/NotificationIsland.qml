@@ -110,6 +110,17 @@ PanelWindow {
         }
     }
 
+    function reveal() {
+        if (active) {
+            revealDelay.stop()
+            open = true
+            return
+        }
+        open = false
+        active = true
+        revealDelay.restart()
+    }
+
     function showAsk(item) {
         if (notif) endShowing()
         notif = null
@@ -126,8 +137,7 @@ PanelWindow {
         extraCount = Math.max(0, AgentAskState.asks.length - 1)
         closeDelay.stop()
         holdTimer.stop()
-        active = true
-        open = true
+        reveal()
     }
 
     function answerAskOption(index, value) {
@@ -175,8 +185,7 @@ PanelWindow {
         extraCount = wasOpen ? extraCount + 1 : 0
         Notifications.setToastVisible(nId, true)
         closeDelay.stop()
-        active = true
-        open = true
+        reveal()
         holdTimer.restart()
     }
 
@@ -193,6 +202,7 @@ PanelWindow {
     }
 
     function hide() {
+        revealDelay.stop()
         open = false
         holdTimer.stop()
         closeDelay.restart()
@@ -202,6 +212,7 @@ PanelWindow {
         target: Notifications
         function onToastHandled(id) { if (root.open && root.nId === id) root.hide() }
     }
+    Timer { id: revealDelay; interval: 16; onTriggered: if (root.active) root.open = true }
     // Wordy messages (3+ wrapped lines) get 2s more reading time.
     Timer { id: holdTimer; interval: bodyText.lineCount >= 3 ? 7000 : 5000; onTriggered: if (!root.showingAsk) root.hide() }
     Timer {
@@ -239,9 +250,9 @@ PanelWindow {
     Rectangle {
         id: capsule
         anchors.horizontalCenter: parent.horizontalCenter
-        y: root.open ? root.height - height : root.height + height + 20
-        height: root.open ? Math.max(52, content.implicitHeight + 22) : 0
-        width: root.open ? Math.min(Math.max(content.implicitWidth + 32, 300), 560) : 48
+        y: root.height - height
+        height: Math.max(52, content.implicitHeight + 22)
+        width: Math.min(Math.max(content.implicitWidth + 32, 300), 560)
         topLeftRadius: bottomLeftRadius
         topRightRadius: bottomRightRadius
         bottomLeftRadius: Math.min(height / 2, Theme.notchRadius + 6)
@@ -275,18 +286,13 @@ PanelWindow {
             }
         }
 
-        Behavior on height {
-            NumberAnimation {
-                duration: 380
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: [0.34, 1.4, 0.64, 1.0, 1.0, 1.0]
-            }
-        }
-        Behavior on width {
-            NumberAnimation {
-                duration: 380
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: [0.34, 1.4, 0.64, 1.0, 1.0, 1.0]
+        transform: Translate {
+            y: root.open ? 0 : capsule.height + 20
+            Behavior on y {
+                NumberAnimation {
+                    duration: root.open ? 320 : 350
+                    easing.type: root.open ? Easing.OutCubic : Easing.InOutCubic
+                }
             }
         }
 
@@ -295,8 +301,7 @@ PanelWindow {
             y: (parent.height - height) / 2
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 8
-            opacity: root.open ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            opacity: 1
 
             Row {
             id: contentTop
