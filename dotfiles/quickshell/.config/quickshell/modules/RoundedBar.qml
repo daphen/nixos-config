@@ -8,7 +8,8 @@ import "../QsLib" as Lib
 PanelWindow {
     id: bar
 
-    readonly property bool pickerActive: Modules.ReviewCreatePickerState.open
+    readonly property bool pickerActive: Modules.LauncherState.open
+        || Modules.ReviewCreatePickerState.open
         || Modules.LovboxPickerState.open
         || Modules.BluetoothPickerState.open
         || Modules.TimerState.open
@@ -24,6 +25,8 @@ PanelWindow {
         || Modules.AgentAskState.inputOpen
         || Modules.CockpitState.open
     readonly property var workingRoots: Modules.AgentAskState.workingRoots
+    readonly property bool fullscreen: !pickerActive && Modules.NiriState.outputIsFullscreen(
+        screen ? screen.name : "", screen ? screen.height : 0)
     readonly property var workingActivities: {
         const activities = []
         for (const root of workingRoots)
@@ -31,6 +34,7 @@ PanelWindow {
         return activities
     }
     readonly property real activePickerHeight: Math.max(
+        launcherPicker.open ? launcherPicker.implicitHeight : 0,
         reviewCreatePicker.open ? reviewCreatePicker.implicitHeight : 0,
         lovboxPicker.open ? lovboxPicker.implicitHeight : 0,
         bluetoothPicker.open ? bluetoothPicker.implicitHeight : 0,
@@ -58,6 +62,7 @@ PanelWindow {
     exclusionMode: ExclusionMode.Normal
     color: "transparent"
     WlrLayershell.namespace: "qs-rounded-bar"
+    WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: pickerActive
         ? WlrKeyboardFocus.Exclusive
         : WlrKeyboardFocus.None
@@ -75,7 +80,14 @@ PanelWindow {
         anchors {
             top: parent.top
             horizontalCenter: parent.horizontalCenter
-            topMargin: 4
+            topMargin: bar.fullscreen ? -height : 4
+        }
+        Behavior on anchors.topMargin {
+            NumberAnimation {
+                duration: Lib.Motion.slow
+                easing.type: Lib.Motion.easeEmphasized
+                easing.bezierCurve: Lib.Motion.curveEmphasized
+            }
         }
         expanded: bar.pickerActive
         collapsedHeight: Modules.Theme.barHeight
@@ -158,7 +170,7 @@ PanelWindow {
             Lib.Crossfade {
                 id: activitySwap
                 visible: Modules.TodoListPickerState.openCount > 0 || bar.workingActivities.length > 0
-                width: Math.max(18, quickNotes.implicitWidth)
+                width: Math.max(26, quickNotes.implicitWidth)
                 height: parent.height
                 showSecond: bar.workingActivities.length > 0
                 enterDuration: 250
@@ -172,13 +184,19 @@ PanelWindow {
                 }
 
                 second: Lib.ThinkingOrb {
-                    width: 18
-                    height: 18
+                    width: 26
+                    height: 26
                     anchors.centerIn: parent
                     running: bar.workingActivities.length > 0
                     seedKey: "rounded-bar-aggregate"
                     glow: Lib.AgentActivity.colorFor(bar.workingActivities[0])
                     activityColors: Lib.AgentActivity.colorsFor(bar.workingActivities)
+                }
+
+                HoverHandler {
+                    id: activityHover
+                    enabled: bar.workingActivities.length > 0
+                    cursorShape: Qt.PointingHandCursor
                 }
             }
         }
@@ -273,6 +291,7 @@ PanelWindow {
             }
             z: 2
 
+            Modules.Launcher { id: launcherPicker; anchors.fill: parent }
             Modules.ReviewCreatePicker { id: reviewCreatePicker; anchors.fill: parent }
             Modules.LovboxPicker { id: lovboxPicker; anchors.fill: parent }
             Modules.BluetoothPicker { id: bluetoothPicker; anchors.fill: parent }
@@ -285,9 +304,92 @@ PanelWindow {
             Modules.ClipboardPicker { id: clipboardPicker; anchors.fill: parent }
             Modules.NotesPicker { id: notesPicker; anchors.fill: parent }
             Modules.TodoListPicker { id: todoListPicker; anchors.fill: parent }
-            Modules.NotificationJumpPicker { id: notificationJumpPicker; anchors.fill: parent }
+            Modules.NotificationJumpPicker {
+                id: notificationJumpPicker
+                anchors.fill: parent
+                handlesJump: {
+                    const focused = Modules.NiriState.focusedOutput()
+                    return !!bar.screen && (focused.length > 0
+                        ? bar.screen.name === focused
+                        : bar.screen === Quickshell.screens[0])
+                }
+            }
             Modules.AgentAskPicker { id: agentAskPicker; anchors.fill: parent }
             Modules.CockpitPicker { id: cockpitPicker; anchors.fill: parent }
+        }
+    }
+
+    Rectangle {
+        id: activityCard
+        readonly property real orbCenterX: capsule.x + leftGroup.x + activitySwap.x + activitySwap.width / 2
+        readonly property real rowOrbSize: 18
+        visible: bar.workingRoots.length > 0
+        opacity: activityHover.hovered ? 1 : 0
+        x: Math.max(12, Math.min(bar.width - width - 12, orbCenterX - 12 - rowOrbSize / 2))
+        y: capsule.y + Modules.Theme.barHeight + (activityHover.hovered ? 2 : -3)
+        width: Math.max(190, activityList.implicitWidth + 24)
+        height: activityList.implicitHeight + 20
+        radius: 12
+        color: Modules.Theme.surface2
+        border.width: 1
+        border.color: Modules.Theme.hairline
+        z: 10
+
+        Behavior on opacity {
+            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+        }
+        Behavior on y {
+            NumberAnimation {
+                duration: Lib.Motion.med
+                easing.type: Lib.Motion.easeEmphasized
+                easing.bezierCurve: Lib.Motion.curveEmphasized
+            }
+        }
+
+        Column {
+            id: activityList
+            anchors.left: parent.left
+            anchors.leftMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+
+            Repeater {
+                model: bar.workingRoots
+
+                Row {
+                    required property var modelData
+                    readonly property var activities: modelData.activities || []
+                    spacing: 8
+                    height: 24
+
+                    Lib.ThinkingOrb {
+                        width: activityCard.rowOrbSize
+                        height: activityCard.rowOrbSize
+                        anchors.verticalCenter: parent.verticalCenter
+                        seedKey: parent.modelData.key
+                        glow: Lib.AgentActivity.colorFor(parent.activities[0])
+                        activityColors: Lib.AgentActivity.colorsFor(parent.activities)
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: parent.modelData.name
+                            + (parent.modelData.workers > 1 ? "  +" + (parent.modelData.workers - 1) : "")
+                        color: Modules.Theme.fg
+                        font.family: Modules.Theme.fontFamily
+                        font.pixelSize: Modules.Theme.fontSize - 1
+                        font.weight: Modules.Theme.fontWeight
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: parent.modelData.scope
+                        color: Modules.Theme.fg_muted
+                        font.family: Modules.Theme.fontFamily
+                        font.pixelSize: Modules.Theme.fontSize - 2
+                    }
+                }
+            }
         }
     }
 }

@@ -261,6 +261,24 @@ Singleton {
         return s ? s[1] >= outputHeight : false
     }
 
+    function outputIsFullscreen(outputName, outputHeight) {
+        if (!outputName || !outputHeight) return false
+        const _ = version
+        for (const id in workspaces) {
+            const workspace = workspaces[id]
+            if (workspace.output !== outputName || !workspace.is_active || !workspace.active_window_id) continue
+            const window = windows[workspace.active_window_id]
+            const layout = window && window.layout
+            if (!layout) return false
+            const pos = layout.tile_pos_in_workspace_view
+            const size = layout.tile_size
+            if (pos && size)
+                return isFullscreenGeom({ x: pos[0], y: pos[1], w: size[0], h: size[1] }, outputHeight)
+            return layout.window_size ? layout.window_size[1] >= outputHeight : false
+        }
+        return false
+    }
+
     function focusedOutput() {
         const _ = version
         for (const id in workspaces) {

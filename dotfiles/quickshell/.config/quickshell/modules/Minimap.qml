@@ -130,7 +130,7 @@ Item {
                 color: Theme.fg
                 opacity: parent.occupied
                     ? 0.62
-                    : 0.24 * Math.pow(1 - parent.radialDistance, 0.8)
+                    : 0.34 * Math.pow(1 - parent.radialDistance, 0.65)
             }
         }
     }

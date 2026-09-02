@@ -87,11 +87,11 @@ Singleton {
         if (vis) m[id] = true; else delete m[id]
         root.visibleToastIds = m
     }
-    function visibleTrayToasts() {
+    function visibleToasts() {
         const out = []
         const all = notifServer.trackedNotifications.values
         for (let i = 0; i < all.length; i++)
-            if (root.visibleToastIds[all[i].id] && root.isTrayApp(all[i])) out.push(all[i])
+            if (root.visibleToastIds[all[i].id]) out.push(all[i])
         return out
     }
 
@@ -128,6 +128,13 @@ Singleton {
     function isTrayApp(n) {
         return !!(n && (root.trayApps.indexOf((n.appName || "").toLowerCase()) !== -1
                         || root.isPhoneNotif(n.appName)))
+    }
+    function isAiNotification(n) {
+        if (!n) return false
+        const app = (n.appName || "").toLowerCase()
+        const summary = (n.summary || "").toLowerCase()
+        return app === "kitty" || app === "agent-rail" || app.indexOf("claude") !== -1
+            || summary.indexOf("agent ·") === 0 || summary.indexOf("claude") === 0
     }
 
     // ancs4linux sends the app name as "<app> (<device>)", e.g.

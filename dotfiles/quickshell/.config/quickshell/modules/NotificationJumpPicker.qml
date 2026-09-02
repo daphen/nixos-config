@@ -3,31 +3,28 @@ import Quickshell
 import Quickshell.Io
 import "."
 
-// Super+i notification center. Shows only the apps worth keeping — Slack,
-// Discord, Claude (Notifications.trayApps); screenshots and other system
-// notifs toast once and never land here. Entries split by whether you've
-// looked at the source: unseen under "current", seen under "earlier".
-// Selecting one fires its live default action (e.g. slqs opens the
-// channel/thread) and focuses the window. Slack/Discord messages stay as
-// history; Claude prompts clear when you act on them.
+// Super+i shows unseen, actionable notifications. AI prompts use the cockpit
+// activity surfaces instead, and seen entries do not remain as history here.
 Picker {
     emptyText: "no notifications"
     id: root
+
+    property bool handlesJump: true
 
     open: NotificationJumpPickerState.open
     onCloseRequested: NotificationJumpPickerState.open = false
 
     placeholder: "notification"
     iconField: "icon"
+    trailingField: "inbox"
     // right-slot hints; drop the redundant j/k "move" on the left
     navHint: false
-    altLabel: "ctrl+y/n: answer · ctrl+r: read · ctrl+shift+r: read all · ctrl+o: expand"
+    altLabel: "ctrl+y/n: respond · ctrl+r: read · ctrl+shift+r: read all · ctrl+o: expand"
     // Ctrl+O unfolds the notification body (clipboard-picker convention)
     previewTextField: "body"
     // Ctrl+R marks read in place: mail invokes the daemon's "read" action
     // (server-side mark-read); everything else just clears from the center
-    // Ctrl+Y / Ctrl+N answer the selected card: agent confirms directly; calendar
-    // invitations map to their accept/decline actions when the invite carries them.
+    // Ctrl+Y / Ctrl+N answer calendar invitations when actions are available.
     function _invokeMatching(item, rx) {
         const n = item.notif
         if (!n || !n.actions) return false
@@ -38,15 +35,12 @@ Picker {
         return false
     }
     onCtrlY: item => {
-        if (item.agentAsk && !item.askInput) { AgentAskState.answer(item.agentAsk, { confirmed: true }); return }
         if (item.cal && _invokeMatching(item, /accept|yes|going/i)) { Notifications.markSeenById(item.id); return }
     }
     onCtrlN: item => {
-        if (item.agentAsk && !item.askInput) { AgentAskState.answer(item.agentAsk, { confirmed: false }); return }
         if (item.cal && _invokeMatching(item, /decline|no(?!t)/i)) { Notifications.markSeenById(item.id); return }
     }
     function markRead(item) {
-        if (item.agentAsk) return
         const n = item.notif
         let fired = false
         if (n && n.actions) {
@@ -74,9 +68,7 @@ Picker {
         ])
     }
 
-    items: buildItems(Notifications.tracked, Notifications.seenGen,
-                      Notifications.retained, Notifications.retainedGen,
-                      AgentAskState.asks, AgentAskState.gen)
+    items: buildItems(Notifications.tracked, Notifications.seenGen)
 
     // NOTE: named openItem, NOT activate — Picker has its own activate() that
     // its Enter handling calls; shadowing it breaks Enter inside the picker.
@@ -87,17 +79,9 @@ Picker {
     Connections {
         target: NotificationJumpPickerState
         function onJumpRequested() {
-            // A live agent question wins: Super+i goes TO the asking session —
-            // focusing the cockpit also auto-hides the capsule (heidrFocused).
-            if (AgentAskState.asks.length) {
-                const ask = AgentAskState.asks[0]
-                Quickshell.execDetached([
-                    Quickshell.env("HOME") + "/.config/niri/scripts/cockpit-focus-ask",
-                    String(ask.scope || "personal"), String(ask.session || "")
-                ])
-                return
-            }
-            const vis = Notifications.visibleTrayToasts()
+            if (!root.handlesJump) return
+            const vis = Notifications.visibleToasts()
+                .filter(n => !Notifications.isAiNotification(n))
             if (vis.length === 1) root.openItem(root.mkItemLive(vis[0]))
             else NotificationJumpPickerState.open = true
         }
@@ -106,24 +90,12 @@ Picker {
     function openItem(item) {
         if (!item || item.divider) return
         NotificationJumpPickerState.open = false
-        if (item.agentAsk) {
-            // Enter = the affirmative default (mirrors the island's cursor-on-Yes);
-            // select/input open the typed reply, which pi accepts for both.
-            if (item.askInput) AgentAskState.openInput(item.agentAsk)
-            else AgentAskState.answer(item.agentAsk, { confirmed: true })
-            return
-        }
         // Close the capsule up front: acting on it is the answer to it, and for
         // message apps nothing below dismisses the live notification.
         Notifications.toastHandled(item.id)
         const n = item.notif   // live Notification, or null for a retained entry
         const isMsg = Notifications.isMessageAppName(item.app)
-        // A message's open-channel action deletes the live notification, so
-        // retain its data first (and mark it read) — it stays in the center.
-        if (isMsg) {
-            Notifications.retain(item.id, item.app, item.summary, item.windowId, item.cal)
-            Notifications.markSeenById(item.id)
-        }
+        if (isMsg) Notifications.markSeenById(item.id)
         // Fire the live default action (slqs/dsqrd opens the channel/thread).
         // Only present while the notification is still live.
         let fired = false
@@ -148,68 +120,31 @@ Picker {
     function mkItemLive(n) {
         const wid = (n.hints && n.hints["niri-window"] !== undefined) ? String(n.hints["niri-window"]) : ""
         const cal = Notifications.isCalNotif(n)
+        const summary = n.summary || ""
+        const parts = (n.appName || "").toLowerCase() === "mlqs" ? summary.split(/\s+·\s+/) : [summary]
+        const inbox = parts.length > 1 ? parts.pop() : ""
         // Invitations use the same card grammar as agent questions: chips name
         // the actions, ctrl+y/n answer.
         let chips
         if (cal && n.actions && n.actions.length)
             chips = n.actions.filter(a => (a.identifier || "") !== "default").map(a => a.text || a.identifier).slice(0, 3)
         return {
-            id: n.id, notif: n, app: n.appName || "", summary: n.summary || "", windowId: wid, cal: cal,
-            body: n.body || "", label: n.summary || n.appName || "notification",
+            id: n.id, notif: n, app: n.appName || "", summary: summary, windowId: wid, cal: cal,
+            body: n.body || "", label: parts.join(" · ") || n.appName || "notification", inbox: inbox,
             icon: cal ? Notifications.calendarIcon : _icon(n.appName, n.appIcon),
             chips: chips && chips.length ? chips : undefined,
         }
     }
 
-    function mkItemRetained(e) {
-        return {
-            id: e.id, notif: null, app: e.app, summary: e.summary, windowId: e.windowId, cal: !!e.cal,
-            body: e.summary || "", label: e.summary || e.app || "notification",
-            icon: e.cal ? Notifications.calendarIcon : _icon(e.app),
-        }
-    }
-
-    function askItems(asks) {
-        const out = []
-        if (!asks || !asks.length) return out
-        out.push({ divider: true, label: "agent questions" })
-        for (const ask of asks) {
-            const title = ask.title || ask.session || "Agent needs input"
-            // ONE card per question; chips name the answers, ctrl+y/n and enter act.
-            let chips
-            if (ask.method === "confirm") chips = ["⌃y yes", "⌃n no"]
-            else if (ask.method === "select") {
-                chips = (ask.options || []).slice(0, 3)
-                if ((ask.options || []).length > 3) chips.push("…")
-            } else chips = ["⏎ reply"]
-            out.push({ agentAsk: ask, askInput: ask.method !== "confirm",
-                       label: title, body: ask.message || "", chips: chips })
-        }
-        return out
-    }
-
-    function buildItems(tracked, sgen, retained, rgen, asks, agen) {
-        // Center contents = live tracked tray notifications ∪ retained (messages
-        // whose live notification was deleted when its channel was opened).
+    function buildItems(tracked, sgen) {
         const live = (tracked && tracked.values) ? tracked.values.slice() : []
-        const liveTray = live.filter(n => Notifications.isTrayApp(n))
-        const liveIds = {}
-        const items = []
-        for (let i = 0; i < liveTray.length; i++) { liveIds[liveTray[i].id] = true; items.push(mkItemLive(liveTray[i])) }
-        const ret = retained || []
-        for (let i = 0; i < ret.length; i++) if (!liveIds[ret[i].id]) items.push(mkItemRetained(ret[i]))
-        items.sort((a, b) => (b.id || 0) - (a.id || 0))   // newest first
-        const unseen = items.filter(it => !Notifications.isSeenId(it.id))
-        const seen = items.filter(it => Notifications.isSeenId(it.id))
-        const out = askItems(asks)
-        if (unseen.length) {
-            out.push({ divider: true, label: "current" })
-            for (let i = 0; i < unseen.length; i++) out.push(unseen[i])
-        }
-        if (seen.length) {
-            out.push({ divider: true, label: "earlier" })
-            for (let i = 0; i < seen.length; i++) out.push(seen[i])
-        }
-        return out
+        const missed = live
+            .filter(n => Notifications.isTrayApp(n)
+                && !Notifications.isAiNotification(n)
+                && !Notifications.isSeen(n))
+            .map(n => mkItemLive(n))
+            .sort((a, b) => (b.id || 0) - (a.id || 0))
+        if (!missed.length) return []
+        return [{ divider: true, label: "missed" }].concat(missed)
     }
 }

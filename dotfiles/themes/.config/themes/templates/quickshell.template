@@ -119,7 +119,7 @@ Singleton {
 
     readonly property real hairlineAlpha: palettes[mode].hairlineAlpha
     readonly property real dimmedFgAlpha: palettes[mode].dimmedFgAlpha
-    readonly property color notch:    bg
+    readonly property color notch:    surface1
     readonly property color pill:     Qt.rgba(bg.r, bg.g, bg.b, 0.85)
     readonly property color hairline: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha)
     // picker-grammar card geometry (shared with the client apps)

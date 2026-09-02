@@ -324,7 +324,7 @@ Item {
                     anchors.topMargin: 14
                     anchors.bottomMargin: 6
                     radius: 15
-                    color: Theme.surface1
+                    color: Theme.surface2
                     border.width: 1
                     border.color: Theme.hairline
                 }
@@ -530,8 +530,8 @@ Item {
                             width: tabLabel.implicitWidth + 20
                             height: tabLabel.implicitHeight + 12
                             radius: 6
-                            color: isActive ? Theme.selection
-                                 : tabHover.hovered ? Theme.surface : "transparent"
+                            color: isActive ? Theme.surface3
+                                 : tabHover.hovered ? Theme.surface2 : "transparent"
                             Text {
                                 id: tabLabel
                                 anchors.centerIn: parent
@@ -606,8 +606,8 @@ Item {
                         anchors.leftMargin: 14
                         anchors.rightMargin: 14
                         radius: 13
-                        color: rowItem.index === root.selectedIndex ? Theme.selection
-                             : rowHover.hovered ? Theme.surface
+                        color: rowItem.index === root.selectedIndex ? Theme.surface3
+                             : rowHover.hovered ? Theme.surface2
                              : "transparent"
                         border.width: 1
                         border.color: rowItem.index === root.selectedIndex ? Theme.hairline : "transparent"
@@ -674,11 +674,12 @@ Item {
                     }
 
                     Text {
+                        id: trailingText
                         visible: !rowItem.isDivider && root.trailingField.length > 0
                             && rowItem.modelData
                             && String(rowItem.modelData[root.trailingField] || "").length > 0
-                        anchors.right: parent.right
-                        anchors.rightMargin: 28
+                        anchors.right: rowIcon.active ? rowIcon.left : parent.right
+                        anchors.rightMargin: rowIcon.active ? 8 : 28
                         anchors.verticalCenter: parent.verticalCenter
                         text: rowItem.modelData ? String(rowItem.modelData[root.trailingField] || "") : ""
                         color: (root.trailingColorField && rowItem.modelData
@@ -754,8 +755,10 @@ Item {
                         // text and image labels share one right edge (no ragged
                         // labels running under where thumbnails sit).
                         anchors.right: root.previewField.length > 0 ? parent.right
+                                     : trailingText.visible ? trailingText.left
                                      : (rowIcon.active ? rowIcon.left : parent.right)
-                        anchors.rightMargin: root.previewField.length > 0 ? (root.thumbSize + 56) : 28
+                        anchors.rightMargin: root.previewField.length > 0 ? (root.thumbSize + 56)
+                                           : trailingText.visible ? 12 : 28
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
                         Text {
@@ -929,7 +932,7 @@ Item {
                     anchors.margins: 14
                     anchors.topMargin: 12
                     radius: 13
-                    color: Theme.surface1
+                    color: Theme.surface2
                     border.color: Theme.hairline
                     border.width: 1
                     Image {
@@ -975,7 +978,7 @@ Item {
                     anchors.leftMargin: 1
                     anchors.rightMargin: 1
                     anchors.bottomMargin: 1
-                    color: Theme.surface0
+                    color: Theme.surface2
                     bottomLeftRadius: 23
                     bottomRightRadius: 23
                 }
@@ -1003,8 +1006,8 @@ Item {
                             width: catLbl.implicitWidth + 16
                             height: 26
                             radius: 10
-                            color: isActive ? Theme.selection
-                                 : catHov.hovered ? Theme.surface : "transparent"
+                            color: isActive ? Theme.surface3
+                                 : catHov.hovered ? Theme.surface2 : "transparent"
                             border.color: isActive ? root.panelBorder : "transparent"
                             border.width: 1
                             Text {

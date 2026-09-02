@@ -54,9 +54,9 @@ Singleton {
             "bg_alt":      "#1B1B1B",
             "tertiary":    "#1B1B1B",
             "selection":   "#2E2E2E",
-            "surface":     "#1A1A1A",
+            "surface":     "#262626",
             "surface0":    "#191919",
-            "surface1":    "#1A1A1A",
+            "surface1":    "#262626",
             "surface2":    "#2D2D2D",
             "surface3":    "#393939",
             "overlay":     "#292826",
@@ -119,7 +119,7 @@ Singleton {
 
     readonly property real hairlineAlpha: palettes[mode].hairlineAlpha
     readonly property real dimmedFgAlpha: palettes[mode].dimmedFgAlpha
-    readonly property color notch:    bg
+    readonly property color notch:    surface1
     readonly property color pill:     Qt.rgba(bg.r, bg.g, bg.b, 0.85)
     readonly property color hairline: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha)
     // picker-grammar card geometry (shared with the client apps)

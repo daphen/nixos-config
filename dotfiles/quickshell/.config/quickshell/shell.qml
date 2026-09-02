@@ -17,7 +17,6 @@ ShellRoot {
     // Dynamic-island notification capsule under the bar notch.
     NotificationIsland {}
 
-    Launcher {}
     CmdPalette {}
     WpmBadge {}
 }

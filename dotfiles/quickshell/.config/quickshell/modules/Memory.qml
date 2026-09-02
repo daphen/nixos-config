@@ -12,6 +12,14 @@ Item {
     implicitWidth: row.implicitWidth + Theme.modulePadH * 2
     implicitHeight: parent ? parent.height : Theme.barHeight
 
+    Behavior on implicitWidth {
+        NumberAnimation {
+            duration: Lib.Motion.med
+            easing.type: Lib.Motion.easeEmphasized
+            easing.bezierCurve: Lib.Motion.curveEmphasized
+        }
+    }
+
     Process {
         id: proc
         running: true

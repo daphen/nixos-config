@@ -23,6 +23,10 @@ PanelWindow {
         return scrs.length ? scrs[0] : null
     }
 
+    readonly property real barSideGap: screen
+        ? Math.max(0, (screen.width - Theme.notchMinWidth) / 2)
+        : 0
+
     anchors.left: true
     anchors.right: true
     anchors.bottom: true
@@ -308,11 +312,11 @@ PanelWindow {
             spacing: 10
 
             Item {
-                width: 30; height: 30
+                width: 34; height: 34
                 anchors.verticalCenter: parent.verticalCenter
                 ClippingRectangle {
                     anchors.fill: parent
-                    radius: 15
+                    radius: 17
                     // Ask avatars are bare glyphs — no ground behind the logo.
                     color: root.showingAsk ? "transparent" : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
                     Image {
@@ -323,8 +327,8 @@ PanelWindow {
                         visible: status === Image.Ready
                         // SVGs rasterize AT sourceSize — forcing a square there squishes
                         // before the fit can help. Ask glyphs rasterize at true aspect.
-                        sourceSize.width: root.showingAsk ? 48 : 60
-                        sourceSize.height: 60
+                        sourceSize.width: root.showingAsk ? 54 : 68
+                        sourceSize.height: 68
                         // Fit, not crop: the scope glyphs aren't square (122:152).
                         fillMode: root.showingAsk ? Image.PreserveAspectFit : Image.PreserveAspectCrop
                         asynchronous: true
@@ -333,10 +337,10 @@ PanelWindow {
                     Image {
                         id: appGlyph
                         anchors.centerIn: parent
-                        width: 15; height: 15
+                        width: 18; height: 18
                         visible: false
                         source: root.nAppIcon
-                        sourceSize.width: 30; sourceSize.height: 30
+                        sourceSize.width: 36; sourceSize.height: 36
                         asynchronous: true
                     }
                     MultiEffect {
@@ -353,7 +357,7 @@ PanelWindow {
                         text: root.nSummary.length ? root.nSummary[0].toUpperCase() : "•"
                         color: Theme.fg_muted
                         font.family: Theme.fontFamily
-                        font.pixelSize: 13
+                        font.pixelSize: 14
                         font.weight: 700
                     }
                 }
@@ -372,7 +376,7 @@ PanelWindow {
                     elide: Text.ElideRight
                     width: parent.width
                     font.family: Theme.fontFamily
-                    font.pixelSize: 13
+                    font.pixelSize: 15
                     font.weight: 600
                 }
                 Text {
@@ -385,7 +389,7 @@ PanelWindow {
                     maximumLineCount: 4
                     width: parent.width
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.fontSize
                 }
             }
 
@@ -394,12 +398,12 @@ PanelWindow {
             Item {
                 visible: root.nIsPhone
                 anchors.verticalCenter: parent.verticalCenter
-                width: 14; height: 14
+                width: 16; height: 16
                 Image {
                     id: phoneGlyph
                     anchors.fill: parent
                     source: Qt.resolvedUrl("../assets/phone.svg")
-                    sourceSize.width: 28; sourceSize.height: 28
+                    sourceSize.width: 32; sourceSize.height: 32
                     visible: false
                     asynchronous: true
                 }
@@ -425,7 +429,7 @@ PanelWindow {
                     text: "+" + root.extraCount
                     color: Theme.fg_muted
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: 12
                     font.weight: 700
                 }
             }
@@ -454,7 +458,7 @@ PanelWindow {
                             text: modelData
                             color: (optionTap.hovered || parent.cursorOn) ? Theme.bg : Theme.fg
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize - 1
+                            font.pixelSize: Theme.fontSize
                             font.weight: 600
                         }
                         HoverHandler { id: optionTap; cursorShape: Qt.PointingHandCursor }
