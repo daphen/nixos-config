@@ -122,6 +122,17 @@ def _looks_pathy(ref: str) -> bool:
     return ref.startswith(("/", "~", ".")) or Path(ref).expanduser().is_dir()
 
 
+def agent_origin() -> dict:
+    name = os.environ.get("COCKPIT_AGENT_NAME", "")
+    if not name:
+        return {}
+    return {
+        "from": name,
+        "fromProfile": os.environ.get("COCKPIT_AGENT_PROFILE", ""),
+        "fromParent": os.environ.get("COCKPIT_AGENT_PARENT", ""),
+    }
+
+
 def send_line(sock_path: str, obj: dict, flush: float) -> None:
     c = socket.socket(socket.AF_UNIX)
     c.settimeout(6.0)
@@ -216,7 +227,7 @@ def cmd_send(a) -> int:
         print(f"agent send: no session driving {who}", file=sys.stderr)
         return 1
     _sc, sp, s = hit
-    send_line(sp, {"type": "prompt", "session": s.get("id") or s.get("name"), "message": text}, 0.3)
+    send_line(sp, {"type": "prompt", "session": s.get("id") or s.get("name"), "message": text} | agent_origin(), 0.3)
     print(f"agent send: delivered to {s.get('name') or s.get('cwd')}")
     return 0
 
@@ -236,7 +247,7 @@ def cmd_steer(a) -> int:
     # message is never dropped (mirrors the agent_steer tool).
     running = any(k in str(s.get("status", "")).lower() for k in ("stream", "work", "run", "busy", "think"))
     kind = "steer" if running else "prompt"
-    send_line(sp, {"type": kind, "session": s.get("id") or s.get("name"), "message": text}, 0.3)
+    send_line(sp, {"type": kind, "session": s.get("id") or s.get("name"), "message": text} | agent_origin(), 0.3)
     print(f"agent steer: {'steered' if running else 'sent (idle → prompt) to'} {s.get('name') or s.get('cwd')}")
     return 0
 
