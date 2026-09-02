@@ -23,8 +23,10 @@ PanelWindow {
         return scrs.length ? scrs[0] : null
     }
 
-    anchors.top: true
-    margins.top: Theme.barHeight + 16
+    anchors.left: true
+    anchors.right: true
+    anchors.bottom: true
+    margins.bottom: 12
     implicitWidth: 600
     implicitHeight: Math.max(174, capsule.height + 24)
     color: "transparent"
@@ -237,7 +239,7 @@ PanelWindow {
     Rectangle {
         id: capsule
         anchors.horizontalCenter: parent.horizontalCenter
-        y: 0
+        y: root.open ? root.height - height : root.height + height + 20
         height: root.open ? Math.max(52, content.implicitHeight + 22) : 0
         width: root.open ? Math.min(Math.max(content.implicitWidth + 32, 300), 560) : 48
         topLeftRadius: bottomLeftRadius

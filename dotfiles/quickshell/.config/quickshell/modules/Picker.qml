@@ -88,6 +88,7 @@ Item {
     // Opt-in Ctrl+R: called with the focused item (mark-read semantics);
     // the picker stays open so a pile can be cleared in one visit.
     property var onCtrlR: null
+    property var onCtrlShiftR: null
     // Answer hooks for card rows (agent questions, invitations): Ctrl+Y / Ctrl+N
     // act on the SELECTED row. Checked before onYank, so a picker that sets
     // these trades away copy-on-ctrl+y deliberately.
@@ -423,6 +424,12 @@ Item {
                             root.onCtrlO(root.filtered[idx])
                             root.closeRequested()
                         }
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_R
+                            && (event.modifiers & Qt.ControlModifier)
+                            && (event.modifiers & Qt.ShiftModifier)
+                            && root.onCtrlShiftR) {
+                        root.onCtrlShiftR()
                         event.accepted = true
                     } else if (event.key === Qt.Key_R && (event.modifiers & Qt.ControlModifier) && root.onCtrlR) {
                         const idx = Math.max(0, Math.min(root.selectedIndex, root.filtered.length - 1))

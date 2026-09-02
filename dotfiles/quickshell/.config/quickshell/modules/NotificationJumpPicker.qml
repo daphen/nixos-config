@@ -21,7 +21,7 @@ Picker {
     iconField: "icon"
     // right-slot hints; drop the redundant j/k "move" on the left
     navHint: false
-    altLabel: "ctrl+y/n: answer · ctrl+r: mark read · ctrl+o: expand"
+    altLabel: "ctrl+y/n: answer · ctrl+r: read · ctrl+shift+r: read all · ctrl+o: expand"
     // Ctrl+O unfolds the notification body (clipboard-picker convention)
     previewTextField: "body"
     // Ctrl+R marks read in place: mail invokes the daemon's "read" action
@@ -45,7 +45,7 @@ Picker {
         if (item.agentAsk && !item.askInput) { AgentAskState.answer(item.agentAsk, { confirmed: false }); return }
         if (item.cal && _invokeMatching(item, /decline|no(?!t)/i)) { Notifications.markSeenById(item.id); return }
     }
-    onCtrlR: item => {
+    function markRead(item) {
         if (item.agentAsk) return
         const n = item.notif
         let fired = false
@@ -56,6 +56,12 @@ Picker {
         if (!fired) root.mailFallback(item, "read")
         Notifications.markSeenById(item.id)
         if (n) Notifications.clearOne(n)
+    }
+    onCtrlR: item => root.markRead(item)
+    onCtrlShiftR: () => {
+        const pending = root.items.slice()
+        for (let i = 0; i < pending.length; i++)
+            if (!pending[i].divider) root.markRead(pending[i])
     }
 
     // Mail history entries outlive their live Notification — the mlqs daemon
