@@ -149,8 +149,8 @@ if "$mut" sync list "$name" >/dev/null 2>&1; then
   say "resume sync …"; "$mut" sync resume "$name" >/dev/null 2>&1 || true
 else
   say "create sync (two-way-resolved, VM wins) …"
-  # Linux uses full-tree polling as its recursive-watch fallback; native path events still propagate immediately.
-  "$mut" sync create --name="$name" --sync-mode=two-way-resolved --watch-polling-interval=60 "${IGN[@]}" \
+  # Evented Mutagen watches every directory; polling is only a bounded overflow fallback.
+  "$mut" sync create --name="$name" --sync-mode=two-way-resolved --watch-polling-interval=600 "${IGN[@]}" \
     "$u@$host:$vmwt" "$local_wt" >/dev/null 2>&1 && say "  created" || say "  ✗ create failed"
 fi
 
