@@ -26,7 +26,7 @@ PanelWindow {
     anchors.left: true
     anchors.right: true
     anchors.bottom: true
-    margins.bottom: 12
+    margins.bottom: 6
     implicitWidth: 600
     implicitHeight: Math.max(174, capsule.height + 24)
     color: "transparent"
