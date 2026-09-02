@@ -272,6 +272,14 @@ watch_dir = function(dir)
 	end
 end
 
+local function watch_buffer_dir(buf)
+	if not vim.api.nvim_buf_is_valid(buf) or vim.bo[buf].buftype ~= "" then return end
+	local path = vim.api.nvim_buf_get_name(buf)
+	if path == "" then return end
+	local dir = vim.fs.dirname(path)
+	if dir and vim.uv.fs_stat(dir) then watch_dir(dir) end
+end
+
 -- Tear down every watch (used to re-root onto a new worktree on session switch).
 function M.stop()
 	for _, h in pairs(state.handles) do pcall(function() h:close() end) end
@@ -316,6 +324,9 @@ function M.start()
 	for dir in pairs(dir_set) do
 		watch_dir(dir)
 	end
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_is_loaded(buf) then watch_buffer_dir(buf) end
+	end
 	local total = (vim.uv.hrtime() - t0) / 1e6
 	vim.notify(("file-watcher: watching %s (%d dirs, git=%dms, total=%dms, late=%dms)")
 		:format(root, state.dir_count, t_git, total, state.defer_late or -1), vim.log.levels.DEBUG)
@@ -334,6 +345,10 @@ function M.setup(opts)
 	vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "InsertEnter" }, {
 		group = group,
 		callback = function() state.last_user_move = vim.uv.now() end,
+	})
+	vim.api.nvim_create_autocmd({ "BufReadPost", "BufNewFile", "BufFilePost", "BufEnter" }, {
+		group = group,
+		callback = function(ev) watch_buffer_dir(ev.buf) end,
 	})
 
 	vim.api.nvim_create_user_command("FileWatcherLog", function()
