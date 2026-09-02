@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-instance="${1:-personal}"
+instance="${1:-any}"
 case "$instance" in
-  work|personal) ;;
-  *) echo "cockpit-show: expected work or personal" >&2; exit 2 ;;
+  any|work|personal) ;;
+  *) echo "cockpit-show: expected any, work, or personal" >&2; exit 2 ;;
 esac
 
 wid=$(niri msg --json windows 2>/dev/null | python3 -c '
 import json, sys
-suffix = " · " + sys.argv[1]
+instance = sys.argv[1]
 windows = [w for w in json.load(sys.stdin)
            if (w.get("title") or "").startswith("cockpit-qs · ")
-           and (w.get("title") or "").endswith(suffix)]
+           and (instance == "any" or (w.get("title") or "").endswith(" · " + instance))]
 if not windows:
     raise SystemExit
 focused = next((w for w in windows if w.get("is_focused")), None)
@@ -28,4 +28,5 @@ if [ -n "$wid" ]; then
   exec niri msg action focus-window --id "$wid"
 fi
 
+[ "$instance" = any ] && instance=personal
 exec "$HOME/.config/niri/scripts/cockpit-boot" "$instance"
