@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
+import QsLib as QsLib
 
 // GPU mesh/streak wallpaper editor. The preview IS the renderer — a
 // fragment shader with every knob bound as a uniform, so it updates at
@@ -27,6 +28,21 @@ FloatingWindow {
     property int aberration: 6
     property int postBlur: 0
     property string status: ""
+    property string studioView: "wallpaper"
+    property real orbAngle: -0.76
+    property real orbBandX: 1.35
+    property real orbBandY: 1.2
+    property real orbWarp: 1.5
+    property real orbGrain: 0.54
+    property real orbFeather: 0.96
+    property real orbBright: 0.55
+    property real orbSwirl: 1.2
+    property real orbPlasma: 0.05
+    property string orbAction: "bash"
+    property color orbCustomGlow: QsLib.AgentActivity.colorFor("bash")
+    property real orbSize: 120
+    property bool orbPlaying: true
+    property string orbStatus: ""
     property int selected: 0
     property int anchorsRev: 0
     property real tNow: 0        // seconds, drives u_time; folds/flow animate
@@ -276,6 +292,54 @@ FloatingWindow {
         id: stateFile
         path: Quickshell.env("HOME") + "/.local/state/wallpaper-studio.json"
     }
+    FileView {
+        id: orbStateFile
+        path: Quickshell.env("HOME") + "/.local/state/wallpaper-studio-orb.json"
+        onLoaded: win.restoreOrbState()
+    }
+    function orbPreset() {
+        return { source: "QsLib.AgentActivity/rail-v1", angle: orbAngle, bandX: orbBandX,
+                 bandY: orbBandY, warp: orbWarp, grain: orbGrain, feather: orbFeather,
+                 bright: orbBright, swirl: orbSwirl, plasma: orbPlasma,
+                 action: orbAction, customGlow: String(orbCustomGlow),
+                 size: orbSize, playing: orbPlaying }
+    }
+    function saveOrbState() {
+        try { orbStateFile.setText(JSON.stringify(orbPreset())) } catch (e) {}
+    }
+    function restoreOrbState() {
+        try {
+            const o = JSON.parse(orbStateFile.text())
+            if (o.source !== "QsLib.AgentActivity/rail-v1") { resetOrb(); return }
+            orbAngle = o.angle; orbBandX = o.bandX; orbBandY = o.bandY; orbWarp = o.warp
+            orbGrain = o.grain; orbFeather = o.feather; orbBright = o.bright
+            orbSwirl = o.swirl; orbPlasma = o.plasma; orbAction = o.action || "bash"
+            orbCustomGlow = o.customGlow; orbSize = o.size; orbPlaying = o.playing !== false
+        } catch (e) {}
+    }
+    function resetOrb() {
+        orbAngle = -0.76; orbBandX = 1.35; orbBandY = 1.2; orbWarp = 1.5
+        orbGrain = 0.54; orbFeather = 0.96; orbBright = 0.55
+        orbSwirl = 1.2; orbPlasma = 0.05
+        orbAction = "bash"; orbCustomGlow = QsLib.AgentActivity.colorFor("bash")
+        orbSize = 120; orbPlaying = true; saveOrbState()
+    }
+    function copyOrbBlock() {
+        const p = orbPreset()
+        const glow = p.action === "custom" ? '"' + p.customGlow + '"'
+                                              : 'QsLib.AgentActivity.colorFor("' + p.action + '")'
+        const qml = "QsLib.ThinkingOrb {\n" +
+            "    width: " + p.size + "; height: " + p.size + "\n" +
+            "    running: " + p.playing + "\n" +
+            "    glow: " + glow + "\n" +
+            "    angle: " + p.angle + "; bandX: " + p.bandX + "; bandY: " + p.bandY + "\n" +
+            "    warp: " + p.warp + "; grain: " + p.grain + "; feather: " + p.feather + "\n" +
+            "    bright: " + p.bright + "; swirl: " + p.swirl + "; plasma: " + p.plasma + "\n}"
+        Quickshell.execDetached(["wl-copy", "--", qml])
+        orbStatus = "QML property block copied ✓"
+        orbStatusClear.restart()
+    }
+    Timer { id: orbStatusClear; interval: 2500; onTriggered: win.orbStatus = "" }
     function saveState() {
         syncSelected()
         comps[mode] = { layers: layers, post: { grain: gGrain, blur: gBlur,
@@ -318,6 +382,7 @@ FloatingWindow {
         }
         anchorsRev++
         layersRev++
+        restoreOrbState()
     }
     function resetAnchors() {
         anchorsModel.clear()
@@ -755,6 +820,16 @@ Pick the style that best fits the description unless one is named.`
         color: "#1F1F1F"
         Column { id: inner; x: 14; y: 14; width: parent.width - 28; spacing: 10 }
     }
+    component OrbSample: QsLib.ThinkingOrb {
+        required property real sampleSize
+        width: sampleSize; height: sampleSize
+        running: win.orbPlaying
+        glow: win.orbAction === "custom" ? win.orbCustomGlow : QsLib.AgentActivity.colorFor(win.orbAction)
+        angle: win.orbAngle; bandX: win.orbBandX; bandY: win.orbBandY
+        warp: win.orbWarp; grain: win.orbGrain; feather: win.orbFeather
+        bright: win.orbBright; swirl: win.orbSwirl; plasma: win.orbPlasma
+        seedKey: "wallpaper-studio-orb-lab-" + sampleSize
+    }
     // one layer of the composition, rendered with the shared wallpaper shader
     component LayerFx: ShaderEffect {
         required property int li
@@ -809,9 +884,22 @@ Pick the style that best fits the description unless one is named.`
     }
 
     Row {
+        id: viewTabs
+        z: 10
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: 10
+        spacing: 8
+        Pill { label: "WALLPAPER"; active: win.studioView === "wallpaper"; onClicked: win.studioView = "wallpaper" }
+        Pill { label: "ORB LAB"; active: win.studioView === "orb"; onClicked: win.studioView = "orb" }
+    }
+
+    Row {
         id: mainRow
+        visible: win.studioView === "wallpaper"
         anchors.fill: parent
-        focus: true
+        anchors.topMargin: 48
+        focus: visible
 
         // Vim bindings, following the house picker idiom: ctrl-combos work
         // everywhere (even while typing in the prompt); plain keys only when
@@ -1224,6 +1312,109 @@ Pick the style that best fits the description unless one is named.`
                     }
                 }
                 Text { text: win.status; color: "#97B5A6"; font.pixelSize: 12; font.family: "Geist" }
+                Item { width: 1; height: 12 }
+            }
+        }
+    }
+
+    Row {
+        visible: win.studioView === "orb"
+        anchors.fill: parent
+        anchors.topMargin: 48
+
+        Rectangle {
+            width: parent.width - orbPanelScroll.width; height: parent.height
+            color: "#0E0E0E"
+            Column {
+                anchors.centerIn: parent
+                spacing: 18
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: "CANONICAL THINKING ORB"; color: "#707B84"; font.pixelSize: 12; font.letterSpacing: 1.4; font.family: "Geist" }
+                Repeater {
+                    model: [{ label: "DARK GROUND", ground: "#171717", ink: "#EDEDED" },
+                            { label: "LIGHT GROUND", ground: "#FFFFFF", ink: "#10100E" }]
+                    Rectangle {
+                        required property var modelData
+                        width: 620; height: Math.max(190, win.orbSize + 54); radius: 20
+                        color: modelData.ground
+                        border.width: 1; border.color: "#30707B84"
+                        Text { x: 18; y: 14; text: parent.modelData.label; color: parent.modelData.ink; opacity: 0.55; font.pixelSize: 10; font.letterSpacing: 1.2; font.family: "Geist" }
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 50
+                            OrbSample { sampleSize: win.orbSize }
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 18
+                                OrbSample { sampleSize: 44 }
+                                OrbSample { sampleSize: 26 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Flickable {
+            id: orbPanelScroll
+            width: 380; height: parent.height
+            contentHeight: orbPanel.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            Column {
+                id: orbPanel
+                width: 380; padding: 18; spacing: 12
+                Card {
+                    SectionLabel { text: "Orb lab preset" }
+                    Knob { label: "size"; from: 48; to: 160; step: 2; extValue: win.orbSize; onMoved: v => { win.orbSize = v; win.saveOrbState() } }
+                    Row {
+                        spacing: 8
+                        Chip { label: win.orbPlaying ? "pause" : "play"; onClicked: { win.orbPlaying = !win.orbPlaying; win.saveOrbState() } }
+                        Chip { label: "reset shipped"; onClicked: win.resetOrb() }
+                        Chip { label: "copy QML"; onClicked: win.copyOrbBlock() }
+                    }
+                    Text { text: win.orbStatus; color: "#97B5A6"; font.pixelSize: 11; font.family: "Geist" }
+                }
+                Card {
+                    SectionLabel { text: "Field" }
+                    Knob { label: "angle"; from: -3.14; to: 3.14; step: 0.01; extValue: win.orbAngle; onMoved: v => { win.orbAngle = v; win.saveOrbState() } }
+                    Knob { label: "band X"; from: 0.2; to: 4; step: 0.05; extValue: win.orbBandX; onMoved: v => { win.orbBandX = v; win.saveOrbState() } }
+                    Knob { label: "band Y"; from: 0.2; to: 4; step: 0.05; extValue: win.orbBandY; onMoved: v => { win.orbBandY = v; win.saveOrbState() } }
+                    Knob { label: "warp"; from: 0; to: 4; step: 0.05; extValue: win.orbWarp; onMoved: v => { win.orbWarp = v; win.saveOrbState() } }
+                    Knob { label: "grain"; from: 0; to: 2; step: 0.02; extValue: win.orbGrain; onMoved: v => { win.orbGrain = v; win.saveOrbState() } }
+                    Knob { label: "feather"; from: 0.1; to: 1.2; step: 0.01; extValue: win.orbFeather; onMoved: v => { win.orbFeather = v; win.saveOrbState() } }
+                    Knob { label: "bright"; from: 0; to: 1; step: 0.01; extValue: win.orbBright; onMoved: v => { win.orbBright = v; win.saveOrbState() } }
+                    Knob { label: "swirl"; from: 0; to: 3; step: 0.05; extValue: win.orbSwirl; onMoved: v => { win.orbSwirl = v; win.saveOrbState() } }
+                    Knob { label: "plasma"; from: 0; to: 1; step: 0.01; extValue: win.orbPlasma; onMoved: v => { win.orbPlasma = v; win.saveOrbState() } }
+                }
+                Card {
+                    SectionLabel { text: "Cockpit session action" }
+                    Flow {
+                        width: 316; spacing: 6
+                        Repeater {
+                            model: ["read", "edit", "bash", "default"]
+                            Pill {
+                                required property string modelData
+                                label: modelData
+                                active: win.orbAction === modelData
+                                onClicked: { win.orbAction = modelData; win.saveOrbState() }
+                            }
+                        }
+                    }
+                    SectionLabel { text: "Custom glow" }
+                    Flow {
+                        width: 316; spacing: 8
+                        Repeater {
+                            model: ["#FF570D", "#97B5A6", "#7DD3FC", "#5566ff", "#ff8a31", "#EDEDED"]
+                            Rectangle {
+                                required property string modelData
+                                width: 42; height: 30; radius: 8; color: modelData
+                                border.width: win.orbAction === "custom" && String(win.orbCustomGlow).toLowerCase() === modelData.toLowerCase() ? 3 : 1
+                                border.color: border.width === 3 ? "#FFFFFF" : "#3A3A3A"
+                                TapHandler { onTapped: { win.orbAction = "custom"; win.orbCustomGlow = parent.modelData; win.saveOrbState() } }
+                            }
+                        }
+                    }
+                }
                 Item { width: 1; height: 12 }
             }
         }
