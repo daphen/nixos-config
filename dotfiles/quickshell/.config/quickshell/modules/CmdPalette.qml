@@ -1315,42 +1315,10 @@ PanelWindow {
                             visible: filmCard.focused && root.filmFocused
                         }
 
-                        Rectangle {
-                            id: mediaControl
-                            anchors.top: parent.top
-                            anchors.right: parent.right
-                            anchors.margins: 10
-                            width: 30
-                            height: 30
-                            radius: 15
-                            z: 30
-                            visible: filmCard.modelData.audible === true
-                                || filmCard.modelData.muted === true
-                            color: Qt.rgba(0, 0, 0, 0.72)
-
-                            Lib.Icon {
-                                anchors.centerIn: parent
-                                width: 16
-                                height: 16
-                                name: filmCard.modelData.muted ? "volume" : "volume-up"
-                                color: "#ffffff"
-                            }
-                        }
-
                         HoverHandler { id: filmHover; cursorShape: Qt.PointingHandCursor }
 
                         TapHandler {
-                            onTapped: eventPoint => {
-                                const p = eventPoint.position
-                                if (mediaControl.visible
-                                        && p.x >= mediaControl.x
-                                        && p.x <= mediaControl.x + mediaControl.width
-                                        && p.y >= mediaControl.y
-                                        && p.y <= mediaControl.y + mediaControl.height) {
-                                    PaletteState.setMuted(filmCard.modelData.id,
-                                        filmCard.modelData.muted !== true)
-                                    return
-                                }
+                            onTapped: {
                                 root.filmFocused = true
                                 root.filmIndex = filmCard.index
                                 root.runEntry(root.filmEntry(filmCard.index), false)
@@ -1629,6 +1597,25 @@ PanelWindow {
                             width: 1
                             height: 22
                             color: Theme.hairline
+                        }
+
+                        Item {
+                            width: 36
+                            height: 36
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 9
+                                color: mediaHover.hovered ? Theme.selection : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "⏯"
+                                    color: Theme.fg_muted
+                                    font.family: root.sans
+                                    font.pixelSize: 16
+                                }
+                            }
+                            HoverHandler { id: mediaHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: PaletteState.playPauseMedia() }
                         }
 
                         Item {
