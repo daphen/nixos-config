@@ -907,6 +907,13 @@ PanelWindow {
     function selectChinWindow(w) {
         scopedWindowId = w.id
         scopedWindowProfile = w.profile
+        previewTabId = w.activeTabId
+        const index = filmTabs.findIndex(tab => tab.id === w.activeTabId)
+        if (index >= 0) {
+            filmFocused = true
+            filmIndex = index
+            syncAddressToFilm(index)
+        }
         PaletteState.activateWindow(w.profile, w.id)
     }
 
