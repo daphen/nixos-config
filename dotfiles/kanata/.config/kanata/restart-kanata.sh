@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
-# Restart Kanata with single config (excludes Piantor via device exclusion)
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-echo "🔄 Restarting Kanata..."
-
-# Kill any existing Kanata instances
-echo "🛑 Stopping existing Kanata processes..."
-sudo pkill kanata 2>/dev/null || true
-
-# Wait a moment for processes to fully stop
+systemctl --user stop kanata-live.service kanata-session.service kanata-charybdis.service 2>/dev/null || true
+if pgrep -x kanata >/dev/null; then
+  pkill -x kanata 2>/dev/null || /run/wrappers/bin/sudo pkill -x kanata
+fi
 sleep 1
-
-# Start Kanata using the start script
-bash "$SCRIPT_DIR/start-kanata.sh"
+exec "$HOME/.config/kanata/start-kanata.sh"

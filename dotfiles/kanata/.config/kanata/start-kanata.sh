@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-# Start Kanata with the configuration
-# Runs in background with sudo (requires sudoers configuration)
+start_unit() {
+  local unit=$1
+  local config=$2
 
-CONFIG_FILE="$HOME/.config/kanata/kanata.kbd"
-LOG_FILE="/tmp/kanata.log"
+  if systemctl --user is-active --quiet "$unit"; then
+    echo "$unit is already running."
+    return
+  fi
 
-echo "🚀 Starting Kanata..."
-echo "📝 Config: $CONFIG_FILE"
-echo "📋 Logs: $LOG_FILE"
+  if [[ $(systemctl --user show "$unit" -p LoadState --value 2>/dev/null) == "not-found" ]]; then
+    systemd-run --user --unit="${unit%.service}" \
+      --property=Restart=always \
+      --property=RestartSec=1s \
+      /run/current-system/sw/bin/kanata --cfg "$config"
+  else
+    systemctl --user reset-failed "$unit" 2>/dev/null || true
+    systemctl --user start "$unit"
+  fi
+}
 
-# Run Kanata in background with sudo (use full paths for sudoers compatibility)
-sudo nohup kanata --cfg "$CONFIG_FILE" > "$LOG_FILE" 2>&1 &
-KANATA_PID=$!
+start_unit kanata-session.service "$HOME/.config/kanata/kanata.kbd"
+start_unit kanata-charybdis.service "$HOME/.config/kanata/kanata-charybdis.kbd"
 
-# Wait a moment and check if it started
-sleep 1
-
-if pgrep -x kanata > /dev/null; then
-    echo "✅ Kanata started successfully!"
-    echo "🔍 Check status with: ps aux | grep kanata"
-else
-    echo "❌ Failed to start Kanata. Check logs: $LOG_FILE"
-    tail -10 "$LOG_FILE"
-    exit 1
-fi
+sleep 3
+systemctl --user is-active --quiet kanata-session.service
+systemctl --user is-active --quiet kanata-charybdis.service
+echo "Kanata services started."
+echo "Logs: journalctl --user -u kanata-session -u kanata-charybdis -f"

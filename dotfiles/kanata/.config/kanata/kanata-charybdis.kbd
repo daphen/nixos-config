@@ -1,0 +1,27 @@
+(defcfg
+  process-unmapped-keys yes
+  log-layer-changes no
+  rapid-event-delay 2
+  linux-dev-names-include (
+    "Bastard Keyboards Charybdis Mini (3x6) Splinky"
+  )
+)
+
+(defsrc
+  left bspc
+)
+
+(defalias
+  line-start
+    (fork left
+      (fork (unmod home) (unmod lsft home) (lsft rsft))
+      (lmet rmet))
+  delete-line-start
+    (fork bspc
+      (macro (unmod lsft home) (unmod bspc))
+      (lmet rmet))
+)
+
+(deflayer base
+  @line-start @delete-line-start
+)
