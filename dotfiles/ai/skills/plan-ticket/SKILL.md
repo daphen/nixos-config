@@ -360,7 +360,9 @@ verification are the product here, not per-line explanation.
 6. Fill the artifact's **Reconciliation** section (human summary: planned vs touched,
    missing steps, drift verdict, verification results), set `progress.json` `phase:
    "reconciled"`, **and flip the plan's `> Status:` line to `reconciled`** so `/cycle`
-   and the plugin read the final state from the artifact itself.
+   and the plugin read the final state from the artifact itself. After those writes
+   succeed, call `agent_set_plan` with an empty key when available. A session binding
+   means active work; the reconciled artifact remains the historical record.
 7. **Check off tests as they're run (ongoing, after reconcile).** As the user works
    through the pending `MT#` (manual) checks, update that item's `result` in
    `<key>.review.json` (`pending` → `pass`/`fail`); the panel reflects it live. Infer
