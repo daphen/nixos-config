@@ -25,13 +25,13 @@ FloatingWindow {
     property string mode: "dark"
     property string style: "mesh"
     property int seed: 42
-    property int waveAmp: 50
-    property int waveLen: 1600
+    property real waveAmp: 50
+    property real waveLen: 1600
     property int swirl: 30
-    property int blurV: 80
+    property real blurV: 80
     property real grain: 0.12
     property int angle: 25
-    property int streak: 220
+    property real streak: 220
     property real chrome: 0.5
     property int aberration: 6
     property int postBlur: 0
@@ -146,6 +146,27 @@ FloatingWindow {
     property real dLevels: 4
     readonly property var styleNames: ["mesh", "streaks", "flow", "bands", "stripes", "conic", "radial", "rings", "balls", "blocks", "folds", "pmesh", "warp", "glass", "dither"]
     readonly property var stopStyles: ["bands", "stripes", "conic", "radial", "rings", "folds"]
+    readonly property bool spatialColors: ["mesh", "streaks", "balls", "blocks"].includes(style)
+    readonly property bool orderedColors: ["flow", "folds", "pmesh", "warp"].includes(style)
+    readonly property bool positionedStops: ["bands", "stripes", "conic", "radial", "rings"].includes(style)
+    property bool advancedOpen: false
+
+    function lookName() {
+        return ({ streaks: "Aurora beams", flow: "Liquid aurora", folds: "Folded satin",
+                  mesh: "Atmospheric mesh", pmesh: "Procedural mesh", warp: "Marbled warp",
+                  glass: "Fluted glass", dither: "Dithered finish" })[style] || style
+    }
+    function lookDescription() {
+        return ({ streaks: "Positioned lights stretched into luminous beams.",
+                  flow: "A deep-to-bright color ramp folded through a liquid field.",
+                  folds: "An ordered color ramp lit like glossy draped fabric.",
+                  mesh: "Moveable pools of color blended into a soft field.",
+                  pmesh: "Paper-style procedural color spots with two-axis warping.",
+                  warp: "An ordered color ramp pulled through a marbled pattern.",
+                  glass: "A refractive finish over the visible layer below.",
+                  dither: "A pixel finish over the visible layer below." })[style]
+               || "A generated gradient ready to refine."
+    }
 
     function snapshotCtx() {
         const a = []
@@ -647,33 +668,37 @@ Respond with ONLY one JSON object. No prose, no markdown fences.
 Schema:
 {
   "layers": [ 1-3 layers; the first is the base, the rest blend on top:
-    { "style": "mesh" | "streaks" | "flow" | "bands" | "stripes" | "conic" | "radial" | "rings" | "balls" | "blocks" | "folds",
+    { "style": "mesh" | "streaks" | "flow" | "bands" | "stripes" | "conic" | "radial" | "rings" | "balls" | "blocks" | "folds" | "pmesh" | "warp" | "glass" | "dither",
       "opacity": <0-1>, "blend": "normal" | "screen" | "multiply" | "overlay",
       "seed": <int 1-99999>,
       "anchors": [ 2-8 of { "ax": <0-1>, "ay": <0-1>, "hex": "#RRGGBB", "size": <0.2-3.0> } ],
-      "waveAmp": <0-160>, "waveLen": <300-3000>, "swirl": <-180 to 180>,
-      "blurV": <10-220>, "grain": <0-0.5>, "angle": <-60 to 60>,
-      "streak": <40-400>, "chrome": <0-1>, "aberration": <0-20>, "postBlur": <0-200> } ],
-  "post": { "grain": <0-0.5>, "blur": <0-200> }
+      "waveAmp": <style-specific>, "waveLen": <style-specific>, "swirl": <-180 to 180>,
+      "blurV": <style-specific>, "grain": <0-0.5>, "angle": <-180 to 180>,
+      "streak": <style-specific>, "chrome": <0-1>, "aberration": <0-20>, "postBlur": <0-200>,
+      "pmPositions": <0-100>, "pmWaveX": <0-1>, "pmWaveXShift": <0-1>,
+      "pmWaveY": <0-1>, "pmWaveYShift": <0-1>, "pmMixing": <0-1>,
+      "pmGrainMix": <0-1>, "pmGrainOverlay": <0-1>,
+      "wProportion": <0-1>, "wSoftness": <0-1>, "wShape": <0|1|2>,
+      "wShapeScale": <0-1>, "wDistortion": <0-1>, "wSwirl": <0-1>,
+      "wSwirlIter": <0-20>, "wScale": <0.1-4> } ],
+  "post": { "grain": <0-0.5>, "blur": <0-200>,
+    "glSize": <0-1>, "glAngle": <0-180>, "glShape": <1-5>, "glDistShape": <1-5>,
+    "glDistortion": <0-1>, "glShadows": <0-1>, "glHighlights": <0-1>, "glBlur": <0-1>,
+    "dPxSize": <1-16>, "dType": <1-4>, "dLevels": <2-8> }
 }
 
-Layering: the base layer's opacity/blend are ignored. "screen" adds light (best on dark),
-"multiply" inks color in (best on light), "overlay" boosts contrast. One layer is often
-enough; reach for 2-3 when mixing structures (e.g. a folds base with streak highlights).
-"post" applies grain/blur over the finished composite — prefer it over per-layer grain.
+Use one strong base layer unless the request clearly needs a second structure. The base
+opacity/blend are ignored. Glass and dither are filters: use them only after a visible
+base layer. "screen" adds light, "multiply" inks color, and "overlay" boosts contrast.
+Keep post grain below 0.12 and post blur below 30 unless the user explicitly asks for texture or haze.
 
-Styles (for the stop-family — bands/stripes/conic/radial/rings/folds — anchors are color STOPS: ay = position along the gradient 0-1, ax ignored, size = stop weight):
-- mesh: soft mesh gradient; anchors are colored blobs blended by inverse-distance. blurV = softness, postBlur = extra blur. Large-size dark/base anchors make breathing room.
-- streaks: hot glowing cores smeared into directional strokes on a near-solid stage. streak = length, angle = direction, chrome = brushed-filament texture, aberration = chromatic fringing. Anchor size stays small (0.4-0.9).
-- flow: the same liquid, domain-warped aurora field as ThinkingOrb, expanded across the canvas. Ordered anchors form its deep-to-crest color ramp; use angle, fold scale/strength, brightness, softness, swirl, grain, island scale, and crease.
-- bands: horizontal color bands, rotated by angle, warped by waveAmp/waveLen/swirl.
-- stripes: repeating angled stripes; waveLen = stripe period in px, angle = direction.
-- conic: angular sweep around the center (mirrored, seamless), rotated by angle.
-- radial: radial gradient; ay 0 = center, 1 = corners.
-- rings: repeating concentric rings; waveLen = ring period in px.
-- balls: anchors are soft solid discs on the base color; size = disc radius, blurV = edge softness. Position via ax/ay like mesh.
-- blocks: pixel-mosaic of the mesh gradient; waveLen = block size in px. Anchors position like mesh.
-- folds: draped folded-silk sheets of light (domain-warped noise); waveLen = fold scale (small = many folds), chrome = drape lighting strength, seed reshapes the folds. Elegant, Raycast-wallpaper-like.
+Visual recipes:
+- Tall aurora beams → streaks. Place 3-5 small bright anchors with dark breathing room; angle 75-105, streak 180-320, chrome 0.25-0.65, aberration 0-4, blurV 70-150. Cyan/cream light on navy should stay sparse, luminous, and mostly vertical.
+- Folded satin → folds. Ordered anchors are shadow → body → bright edge. Use waveLen 5-12 (fold scale), waveAmp 0.85-1.45 (saturation), streak 0.35-1.0 (ribbon width), chrome 0.65-1, blurV 0.45-1.2, angle -45 to 45. Never use zero saturation or maximum zoom/width/softness unless asked.
+- Liquid aurora → flow. Ordered anchors are deep → mid → crest; waveLen 900-2200, waveAmp 35-100, streak 100-280, chrome 0.4-0.75, blurV 90-190, gentle swirl, little crease.
+- Atmospheric gradient → mesh for positioned color pools, or pmesh for Paper-style procedural spots. For pmesh use pmPositions 0-100, both waves 0.35-1, mixing 0.35-0.95, and low grain. Anchors supply ordered colors; their positions and sizes are ignored.
+- Marbled graphic → warp. Use wScale 0.6-2, wDistortion 0.1-0.55, wSwirl 0.15-0.9, and wSwirlIter 4-14. Anchors supply the ordered color ramp.
+- bands/stripes/conic/radial/rings use anchor ay as stop position and size as stop weight. balls/blocks/mesh/streaks use spatial ax/ay positions. glass/dither filter the layer below.
 
 Context:
 - Mode: ${mode}. Stage/base color is ${mode === "dark" ? "#181818" : "#FFFFFF"}; compose for that ground.
@@ -693,7 +718,11 @@ Pick the style that best fits the description unless one is named.`
         if (riff) {
             syncSelected()
             full += "\n\nCurrent composition:\n"
-                 + JSON.stringify({ layers: layers, post: { grain: gGrain, blur: gBlur } })
+                 + JSON.stringify({ layers: layers, post: {
+                     grain: gGrain, blur: gBlur, glSize: glSize, glAngle: glAngle,
+                     glShape: glShape, glDistShape: glDistShape, glDistortion: glDistortion,
+                     glShadows: glShadows, glHighlights: glHighlights, glBlur: glBlur,
+                     dPxSize: dPxSize, dType: dType, dLevels: dLevels } })
                  + "\n\nModify it per this instruction, keeping what already works: " + p
         } else full += "\n\nUser description: " + p
         win.status = "generating…"
@@ -706,15 +735,20 @@ Pick the style that best fits the description unless one is named.`
     }
     function cleanLayer(o) {
         if (!o || !Array.isArray(o.anchors) || o.anchors.length < 2) return null
+        const cleanStyle = styleNames.includes(o.style) ? o.style : "mesh"
+        const folds = cleanStyle === "folds"
         return {
-            style: styleNames.includes(o.style) ? o.style : "mesh",
+            style: cleanStyle,
             opacity: clampN(o.opacity, 0, 1, 1),
             blend: ({ normal: 0, screen: 1, multiply: 2, overlay: 3 })[o.blend] || 0,
             seed: Math.round(clampN(o.seed, 1, 99999, 42)),
-            waveAmp: clampN(o.waveAmp, 0, 160, 50), waveLen: clampN(o.waveLen, 300, 3000, 1600),
-            swirl: clampN(o.swirl, -180, 180, 30), blurV: clampN(o.blurV, 10, 220, 80),
-            grain: clampN(o.grain, 0, 0.5, 0.12), angle: clampN(o.angle, -60, 60, 25),
-            streak: clampN(o.streak, 40, 400, 220), chrome: clampN(o.chrome, 0, 1, 0.5),
+            waveAmp: clampN(o.waveAmp, 0, folds ? 2 : 160, folds ? 1.1 : 50),
+            waveLen: clampN(o.waveLen, folds ? 1 : 300, folds ? 24 : 3000, folds ? 8 : 1600),
+            swirl: clampN(o.swirl, -180, 180, 30),
+            blurV: clampN(o.blurV, folds ? 0 : 10, folds ? 2 : 220, folds ? 0.8 : 80),
+            grain: clampN(o.grain, 0, 0.5, 0.12), angle: clampN(o.angle, -180, 180, 25),
+            streak: clampN(o.streak, folds ? 0.1 : 40, folds ? 2 : 400, folds ? 0.7 : 220),
+            chrome: clampN(o.chrome, 0, 1, folds ? 0.8 : 0.5),
             aberration: clampN(o.aberration, 0, 20, 6), postBlur: clampN(o.postBlur, 0, 200, 0),
             pmPositions: clampN(o.pmPositions, 0, 100, 23), pmWaveX: clampN(o.pmWaveX, 0, 1, 0.53),
             pmWaveXShift: clampN(o.pmWaveXShift, 0, 1, 0.0), pmWaveY: clampN(o.pmWaveY, 0, 1, 0.95),
@@ -746,10 +780,21 @@ Pick the style that best fits the description unless one is named.`
             win.status = "AI failed: no usable layers"; statusClear.restart(); return
         }
         syncSelected()
-        undoComp = JSON.parse(JSON.stringify({ layers: layers, grain: gGrain, blur: gBlur }))
+        undoComp = JSON.parse(JSON.stringify({ layers: layers, post: {
+            grain: gGrain, blur: gBlur, glSize: glSize, glAngle: glAngle,
+            glShape: glShape, glDistShape: glDistShape, glDistortion: glDistortion,
+            glShadows: glShadows, glHighlights: glHighlights, glBlur: glBlur,
+            dPxSize: dPxSize, dType: dType, dLevels: dLevels } }))
         layers = ls
-        gGrain = o.post ? clampN(o.post.grain, 0, 0.5, 0) : 0
-        gBlur = o.post ? clampN(o.post.blur, 0, 200, 0) : 0
+        const post = o.post || {}
+        gGrain = clampN(post.grain, 0, 0.5, 0)
+        gBlur = clampN(post.blur, 0, 200, 0)
+        glSize = clampN(post.glSize, 0, 1, 0.5); glAngle = clampN(post.glAngle, 0, 180, 90)
+        glShape = Math.round(clampN(post.glShape, 1, 5, 1)); glDistShape = Math.round(clampN(post.glDistShape, 1, 5, 2))
+        glDistortion = clampN(post.glDistortion, 0, 1, 0.5); glShadows = clampN(post.glShadows, 0, 1, 0.5)
+        glHighlights = clampN(post.glHighlights, 0, 1, 0.5); glBlur = clampN(post.glBlur, 0, 1, 0.1)
+        dPxSize = Math.round(clampN(post.dPxSize, 1, 16, 4)); dType = Math.round(clampN(post.dType, 1, 4, 3))
+        dLevels = Math.round(clampN(post.dLevels, 2, 8, 4))
         loadLayer(0)
         saveState()
         win.status = "AI ✓ (" + ls.length + (ls.length > 1 ? " layers)" : " layer)")
@@ -758,7 +803,7 @@ Pick the style that best fits the description unless one is named.`
     function undoGenerate() {
         if (!undoComp) return
         layers = undoComp.layers
-        gGrain = undoComp.grain; gBlur = undoComp.blur
+        loadPost(undoComp.post)
         loadLayer(0)
         saveState()
         undoComp = null
@@ -1026,6 +1071,7 @@ Pick the style that best fits the description unless one is named.`
             }
 
             TapHandler {
+                enabled: win.spatialColors
                 acceptedButtons: Qt.LeftButton
                 onDoubleTapped: e => {
                     const u = (e.position.x - stage.ox) / stage.fitW
@@ -1045,6 +1091,7 @@ Pick the style that best fits the description unless one is named.`
                     required property string hex
                     required property real size
                     readonly property bool isSel: win.selected === index
+                    visible: win.spatialColors
                     width: 16 + size * 14; height: width; radius: width / 2
                     x: stage.ox + ax * stage.fitW - width / 2
                     y: stage.oy + ay * stage.fitH - height / 2
@@ -1130,9 +1177,18 @@ Pick the style that best fits the description unless one is named.`
                 spacing: 12
 
                 Card {
-                    SectionLabel { text: "AI — starting point" }
+                    SectionLabel { text: "Create with AI" }
+                    Text {
+                        width: 316
+                        text: "Describe the light, color, texture, and amount of empty space you want."
+                        wrapMode: Text.WordWrap
+                        color: win.chromeSecondary; font.pixelSize: 12; font.family: "Geist"
+                    }
                     Rectangle {
-                        width: 316; height: 32; radius: 16; color: win.chromeControl
+                        width: 316; height: 44; radius: 12
+                        color: win.chromeControl
+                        border.width: promptField.activeFocus ? 2 : 1
+                        border.color: promptField.activeFocus ? QsLib.Theme.orange : win.chromeBorder
                         TextInput {
                             id: promptField
                             anchors.fill: parent
@@ -1145,19 +1201,75 @@ Pick the style that best fits the description unless one is named.`
                         Text {
                             visible: promptField.text === "" && !promptField.activeFocus
                             anchors.verticalCenter: parent.verticalCenter; x: 12
-                            text: "describe a vibe — or just hit generate"
+                            text: "e.g. dark navy with tall cyan aurora beams"
                             color: win.chromeMuted; font.pixelSize: 12; font.family: "Geist"
                         }
                     }
                     Row {
                         spacing: 8
-                        Chip { label: genProc.running ? "generating…" : "generate"; onClicked: win.generate(false) }
-                        Chip { label: "riff on current"; onClicked: win.generate(true) }
+                        Pill { width: 112; label: genProc.running ? "GENERATING…" : "GENERATE"; active: true; onClicked: win.generate(false) }
+                        Chip { label: "refine result"; onClicked: win.generate(true) }
                         Chip { visible: win.undoComp !== null; label: "undo"; onClicked: win.undoGenerate() }
+                    }
+                    SectionLabel { text: "Try a direction" }
+                    Flow {
+                        width: 316; spacing: 6
+                        Chip { label: "cyan aurora"; onClicked: promptField.text = "dark navy wallpaper with tall cyan aurora beams and quiet empty space" }
+                        Chip { label: "folded satin"; onClicked: promptField.text = "glossy diagonal orange and teal folded satin with bright cream edges" }
+                        Chip { label: "soft mesh"; onClicked: promptField.text = "soft atmospheric mesh gradient with broad pools of muted color" }
+                    }
+                    Text {
+                        text: win.status.length ? win.status : "PROMPT  →  RESULT  →  REFINE"
+                        color: win.status.length ? QsLib.Theme.green : win.chromeMuted
+                        font.pixelSize: 11; font.family: "Geist"
                     }
                 }
 
                 Card {
+                    SectionLabel { text: "Result" }
+                    Text { text: win.lookName(); color: win.chromeText; font.pixelSize: 16; font.weight: 600; font.family: "Geist" }
+                    Text { width: 316; text: win.lookDescription(); wrapMode: Text.WordWrap; color: win.chromeSecondary; font.pixelSize: 12; font.family: "Geist" }
+                    Row {
+                        spacing: 6
+                        Repeater {
+                            model: ["dark", "light"]
+                            Pill {
+                                required property string modelData
+                                width: 112; label: modelData; active: win.mode === modelData
+                                onClicked: win.switchMode(modelData)
+                            }
+                        }
+                        Chip { label: win.advancedOpen ? "hide advanced" : "advanced"; onClicked: win.advancedOpen = !win.advancedOpen }
+                    }
+                }
+
+                Card {
+                    SectionLabel { text: "Tune result" }
+                    Knob { visible: ["streaks", "flow", "folds"].includes(win.style); label: "direction"; from: -180; to: 180; step: 1; extValue: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
+                    Knob { visible: win.style === "streaks"; label: "beam length"; from: 40; to: 400; step: 5; extValue: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
+                    Knob { visible: win.style === "streaks"; label: "filament detail"; from: 0; to: 1; step: 0.02; extValue: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
+                    Knob { visible: win.style === "flow"; label: "fold scale"; from: 300; to: 3000; step: 10; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
+                    Knob { visible: win.style === "flow"; label: "fold strength"; from: 0; to: 160; step: 1; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
+                    Knob { visible: win.style === "flow"; label: "brightness"; from: 0; to: 1; step: 0.02; extValue: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
+                    Knob { visible: win.style === "flow"; label: "softness"; from: 10; to: 220; step: 1; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
+                    Knob { visible: win.style === "folds"; label: "fold scale"; from: 1; to: 24; step: 1; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
+                    Knob { visible: win.style === "folds"; label: "color intensity"; from: 0; to: 2; step: 0.05; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
+                    Knob { visible: win.style === "folds"; label: "ribbon width"; from: 0.1; to: 2; step: 0.05; extValue: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
+                    Knob { visible: win.style === "folds"; label: "shine"; from: 0; to: 1; step: 0.02; extValue: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
+                    Knob { visible: win.style === "folds"; label: "softness"; from: 0; to: 2; step: 0.05; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
+                    Knob { visible: win.style === "mesh"; label: "softness"; from: 10; to: 220; step: 1; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "color arrangement"; from: 0; to: 100; step: 1; extValue: win.pmPositions; onMoved: v => { win.pmPositions = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "horizontal wave"; from: 0; to: 1; step: 0.01; extValue: win.pmWaveX; onMoved: v => { win.pmWaveX = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "vertical wave"; from: 0; to: 1; step: 0.01; extValue: win.pmWaveY; onMoved: v => { win.pmWaveY = v; win.saveState() } }
+                    Knob { visible: win.style === "pmesh"; label: "color blending"; from: 0; to: 1; step: 0.01; extValue: win.pmMixing; onMoved: v => { win.pmMixing = v; win.saveState() } }
+                    Knob { visible: win.style === "warp"; label: "scale"; from: 0.1; to: 4; step: 0.05; extValue: win.wScale; onMoved: v => { win.wScale = v; win.saveState() } }
+                    Knob { visible: win.style === "warp"; label: "distortion"; from: 0; to: 1; step: 0.01; extValue: win.wDistortion; onMoved: v => { win.wDistortion = v; win.saveState() } }
+                    Knob { visible: win.style === "warp"; label: "swirl"; from: 0; to: 1; step: 0.01; extValue: win.wSwirl; onMoved: v => { win.wSwirl = v; win.saveState() } }
+                    Text { visible: !["mesh", "streaks", "flow", "folds", "pmesh", "warp"].includes(win.style); width: 316; text: "This result uses specialist controls. Open Advanced to tune its renderer."; wrapMode: Text.WordWrap; color: win.chromeMuted; font.pixelSize: 11; font.family: "Geist" }
+                }
+
+                Card {
+                    visible: win.advancedOpen
                     SectionLabel { text: "Mode" }
                     Row {
                         spacing: 6
@@ -1189,6 +1301,7 @@ Pick the style that best fits the description unless one is named.`
                 }
 
                 Card {
+                    visible: win.advancedOpen
                     SectionLabel { text: "Layers" }
                     Flow {
                         width: 316; spacing: 6
@@ -1223,11 +1336,12 @@ Pick the style that best fits the description unless one is named.`
                 }
 
                 Card {
+                    visible: win.advancedOpen
                     SectionLabel { text: "Adjust" }
                     Knob { visible: ["streaks", "flow", "folds"].includes(win.style); label: win.style === "folds" ? "ribbon" : win.style === "flow" ? "brightness" : "chrome"; from: 0; to: 1; step: 0.02; extValue: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
                     Knob { visible: win.style === "streaks" || win.style === "flow"; label: win.style === "flow" ? "crease" : "chromatic shift"; from: 0; to: 20; step: 1; extValue: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
                     Knob { visible: win.style === "streaks" || win.style === "flow"; label: win.style === "flow" ? "island scale" : "streak length"; from: 40; to: 400; step: 5; extValue: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
-                    Knob { visible: !["mesh", "radial", "balls", "blocks", "pmesh", "warp", "glass", "dither"].includes(win.style); label: win.style === "folds" ? "rotation" : "angle"; from: -60; to: 60; step: 1; extValue: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
+                    Knob { visible: !["mesh", "radial", "balls", "blocks", "pmesh", "warp", "glass", "dither"].includes(win.style); label: win.style === "folds" ? "rotation" : "angle"; from: -180; to: 180; step: 1; extValue: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
                     Knob { visible: !["folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: win.style === "flow" ? "fold strength" : "wave amplitude"; from: 0; to: 160; step: 1; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
                     Knob { visible: win.style === "folds"; label: "saturation"; from: 0; to: 2; step: 0.05; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
                     Knob { visible: win.style === "folds"; label: "ribbon width"; from: 0.1; to: 2; step: 0.05; extValue: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
@@ -1272,10 +1386,35 @@ Pick the style that best fits the description unless one is named.`
                 }
 
                 Card {
-                    SectionLabel { text: "Selected anchor — " + (win.selected + 1) + " of " + anchorsModel.count }
-                    Text { text: "drag to move, scroll to resize, double-click canvas to add (max 8)"
-                           width: 316; wrapMode: Text.WordWrap; color: win.chromeMuted; font.pixelSize: 11; font.family: "Geist" }
-
+                    visible: win.style !== "glass" && win.style !== "dither"
+                    SectionLabel { text: (win.spatialColors ? "Spatial colors" : win.positionedStops ? "Gradient stops" : "Color ramp") + " — " + (win.selected + 1) + " of " + anchorsModel.count }
+                    Text {
+                        width: 316; wrapMode: Text.WordWrap
+                        text: win.spatialColors
+                            ? "Select a color below, or drag its point on the canvas. Scroll a point to resize its area."
+                            : win.positionedStops
+                                ? "Select a stop, then set where it lands in the gradient and how strongly it blends."
+                                : "Colors blend in this order from deep ground to bright highlight. Position and size do not apply."
+                        color: win.chromeMuted; font.pixelSize: 11; font.family: "Geist"
+                    }
+                    Flow {
+                        width: 316; spacing: 7
+                        Repeater {
+                            model: anchorsModel
+                            Rectangle {
+                                required property int index
+                                required property string hex
+                                width: 38; height: 30; radius: 8; color: hex
+                                scale: rampTap.pressed ? 0.92 : (rampHover.hovered ? 1.06 : 1)
+                                border.width: win.selected === index ? 3 : 1
+                                border.color: win.selected === index ? QsLib.Theme.orange : win.chromeBorder
+                                Behavior on scale { NumberAnimation { duration: 80 } }
+                                HoverHandler { id: rampHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { id: rampTap; onTapped: win.selected = parent.index }
+                            }
+                        }
+                    }
+                    SectionLabel { text: "Set selected color" }
                     Flow {
                         width: 316; spacing: 6
                         Repeater {
@@ -1296,23 +1435,31 @@ Pick the style that best fits the description unless one is named.`
                             }
                         }
                     }
-
                     Knob {
-                        label: "anchor size"
+                        visible: win.positionedStops
+                        label: "stop position"
+                        from: 0; to: 1; step: 0.01
+                        extValue: { win.anchorsRev; return anchorsModel.count > win.selected ? anchorsModel.get(win.selected).ay : 0.5 }
+                        onMoved: v => { anchorsModel.setProperty(win.selected, "ay", v); win.touchAnchors() }
+                    }
+                    Knob {
+                        visible: win.spatialColors || win.positionedStops
+                        label: win.positionedStops ? "stop weight" : "color area size"
                         from: 0.2; to: 3; step: 0.05
                         extValue: { win.anchorsRev; return anchorsModel.count > win.selected ? anchorsModel.get(win.selected).size : 1 }
                         onMoved: v => { anchorsModel.setProperty(win.selected, "size", v); win.touchAnchors() }
                     }
-
-                    Row {
-                        spacing: 8
-                        Chip { label: "remove anchor"; onClicked: win.removeSelAnchor() }
-                        Chip { label: "reset anchors"; onClicked: win.resetAnchors() }
+                    Flow {
+                        width: 316; spacing: 8
+                        Chip { visible: !win.spatialColors && anchorsModel.count < 8; label: "+ color"; onClicked: win.addAnchorAt(0.5, 0.5) }
+                        Chip { label: "remove color"; onClicked: win.removeSelAnchor() }
+                        Chip { label: "reset colors"; onClicked: win.resetAnchors() }
                         Chip { label: win.showLegend ? "legend ✓" : "legend"; onClicked: { win.showLegend = !win.showLegend; win.saveState() } }
                     }
                 }
 
                 Card {
+                    visible: win.advancedOpen
                     SectionLabel { text: "Post — over all layers" }
                     Knob { label: "global grain"; from: 0; to: 0.5; step: 0.01; extValue: win.gGrain; onMoved: v => { win.gGrain = v; win.saveState() } }
                     Knob { label: "global soft blur"; from: 0; to: 200; step: 2; extValue: win.gBlur; onMoved: v => { win.gBlur = v; win.saveState() } }
