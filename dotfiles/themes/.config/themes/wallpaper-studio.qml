@@ -23,6 +23,7 @@ FloatingWindow {
     readonly property color chromeMuted: QsLib.Theme.fg_muted
 
     property string mode: "dark"
+    readonly property string wallpaperTone: mode === "dark" ? "light" : "dark"
     property string style: "mesh"
     property int seed: 42
     property real waveAmp: 50
@@ -36,6 +37,8 @@ FloatingWindow {
     property int aberration: 6
     property int postBlur: 0
     property string status: ""
+    property var promptSuggestions: []
+    property bool awaitingStartupSuggestions: true
     property string studioView: "wallpaper"
     property real orbAngle: -0.76
     property real orbBandX: 1.35
@@ -264,7 +267,7 @@ FloatingWindow {
         selLayer = layers.length - 1
         defaultKnobs()
         layerOpacity = 0.8
-        layerBlend = mode === "dark" ? 1 : 2   // screen adds light, multiply inks
+        layerBlend = wallpaperTone === "dark" ? 1 : 2   // screen adds light, multiply inks
         resetAnchors()
         layersRev++
         saveState()
@@ -444,14 +447,14 @@ FloatingWindow {
             }
         }
         if (stopSets[style]) {
-            for (const [hex, y] of stopSets[style][mode])
+            for (const [hex, y] of stopSets[style][wallpaperTone])
                 anchorsModel.append({ ax: 0.5, ay: y, hex: hex, size: 1.0 })
             selected = 0
             touchAnchors()
             return
         }
         if (style === "balls") {
-            const cols = mode === "dark"
+            const cols = wallpaperTone === "dark"
                 ? ["#FF570D", "#97B5A6", "#CCD5E4", "#396171", "#ff8a31"]
                 : ["#e16511", "#0284C7", "#396171", "#7DD3FC", "#243560"]
             const pos = [[0.2, 0.3], [0.7, 0.2], [0.45, 0.65], [0.85, 0.75], [0.15, 0.8]]
@@ -462,7 +465,7 @@ FloatingWindow {
             return
         }
         if (style === "flow") {
-            const cols = mode === "dark"
+            const cols = wallpaperTone === "dark"
                 ? ["#181818", "#CCD5E4", "#396171", "#181818", "#FF570D"]
                 : ["#FFFFFF", "#396171", "#0284C7", "#F4F5F2", "#e16511"]
             const pos = [[0.15, 0.2], [0.6, 0.1], [0.85, 0.5], [0.35, 0.75], [0.75, 0.9]]
@@ -476,7 +479,7 @@ FloatingWindow {
             // colours only — pmesh positions are procedural, warp is a
             // noise-warped ramp, glass ignores anchors (refracts below);
             // anchor xy is unused by all three
-            const cols = mode === "dark"
+            const cols = wallpaperTone === "dark"
                 ? ["#013b65", "#03738c", "#a3d3ff", "#f2faef"]
                 : ["#f2faef", "#a3d3ff", "#03738c", "#013b65"]
             for (let i = 0; i < 4; i++)
@@ -486,16 +489,16 @@ FloatingWindow {
             return
         }
         if (style === "streaks") {
-            const hot = mode === "dark"
+            const hot = wallpaperTone === "dark"
                 ? ["#FFFFFF", "#FF570D", "#7DD3FC", "#CCD5E4", "#FFFFFF", "#FF570D"]
                 : ["#e16511", "#0284C7", "#396171", "#e16511", "#0284C7", "#243560"]
             const pos = [[0.2, 0.25], [0.55, 0.15], [0.8, 0.35], [0.35, 0.6], [0.65, 0.75], [0.15, 0.8]]
             for (let i = 0; i < 6; i++)
                 anchorsModel.append({ ax: pos[i][0], ay: pos[i][1], hex: hot[i], size: 0.5 + (i % 3) * 0.15 })
         } else {
-            const base = mode === "dark" ? "#181818" : "#FFFFFF"
-            const a1 = mode === "dark" ? "#FF570D" : "#df9001"
-            const a2 = mode === "dark" ? "#97B5A6" : "#5E7270"
+            const base = wallpaperTone === "dark" ? "#181818" : "#FFFFFF"
+            const a1 = wallpaperTone === "dark" ? "#FF570D" : "#df9001"
+            const a2 = wallpaperTone === "dark" ? "#97B5A6" : "#5E7270"
             anchorsModel.append({ ax: 0.25, ay: 0.3, hex: base, size: 1.4 })
             anchorsModel.append({ ax: 0.75, ay: 0.7, hex: base, size: 1.2 })
             anchorsModel.append({ ax: 0.7, ay: 0.2, hex: a1, size: 0.8 })
@@ -513,7 +516,7 @@ FloatingWindow {
     }
     readonly property var palette: {
         try {
-            const t = JSON.parse(colorsFile.text())["themes"][mode]
+            const t = JSON.parse(colorsFile.text())["themes"][wallpaperTone]
             const out = []
             for (const k of ["primary", "secondary", "tertiary", "selection", "overlay", "prompt"])
                 if (t.background[k]) out.push(t.background[k])
@@ -524,7 +527,7 @@ FloatingWindow {
     // hex -> theme color name, for the on-canvas legend
     readonly property var paletteNames: {
         try {
-            const t = JSON.parse(colorsFile.text())["themes"][mode]
+            const t = JSON.parse(colorsFile.text())["themes"][wallpaperTone]
             const out = {}
             for (const k of ["primary", "secondary", "tertiary", "selection", "overlay", "prompt"])
                 if (t.background[k]) out[t.background[k].toLowerCase()] = k
@@ -566,8 +569,8 @@ FloatingWindow {
     }
     function lBase(i) {
         const d = ldata(i)
-        const c = Qt.color(mode === "dark" ? "#181818" : "#FFFFFF")
-        const f = (d && d.style === "streaks" && mode === "dark") ? 0.25 : 1.0
+        const c = Qt.color(wallpaperTone === "dark" ? "#181818" : "#FFFFFF")
+        const f = (d && d.style === "streaks" && wallpaperTone === "dark") ? 0.25 : 1.0
         return Qt.vector4d(c.r * f, c.g * f, c.b * f, 1)
     }
     function lOpacVec() {
@@ -667,6 +670,7 @@ Respond with ONLY one JSON object. No prose, no markdown fences.
 
 Schema:
 {
+  "suggestions": [exactly 3 fresh, distinct prompt directions of 2-5 words each],
   "layers": [ 1-3 layers; the first is the base, the rest blend on top:
     { "style": "mesh" | "streaks" | "flow" | "bands" | "stripes" | "conic" | "radial" | "rings" | "balls" | "blocks" | "folds" | "pmesh" | "warp" | "glass" | "dither",
       "opacity": <0-1>, "blend": "normal" | "screen" | "multiply" | "overlay",
@@ -701,11 +705,11 @@ Visual recipes:
 - bands/stripes/conic/radial/rings use anchor ay as stop position and size as stop weight. balls/blocks/mesh/streaks use spatial ax/ay positions. glass/dither filter the layer below.
 
 Context:
-- Mode: ${mode}. Stage/base color is ${mode === "dark" ? "#181818" : "#FFFFFF"}; compose for that ground.
+- Target UI theme slot: ${mode}. Wallpaper tone: ${wallpaperTone}. Stage/base color is ${wallpaperTone === "dark" ? "#181818" : "#FFFFFF"}; compose for that ground.
 - Theme palette (prefer these, other hexes allowed if they harmonize): ${JSON.stringify(palette)}
 - Canvas: 3840x2400 desktop wallpaper. It sits behind windows — bold is fine, busy is not.
 
-Pick the style that best fits the description unless one is named.`
+The three suggestions must vary in renderer, palette, and composition. Pick the style that best fits the description unless one is named.`
     }
     function generate(riff) {
         if (genProc.running) return
@@ -770,9 +774,17 @@ Pick the style that best fits the description unless one is named.`
         try {
             o = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1))
         } catch (e) {
+            awaitingStartupSuggestions = false
             win.status = ("AI failed: " + (genErr.text.trim() || "bad JSON")).slice(0, 80)
             statusClear.restart()
             return
+        }
+        if (awaitingStartupSuggestions) {
+            const suggestions = Array.isArray(o.suggestions)
+                ? o.suggestions.filter(x => typeof x === "string" && x.trim().length).slice(0, 3).map(x => x.trim())
+                : []
+            if (suggestions.length === 3) promptSuggestions = suggestions
+            awaitingStartupSuggestions = false
         }
         const raw = Array.isArray(o.layers) ? o.layers : (o.anchors ? [o] : [])
         const ls = raw.slice(0, 4).map(cleanLayer).filter(l => l !== null)
@@ -915,7 +927,7 @@ Pick the style that best fits the description unless one is named.`
         property vector4d c7: win.lColorVec(li, 7)
         property vector4d baseColor: win.lBase(li)
         property real styleMode: win.lStyleNum(li)
-        property real modeLight: win.mode === "light" ? 1 : 0
+        property real modeLight: win.wallpaperTone === "light" ? 1 : 0
         property real waveAmp: win.lKnob(li, "waveAmp")
         property real waveLen: win.lKnob(li, "waveLen")
         property real swirlDeg: win.lKnob(li, "swirl")
@@ -1169,6 +1181,7 @@ Pick the style that best fits the description unless one is named.`
             contentHeight: panel.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
+            QsLib.ScrollFeel { flick: panelScroll }
 
             Column {
                 id: panel
@@ -1211,12 +1224,18 @@ Pick the style that best fits the description unless one is named.`
                         Chip { label: "refine result"; onClicked: win.generate(true) }
                         Chip { visible: win.undoComp !== null; label: "undo"; onClicked: win.undoGenerate() }
                     }
-                    SectionLabel { text: "Try a direction" }
+                    SectionLabel { visible: win.promptSuggestions.length === 3; text: "Try a direction" }
                     Flow {
+                        visible: win.promptSuggestions.length === 3
                         width: 316; spacing: 6
-                        Chip { label: "cyan aurora"; onClicked: promptField.text = "dark navy wallpaper with tall cyan aurora beams and quiet empty space" }
-                        Chip { label: "folded satin"; onClicked: promptField.text = "glossy diagonal orange and teal folded satin with bright cream edges" }
-                        Chip { label: "soft mesh"; onClicked: promptField.text = "soft atmospheric mesh gradient with broad pools of muted color" }
+                        Repeater {
+                            model: win.promptSuggestions
+                            delegate: Chip {
+                                required property string modelData
+                                label: modelData
+                                onClicked: promptField.text = modelData
+                            }
+                        }
                     }
                     Text {
                         text: win.status.length ? win.status : "PROMPT  →  RESULT  →  REFINE"
@@ -1538,6 +1557,7 @@ Pick the style that best fits the description unless one is named.`
             contentHeight: orbPanel.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
+            QsLib.ScrollFeel { flick: orbPanelScroll }
             Column {
                 id: orbPanel
                 width: 380; padding: 18; spacing: 12

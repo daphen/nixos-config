@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 const (
@@ -390,7 +391,9 @@ func (m *manager) switchTheme(mode string) bool {
 	m.generateAll(mode)
 	m.applyAll(mode)
 	m.applySystem(mode)
-	m.wallpaper(mode)
+	if !m.wallpaper(mode) {
+		return false
+	}
 	m.success("Theme switched to " + mode + " mode")
 	return true
 }
@@ -491,11 +494,11 @@ func (m *manager) jqColor(path string) string {
 	return strings.TrimSpace(string(b))
 }
 
-func (m *manager) wallpaper(mode string) {
+func (m *manager) wallpaper(mode string) bool {
 	link := filepath.Join(m.home, ".config/themes/wallpaper-"+mode)
 	if !pathExists(link) {
 		m.warning("No wallpaper set for " + mode + " (symlink " + link + " missing); leaving current wallpaper")
-		return
+		return true
 	}
 	target, err := filepath.EvalSymlinks(link)
 	if err != nil {
@@ -503,17 +506,61 @@ func (m *manager) wallpaper(mode string) {
 	}
 	if !isFile(target) {
 		m.warning("Wallpaper symlink for " + mode + " points to nonexistent file: " + target)
-		return
+		return true
 	}
-	if !has("waypaper") {
-		m.warning("waypaper not on PATH; cannot apply wallpaper")
-		return
+	if has("waypaper") {
+		before := wallpaperPIDs(target)
+		cmd := exec.Command("waypaper", "--wallpaper", target, "--no-post-command")
+		cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
+		if err := cmd.Run(); err == nil && waitForWallpaper(target, before) {
+			return true
+		}
+		m.warning("Waypaper did not leave a wallpaper process; trying swaybg directly")
 	}
-	cmd := exec.Command("waypaper", "--wallpaper", target, "--no-post-command")
+	if !has("swaybg") {
+		m.failure("Could not apply wallpaper: swaybg is not available")
+		return false
+	}
+	cmd := exec.Command("swaybg", "-i", target, "-m", "fill", "-c", "#ffffff")
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
-	if cmd.Start() == nil {
-		cmd.Process.Release()
+	if err := cmd.Start(); err != nil {
+		m.failure("Could not start swaybg: " + err.Error())
+		return false
 	}
+	return cmd.Process.Release() == nil
+}
+
+func waitForWallpaper(target string, before map[string]bool) bool {
+	for range 10 {
+		for pid := range wallpaperPIDs(target) {
+			if !before[pid] {
+				return true
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return false
+}
+
+func wallpaperPIDs(target string) map[string]bool {
+	pids := map[string]bool{}
+	matches, _ := filepath.Glob("/proc/[0-9]*/cmdline")
+	for _, path := range matches {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		parts := strings.Split(string(data), "\x00")
+		isSwaybg, hasTarget := false, false
+		for _, part := range parts {
+			isSwaybg = isSwaybg || filepath.Base(part) == "swaybg"
+			hasTarget = hasTarget || part == target
+		}
+		if isSwaybg && hasTarget {
+			pids[filepath.Base(filepath.Dir(path))] = true
+		}
+	}
+	return pids
 }
 
 func (m *manager) status() {

@@ -193,13 +193,9 @@ vec3 blocksField(vec2 uv) {
 
 // draped light sheets: triple domain-warped fbm mapped through the color
 // stops, shaded by the field's slope (after mattrothenberg/fold-gradient).
-// ── FoldGradient port (mattrothenberg/fold-gradient, MIT) ──────────────
-// Faithful port of the real shader: SQUARED value-noise (crisp peaks),
-// triple domain-warped fbm, screen-space derivative NORMAL lighting with a
-// sharp specular crest (the "crystal" ray-edges the eyeballed version could
-// never get), ribbon banding, ACES tonemap. Own noise fns so the other
-// styles stay untouched. Knobs map onto the studio's existing uniforms.
-mat2 rot2(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+// ── FoldGradient port (mattrothenberg/fold-gradient, Apache-2.0) ───────
+// Domain-warped broad bands follow the ordered palette, with a soft satin
+// curve and luminous seams controlled by the renderer-specific knobs.
 float fg_hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031 + seedF * 0.017);
     p3 += dot(p3, p3.yzx + 33.33);
@@ -219,13 +215,6 @@ float fg_fbm(vec2 p) {
     f += 0.1250 * fg_vnoise(p);
     return f / 0.875;
 }
-float fg_pat(vec2 p, out float hue) {
-    vec2 q = vec2(fg_fbm(p), fg_fbm(p + vec2(5.2, 1.3)));
-    vec2 r = vec2(fg_fbm(p + 4.0 * q + vec2(1.7, 9.2)), fg_fbm(p + 4.0 * q + vec2(8.3, 2.8)));
-    hue = clamp(r.x * 0.95 + 0.03, 0.0, 1.0);   // hue from bounded r (no drift)
-    r += u_time * 0.045;                        // time animates sheet motion only
-    return fg_fbm(p + 1.76 * r);
-}
 // active anchors (c0..c7) as an ordered color ramp
 vec3 fg_palette(float x) {
     int n = 0;
@@ -243,86 +232,41 @@ vec3 fg_palette(float x) {
     return mix(ca, cb, smoothstep(0.0, 1.0, f));
 }
 vec3 foldsField(vec2 uv) {
-    float asp = ASPECT;
-    // knob mapping → FoldGradient uniforms
-    float u_softness    = clamp(blurK, 0.0, 2.0);
-    float u_rotation    = angleDeg;
-    float u_folds       = clamp(waveLen, 1.0, 24.0);
-    float u_ribbon      = clamp(chromeAmt, 0.0, 1.0);
-    float u_ribbonWidth = clamp(streakLen, 0.1, 2.0);
-    float u_saturation  = clamp(waveAmp, 0.0, 2.0);
-    vec3  u_back        = baseColor.rgb * 0.22;
-    vec3  u_shadow      = baseColor.rgb * 0.06;
+    vec2 p = (uv - 0.5) * vec2(ASPECT, 1.0);
+    float ang = radians(angleDeg);
+    p = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * p;
 
-    vec2 dir = normalize(vec2(0.66, 0.75));
-    vec2 perp = vec2(-dir.y, dir.x);
-    float sm = 0.045 + (2.0 - u_softness) * 0.075;
-    float jit = 0.0;   // no per-pixel jitter: dither reads as spray at preview res
+    float scale = mix(1.35, 4.8, clamp((waveLen - 1.0) / 23.0, 0.0, 1.0));
+    scale *= mix(1.12, 0.74, clamp(streakLen, 0.0, 1.0));
+    vec2 seedOffset = vec2(seedF * 7.31, seedF * 3.79);
+    float broadWarp = fg_fbm(p * 0.72 + seedOffset);
+    float fineWarp = fg_fbm(p * 1.35 + vec2(broadWarp * 2.1) + seedOffset.yx);
+    float warpGain = mix(0.32, 1.22, clamp(waveAmp / 1.8, 0.0, 1.0));
+    float phase = p.x * scale + p.y * 0.16 + (broadWarp - 0.5) * warpGain;
+    phase += (fineWarp - 0.5) * warpGain * 0.34;
 
-    mat2 R = rot2(radians(u_rotation));
-    float zsc = 29.16 / u_folds;
-    vec2 pBase = vec2((uv.x - 0.5) * asp, uv.y - 0.5) * R * zsc;
-    vec2 wDir  = vec2(dir.x * asp,  dir.y ) * R * zsc;
-    vec2 wPerp = vec2(perp.x * asp, perp.y) * R * zsc;
+    float ramp = abs(fract(phase * 0.5) * 2.0 - 1.0);
+    float curve = 0.5 + 0.5 * cos(phase * 3.14159265359);
+    vec3 color = fg_palette(smoothstep(0.02, 0.98, ramp));
+    float intensity = clamp((waveAmp - 0.4) / 1.4, 0.0, 1.0);
+    vec3 gray = vec3(dot(color, vec3(0.2126, 0.7152, 0.0722)));
+    color = mix(gray, color, 0.62 + intensity * 0.38);
+    color *= mix(0.62, 1.12, curve);
 
-    float bandGain = 1.0;
-    if (u_ribbon > 0.001) {
-        float t = dot(pBase, normalize(wPerp)) / 3.24 / (0.16 * max(u_ribbonWidth, 0.05));
-        t += 0.35 * sin(t * 1.7 + 2.1);
-        float band = floor(t), fb = fract(t);
-        float k = smoothstep(0.0, 0.16, fb);
-        float bA = band - 1.0, bB = band;
-        float s = dot(pBase, normalize(wDir)) / 3.24;
-        float shear = mix(fg_hash12(vec2(bA, 7.7)), fg_hash12(vec2(bB, 7.7)), k);
-        pBase += normalize(wDir) * (shear - 0.5) * 4.5 * u_ribbon;
-        float c = mix(fg_hash12(vec2(bA, 9.1)), fg_hash12(vec2(bB, 9.1)), k) - 0.5;
-        float hl = 0.42 + 0.40 * mix(fg_hash12(vec2(bA, 11.3)), fg_hash12(vec2(bB, 11.3)), k);
-        float cap = 1.0 - smoothstep(hl - 0.24, hl + 0.14, abs(s - c * 0.8));
-        float e = mix(fg_hash12(vec2(bA, 3.3)), fg_hash12(vec2(bB, 3.3)), k);
-        bandGain = mix(1.0, (0.62 + 1.25 * e * e) * cap * 1.3, u_ribbon);
-        float fo = mix(fg_hash12(vec2(bA, 5.5)), fg_hash12(vec2(bB, 5.5)), k);
-        sm *= mix(1.0, 0.70 + 1.25 * fo, u_ribbon);
-    }
+    float seamDistance = min(fract(phase), 1.0 - fract(phase));
+    float seamWidth = mix(0.035, 0.13, clamp(blurK, 0.0, 1.0));
+    float seam = 1.0 - smoothstep(0.008, seamWidth, seamDistance);
+    vec3 highlight = mix(vec3(1.0), fg_palette(1.0), 0.32);
+    color += highlight * seam * mix(0.20, 0.82, clamp(chromeAmt, 0.0, 1.0));
 
-    vec3 L = normalize(vec3(0.55, 0.35, 0.55));
-    vec3 HL = normalize(L + vec3(0.0, 0.0, 1.0));
-    float lum = 0.0, hue = 0.0, wsum = 0.0, bloom = 0.0;
-    float fscale = mix(1.0, 0.52, clamp(u_ribbon, 0.0, 1.0));
-    for (int i = -6; i <= 6; i++) {
-        float fi = (float(i) + jit) / 6.0;
-        float w = exp(-fi * fi * 2.5);
-        vec2 off = wDir * (fi * sm) + wPerp * (fi * sm * 0.11);
-        float hh; float h = fg_pat((pBase + off) * fscale, hh);
-        vec2 g = vec2(dFdx(h) / max(dFdx(uv.x), 1e-6),
-                      dFdy(h) / max(dFdy(uv.y), 1e-6)) * 0.0016;
-        vec3 N = normalize(vec3(-g, 0.5));
-        float diff = clamp(dot(N, L), 0.0, 1.0);
-        float crest = pow(clamp(dot(N, HL), 0.0, 1.0), 16.0);
-        float ribbon = smoothstep(0.14, 0.92, h);
-        float baseW = mix(0.34, 0.72, u_ribbon);
-        float diffW = mix(0.90, 0.08, u_ribbon);
-        float crestW = mix(0.60, 0.0, u_ribbon);
-        float sheen = pow(h, 5.0) * 0.45 * u_ribbon;
-        float lv = (ribbon * (baseW + diff * diffW) + crest * crestW + sheen) * smoothstep(0.02, 0.45, h);
-        lum += lv * w; hue += hh * w; wsum += w;
-        bloom += smoothstep(0.55, 1.0, lv) * w;
-    }
-    lum /= wsum; hue /= wsum; bloom /= wsum;
-    lum *= bandGain;
-    vec2 qc = (uv - 0.5); qc.x *= asp; lum *= 1.0 - dot(qc, qc) * 0.45;
-    vec3 grad = fg_palette(hue * 0.62 + lum * 0.42);
-    vec3 col = mix(u_back, u_shadow, smoothstep(0.015, 0.30, lum));
-    col = mix(col, grad, smoothstep(0.22, 0.72, lum));
-    col += grad * bloom * 0.55;
-    // ACES filmic tonemap + gamma + saturation
-    col = clamp((col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14), 0.0, 1.0);
-    col = pow(col, vec3(1.0 / 2.2));
-    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
-    col = clamp(mix(vec3(luma), col, u_saturation), 0.0, 1.0);
-    return col;
+    float noise = fg_hash12(p * scale * 91.0 + seedOffset) - 0.5;
+    color += noise * mix(0.006, 0.04, clamp(grainAmt, 0.0, 1.0));
+    float vignette = 1.0 - smoothstep(0.35, 1.2, length((uv - 0.5) * vec2(1.0, 0.72)));
+    color *= 0.88 + 0.12 * vignette;
+    return clamp(color, 0.0, 1.0);
 }
 
-// ── Paper static-mesh-gradient (paper-design/shaders, MIT) ─────────────
+// ── Paper static-mesh-gradient (paper-design/shaders, Apache-2.0) ─────────────
 // Faithful port: inverse-distance colour spots (placed procedurally from a
 // seed, à la Paper's getPosition), two-axis wave warp, and SMOOTH value-
 // noise film grain (not white-noise) — the reason Paper's grain reads lush,
@@ -387,7 +331,7 @@ vec3 pmeshField(vec2 uv) {
     return color;
 }
 
-// ── Paper warp (paper-design/shaders, MIT) ─────────────────────────────
+// ── Paper warp (paper-design/shaders, Apache-2.0) ─────────────────────────────
 // Faithful port: noise + swirl domain-warp over a base pattern (checks /
 // stripes / edge), coloured through the anchor ramp with soft stepped mix.
 // Paper samples a noise texture; we use procedural value noise instead.
