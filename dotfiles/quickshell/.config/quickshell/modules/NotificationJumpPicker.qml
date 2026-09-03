@@ -81,7 +81,6 @@ Picker {
         function onJumpRequested() {
             if (!root.handlesJump) return
             const vis = Notifications.visibleToasts()
-                .filter(n => !Notifications.isAiNotification(n))
             if (vis.length === 1) root.openItem(root.mkItemLive(vis[0]))
             else NotificationJumpPickerState.open = true
         }
@@ -111,11 +110,20 @@ Picker {
         // Focus the window/app.
         Quickshell.execDetached([
             Quickshell.env("HOME") + "/.config/niri/scripts/notification-dispatch",
-            "--past", item.app, item.summary, String(item.windowId || "")
+            "--past", item.app, item.summary, String(item.windowId || ""),
+            String(item.scope || ""), String(item.session || "")
         ])
     }
 
     function _icon(appName, appIcon) { return Notifications.appIconFor(appName, appIcon) }
+
+    function cockpitTarget(app, summary, scope, session) {
+        if ((app || "").toLowerCase() !== "kitty" || session) return { scope: scope, session: session }
+        const match = String(summary || "").match(/^(?:Cockpit|Heidr|Claude) · (?:(personal|work|lovable|chat)\/)?(.+)$/)
+        if (!match) return { scope: scope, session: session }
+        const targetScope = match[1] === "work" ? "work" : (match[1] ? "personal" : scope)
+        return { scope: targetScope, session: match[2] }
+    }
 
     function mkItemLive(n) {
         const wid = (n.hints && n.hints["niri-window"] !== undefined) ? String(n.hints["niri-window"]) : ""
@@ -128,8 +136,11 @@ Picker {
         let chips
         if (cal && n.actions && n.actions.length)
             chips = n.actions.filter(a => (a.identifier || "") !== "default").map(a => a.text || a.identifier).slice(0, 3)
+        const scope = (n.hints && n.hints["cockpit-scope"] !== undefined) ? String(n.hints["cockpit-scope"]) : ""
+        const session = (n.hints && n.hints["cockpit-session"] !== undefined) ? String(n.hints["cockpit-session"]) : ""
+        const target = cockpitTarget(n.appName, summary, scope, session)
         return {
-            id: n.id, notif: n, app: n.appName || "", summary: summary, windowId: wid, cal: cal,
+            id: n.id, notif: n, app: n.appName || "", summary: summary, windowId: wid, scope: target.scope, session: target.session, cal: cal,
             body: n.body || "", label: parts.join(" · ") || n.appName || "notification", inbox: inbox,
             icon: cal ? Notifications.calendarIcon : _icon(n.appName, n.appIcon),
             chips: chips && chips.length ? chips : undefined,
