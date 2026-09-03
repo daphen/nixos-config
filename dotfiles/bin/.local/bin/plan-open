@@ -11,8 +11,8 @@ stack's pane, which auto-opens the plan itself), do nothing. Otherwise spawn a
 kitty window with nvim editing the plan, cwd'd to <repo> so the plugin's
 dispatch targets that repo's claude.
 
-No-op (exit 0) when kitty isn't available (lovbox SSH, headless) — there's no
-GUI editor to open there.
+Formats the plan to 80 columns before any GUI checks. Then exits successfully
+when kitty is unavailable (lovbox SSH, headless), because there is no editor to open.
 """
 from __future__ import annotations
 import glob
@@ -75,10 +75,21 @@ def main() -> int:
     if len(sys.argv) < 3:
         print("usage: plan-open <repo> <planfile>", file=sys.stderr)
         return 2
-    if not shutil.which("kitty"):
-        return 0  # no GUI here (e.g. lovbox) — nothing to open
     repo = str(Path(sys.argv[1]).expanduser().resolve())
     plan = str(Path(sys.argv[2]).expanduser().resolve())
+    if not Path(plan).is_file():
+        print(f"plan-open: plan not found: {plan}", file=sys.stderr)
+        return 1
+    formatter = shutil.which("mdformat")
+    if not formatter:
+        print("plan-open: mdformat is required", file=sys.stderr)
+        return 1
+    formatted = subprocess.run([formatter, "--wrap", "80", plan])
+    if formatted.returncode != 0:
+        print(f"plan-open: formatting failed: {plan}", file=sys.stderr)
+        return formatted.returncode
+    if not shutil.which("kitty"):
+        return 0  # no GUI here (e.g. lovbox) — nothing to open
     if cockpit_nvim_alive():
         return 0  # a heidr nvim pane is up — it renders the plan itself
     if nvim_running_in(repo):
