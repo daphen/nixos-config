@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# vm-wt <ticket> — per-ticket work on the REMOTE dev VM, driven from heidr.
+#
+#   1. git worktree on the VM         ~/src/lovable-<ticket>  on branch daphen/<ticket>
+#   2. its `devenv wt` slice in tmux  (survives the ssh channel closing)
+#   3. a real LOCAL git worktree      → ~/work/lovable.daphen-<ticket>, kept in step by
+#      vm-sync (so nvim has gutter hunks, not just text)
+#   4. an agentd session rooted there → shows in the rail, live-follow works
+#
+# Replaces lovbox-wt. The VM (e2-standard-16, 64GB, repo pre-cloned) has none of the
+# lovbox's constraints: no process-compose entrypoint restarting what we stop, a full
+# non-shallow clone, and a persistent 500GB disk.
+#
+# Prereqs: vm-cockpit has run (agentd on the VM + tunnel at agentd-work.sock).
+set -euo pipefail
+
+raw="${1:?usage: vm-wt <ticket>   e.g. vm-wt EVERY-2739}"
+t=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
+vm="${COCKPIT_VM:-${HEIDR_VM:-dev-heidr-2a39}}"
+host="${COCKPIT_VM_HOST:-${HEIDR_VM_HOST:-$vm.workstation.lovable.net}}"
+u="${COCKPIT_VM_USER:-${HEIDR_VM_USER:-david_karlsson_lovable_dev}}"
+sock="${XDG_RUNTIME_DIR}/agentd-work.sock"
+repo="/home/$u/src/lovable"
+vmwt="/home/$u/src/lovable-$t"
+mirror="$HOME/work/lovable.daphen-$t"
+branch="daphen/$t"
+say() { printf '\033[36m[vm-wt]\033[0m %s\n' "$*"; }
+SSH=(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25 "$u@$host")
+
+[ -S "$sock" ] || { echo "✗ $sock missing — run vm-cockpit first"; exit 1; }
+restart_marker="${XDG_RUNTIME_DIR}/heidr-role-bundle-work.restart-required"
+[ ! -e "$restart_marker" ] || { echo "✗ role bundle updated, agentd restart required — do not spawn ticket sessions"; exit 1; }
+
+# ── 1. worktree on the VM (full clone, so branch off origin/main) ─────────────
+say "worktree $vmwt on $branch …"
+"${SSH[@]}" "
+  export PATH=\$HOME/.nix-profile/bin:\$HOME/.npm-global/bin:\$HOME/.local/bin:\$PATH
+  cd '$repo'
+  if [ -d '$vmwt' ]; then echo '  exists — reusing'
+  else
+    git fetch --quiet origin main 2>/dev/null || true
+    git worktree add '$vmwt' -b '$branch' origin/main 2>&1 | tail -1
+  fi" 2>&1 | grep -viE "^Warning: Permanently" || true
+
+# ── 2. devenv wt slice under tmux ────────────────────────────────────────────
+# ./bin/devenv, NOT the system one: `devenv wt` is a subcommand of the repo's OWN Go
+# CLI (go/cli/cmd/devenv), which the wrapper builds on demand. The nix `devenv` on
+# PATH is upstream devenv and has no `wt` — it just prints usage and exits.
+# Inside `nix develop ./nix-config`: that flake — NOT the repo root, which has no
+# flake.nix — is what .envrc/direnv activates, and it supplies temporal, redis,
+# process-compose and the rest. Run the slice outside it and every service dies with
+# "exec: temporal: not found". No --tui flag: this build rejects it
+# ("unknown flag: --tui"), and under tmux stdout is a terminal anyway.
+say "boot devenv wt in tmux session wt-$t …"
+"${SSH[@]}" "
+  export PATH=\$HOME/.nix-profile/bin:\$HOME/.local/bin:\$PATH
+  if tmux has-session -t 'wt-$t' 2>/dev/null; then echo '  tmux wt-$t already running'
+  else
+    tmux new-session -d -s 'wt-$t' -c '$vmwt' \
+      'export PATH=\$HOME/src/lovable/bin:\$HOME/.nix-profile/bin:\$HOME/.local/bin:\$PATH; nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous 2>&1 | tee ~/wt-$t.log'
+    echo '  started (logs: ~/wt-$t.log on the VM, or tmux attach -t wt-$t)'
+  fi" 2>&1 | grep -viE "^Warning: Permanently" || true
+
+# ── 3. local git worktree + live sync (vm-sync owns the details) ─────────────
+# NOT a bare mirror: gitsigns, hunk jumping and the dashboard need a repository, so the
+# local side is a real worktree pinned to the VM's base commit. vm-sync also handles the
+# LFS-pointer noise and puts mutagen in two-way-resolved with the VM authoritative.
+say "local worktree + sync via vm-sync …"
+# The failure used to be a one-line aside on a pipeline whose exit status is vm-sync's,
+# so a dead sync read as a successful dispatch: EVERY-2447 and EVERY-2563 ran vm-wt at
+# 17:06 with no local worktree and no mutagen session, and nobody noticed until the
+# files were missing in nvim hours later. Verify the ARTIFACT, and shout with the retry.
+"$HOME/.local/bin/vm-sync" "$raw" 2>&1 | sed 's/^/  /' || true
+if [ -d "$HOME/work/lovable.daphen-$t/.git" ] || [ -f "$HOME/work/lovable.daphen-$t/.git" ]; then
+  say "local mirror ready: $HOME/work/lovable.daphen-$t"
+else
+  say "✗✗ NO LOCAL MIRROR — nvim will show no files for this ticket."
+  say "   retry with:  vm-sync $raw"
+  say "   until it succeeds, this session's diff is only visible on the VM."
+fi
+
+# Local deps for the mirror: mutagen doesn't carry node_modules, so ts_ls in
+# the mirror drowns in "Cannot find module" until an install links them from
+# the shared pnpm store. Background — the rail doesn't wait on it.
+# pnpm lives INSIDE the devenv, so this must run through direnv (a bare `pnpm`
+# fails instantly with "command not found" into the log — how every mirror
+# shipped dep-less until 2026-08-25), and a fresh .envrc is blocked until allowed.
+if [ -f "$mirror/package.json" ] && [ ! -d "$mirror/node_modules" ]; then
+    say "pnpm install (background) for mirror deps …"
+    (cd "$mirror" && direnv allow . 2>/dev/null; nohup direnv exec "$mirror" pnpm install --frozen-lockfile --prefer-offline >"$mirror/.pnpm-install.log" 2>&1 &)
+fi
+
+# ── 3b. browser tool for the VM worker ───────────────────────────────────────
+# The repo's tracked .mcp.json declares Playwright as a bare `npx @playwright/mcp`,
+# which defaults to the Chrome CHANNEL (/opt/google/chrome) — absent on the VM, so
+# the agent had no browser and rented LLM subagents as a proxy (hours per check,
+# 2026-08-25). Project .pi/mcp.json is the highest-precedence MCP source, so pin
+# Playwright's own bundled chromium there. Untracked + locally excluded.
+say "playwright override (.pi/mcp.json) on the box …"
+"${SSH[@]}" "mkdir -p '$vmwt/.pi' && cat > '$vmwt/.pi/mcp.json' <<'JSON'
+{
+  \"mcpServers\": {
+    \"playwright\": {
+      \"command\": \"npx\",
+      \"args\": [\"-y\", \"@playwright/mcp@latest\", \"--headless\", \"--browser\", \"chromium\"],
+      \"env\": { \"PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD\": \"1\", \"PLAYWRIGHT_BROWSERS_PATH\": \"/nix/store/6n74mm97b8f8gfra77hiz9q4ffiianpy-playwright-browsers\" },
+      \"lifecycle\": \"lazy\"
+    }
+  }
+}
+JSON
+gd=\$(git -C '$vmwt' rev-parse --git-common-dir 2>/dev/null) && mkdir -p \"\$gd/info\" && (grep -qx '.pi/' \"\$gd/info/exclude\" 2>/dev/null || echo '.pi/' >> \"\$gd/info/exclude\")" 2>/dev/null || say "  ✗ playwright override failed (non-fatal)"
+
+# ── 4. agentd session rooted at the VM worktree ──────────────────────────────
+# Seed the session with /skill:plan-ticket so a fresh ticket lands in PLAN, not an
+# empty prompt. agentd delivers `prompt` once pi's stdin is ready.
+seed="/skill:plan-ticket $(printf '%s' "$raw" | tr '[:lower:]' '[:upper:]')"
+say "spawn rail session '$t' at $vmwt (seeded: $seed) …"
+python3 - "$sock" "$t" "$vmwt" "$seed" <<'PY'
+import socket, sys, json, time
+sock, name, cwd, seed = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(8); s.connect(sock)
+buf = b""
+while b"\n" not in buf:
+    d = s.recv(65536)
+    if not d: break
+    buf += d
+sessions = json.loads(buf.split(b"\n", 1)[0]).get("sessions", [])
+by_name = {x.get("name"): x for x in sessions}
+if name in by_name:
+    if by_name[name].get("profile") != "lovable-worker":
+        raise SystemExit(f"session '{name}' has profile {by_name[name].get('profile')!r}, expected 'lovable-worker'")
+    # Already in the roster — but a session spawned before seeding existed (or one
+    # whose pi never got a turn) sits there with an empty history looking idle, which
+    # reads as "the workflow is broken". Seed it if it has nothing.
+    s.sendall((json.dumps({"type": "get_entries", "session": name}) + "\n").encode())
+    time.sleep(2)
+    blob = b""
+    s.settimeout(4)
+    try:
+        while True:
+            d = s.recv(262144)
+            if not d: break
+            blob += d
+    except Exception:
+        pass
+    if b'"type":"text"' in blob or b'"role":"user"' in blob:
+        print(f"  session '{name}' already has history — not re-seeding")
+    else:
+        s.sendall((json.dumps({"type": "prompt", "session": name, "message": seed}) + "\n").encode())
+        print(f"  session '{name}' existed but was empty — seeded")
+else:
+    s.sendall((json.dumps({"type": "spawn", "session": name, "cwd": cwd,
+                           "profile": "lovable-worker", "prompt": seed}) + "\n").encode())
+    print(f"  spawned '{name}' with the plan seed")
+time.sleep(3); s.close()
+PY
+
+say "done — select '$t' in the rail; nvim lands in $mirror"

@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# vm-cockpit — bring the remote dev VM up as Cockpit's `work` scope.
+#
+#   1. agentd on the VM, detached, inside a dbus+keyring session
+#   2. a pure `-L` tunnel presenting it as $XDG_RUNTIME_DIR/agentd-work.sock
+#
+# Idempotent: safe to re-run after a reboot, a dropped tunnel, or a VM restart.
+# Per-ticket work is `vm-wt <ticket>`. Replaces the legacy lovbox rail, whose box
+# fought us on three fronts the VM does not: a process-compose entrypoint that
+# restarted whatever we stopped, a shallow clone, and no working credential store.
+#
+# Provisioning (one-time, already done for dev-heidr-2a39) — see the notes reference:
+#   nix profile add nixpkgs#nodejs_22 nixpkgs#go nixpkgs#gnome-keyring nixpkgs#libsecret
+#   npm config set prefix ~/.npm-global && npm i -g @earendil-works/pi-coding-agent
+#   nix profile add --no-write-lock-file github:daphen/nixos-config#dev-env
+#   plus a static agentd (CGO_ENABLED=0) and ~/.pi/agent/{skills,prompts,extensions}
+set -euo pipefail
+
+restart_requested=no
+case "${1:-}" in
+  "") ;;
+  --restart) restart_requested=yes ;;
+  *) echo "usage: vm-cockpit [--restart]" >&2; exit 2 ;;
+esac
+
+vm="${COCKPIT_VM:-${HEIDR_VM:-dev-heidr-2a39}}"
+host="${COCKPIT_VM_HOST:-${HEIDR_VM_HOST:-$vm.workstation.lovable.net}}"
+u="${COCKPIT_VM_USER:-${HEIDR_VM_USER:-david_karlsson_lovable_dev}}"
+port="${COCKPIT_VM_AGENTD_PORT:-${HEIDR_VM_AGENTD_PORT:-17840}}"
+sock="${XDG_RUNTIME_DIR}/agentd-work.sock"
+krpw="${COCKPIT_KEYRING_PW:-${HEIDR_KEYRING_PW:-heidr-vm}}"
+say() { printf '\033[36m[vm-cockpit]\033[0m %s\n' "$*"; }
+SSH=(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=25 "$u@$host")
+ai="$HOME/nixos/dotfiles/ai"
+restart_marker="${XDG_RUNTIME_DIR}/cockpit-role-bundle-work.restart-required"
+legacy_restart_marker="${XDG_RUNTIME_DIR}/heidr-role-bundle-work.restart-required"
+[ -e "$legacy_restart_marker" ] && mv -f "$legacy_restart_marker" "$restart_marker"
+role_files=(
+  # instructions.md IS the global agent preamble (~/.pi/agent/AGENTS.md locally, and
+  # ~/.claude/CLAUDE.md — all three are the same file). It was never synced, so the VM
+  # carried a stale Aug-13 copy and every rule added to it silently missed the VM
+  # workers (2026-08-27).
+  instructions.md
+  roles prompts/plan-ticket.md prompts/review-pr.md
+  pi-extensions/role-policy pi-extensions/agents pi-extensions/ask pi-extensions/user-bash pi-extensions/tool-compress
+  skills/i-have-adhd skills/notes skills/cycle skills/daily skills/standup
+  skills/plan-ticket skills/watch-pr skills/review-pr skills/handoff
+)
+
+bundle_hash() {
+  python3 - "$1" "${role_files[@]}" <<'PY'
+import hashlib, os, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+files = []
+for rel in sys.argv[2:]:
+    target = root / rel
+    if target.is_dir(): files.extend(p for p in target.rglob('*') if p.is_file())
+    elif target.is_file(): files.append(target)
+h = hashlib.sha256()
+for p in sorted(files, key=lambda item: str(item.relative_to(root))):
+    h.update(str(p.relative_to(root)).encode() + b'\0')
+    h.update(hashlib.sha256(p.read_bytes()).digest())
+print(h.hexdigest())
+PY
+}
+
+remote_bundle_hash() {
+  "${SSH[@]}" python3 - "${role_files[@]}" <<'PY'
+import hashlib, pathlib, sys
+root = pathlib.Path.home() / '.pi' / 'agent'
+files = []
+for rel in sys.argv[1:]:
+    target = root / rel
+    if target.is_dir(): files.extend(p for p in target.rglob('*') if p.is_file())
+    elif target.is_file(): files.append(target)
+h = hashlib.sha256()
+for p in sorted(files, key=lambda item: str(item.relative_to(root))):
+    h.update(str(p.relative_to(root)).encode() + b'\0')
+    h.update(hashlib.sha256(p.read_bytes()).digest())
+print(h.hexdigest())
+PY
+}
+
+[ -d "$ai/roles" ] || { say "sync failed, do not spawn ticket sessions: $ai/roles missing"; exit 1; }
+# pi itself is NOT part of the bundle: local comes from nixpkgs-latest, the VM from npm,
+# so they drift silently. That matters because role-policy keys mutation grants off the
+# exact text pi puts in an ask_user result — a pi release can change it and every
+# approval then grants nothing (2026-08-27: local 0.83.0 vs VM 0.84.1, undetected).
+pi_local=$(pi --version 2>/dev/null | head -1)
+pi_vm=$("${SSH[@]}" 'export PATH=$HOME/.npm-global/bin:$PATH; pi --version 2>/dev/null | head -1' 2>/dev/null || true)
+if [ -n "$pi_local" ] && [ -n "$pi_vm" ] && [ "$pi_local" != "$pi_vm" ]; then
+  say "WARNING: pi version skew — local $pi_local, VM $pi_vm (behaviour here does not predict the VM)"
+fi
+
+local_hash=$(bundle_hash "$ai")
+remote_hash=$(remote_bundle_hash 2>/dev/null || true)
+was_running=$("${SSH[@]}" 'pgrep -x agentd >/dev/null && echo yes || echo no' 2>/dev/null || echo no)
+if [ "$remote_hash" = "$local_hash" ]; then
+  say "role bundle current ($local_hash)"
+  rm -f "$restart_marker"
+else
+  say "role bundle differs — syncing versioned resources …"
+  sync_failed=0
+  for rel in "${role_files[@]}"; do
+    if [ -d "$ai/$rel" ]; then
+      "${SSH[@]}" "mkdir -p \$HOME/.pi/agent/'$rel'" || { sync_failed=1; break; }
+      rsync -az --delete -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=25' "$ai/$rel/" "$u@$host:.pi/agent/$rel/" || { sync_failed=1; break; }
+    else
+      "${SSH[@]}" "mkdir -p \$HOME/.pi/agent/'$(dirname "$rel")'" || { sync_failed=1; break; }
+      rsync -az -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=25' "$ai/$rel" "$u@$host:.pi/agent/$rel" || { sync_failed=1; break; }
+    fi
+  done
+  # pi DISCOVERS AGENTS.md — instructions.md is only the name it has in this repo, so
+  # the same bytes have to land under both names or the global preamble never loads.
+  if [ "$sync_failed" -eq 0 ]; then
+    rsync -az -e 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=25' \
+      "$ai/instructions.md" "$u@$host:.pi/agent/AGENTS.md" || sync_failed=1
+  fi
+  if [ "$sync_failed" -ne 0 ]; then
+    say "sync failed, do not spawn ticket sessions"
+    touch "$restart_marker"
+    exit 1
+  fi
+  verified_hash=$(remote_bundle_hash 2>/dev/null || true)
+  if [ "$verified_hash" != "$local_hash" ]; then
+    say "sync failed, do not spawn ticket sessions (local $local_hash, remote ${verified_hash:-missing})"
+    touch "$restart_marker"
+    exit 1
+  fi
+  if [ "$was_running" = yes ]; then
+    touch "$restart_marker"
+    say "role bundle updated, agentd restart required ($local_hash)"
+  else
+    rm -f "$restart_marker"
+    say "role bundle updated and verified ($local_hash); agentd will start with it"
+  fi
+fi
+
+# Secrets are resolved HERE (this session has fish's secrets file and a 1Password
+# agent) and handed to agentd as process env. They never touch the VM's disk.
+key=$(fish -c 'source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY' 2>/dev/null || true)
+[ -n "$key" ] || say "  ⚠ no OPENAI_API_KEY — pi will not start"
+slack=$(op read 'op://Private/Slack MCP/text' 2>/dev/null || true)
+[ -n "$slack" ] || say "  (no Slack secret — run 'op signin' if you want the slack mcp)"
+
+say "agentd on $vm (dbus + unlocked keyring) …"
+"${SSH[@]}" "
+  export PATH=\$HOME/.nix-profile/bin:\$HOME/.npm-global/bin:\$HOME/.local/bin:\$PATH
+  # dbus finds org.freedesktop.secrets through XDG_DATA_DIRS; without the nix profile
+  # in there activation fails and pi-mcp-adapter — which fails CLOSED with no
+  # credential store — re-authenticates every MCP server on every session.
+  export XDG_DATA_DIRS=\"\$HOME/.nix-profile/share:/run/current-system/sw/share:/usr/local/share:/usr/share\"
+  if [ '$restart_requested' = yes ] && pgrep -x agentd >/dev/null 2>&1; then
+    echo \"  restart requested — stopping agentd (pid \$(pgrep -x agentd | tr '\\n' ' '))\"
+    kill -TERM \"\$(pgrep -x agentd)\"
+    for _ in \$(seq 1 30); do pgrep -x agentd >/dev/null 2>&1 || break; sleep 1; done
+    pgrep -x agentd >/dev/null 2>&1 && { echo '  agentd did not stop'; exit 1; }
+  fi
+  if ! pgrep -x agentd >/dev/null 2>&1; then
+    _cfg=\$(ls /nix/store/*dbus-1*/share/dbus-1/session.conf 2>/dev/null | head -1)
+    export DBUS_SESSION_BUS_ADDRESS=\$(dbus-daemon --config-file=\"\$_cfg\" --print-address --fork 2>/dev/null)
+    mkdir -p ~/.local/share/keyrings
+    eval \"\$(printf %s '$krpw' | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null)\" || true
+    setsid env OPENAI_API_KEY='$key' SLACK_MCP_CLIENT_SECRET='$slack' \
+      COCKPIT_SLICE_REAP_HOOK=\$HOME/.local/bin/vm-slice-reaper \
+      DBUS_SESSION_BUS_ADDRESS=\"\$DBUS_SESSION_BUS_ADDRESS\" XDG_DATA_DIRS=\"\$XDG_DATA_DIRS\" \
+      PATH=\"\$PATH\" \$HOME/.local/bin/agentd --scope work --repo \$HOME/src/lovable \
+      --listen 127.0.0.1:$port >\$HOME/agentd.log 2>&1 </dev/null &
+    sleep 4
+  else echo \"  already running (pid \$(pgrep -x agentd | tr '\\n' ' '), up \$(ps -o etime= -p \$(pgrep -x agentd | head -1) 2>/dev/null | tr -d ' '))\"; fi
+  # pgrep -x, not -f: an -f pattern also matches this very bash -lc wrapper, so the
+  # guard read as true while agentd was dead and the tunnel forwarded to nothing.
+  (ss -tln 2>/dev/null || netstat -tln 2>/dev/null) | grep -q :$port && echo '  listening ✓' || tail -4 \$HOME/agentd.log
+" 2>&1 | grep -viE "^Warning: Permanently"
+
+# A daemon that just came up has read the synced bundle, so the gate can lift. Without
+# this, vm-wt refused every ticket spawn after a bundle change even post-restart.
+if [ "$restart_requested" = yes ]; then rm -f "$restart_marker"; fi
+
+# Keep the tunnel a PURE forward. When agentd ran AS the ssh command, every dropped
+# connection took the daemon (and its pi sessions) with it.
+if [ -S "$sock" ] && timeout 4 python3 -c "
+import socket,sys
+s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); s.settimeout(3)
+s.connect('$sock'); s.recv(64)" >/dev/null 2>&1; then
+  say "tunnel already healthy → $sock"
+else
+  say "tunnel $sock → $vm:$port …"
+  rm -f "$sock"
+  setsid ssh -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+    -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+    -L "$sock:127.0.0.1:$port" "$u@$host" >/dev/null 2>&1 &
+  for _ in 1 2 3 4 5 6 7 8; do [ -S "$sock" ] && break; sleep 1; done
+  [ -S "$sock" ] && say "  up ✓" || { say "  ✗ tunnel failed"; exit 1; }
+fi
+
+say "done — launch Cockpit (./run-qs.sh picks up lovable + work automatically)"
