@@ -151,8 +151,8 @@ things are intentionally *not* in git.
 6. **Copy the hand-managed, gitignored bits** for full parity:
    - `~/.config/fish/fish_variables` (copy from the old machine / the repo's
      reference copy).
-   - Sign in to **1Password**, then the browsers (Vivaldi/Helium profiles,
-     Chrome) — profile data is per-machine and not in git.
+   - Sign in to **1Password**, then the browsers (Helium profiles and Chrome) —
+     profile data is per-machine and not in git.
    - **Claude Code** state lives under `~/.claude` (symlinked from
      `dotfiles/claude/.claude`); only `themes/` is tracked — re-auth and let
      transcripts/credentials regenerate.

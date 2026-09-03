@@ -194,7 +194,6 @@
             # Compositor-adjacent
             # Browsers (security updates matter)
             chromium
-            vivaldi
             google-chrome
             # Desktop apps
             slack

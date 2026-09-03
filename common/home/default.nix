@@ -75,7 +75,7 @@ in
 
   xdg.desktopEntries.browser-dispatch = {
     name = "Browser Dispatch";
-    comment = "Routes URLs to the correct Vivaldi profile (personal or work)";
+    comment = "Routes URLs to the correct browser profile (personal or work)";
     exec = "${config.home.homeDirectory}/.config/niri/scripts/browser-dispatch %u";
     terminal = false;
     type = "Application";

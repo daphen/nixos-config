@@ -117,7 +117,6 @@
     # Browsers
     google-chrome
     chromium
-    vivaldi
 
     # Wayland Tools
     grim
