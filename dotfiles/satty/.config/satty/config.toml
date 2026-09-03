@@ -3,6 +3,7 @@
 
 [general]
 initial-tool = "crop"
+default-hide-toolbars = true
 # One encode: the wrapper tees the PNG to $SCREENSHOT_FILE + wl-copy, so we
 # skip save-after-copy's second full encode of the 4K crop.
 copy-command = "/home/daphen/.config/niri/scripts/satty-copy"
