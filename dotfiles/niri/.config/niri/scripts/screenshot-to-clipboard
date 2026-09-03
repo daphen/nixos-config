@@ -32,7 +32,6 @@ T0=$(date +%s%3N)
 export SCREENSHOT_FILE  # satty-copy tees the crop here on Enter/Ctrl+C
 if grim -l 0 ${OUTPUT:+-o "$OUTPUT"} - | GSK_RENDERER=gl GDK_DISABLE=dmabuf "$SATTY" \
         --config "$HOME/nixos/dotfiles/satty/.config/satty/config.toml" \
-        --fullscreen current-screen \
         --filename - \
         --output-filename "$SCREENSHOT_FILE" \
    && [ -s "$SCREENSHOT_FILE" ]; then
