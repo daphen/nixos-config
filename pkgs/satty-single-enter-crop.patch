@@ -1,0 +1,19 @@
+diff --git a/src/tools/crop.rs b/src/tools/crop.rs
+index 1e92fe8..cd5bb6e 100644
+--- a/src/tools/crop.rs
++++ b/src/tools/crop.rs
+@@ -420,14 +420,6 @@ impl Tool for CropTool {
+                     ToolUpdateResult::Unmodified
+                 }
+             }
+-            //FIXME: use if let guards as soon as they're stabilized (1.95)
+-            Key::Return if self.crop.is_some() => {
+-                if self.crop.as_mut().unwrap().active {
+-                    self.handle_deactivated()
+-                } else {
+-                    ToolUpdateResult::Unmodified
+-                }
+-            }
+             _ => ToolUpdateResult::Unmodified,
+         }
+     }

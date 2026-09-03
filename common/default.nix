@@ -122,7 +122,9 @@
     # Wayland Tools
     grim
     slurp
-    inputs.nixpkgs-latest.legacyPackages.${pkgs.system}.satty
+    (inputs.nixpkgs-latest.legacyPackages.${pkgs.system}.satty.overrideAttrs (old: {
+      patches = (old.patches or []) ++ [ ../pkgs/satty-single-enter-crop.patch ];
+    }))
     wf-recorder
     wl-clipboard
     wl-clip-persist
