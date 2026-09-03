@@ -122,7 +122,7 @@
     # Wayland Tools
     grim
     slurp
-    satty
+    inputs.nixpkgs-latest.legacyPackages.${pkgs.system}.satty
     wf-recorder
     wl-clipboard
     wl-clip-persist
