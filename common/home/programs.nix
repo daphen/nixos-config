@@ -24,7 +24,6 @@ let
   # agentd — built in-repo from the flake=false source input (no flake.nix in
   # the repo). Lands `agentd` on PATH; the nvim rail + niri startup use it.
   agentd = import ../../pkgs/agentd { inherit pkgs; src = inputs.agentd; };
-  mediactl = import ../../pkgs/mediactl { inherit pkgs; };
   mutagenEvented = import ../../pkgs/mutagen-evented.nix { inherit pkgs; };
   # nvim — the converged config (0.12, lz.n, native LSP), with the desktop
   # "full" profile (extras like pyright gated behind NVIM_PROFILE=full and
@@ -103,7 +102,6 @@ in
     cockpitClient
     # agentd — nvim agent-rail daemon (one instance per scope, started at login).
     agentd
-    mediactl
   ];
 
   home.sessionVariables.EDITOR = "nvim";

@@ -1,5 +1,216 @@
 #!/usr/bin/env bash
-if command -v sessionctl >/dev/null 2>&1; then
-    exec sessionctl picker "$@"
+# Pick a recent Claude Code session with fzf.
+#
+# Default: cd to the session's original cwd and exec `claude --resume <id>`.
+# --id-only: just print the session id (no claude exec, no cd) — used by
+#            createwt/startwt to pick a session ID for forking or resuming
+#            inside the new worktree path.
+
+ID_ONLY=0
+if [[ "${1:-}" == "--id-only" ]]; then
+    ID_ONLY=1
 fi
-exec "$(dirname "$0")/spawn-claude-session-picker.bash" "$@"
+
+SESSIONS_DIR="$HOME/.claude/projects"
+
+if [ ! -d "$SESSIONS_DIR" ]; then
+    echo "No sessions found"
+    sleep 2
+    exit 1
+fi
+
+# Build entries. Each line has a hidden prefix: session_id:cwd:jsonl_path<NUL>display_text
+# We use NUL as separator since it can't appear in text, but fzf doesn't support that.
+# Instead: prefix each line with "IDX " and keep a parallel array in a temp file.
+
+meta_file=$(mktemp)
+display_file=$(mktemp)
+trap 'rm -f "$meta_file" "$display_file"' EXIT
+
+SESSIONS_DIR="$SESSIONS_DIR" META_FILE="$meta_file" DISPLAY_FILE="$display_file" python3 <<'PY'
+import json, os, sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+sessions_dir = Path(os.environ['SESSIONS_DIR'])
+meta_out = open(os.environ['META_FILE'], 'w')
+display_out = open(os.environ['DISPLAY_FILE'], 'w')
+
+now = datetime.now(timezone.utc)
+
+def fmt_ago(ts):
+    if not ts:
+        return '-'
+    try:
+        dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        secs = int((now - dt).total_seconds())
+        if secs < 3600: return f'{secs // 60}m ago'
+        if secs < 86400: return f'{secs // 3600}h ago'
+        if secs < 604800: return f'{secs // 86400}d ago'
+        return dt.strftime('%b %d')
+    except Exception:
+        return '-'
+
+def first_user_text(obj):
+    content = obj.get('message', {}).get('content', '')
+    if isinstance(content, list):
+        for c in content:
+            if isinstance(c, dict) and c.get('type') == 'text':
+                return c.get('text', '') or ''
+        return ''
+    return content or ''
+
+jsonls = []
+for p in sessions_dir.rglob('*.jsonl'):
+    if '/subagents/' in str(p):
+        continue
+    try:
+        jsonls.append((p.stat().st_mtime, p))
+    except OSError:
+        continue
+jsonls.sort(key=lambda x: -x[0])
+
+from collections import deque
+
+for _, path in jsonls:
+    try:
+        first_user = None
+        last_ts_raw = None
+        recent_user = deque(maxlen=50)
+        custom_title = None
+        ai_title = None
+        with open(path, 'rb') as f:
+            for raw in f:
+                # last line WITH a timestamp — the literal last line is often
+                # a metadata event (last-prompt etc.) whose timestamp is stale
+                # or missing, which made active sessions display as days old.
+                if b'"timestamp"' in raw:
+                    last_ts_raw = raw
+                if b'"type":"user"' in raw:
+                    if first_user is None:
+                        first_user = raw
+                    if b'tool_result' not in raw:
+                        recent_user.append(raw)
+                if b'"type":"custom-title"' in raw:
+                    try:
+                        ev = json.loads(raw)
+                        if ev.get('type') == 'custom-title':
+                            custom_title = ev.get('customTitle') or custom_title
+                    except Exception:
+                        pass
+                if b'"type":"ai-title"' in raw:
+                    try:
+                        ev = json.loads(raw)
+                        if ev.get('type') == 'ai-title':
+                            ai_title = ev.get('aiTitle') or ai_title
+                    except Exception:
+                        pass
+        if first_user is None:
+            continue
+        try:
+            first = json.loads(first_user)
+        except Exception:
+            continue
+        cwd = first.get('cwd', '')
+        if not cwd:
+            continue
+        branch = first.get('gitBranch', '') or ''
+        ts = ''
+        if last_ts_raw is not None:
+            try:
+                ts = json.loads(last_ts_raw).get('timestamp', '')
+            except Exception:
+                pass
+        ts = ts or first.get('timestamp', '')
+        # Row text: the LAST thing you typed — "resume what I was doing"
+        # is recognized by recent activity, not by how the session began.
+        text = ''
+        for raw in reversed(recent_user):
+            try:
+                t = first_user_text(json.loads(raw)).replace('\n', ' ').strip()
+            except Exception:
+                continue
+            if t and not t.startswith('<'):
+                text = t[:120]
+                break
+        if not text:
+            text = first_user_text(first).replace('\n', ' ').strip()[:120]
+        if not text:
+            continue
+        short_branch = branch.split('/', 1)[1] if '/' in branch else (branch or '-')
+        # Worktree sessions: label from the dir name so the ticket number
+        # leads ("lovable.daphen-1911-foo" → "1911-foo") — scannable list.
+        wt_label = None
+        base = os.path.basename(cwd)
+        if base.startswith('lovable.'):
+            wt_label = base[len('lovable.'):]
+            if wt_label.startswith('daphen-'):
+                wt_label = wt_label[len('daphen-'):]
+            # Drop the Linear team prefix ("every-2408-x" → "2408-x") so the
+            # ticket number leads; review worktrees keep their marker.
+            head, _, rest = wt_label.partition('-')
+            if rest[:1].isdigit() and head != 'review':
+                wt_label = rest
+        # Display label preference:
+        #   1. user-set custom-title (claude-rename)
+        #   2. worktree short name (ticket number first)
+        #   3. claude's auto-generated ai-title (conversation topic)
+        #   4. short branch name
+        label = (custom_title or wt_label or ai_title or short_branch or '').strip()
+        if not label:
+            label = '-'
+        # Cap to the column width so the message column stays aligned.
+        if len(label) > 30:
+            label = label[:27] + '...'
+        session_id = path.stem
+        meta_out.write(f'{session_id}\t{cwd}\t{path}\n')
+        display_out.write(f'{fmt_ago(ts):<8}  {label:<30}  {text}\n')
+    except Exception:
+        continue
+
+meta_out.close()
+display_out.close()
+PY
+
+if [ ! -s "$display_file" ]; then
+    echo "No sessions found"
+    sleep 2
+    exit 1
+fi
+
+total=$(wc -l < "$display_file")
+
+# Prepend line numbers (hidden from display via --with-nth)
+numbered=$(paste -d$'\t' <(seq 1 "$total") "$display_file")
+
+selected=$(echo "$numbered" | fzf \
+    --delimiter=$'\t' \
+    --with-nth=2 \
+    --height=100% \
+    --reverse \
+    --border=rounded \
+    --prompt='  ' \
+    --no-sort \
+    --preview="$HOME/.config/niri/scripts/claude-session-preview {1} $meta_file" \
+    --preview-window=down:60%:wrap:follow \
+    --header='ctrl-r: rename session  •  ctrl-d/u: scroll preview' \
+    --bind='ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up' \
+    --bind="ctrl-r:execute(sid=\$(sed -n \"{1}p\" $meta_file | cut -f1); $HOME/.config/niri/scripts/claude-rename --id \"\$sid\")")
+
+[ -z "$selected" ] && exit 0
+
+line_num=$(echo "$selected" | cut -f1)
+meta_line=$(sed -n "${line_num}p" "$meta_file")
+session_id=$(echo "$meta_line" | cut -f1)
+cwd=$(echo "$meta_line" | cut -f2)
+
+if [ "$ID_ONLY" = "1" ]; then
+    printf '%s\n' "$session_id"
+    exit 0
+fi
+
+# Spawn the resumed claude in a fresh (non-floating) kitty so the
+# floating picker window can close cleanly.
+setsid -f kitty --class claude --working-directory "$cwd" -e claude --resume "$session_id" \
+    </dev/null >/dev/null 2>&1
+exit 0
