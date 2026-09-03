@@ -151,12 +151,10 @@ conversing with the agent. Your job here is the best full draft you can produce.
 5. Write `<plandir>/<key>.progress.json` (`phase: "draft"`, branch, resolved
    `session`, `planned[]` from the surface area, all `status: "pending"`; `flow[]`
    seeded from the `◆` steps — one entry each, in flow order, all `status: "pending"`).
-5b. Run `mdformat --wrap 80 <plandir>/<key>.md` and stop on failure. The external-file
-   watcher intentionally ignores unopened files, so formatting must happen before the
-   newly created plan is opened.
 6. **Open it in neovim** so the user drives the rest from there: run
-   `plan-open "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" <plandir>/<key>.md`
-   (best-effort — pops the plan up in an nvim window, no-ops if one's already in the
+   `plan-open "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" <plandir>/<key>.md`.
+   `plan-open` deterministically runs `mdformat --wrap 80` first and refuses to continue
+   if formatting fails. It then pops the plan up in an nvim window, or no-ops if one's already in the
    repo or there's no GUI). The lifecycle keybinds in that nvim dispatch `--finalize`/
    `--go`/`--reconcile` back to THIS agent session (via wt-send, which routes to the pi rail session or a claude TUI), so keep it open.
 7. **STOP.** Print only a one-line pointer to the artifact path. The user manages it
