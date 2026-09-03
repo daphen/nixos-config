@@ -6,7 +6,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 SCREENSHOT_FILE="$SCREENSHOT_DIR/screenshot-$TIMESTAMP.png"
 LATEST_LINK="$SCREENSHOT_DIR/latest-screenshot.png"
 
-SATTY=/nix/store/y7ysx2yqbds31fn7s8a93xsl0ncp5vdw-satty-0.22.0/bin/satty
+SATTY=/nix/store/2y5ard568n60jlj18s9byfasdxsb3xbi-satty-0.22.0/bin/satty
 OUTPUT=$(niri msg --json focused-output | jq -r .name)
 
 # Log keypress→window latency of every run to /tmp/screenshot-timing.log
