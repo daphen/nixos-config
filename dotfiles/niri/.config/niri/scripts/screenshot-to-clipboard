@@ -6,7 +6,6 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 SCREENSHOT_FILE="$SCREENSHOT_DIR/screenshot-$TIMESTAMP.png"
 LATEST_LINK="$SCREENSHOT_DIR/latest-screenshot.png"
 
-SATTY=/nix/store/2y5ard568n60jlj18s9byfasdxsb3xbi-satty-0.22.0/bin/satty
 OUTPUT=$(niri msg --json focused-output | jq -r .name)
 
 # Log keypress→window latency of every run to /tmp/screenshot-timing.log
@@ -30,7 +29,7 @@ T0=$(date +%s%3N)
 # GDK_DISABLE=dmabuf: GTK's dmabuf probe opens every DRM device, waking the
 # suspended NVIDIA dGPU (~2.5s stall after idle). Satty needs no dmabuf.
 export SCREENSHOT_FILE  # satty-copy tees the crop here on Enter/Ctrl+C
-if grim -l 0 ${OUTPUT:+-o "$OUTPUT"} - | GSK_RENDERER=gl GDK_DISABLE=dmabuf "$SATTY" \
+if grim -l 0 ${OUTPUT:+-o "$OUTPUT"} - | GSK_RENDERER=gl GDK_DISABLE=dmabuf satty \
         --config "$HOME/nixos/dotfiles/satty/.config/satty/config.toml" \
         --filename - \
         --output-filename "$SCREENSHOT_FILE" \
