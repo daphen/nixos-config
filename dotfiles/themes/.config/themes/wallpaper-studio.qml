@@ -665,7 +665,7 @@ enough; reach for 2-3 when mixing structures (e.g. a folds base with streak high
 Styles (for the stop-family — bands/stripes/conic/radial/rings/folds — anchors are color STOPS: ay = position along the gradient 0-1, ax ignored, size = stop weight):
 - mesh: soft mesh gradient; anchors are colored blobs blended by inverse-distance. blurV = softness, postBlur = extra blur. Large-size dark/base anchors make breathing room.
 - streaks: hot glowing cores smeared into directional strokes on a near-solid stage. streak = length, angle = direction, chrome = brushed-filament texture, aberration = chromatic fringing. Anchor size stays small (0.4-0.9).
-- flow: the mesh field smeared directionally, like silk folds. Uses streak/angle/chrome too.
+- flow: the same liquid, domain-warped aurora field as ThinkingOrb, expanded across the canvas. Ordered anchors form its deep-to-crest color ramp; use angle, fold scale/strength, brightness, softness, swirl, grain, island scale, and crease.
 - bands: horizontal color bands, rotated by angle, warped by waveAmp/waveLen/swirl.
 - stripes: repeating angled stripes; waveLen = stripe period in px, angle = direction.
 - conic: angular sweep around the center (mirrored, seamless), rotated by angle.
@@ -1224,14 +1224,14 @@ Pick the style that best fits the description unless one is named.`
 
                 Card {
                     SectionLabel { text: "Adjust" }
-                    Knob { visible: ["streaks", "flow", "folds"].includes(win.style); label: win.style === "folds" ? "ribbon" : "chrome"; from: 0; to: 1; step: 0.02; extValue: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
-                    Knob { visible: win.style === "streaks" || win.style === "flow"; label: "chromatic shift"; from: 0; to: 20; step: 1; extValue: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
-                    Knob { visible: win.style === "streaks" || win.style === "flow"; label: "streak length"; from: 40; to: 400; step: 5; extValue: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
+                    Knob { visible: ["streaks", "flow", "folds"].includes(win.style); label: win.style === "folds" ? "ribbon" : win.style === "flow" ? "brightness" : "chrome"; from: 0; to: 1; step: 0.02; extValue: win.chrome; onMoved: v => { win.chrome = v; win.saveState() } }
+                    Knob { visible: win.style === "streaks" || win.style === "flow"; label: win.style === "flow" ? "crease" : "chromatic shift"; from: 0; to: 20; step: 1; extValue: win.aberration; onMoved: v => { win.aberration = v; win.saveState() } }
+                    Knob { visible: win.style === "streaks" || win.style === "flow"; label: win.style === "flow" ? "island scale" : "streak length"; from: 40; to: 400; step: 5; extValue: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
                     Knob { visible: !["mesh", "radial", "balls", "blocks", "pmesh", "warp", "glass", "dither"].includes(win.style); label: win.style === "folds" ? "rotation" : "angle"; from: -60; to: 60; step: 1; extValue: win.angle; onMoved: v => { win.angle = v; win.saveState() } }
-                    Knob { visible: !["folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: "wave amplitude"; from: 0; to: 160; step: 1; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
+                    Knob { visible: !["folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: win.style === "flow" ? "fold strength" : "wave amplitude"; from: 0; to: 160; step: 1; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
                     Knob { visible: win.style === "folds"; label: "saturation"; from: 0; to: 2; step: 0.05; extValue: win.waveAmp; onMoved: v => { win.waveAmp = v; win.saveState() } }
                     Knob { visible: win.style === "folds"; label: "ribbon width"; from: 0.1; to: 2; step: 0.05; extValue: win.streak; onMoved: v => { win.streak = v; win.saveState() } }
-                    Knob { visible: !["folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: ["stripes", "rings"].includes(win.style) ? "period" : win.style === "blocks" ? "block size" : "wave length"; from: 300; to: 3000; step: 10; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
+                    Knob { visible: !["folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: ["stripes", "rings"].includes(win.style) ? "period" : win.style === "blocks" ? "block size" : win.style === "flow" ? "fold scale" : "wave length"; from: 300; to: 3000; step: 10; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
                     Knob { visible: win.style === "folds"; label: "zoom"; from: 1; to: 24; step: 1; extValue: win.waveLen; onMoved: v => { win.waveLen = v; win.saveState() } }
                     Knob { visible: !["folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: "swirl"; from: -180; to: 180; step: 1; extValue: win.swirl; onMoved: v => { win.swirl = v; win.saveState() } }
                     Knob { visible: !["streaks", "folds", "pmesh", "warp", "glass", "dither"].includes(win.style); label: "softness"; from: 10; to: 220; step: 1; extValue: win.blurV; onMoved: v => { win.blurV = v; win.saveState() } }

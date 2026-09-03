@@ -17,7 +17,7 @@ layout(std140, binding = 0) uniform buf {
     // colors (rgb)
     vec4 c0; vec4 c1; vec4 c2; vec4 c3; vec4 c4; vec4 c5; vec4 c6; vec4 c7;
     vec4 baseColor;
-    float styleMode;   // 0 mesh, 1 streaks, 2 flow (smeared mesh), 3 bands
+    float styleMode;   // 0 mesh, 1 streaks, 2 orb flow, 3 bands
     float modeLight;   // 0 dark, 1 light
     float waveAmp;     // calibrated at 3840px width
     float waveLen;
@@ -448,23 +448,64 @@ vec3 warpField(vec2 uv) {
     return gradient;
 }
 
-// organic noise field for flow: gently domain-warped fbm mapped through the
-// color STOPS (anchors as an ordered ramp, à la Raycast Flow's colors[]).
-// streaksAt then motion-blurs this along the rotation axis → flowing aurora
-// sheets. Kept to 3 fbm calls since streaksAt evaluates it once per smear tap.
-vec3 flowNoise(vec2 uv) {
-    // LOW frequency + few octaves = big soft shapes ("shading"); 5-octave fbm
-    // here made fine striations that the directional smear drew into visible
-    // brush strokes. Two smooth vnoise octaves, gently warped, keep it soft.
-    float z = mix(4.2, 1.2, clamp((waveLen - 300.0) / 2700.0, 0.0, 1.0));
-    vec2 p = (uv - 0.5) * z;
-    p.x *= ASPECT;
-    vec2 w = vec2(vnoise(p + vec2(3.1, 7.4)), vnoise(p + vec2(8.3, 2.8)));
-    float f = 0.65 * vnoise(p + 1.1 * w) + 0.35 * vnoise(p * 2.0 + 3.0 * w);
-    float t = clamp((f - 0.30) / 0.40, 0.0, 1.0);
-    // bias toward the first (dark) stop → black dominates, brights sparse
-    t = pow(t, 2.0);
-    return stopsField(t);
+float orbFbm(vec2 p, float gain) {
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < 3; i++) {
+        v += a * vnoise(p);
+        p = p * 2.03 + vec2(17.31, 9.17);
+        a *= gain;
+    }
+    return v;
+}
+
+vec3 orbFlowField(vec2 uv) {
+    vec2 u = uv * 2.0 - 1.0;
+    u.x *= ASPECT;
+    float r = length(u / vec2(ASPECT, 1.0));
+    float tau = 6.28318530718;
+    float flowTime = u_time * 3.5;
+    float phaseSeed = seedF * tau;
+    float ph1 = mod(flowTime, 47.0) / 47.0 * tau + phaseSeed;
+    float ph2 = mod(flowTime, 61.0) / 61.0 * tau + phaseSeed * 2.85;
+    float ph3 = mod(flowTime, 83.0) / 83.0 * tau + phaseSeed * 4.66;
+    float ph4 = mod(flowTime, 29.0) / 29.0 * tau + phaseSeed * 6.64;
+
+    float angle = radians(angleDeg);
+    float cs = cos(angle), sn = sin(angle);
+    u = mat2(cs, -sn, sn, cs) * u;
+    float swirl = swirlDeg / 150.0;
+    float ga = swirl * 0.7 * sin(ph1);
+    float gc = cos(ga), gs = sin(ga);
+    u = mat2(gc, -gs, gs, gc) * u;
+
+    vec2 d1 = vec2(cos(ph1), sin(ph2));
+    vec2 d2 = vec2(cos(ph2 + 2.1), sin(ph3 + 1.0));
+    vec2 d3 = vec2(cos(ph3 + 4.2), sin(ph4 + 3.1));
+    vec2 d4 = vec2(cos(ph4 + 0.7), sin(ph1 + 2.6));
+    float bandX = mix(0.5, 2.3, clamp((waveLen - 300.0) / 2700.0, 0.0, 1.0));
+    float bandY = mix(0.5, 2.0, clamp((streakLen - 40.0) / 360.0, 0.0, 1.0));
+    float fold = 0.4 + clamp(waveAmp / 160.0, 0.0, 1.0) * 3.5;
+    float gain = mix(0.40, 0.75, clamp(grainAmt / 0.5, 0.0, 1.0));
+    vec2 b = u * (0.8 / bandX);
+    vec2 q = vec2(orbFbm(b + d1, gain), orbFbm(b + vec2(3.7, 1.9) + d2, gain));
+    float vraw = orbFbm(b + fold * (q - 0.45) + d4, gain);
+    float v = smoothstep(0.22, 0.62, vraw);
+    float praw = orbFbm(b * (1.1 + 0.2 * bandY) + fold * 0.8 * vec2(q.y, -q.x) + vec2(9.1, 4.7) + d3, gain);
+    float pl = smoothstep(0.30, 0.60, praw);
+    float ga3 = ph3 + 1.7;
+    pl -= 0.18 * (dot(u, vec2(cos(ga3), sin(ga3))) * 0.5 + 0.5);
+
+    float vb = v + (chromeAmt - 0.5) * 0.6;
+    vb += 0.22 * dot(u, vec2(cos(ph2), sin(ph2)));
+    vb += 0.10 * (0.6 - r);
+    float feather = mix(0.10, 0.45, clamp((blurK - 10.0) / 210.0, 0.0, 1.0));
+    float body = smoothstep(0.55 - feather, 0.55 + feather, vb);
+    vec3 col = mix(fg_palette(0.0), fg_palette(0.5), body);
+    float crest = smoothstep(0.80 - feather * 0.6, 0.92, pl + (chromeAmt - 0.5) * 0.3);
+    col = mix(col, fg_palette(1.0), crest * 0.92);
+    float crease = exp(-pow(vb - 0.55, 2.0) / 0.0032);
+    col += fg_palette(1.0) * crease * (0.55 * clamp(aberr / 120.0, 0.0, 1.0));
+    return clamp(col, 0.0, 1.0);
 }
 
 vec2 warp(vec2 uv) {
@@ -505,9 +546,7 @@ vec3 streaksAt(vec2 uv) {
         float wL = 1.0 - smoothstep(0.82, 1.0, au);
         float wS = 1.0 - smoothstep(0.10, 0.16, au);       // short core layer
         vec2 sp = ruv + vec2(t * halfLen, 0.0);
-        // flow = an organic noise field smeared directionally (Raycast Flow
-        // aurora sheets); streaks = hot cores on a stage.
-        vec3 s = (styleMode > 1.5) ? flowNoise(sp) : glowField(sp);
+        vec3 s = glowField(sp);
         accL += s * wL; wsumL += wL;
         accS += s * wS; wsumS += wS;
     }
@@ -587,6 +626,8 @@ void main() {
                 col += sceneMB(uv + vec2(D[k].x / ASPECT, D[k].y) * r);
             col /= 13.0;
         }
+    } else if (styleMode > 1.5) {
+        col = orbFlowField(uv);
     } else {
         // chromatic fringes: shift the R/B sampling axes
         float ab = aberr / 3840.0;
@@ -596,9 +637,8 @@ void main() {
         col.b = streaksAt(uv - off).b;
         col = finish(col);
     }
-    // film grain — folds (10) and pmesh (11) do their own; skip the harsh
-    // white-noise pass for them (it reads as sandpaper at preview res)
-    if (styleMode < 9.5) {
+    // Orb flow uses grain to shape its folds; folds and pmesh do their own.
+    if ((styleMode < 1.5 || styleMode > 2.5) && styleMode < 9.5) {
         float g = (hash12(uv * vec2(3840.0, 2400.0)) - 0.5) * grainAmt;
         col = clamp(col + g, 0.0, 1.0);
     }
