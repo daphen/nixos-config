@@ -956,6 +956,9 @@ PanelWindow {
         } else if (ctrl && !shift && event.key === Qt.Key_Space) {
             if (!event.isAutoRepeat) PaletteState.playPauseMedia()
             event.accepted = true
+        } else if (ctrl && !shift && event.key === Qt.Key_T) {
+            root.openBlankTab()
+            event.accepted = true
         } else if (event.key === Qt.Key_Tab && !root.searchMode) {
             const kw = root.query.trim().toLowerCase()
             const t = root.webTemplates.find(t => t.key === kw)
