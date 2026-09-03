@@ -1246,15 +1246,25 @@ PanelWindow {
                         opacity: distance <= 4 ? 1 : Math.max(0, 5 - distance)
 
                         Rectangle {
+                            id: roundedCardMask
+                            anchors.fill: parent
+                            radius: 16
+                            color: "#ffffff"
+                            visible: false
+                            layer.enabled: true
+                        }
+
+                        Rectangle {
                             anchors.fill: parent
                             radius: 16
                             color: Theme.surface1
                             border.width: 1
                             border.color: Theme.hairline
-                            clip: true
-                            layer.enabled: filmCard.focused
+                            layer.enabled: true
                             layer.effect: MultiEffect {
-                                shadowEnabled: true
+                                maskEnabled: true
+                                maskSource: roundedCardMask
+                                shadowEnabled: filmCard.focused
                                 shadowColor: Qt.rgba(0, 0, 0, 0.45)
                                 shadowBlur: 0.7
                                 shadowVerticalOffset: 5
