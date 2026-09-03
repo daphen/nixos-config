@@ -51,6 +51,13 @@ class GoCommandLauncherTests(unittest.TestCase):
                     else:
                         self.assertEqual(routed_env, "")
 
+    def test_chat_clients_share_the_managed_media_launcher(self):
+        symlinks = (ROOT / "common/home/symlinks.nix").read_text()
+        programs = (ROOT / "common/home/programs.nix").read_text()
+        self.assertIn('"qs-chat-clients/media-viewer.sh".source', symlinks)
+        for package in ("dsqrdClient", "mlqsClient", "mediactl"):
+            self.assertIn(package, programs)
+
 
 if __name__ == "__main__":
     unittest.main()
