@@ -806,10 +806,15 @@ Pick the style that best fits the description unless one is named.`
     component Chip: Rectangle {
         property string label
         signal clicked()
-        width: chipText.implicitWidth + 20; height: 26; radius: 13; color: win.chromeControl
+        width: chipText.implicitWidth + 20; height: 26; radius: 13
+        color: chipHover.hovered ? QsLib.Theme.surface3 : win.chromeControl
+        scale: chipTap.pressed ? 0.96 : 1
         border.width: 1; border.color: win.chromeBorder
+        Behavior on color { ColorAnimation { duration: 100 } }
+        Behavior on scale { NumberAnimation { duration: 80 } }
         Text { id: chipText; anchors.centerIn: parent; text: parent.label; color: win.chromeText; font.pixelSize: 12; font.family: "Geist" }
-        TapHandler { onTapped: parent.clicked() }
+        HoverHandler { id: chipHover; cursorShape: Qt.PointingHandCursor }
+        TapHandler { id: chipTap; onTapped: parent.clicked() }
     }
     component Pill: Rectangle {
         property string label
@@ -817,9 +822,13 @@ Pick the style that best fits the description unless one is named.`
         signal clicked()
         width: pillText.implicitWidth + 24
         height: 28; radius: 14
-        color: active ? win.chromeText : win.chromeControl
+        color: active ? win.chromeText : (pillHover.hovered ? QsLib.Theme.surface3 : win.chromeControl)
+        scale: pillTap.pressed ? 0.96 : 1
+        Behavior on color { ColorAnimation { duration: 100 } }
+        Behavior on scale { NumberAnimation { duration: 80 } }
         Text { id: pillText; anchors.centerIn: parent; text: parent.label; color: parent.active ? win.color : win.chromeSecondary; font.pixelSize: 12; font.family: "Geist" }
-        TapHandler { onTapped: parent.clicked() }
+        HoverHandler { id: pillHover; cursorShape: Qt.PointingHandCursor }
+        TapHandler { id: pillTap; onTapped: parent.clicked() }
     }
     component Card: Rectangle {
         default property alias content: inner.data
@@ -1275,9 +1284,12 @@ Pick the style that best fits the description unless one is named.`
                                 required property string modelData
                                 width: 30; height: 30; radius: 8
                                 color: modelData
+                                scale: paletteTap.pressed ? 0.9 : (paletteHover.hovered ? 1.08 : 1)
                                 border.width: anchorsModel.count > win.selected && anchorsModel.get(win.selected).hex === modelData ? 3 : 1
                                 border.color: border.width === 3 ? QsLib.Theme.orange : win.chromeBorder
-                                TapHandler { onTapped: {
+                                Behavior on scale { NumberAnimation { duration: 80 } }
+                                HoverHandler { id: paletteHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { id: paletteTap; onTapped: {
                                     anchorsModel.setProperty(win.selected, "hex", parent.modelData)
                                     win.touchAnchors()
                                 } }
@@ -1309,15 +1321,25 @@ Pick the style that best fits the description unless one is named.`
                 Row {
                     spacing: 8
                     Rectangle {
-                        width: 168; height: 34; radius: 17; color: win.chromeText
+                        width: 168; height: 34; radius: 17
+                        color: saveHover.hovered ? win.chromeSecondary : win.chromeText
+                        scale: saveTap.pressed ? 0.97 : 1
+                        Behavior on color { ColorAnimation { duration: 100 } }
+                        Behavior on scale { NumberAnimation { duration: 80 } }
                         Text { anchors.centerIn: parent; text: "Save 4K"; color: win.color; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
-                        TapHandler { onTapped: win.save4k(false) }
+                        HoverHandler { id: saveHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { id: saveTap; onTapped: win.save4k(false) }
                     }
                     Rectangle {
-                        width: 168; height: 34; radius: 17; color: win.chromeControl
+                        width: 168; height: 34; radius: 17
+                        color: setHover.hovered ? QsLib.Theme.surface3 : win.chromeControl
+                        scale: setTap.pressed ? 0.97 : 1
                         border.width: 1; border.color: win.chromeBorder
+                        Behavior on color { ColorAnimation { duration: 100 } }
+                        Behavior on scale { NumberAnimation { duration: 80 } }
                         Text { anchors.centerIn: parent; text: "Save + Set"; color: win.chromeText; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
-                        TapHandler { onTapped: win.save4k(true) }
+                        HoverHandler { id: setHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { id: setTap; onTapped: win.save4k(true) }
                     }
                 }
                 Text { text: win.status; color: QsLib.Theme.green; font.pixelSize: 12; font.family: "Geist" }
@@ -1417,9 +1439,12 @@ Pick the style that best fits the description unless one is named.`
                             Rectangle {
                                 required property string modelData
                                 width: 42; height: 30; radius: 8; color: modelData
+                                scale: glowTap.pressed ? 0.9 : (glowHover.hovered ? 1.08 : 1)
                                 border.width: win.orbAction === "custom" && String(win.orbCustomGlow).toLowerCase() === modelData.toLowerCase() ? 3 : 1
                                 border.color: border.width === 3 ? win.chromeText : win.chromeBorder
-                                TapHandler { onTapped: { win.orbAction = "custom"; win.orbCustomGlow = parent.modelData; win.saveOrbState() } }
+                                Behavior on scale { NumberAnimation { duration: 80 } }
+                                HoverHandler { id: glowHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { id: glowTap; onTapped: { win.orbAction = "custom"; win.orbCustomGlow = parent.modelData; win.saveOrbState() } }
                             }
                         }
                     }
