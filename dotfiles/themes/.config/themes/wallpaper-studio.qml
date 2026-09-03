@@ -12,7 +12,15 @@ FloatingWindow {
     title: "wallpaper-studio"
     implicitWidth: 1360
     implicitHeight: 720
-    color: "#141414"
+    color: QsLib.Theme.bg
+
+    readonly property color chromeStage: QsLib.Theme.bgDim
+    readonly property color chromeSurface: QsLib.Theme.surface1
+    readonly property color chromeControl: QsLib.Theme.surface2
+    readonly property color chromeBorder: QsLib.Theme.hairline
+    readonly property color chromeText: QsLib.Theme.fg
+    readonly property color chromeSecondary: QsLib.Theme.fg_secondary
+    readonly property color chromeMuted: QsLib.Theme.fg_muted
 
     property string mode: "dark"
     property string style: "mesh"
@@ -41,12 +49,12 @@ FloatingWindow {
     property string orbAction: "bash"
     property color orbCustomGlow: QsLib.AgentActivity.colorFor("bash")
     property real orbSize: 120
-    property bool orbPlaying: true
+    property bool orbPlaying: false
     property string orbStatus: ""
     property int selected: 0
     property int anchorsRev: 0
-    property real tNow: 0        // seconds, drives u_time; folds/flow animate
-    property bool playing: true  // space toggles the animation loop
+    property real tNow: 0
+    property bool playing: false
     // Paper static-mesh-gradient controls (pmesh style) — reference defaults
     property real pmPositions: 23
     property real pmWaveX: 0.53
@@ -314,7 +322,7 @@ FloatingWindow {
             orbAngle = o.angle; orbBandX = o.bandX; orbBandY = o.bandY; orbWarp = o.warp
             orbGrain = o.grain; orbFeather = o.feather; orbBright = o.bright
             orbSwirl = o.swirl; orbPlasma = o.plasma; orbAction = o.action || "bash"
-            orbCustomGlow = o.customGlow; orbSize = o.size; orbPlaying = o.playing !== false
+            orbCustomGlow = o.customGlow; orbSize = o.size; orbPlaying = false
         } catch (e) {}
     }
     function resetOrb() {
@@ -322,7 +330,7 @@ FloatingWindow {
         orbGrain = 0.54; orbFeather = 0.96; orbBright = 0.55
         orbSwirl = 1.2; orbPlasma = 0.05
         orbAction = "bash"; orbCustomGlow = QsLib.AgentActivity.colorFor("bash")
-        orbSize = 120; orbPlaying = true; saveOrbState()
+        orbSize = 120; orbPlaying = false; saveOrbState()
     }
     function copyOrbBlock() {
         const p = orbPreset()
@@ -768,19 +776,19 @@ Pick the style that best fits the description unless one is named.`
         spacing: 0
         Item {
             width: parent.width; height: 16
-            Text { text: knobRoot.label; color: "#D6D6D6"; font.pixelSize: 12; font.family: "Geist" }
-            Text { anchors.right: parent.right; text: Math.round(sl.value * 100) / 100; color: "#707B84"; font.pixelSize: 12; font.family: "Geist" }
+            Text { text: knobRoot.label; color: win.chromeSecondary; font.pixelSize: 12; font.family: "Geist" }
+            Text { anchors.right: parent.right; text: Math.round(sl.value * 100) / 100; color: win.chromeMuted; font.pixelSize: 12; font.family: "Geist" }
         }
         Slider {
             id: sl; width: parent.width; height: 24
             onMoved: knobRoot.moved(value)
             background: Rectangle {
-                y: sl.height / 2 - 2; width: sl.width; height: 4; radius: 2; color: "#2E2E2E"
-                Rectangle { width: sl.visualPosition * parent.width; height: parent.height; radius: 2; color: "#9AA7B0" }
+                y: sl.height / 2 - 2; width: sl.width; height: 4; radius: 2; color: win.chromeControl
+                Rectangle { width: sl.visualPosition * parent.width; height: parent.height; radius: 2; color: win.chromeMuted }
             }
             handle: Rectangle {
                 x: sl.visualPosition * (sl.width - width); y: sl.height / 2 - height / 2
-                width: 14; height: 14; radius: 7; color: "#EDEDED"
+                width: 14; height: 14; radius: 7; color: win.chromeText
             }
         }
         // A plain value binding is severed by the first user drag; a Binding
@@ -788,7 +796,7 @@ Pick the style that best fits the description unless one is named.`
         Binding { target: sl; property: "value"; value: knobRoot.extValue }
     }
     component SectionLabel: Text {
-        color: "#707B84"
+        color: win.chromeMuted
         font.pixelSize: 11
         font.weight: 600
         font.letterSpacing: 1.2
@@ -798,9 +806,9 @@ Pick the style that best fits the description unless one is named.`
     component Chip: Rectangle {
         property string label
         signal clicked()
-        width: chipText.implicitWidth + 20; height: 26; radius: 13; color: "#2A2A2A"
-        border.width: 1; border.color: "#3A3A3A"
-        Text { id: chipText; anchors.centerIn: parent; text: parent.label; color: "#EDEDED"; font.pixelSize: 12; font.family: "Geist" }
+        width: chipText.implicitWidth + 20; height: 26; radius: 13; color: win.chromeControl
+        border.width: 1; border.color: win.chromeBorder
+        Text { id: chipText; anchors.centerIn: parent; text: parent.label; color: win.chromeText; font.pixelSize: 12; font.family: "Geist" }
         TapHandler { onTapped: parent.clicked() }
     }
     component Pill: Rectangle {
@@ -809,8 +817,8 @@ Pick the style that best fits the description unless one is named.`
         signal clicked()
         width: pillText.implicitWidth + 24
         height: 28; radius: 14
-        color: active ? "#EDEDED" : "#2A2A2A"
-        Text { id: pillText; anchors.centerIn: parent; text: parent.label; color: parent.active ? "#141414" : "#D6D6D6"; font.pixelSize: 12; font.family: "Geist" }
+        color: active ? win.chromeText : win.chromeControl
+        Text { id: pillText; anchors.centerIn: parent; text: parent.label; color: parent.active ? win.color : win.chromeSecondary; font.pixelSize: 12; font.family: "Geist" }
         TapHandler { onTapped: parent.clicked() }
     }
     component Card: Rectangle {
@@ -818,7 +826,7 @@ Pick the style that best fits the description unless one is named.`
         width: 344
         implicitHeight: inner.implicitHeight + 28
         radius: 14
-        color: "#1F1F1F"
+        color: win.chromeSurface
         Column { id: inner; x: 14; y: 14; width: parent.width - 28; spacing: 10 }
     }
     component OrbSample: QsLib.ThinkingOrb {
@@ -948,7 +956,7 @@ Pick the style that best fits the description unless one is named.`
         Rectangle {
             id: stage
             width: parent.width - panelScroll.width; height: parent.height
-            color: "#0E0E0E"
+            color: win.chromeStage
 
             readonly property real fitW: Math.min(width - 28, (height - 28) * 1.6)
             readonly property real fitH: fitW / 1.6
@@ -1033,7 +1041,7 @@ Pick the style that best fits the description unless one is named.`
                     y: stage.oy + ay * stage.fitH - height / 2
                     color: hex
                     border.width: isSel ? 3 : 1
-                    border.color: isSel ? "#FF570D" : "#EDEDED"
+                    border.color: isSel ? QsLib.Theme.orange : win.chromeText
 
                     MouseArea {
                         anchors.fill: parent
@@ -1115,13 +1123,13 @@ Pick the style that best fits the description unless one is named.`
                 Card {
                     SectionLabel { text: "AI — starting point" }
                     Rectangle {
-                        width: 316; height: 32; radius: 16; color: "#2A2A2A"
+                        width: 316; height: 32; radius: 16; color: win.chromeControl
                         TextInput {
                             id: promptField
                             anchors.fill: parent
                             anchors.leftMargin: 12; anchors.rightMargin: 12
                             verticalAlignment: TextInput.AlignVCenter
-                            color: "#EDEDED"; font.pixelSize: 12; font.family: "Geist"
+                            color: win.chromeText; font.pixelSize: 12; font.family: "Geist"
                             clip: true
                             onAccepted: win.generate(false)
                         }
@@ -1129,7 +1137,7 @@ Pick the style that best fits the description unless one is named.`
                             visible: promptField.text === "" && !promptField.activeFocus
                             anchors.verticalCenter: parent.verticalCenter; x: 12
                             text: "describe a vibe — or just hit generate"
-                            color: "#707B84"; font.pixelSize: 12; font.family: "Geist"
+                            color: win.chromeMuted; font.pixelSize: 12; font.family: "Geist"
                         }
                     }
                     Row {
@@ -1257,7 +1265,7 @@ Pick the style that best fits the description unless one is named.`
                 Card {
                     SectionLabel { text: "Selected anchor — " + (win.selected + 1) + " of " + anchorsModel.count }
                     Text { text: "drag to move, scroll to resize, double-click canvas to add (max 8)"
-                           width: 316; wrapMode: Text.WordWrap; color: "#707B84"; font.pixelSize: 11; font.family: "Geist" }
+                           width: 316; wrapMode: Text.WordWrap; color: win.chromeMuted; font.pixelSize: 11; font.family: "Geist" }
 
                     Flow {
                         width: 316; spacing: 6
@@ -1268,7 +1276,7 @@ Pick the style that best fits the description unless one is named.`
                                 width: 30; height: 30; radius: 8
                                 color: modelData
                                 border.width: anchorsModel.count > win.selected && anchorsModel.get(win.selected).hex === modelData ? 3 : 1
-                                border.color: border.width === 3 ? "#FF570D" : "#3A3A3A"
+                                border.color: border.width === 3 ? QsLib.Theme.orange : win.chromeBorder
                                 TapHandler { onTapped: {
                                     anchorsModel.setProperty(win.selected, "hex", parent.modelData)
                                     win.touchAnchors()
@@ -1301,18 +1309,18 @@ Pick the style that best fits the description unless one is named.`
                 Row {
                     spacing: 8
                     Rectangle {
-                        width: 168; height: 34; radius: 17; color: "#EDEDED"
-                        Text { anchors.centerIn: parent; text: "Save 4K"; color: "#141414"; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
+                        width: 168; height: 34; radius: 17; color: win.chromeText
+                        Text { anchors.centerIn: parent; text: "Save 4K"; color: win.color; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
                         TapHandler { onTapped: win.save4k(false) }
                     }
                     Rectangle {
-                        width: 168; height: 34; radius: 17; color: "#2A2A2A"
-                        border.width: 1; border.color: "#3A3A3A"
-                        Text { anchors.centerIn: parent; text: "Save + Set"; color: "#EDEDED"; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
+                        width: 168; height: 34; radius: 17; color: win.chromeControl
+                        border.width: 1; border.color: win.chromeBorder
+                        Text { anchors.centerIn: parent; text: "Save + Set"; color: win.chromeText; font.pixelSize: 12; font.weight: 600; font.family: "Geist" }
                         TapHandler { onTapped: win.save4k(true) }
                     }
                 }
-                Text { text: win.status; color: "#97B5A6"; font.pixelSize: 12; font.family: "Geist" }
+                Text { text: win.status; color: QsLib.Theme.green; font.pixelSize: 12; font.family: "Geist" }
                 Item { width: 1; height: 12 }
             }
         }
@@ -1325,11 +1333,11 @@ Pick the style that best fits the description unless one is named.`
 
         Rectangle {
             width: parent.width - orbPanelScroll.width; height: parent.height
-            color: "#0E0E0E"
+            color: win.chromeStage
             Column {
                 anchors.centerIn: parent
                 spacing: 18
-                Text { anchors.horizontalCenter: parent.horizontalCenter; text: "CANONICAL THINKING ORB"; color: "#707B84"; font.pixelSize: 12; font.letterSpacing: 1.4; font.family: "Geist" }
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: "CANONICAL THINKING ORB"; color: win.chromeMuted; font.pixelSize: 12; font.letterSpacing: 1.4; font.family: "Geist" }
                 Repeater {
                     model: [{ label: "DARK GROUND", ground: "#171717", ink: "#EDEDED" },
                             { label: "LIGHT GROUND", ground: "#FFFFFF", ink: "#10100E" }]
@@ -1337,7 +1345,7 @@ Pick the style that best fits the description unless one is named.`
                         required property var modelData
                         width: 620; height: Math.max(190, win.orbSize + 54); radius: 20
                         color: modelData.ground
-                        border.width: 1; border.color: "#30707B84"
+                        border.width: 1; border.color: win.chromeBorder
                         Text { x: 18; y: 14; text: parent.modelData.label; color: parent.modelData.ink; opacity: 0.55; font.pixelSize: 10; font.letterSpacing: 1.2; font.family: "Geist" }
                         Row {
                             anchors.centerIn: parent
@@ -1373,7 +1381,7 @@ Pick the style that best fits the description unless one is named.`
                         Chip { label: "reset shipped"; onClicked: win.resetOrb() }
                         Chip { label: "copy QML"; onClicked: win.copyOrbBlock() }
                     }
-                    Text { text: win.orbStatus; color: "#97B5A6"; font.pixelSize: 11; font.family: "Geist" }
+                    Text { text: win.orbStatus; color: QsLib.Theme.green; font.pixelSize: 11; font.family: "Geist" }
                 }
                 Card {
                     SectionLabel { text: "Field" }
@@ -1410,7 +1418,7 @@ Pick the style that best fits the description unless one is named.`
                                 required property string modelData
                                 width: 42; height: 30; radius: 8; color: modelData
                                 border.width: win.orbAction === "custom" && String(win.orbCustomGlow).toLowerCase() === modelData.toLowerCase() ? 3 : 1
-                                border.color: border.width === 3 ? "#FFFFFF" : "#3A3A3A"
+                                border.color: border.width === 3 ? win.chromeText : win.chromeBorder
                                 TapHandler { onTapped: { win.orbAction = "custom"; win.orbCustomGlow = parent.modelData; win.saveOrbState() } }
                             }
                         }
