@@ -366,6 +366,7 @@ PanelWindow {
                         width: activityCard.rowOrbSize
                         height: activityCard.rowOrbSize
                         anchors.verticalCenter: parent.verticalCenter
+                        running: activityCard.opacity > 0.01
                         seedKey: parent.modelData.key
                         glow: Lib.AgentActivity.colorFor(parent.activities[0])
                         activityColors: Lib.AgentActivity.colorsFor(parent.activities)

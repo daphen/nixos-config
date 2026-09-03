@@ -82,7 +82,10 @@ Item {
                    Math.max(0.65, mixed.hslSaturation),
                    Math.max(0.18, Math.min(0.82, mixed.hslLightness + lightnessShift)), 1)
   }
-  FrameAnimation {
+  Timer {
+    interval: orb.width >= 40 ? 33 : 50
+    repeat: true
+    triggeredOnStart: true
     running: orb.running
     onTriggered: {
       orb.ph1 = orb._ph(47000) + orb.seed * 6.2832
