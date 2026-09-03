@@ -49,3 +49,10 @@ func startBackground(command string) {
 func runVisible(name string, args ...string) error {
 	return runCommand(os.Stdout, os.Stderr, name, args...)
 }
+
+func redirectOutput(file *os.File) error {
+	if err := syscall.Dup2(int(file.Fd()), int(os.Stdout.Fd())); err != nil {
+		return err
+	}
+	return syscall.Dup2(int(file.Fd()), int(os.Stderr.Fd()))
+}

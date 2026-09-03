@@ -27,12 +27,11 @@ func TestMain(m *testing.M) {
 }
 
 type fixture struct {
-	t       *testing.T
-	root    string
-	home    string
-	themes  string
-	bin     string
-	command string
+	t      *testing.T
+	root   string
+	home   string
+	themes string
+	bin    string
 }
 
 func setup(t *testing.T) *fixture {
@@ -144,7 +143,7 @@ func TestApplyCoversEveryAdapterAndContinuesAfterFailures(t *testing.T) {
 	for _, tool := range tools {
 		f.generated(tool, "dark")
 	}
-	f.generated("kitty", "light")
+	f.write("dotfiles/themes/.config/themes/generated/kitty/light.theme", "kitty light theme\n")
 	for _, tool := range []string{"nvim", "spotify-player", "opencode", "clipse", "yazi", "kitty", "swaylock"} {
 		os.MkdirAll(filepath.Join(f.home, ".config", tool), 0755)
 	}
@@ -176,7 +175,9 @@ func TestApplyCoversEveryAdapterAndContinuesAfterFailures(t *testing.T) {
 		"home/.config/yazi/syntect.tmTheme":                            "yazi-tmtheme theme\n",
 		"dotfiles/qslib/.local/share/qml/QsLib/Theme.qml":              "quickshell-client theme\n",
 		"home/personal/mlqs/ui/vendor/QsLib/Theme.qml":                 "quickshell-client theme\n",
-		"home/.config/kitty/no-preference-theme.auto.conf":             "kitty theme\n",
+		"home/.config/kitty/dark-theme.auto.conf":                      "kitty theme\n",
+		"home/.config/kitty/light-theme.auto.conf":                     "kitty light theme\n",
+		"home/.config/kitty/no-preference-theme.auto.conf":             "kitty light theme\n",
 		"home/.pi/agent/themes/dark.json":                              "pi theme\n",
 		"home/.config/gtk-4.0/gtk.css":                                 "gtk theme\n",
 		"home/.config/Kvantum/CustomTheme/CustomTheme.kvconfig":        "kvantum theme\n",
@@ -193,6 +194,33 @@ func TestApplyCoversEveryAdapterAndContinuesAfterFailures(t *testing.T) {
 		if !strings.Contains(out, text) {
 			t.Errorf("missing adapter output %q", text)
 		}
+	}
+}
+
+func TestApplyKittySkipsMissingSourceThemes(t *testing.T) {
+	f := setup(t)
+	f.generated("kitty", "dark")
+	target := filepath.Join(f.home, ".config/kitty")
+	if err := os.MkdirAll(target, 0755); err != nil {
+		t.Fatal(err)
+	}
+	light := filepath.Join(target, "light-theme.auto.conf")
+	if err := os.WriteFile(light, []byte("existing\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := f.run("apply", "dark")
+	if err != nil || !strings.Contains(out, "Applied kitty theme (local, OS-following)") {
+		t.Fatalf("apply kitty: err=%v output=%q", err, out)
+	}
+	if got := mustRead(t, filepath.Join(target, "dark-theme.auto.conf")); got != "kitty theme\n" {
+		t.Fatalf("dark theme = %q", got)
+	}
+	if got := mustRead(t, light); got != "existing\n" {
+		t.Errorf("missing source changed light theme to %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(target, "no-preference-theme.auto.conf")); !os.IsNotExist(err) {
+		t.Errorf("missing source created no-preference theme: %v", err)
 	}
 }
 

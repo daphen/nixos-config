@@ -21,7 +21,8 @@ type mailDesktop struct {
 
 func newMailDesktop(t *testing.T) *mailDesktop {
 	t.Helper()
-	if len(mailPIDsByComm("mlqs")) != 0 || len(mailUIPIDs()) != 0 {
+	daemons, uis := mailProcesses()
+	if len(daemons) != 0 || len(uis) != 0 {
 		t.Skip("host mlqs processes are running; refusing a destructive fixture test")
 	}
 	dir := t.TempDir()
@@ -110,7 +111,8 @@ func (m *mailDesktop) assertOnlyOwned(t *testing.T) {
 	for _, child := range m.children {
 		owned[child.Process.Pid] = true
 	}
-	for _, pid := range append(mailPIDsByComm("mlqs"), mailUIPIDs()...) {
+	daemons, uis := mailProcesses()
+	for _, pid := range append(daemons, uis...) {
 		if !owned[pid] {
 			t.Skipf("process %d appeared after fixture setup; refusing to signal it", pid)
 		}

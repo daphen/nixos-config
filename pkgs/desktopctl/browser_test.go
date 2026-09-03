@@ -127,6 +127,45 @@ func TestBrowserProfilePrecedenceAndArgv(t *testing.T) {
 	}
 }
 
+func TestBrowserDecisiveRoutesAvoidUnneededObservations(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"YouTube beats broad lovable match", []string{"--new-window", "https://youtube.com/watch?v=lovable"}, "--user-data-dir=/data/personal"},
+		{"Lovable app uses work directly", []string{"--app", "https://lovable.dev"}, "--user-data-dir=/data/work"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newFakeBrowserDesktop(t)
+			if output, err := f.run(t, testBinary, nil, test.args...); err != nil {
+				t.Fatalf("run: %v: %s", err, output)
+			}
+			if actions := readOptional(f.actionLog); actions != "" {
+				t.Fatalf("decisive route observed desktop state:\n%s", actions)
+			}
+			if argv := readOptional(f.browserLog); !strings.Contains(argv, test.want) {
+				t.Fatalf("browser argv %q does not contain %q", argv, test.want)
+			}
+		})
+	}
+}
+
+func TestBrowserWorkspaceFailureSkipsFocusNotLaunch(t *testing.T) {
+	f := newFakeBrowserDesktop(t)
+	output, err := f.run(t, testBinary, []string{"FAKE_WORKSPACES=not-json"}, "https://youtube.com/watch?v=x")
+	if err != nil {
+		t.Fatalf("run: %v: %s", err, output)
+	}
+	actions := readOptional(f.actionLog)
+	if !strings.Contains(actions, "msg --json workspaces") || strings.Contains(actions, "msg --json windows") || strings.Contains(actions, "focus-window") {
+		t.Fatalf("actions after workspace failure:\n%s", actions)
+	}
+	if browser := readOptional(f.browserLog); !strings.Contains(browser, "https://youtube.com/watch?v=x") {
+		t.Fatalf("browser was not launched: %q", browser)
+	}
+}
+
 func TestBrowserLastFocusAndHomeWindow(t *testing.T) {
 	binary := testBinary
 	cleanBrowserState(t)

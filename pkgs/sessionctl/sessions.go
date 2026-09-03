@@ -30,88 +30,77 @@ type event struct {
 }
 
 type sessionRow struct{ id, cwd, path, display string }
-type transcriptMessage struct{ role, text, timestamp string }
+type transcriptMessage struct {
+	text, timestamp string
+	fromUser        bool
+}
+type contentPart struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
 
 func textContent(raw json.RawMessage) string {
 	var text string
 	if json.Unmarshal(raw, &text) == nil {
 		return text
 	}
-	var parts []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(raw, &parts) != nil {
-		return ""
-	}
-	for _, part := range parts {
-		if part.Type == "text" {
-			return part.Text
+	var parts []contentPart
+	if json.Unmarshal(raw, &parts) == nil {
+		for _, part := range parts {
+			if part.Type == "text" {
+				return part.Text
+			}
 		}
 	}
 	return ""
 }
 
-func readEvents(path string, visit func([]byte, event)) error {
+func scanSession(path string, now time.Time) (sessionRow, bool) {
 	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return sessionRow{}, false
 	}
 	defer file.Close()
+
+	var first event
+	var foundFirst bool
+	var text, lastTimestamp, customTitle, aiTitle string
 	reader := bufio.NewReader(file)
 	for {
 		raw, readErr := reader.ReadBytes('\n')
-		if len(raw) > 0 {
-			var item event
-			if json.Unmarshal(raw, &item) == nil {
-				visit(raw, item)
+		var item event
+		if json.Unmarshal(raw, &item) == nil {
+			if item.Timestamp != "" {
+				lastTimestamp = item.Timestamp
 			}
-		}
-		if readErr != nil {
-			if readErr == io.EOF {
-				return nil
-			}
-			return readErr
-		}
-	}
-}
-
-func scanSession(path string, now time.Time) (sessionRow, bool) {
-	var first *event
-	var recent []event
-	var lastTimestamp, customTitle, aiTitle string
-	if readEvents(path, func(raw []byte, item event) {
-		if item.Timestamp != "" {
-			lastTimestamp = item.Timestamp
-		}
-		if item.Type == "user" {
-			if first == nil {
-				copy := item
-				first = &copy
-			}
-			if !bytes.Contains(raw, []byte("tool_result")) {
-				recent = append(recent, item)
-				if len(recent) > 50 {
-					recent = recent[1:]
+			switch item.Type {
+			case "user":
+				if !foundFirst {
+					first, foundFirst = item, true
+				}
+				candidate := strings.TrimSpace(strings.ReplaceAll(textContent(item.Message.Content), "\n", " "))
+				if !bytes.Contains(raw, []byte("tool_result")) && candidate != "" && !strings.HasPrefix(candidate, "<") {
+					text = candidate
+				}
+			case "custom-title":
+				if item.CustomTitle != "" {
+					customTitle = item.CustomTitle
+				}
+			case "ai-title":
+				if item.AITitle != "" {
+					aiTitle = item.AITitle
 				}
 			}
 		}
-		if item.Type == "custom-title" && item.CustomTitle != "" {
-			customTitle = item.CustomTitle
-		}
-		if item.Type == "ai-title" && item.AITitle != "" {
-			aiTitle = item.AITitle
-		}
-	}) != nil || first == nil || first.Cwd == "" {
-		return sessionRow{}, false
-	}
-	text := ""
-	for i := len(recent) - 1; i >= 0; i-- {
-		candidate := strings.TrimSpace(strings.ReplaceAll(textContent(recent[i].Message.Content), "\n", " "))
-		if candidate != "" && !strings.HasPrefix(candidate, "<") {
-			text = candidate
+		if readErr != nil {
+			if readErr != io.EOF {
+				return sessionRow{}, false
+			}
 			break
 		}
+	}
+	if !foundFirst || first.Cwd == "" {
+		return sessionRow{}, false
 	}
 	if text == "" {
 		text = strings.TrimSpace(strings.ReplaceAll(textContent(first.Message.Content), "\n", " "))
@@ -119,17 +108,20 @@ func scanSession(path string, now time.Time) (sessionRow, bool) {
 	if text == "" {
 		return sessionRow{}, false
 	}
-	text = prefix(text, 120)
-	label := sessionLabel(*first, customTitle, aiTitle)
+	label := sessionLabel(first, customTitle, aiTitle)
 	if len([]rune(label)) > 30 {
 		label = prefix(label, 27) + "..."
 	}
 	if lastTimestamp == "" {
 		lastTimestamp = first.Timestamp
 	}
+	elapsed := ago(lastTimestamp, now, false)
+	if elapsed == "" {
+		elapsed = "-"
+	}
 	return sessionRow{
 		id: filepath.Base(strings.TrimSuffix(path, filepath.Ext(path))), cwd: first.Cwd, path: path,
-		display: fmt.Sprintf("%-8s  %-30s  %s", ago(lastTimestamp, now, false), label, text),
+		display: fmt.Sprintf("%-8s  %-30s  %s", elapsed, label, prefix(text, 120)),
 	}, true
 }
 
@@ -159,7 +151,7 @@ func sessionLabel(first event, customTitle, aiTitle string) string {
 func ago(raw string, now time.Time, seconds bool) string {
 	parsed, err := time.Parse(time.RFC3339Nano, raw)
 	if err != nil {
-		return "-"
+		return ""
 	}
 	delta := int(now.Sub(parsed).Seconds())
 	if seconds && delta < 60 {
@@ -228,14 +220,14 @@ func runPicker(idOnly bool, out, errOut io.Writer) error {
 	var input strings.Builder
 	for i, row := range rows {
 		fmt.Fprintf(meta, "%s\t%s\t%s\n", row.id, row.cwd, row.path)
-		fmt.Fprintf(&input, "%d\t%s\n", i+1, row.display)
+		fmt.Fprintf(&input, "%d\t%s\t%s\n", i+1, row.id, row.display)
 	}
 	if err := meta.Close(); err != nil {
 		return err
 	}
 	preview := "sessionctl preview {1} " + shellQuote(meta.Name())
-	rename := fmt.Sprintf("ctrl-r:execute(sid=$(sed -n \"{1}p\" %s | cut -f1); %s --id \"$sid\")", shellQuote(meta.Name()), shellQuote(filepath.Join(home, ".config/niri/scripts/claude-rename")))
-	args := []string{"--delimiter=\t", "--with-nth=2", "--height=100%", "--reverse", "--border=rounded", "--prompt=  ", "--no-sort", "--preview=" + preview, "--preview-window=down:60%:wrap:follow", "--header=ctrl-r: rename session  •  ctrl-d/u: scroll preview", "--bind=ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up", "--bind=" + rename}
+	rename := fmt.Sprintf("ctrl-r:execute(%s --id {2})", shellQuote(filepath.Join(home, ".config/niri/scripts/claude-rename")))
+	args := []string{"--delimiter=\t", "--with-nth=3", "--height=100%", "--reverse", "--border=rounded", "--prompt=  ", "--no-sort", "--preview=" + preview, "--preview-window=down:60%:wrap:follow", "--header=ctrl-r: rename session  •  ctrl-d/u: scroll preview", "--bind=ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up", "--bind=" + rename}
 	fzf := exec.Command("fzf", args...)
 	fzf.Stdin, fzf.Stderr = strings.NewReader(input.String()), errOut
 	selected, runErr := fzf.Output()
@@ -306,22 +298,10 @@ func previewMarkdown(id, cwd, path string, now time.Time) (string, error) {
 		if json.Unmarshal(scanner.Bytes(), &item) != nil {
 			continue
 		}
-		if item.Type == "user" {
+		if item.Type == "user" || item.Type == "assistant" {
 			text := strings.TrimSpace(textContent(item.Message.Content))
-			if text != "" && !strings.HasPrefix(text, "<") {
-				messages = append(messages, transcriptMessage{"you", text, item.Timestamp})
-			}
-		} else if item.Type == "assistant" {
-			var parts []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			}
-			_ = json.Unmarshal(item.Message.Content, &parts)
-			for _, part := range parts {
-				if text := strings.TrimSpace(part.Text); part.Type == "text" && text != "" {
-					messages = append(messages, transcriptMessage{"claude", text, item.Timestamp})
-					break
-				}
+			if text != "" && (item.Type == "assistant" || !strings.HasPrefix(text, "<")) {
+				messages = append(messages, transcriptMessage{text, item.Timestamp, item.Type == "user"})
 			}
 		}
 	}
@@ -337,7 +317,7 @@ func previewMarkdown(id, cwd, path string, now time.Time) (string, error) {
 		shortCwd = "~" + strings.TrimPrefix(cwd, home)
 	}
 	var result strings.Builder
-	fmt.Fprintf(&result, "# %s\n`%s…` · %s", shortCwd, prefix(id, 8), previewAgo(latest, now))
+	fmt.Fprintf(&result, "# %s\n`%s…` · %s", shortCwd, prefix(id, 8), ago(latest, now, true))
 	if truncated {
 		result.WriteString(" · _older history omitted_")
 	}
@@ -347,12 +327,12 @@ func previewMarkdown(id, cwd, path string, now time.Time) (string, error) {
 	}
 	for _, message := range messages {
 		label := "Claude"
-		if message.role == "you" {
+		if message.fromUser {
 			label = "You"
 		}
-		fmt.Fprintf(&result, "**%s** · %s\n\n", label, previewAgo(message.timestamp, now))
+		fmt.Fprintf(&result, "**%s** · %s\n\n", label, ago(message.timestamp, now, true))
 		text := prefix(message.text, 400)
-		if message.role == "you" {
+		if message.fromUser {
 			for _, line := range strings.Split(text, "\n") {
 				if line == "" {
 					result.WriteString(">\n")
@@ -366,17 +346,6 @@ func previewMarkdown(id, cwd, path string, now time.Time) (string, error) {
 		result.WriteByte('\n')
 	}
 	return result.String(), nil
-}
-
-func previewAgo(raw string, now time.Time) string {
-	if raw == "" {
-		return ""
-	}
-	value := ago(raw, now, true)
-	if value == "-" {
-		return ""
-	}
-	return value
 }
 
 func prefix(value string, length int) string {

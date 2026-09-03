@@ -124,14 +124,14 @@ func (m *manager) generateAll(mode string) {
 	m.success("All themes generated for " + mode + " mode")
 }
 
-func (m *manager) generate(tool, mode string) bool {
+func (m *manager) generate(tool, mode string) {
 	template := filepath.Join(m.templates, tool+"-"+mode+".template")
 	if !isFile(template) {
 		template = filepath.Join(m.templates, tool+".template")
 	}
 	if !isFile(template) {
 		m.warning("Template for " + tool + " not found: " + template)
-		return false
+		return
 	}
 	m.info("Generating " + tool + " theme for " + mode + " mode...")
 	outDir := filepath.Join(m.generated, tool)
@@ -139,7 +139,6 @@ func (m *manager) generate(tool, mode string) bool {
 	out := filepath.Join(outDir, mode+".theme")
 	m.run("python3", filepath.Join(m.themes, "theme-processor.py"), template, m.colors, mode, out, tool)
 	m.success("Generated " + tool + " theme: " + out)
-	return true
 }
 
 func (m *manager) applyAll(mode string) {
@@ -156,29 +155,31 @@ func (m *manager) applyAll(mode string) {
 	m.success("All themes applied for " + mode + " mode")
 }
 
-func (m *manager) target(tool string) (string, string, bool) {
+func (m *manager) target(tool string) (string, string) {
 	dot := filepath.Join(m.dotfiles, tool, ".config", tool)
 	local := filepath.Join(m.home, ".config", tool)
-	if fi, err := os.Lstat(local); err == nil && fi.Mode()&os.ModeSymlink != 0 && isDir(dot) {
-		return dot, "managed", true
+	if isSymlink(local) && isDir(dot) {
+		return dot, "managed"
 	}
 	if isDir(local) {
-		return local, "local", true
+		return local, "local"
 	}
-	return "", "", false
+	return "", ""
 }
 
-func (m *manager) apply(tool, mode string) bool {
+func (m *manager) apply(tool, mode string) {
 	generated := filepath.Join(m.generated, tool, mode+".theme")
 	if !isFile(generated) {
 		m.failure("Generated theme file not found: " + generated)
-		return false
+		return
 	}
-	copyTo := func(dst string) { bestEffort(copyFile(generated, dst)) }
+	copyTo := func(dst string) {
+		os.MkdirAll(filepath.Dir(dst), 0755)
+		bestEffort(copyFile(generated, dst))
+	}
 	switch tool {
 	case "nvim":
-		if target, label, ok := m.target(tool); ok {
-			_ = os.MkdirAll(filepath.Join(target, "colors"), 0755)
+		if target, label := m.target(tool); target != "" {
 			copyTo(filepath.Join(target, "colors", "custom-theme-"+mode+".lua"))
 			m.success("Applied Neovim " + mode + " theme (" + label + ")")
 		}
@@ -203,11 +204,11 @@ func (m *manager) apply(tool, mode string) bool {
 		}
 	case "fzf":
 		if has("fzf") {
-			dir := filepath.Join(m.home, ".config/fzf")
-			_ = os.MkdirAll(dir, 0755)
-			_ = os.Remove(filepath.Join(dir, "opts.conf"))
-			_ = os.Symlink(generated, filepath.Join(dir, "opts.conf"))
-			m.success("Applied FZF theme (symlinked to " + filepath.Join(dir, "opts.conf") + ")")
+			link := filepath.Join(m.home, ".config/fzf/opts.conf")
+			os.MkdirAll(filepath.Dir(link), 0755)
+			os.Remove(link)
+			os.Symlink(generated, link)
+			m.success("Applied FZF theme (symlinked to " + link + ")")
 		}
 	case "tide":
 		if has("fish") {
@@ -215,8 +216,7 @@ func (m *manager) apply(tool, mode string) bool {
 			m.success("Applied Tide prompt theme")
 		}
 	case "spotify-player", "clipse", "yazi", "swaylock":
-		if target, label, ok := m.target(tool); ok {
-			_ = os.MkdirAll(target, 0755)
+		if target, label := m.target(tool); target != "" {
 			name, suffix := "theme.toml", ""
 			switch tool {
 			case "spotify-player":
@@ -232,79 +232,71 @@ func (m *manager) apply(tool, mode string) bool {
 			m.success("Applied " + tool + " theme (" + label + suffix + ")")
 		}
 	case "opencode":
-		if target, label, ok := m.target(tool); ok {
-			_ = os.MkdirAll(filepath.Join(target, "themes"), 0755)
+		if target, label := m.target(tool); target != "" {
 			copyTo(filepath.Join(target, "themes/customtheme.json"))
 			m.success("Applied opencode theme (" + label + ")")
 		}
 	case "process-compose":
-		dir := filepath.Join(m.home, ".config/process-compose")
-		_ = os.MkdirAll(dir, 0755)
-		copyTo(filepath.Join(dir, "theme.yaml"))
+		copyTo(filepath.Join(m.home, ".config/process-compose/theme.yaml"))
 		m.success("Applied process-compose theme (local)")
 	case "claude-code":
-		dir := filepath.Join(m.home, ".claude/themes")
-		_ = os.MkdirAll(dir, 0755)
-		copyTo(filepath.Join(dir, "dotfiles.json"))
+		copyTo(filepath.Join(m.home, ".claude/themes/dotfiles.json"))
 		m.success("Wrote claude-code " + mode + " theme to dotfiles.json")
 		m.pinClaudeTheme()
 	case "chromium-palette":
 		repo := filepath.Join(m.home, "personal/chromium-palette")
 		if !isDir(repo) {
 			m.warning("chromium-palette repo not found at " + repo)
-			return false
+			return
 		}
 		copyTo(filepath.Join(repo, "src/pages/popup/_theme.scss"))
 		m.success("Wrote chromium-palette " + mode + " theme to _theme.scss")
-		if isExecutable(filepath.Join(repo, "node_modules/.bin/vite")) {
-			if m.runInQuiet(repo, "./node_modules/.bin/vite", "build") {
-				m.success("Rebuilt chromium-palette (reload at chrome://extensions)")
-			} else {
-				m.warning("chromium-palette rebuild failed; run vite build manually")
-			}
-		} else {
+		if !isExecutable(filepath.Join(repo, "node_modules/.bin/vite")) {
 			m.info("chromium-palette: install deps then run vite build to pick up the theme")
+			break
+		}
+		if m.runInQuiet(repo, "./node_modules/.bin/vite", "build") {
+			m.success("Rebuilt chromium-palette (reload at chrome://extensions)")
+		} else {
+			m.warning("chromium-palette rebuild failed; run vite build manually")
 		}
 	case "newtab":
 		repo := filepath.Join(m.home, "personal/newtab")
 		if !isDir(repo) {
 			m.warning("newtab repo not found at " + repo)
-			return false
+			return
 		}
 		copyTo(filepath.Join(repo, "src/newtab/theme.generated.css"))
 		m.success("Wrote newtab theme.generated.css")
-		if isExecutable(filepath.Join(repo, "node_modules/.bin/vite")) {
-			if m.runInQuiet(repo, "npm", "run", "build") {
-				m.success("Rebuilt newtab (reload the tab)")
-			} else {
-				m.warning("newtab rebuild failed; run npm run build manually")
-			}
-		} else {
+		if !isExecutable(filepath.Join(repo, "node_modules/.bin/vite")) {
 			m.info("newtab: install deps then npm run build to pick up the theme")
+			break
+		}
+		if m.runInQuiet(repo, "npm", "run", "build") {
+			m.success("Rebuilt newtab (reload the tab)")
+		} else {
+			m.warning("newtab rebuild failed; run npm run build manually")
 		}
 	case "starship":
 		target, label := filepath.Join(m.home, ".config/starship.toml"), "local"
 		if isDir(filepath.Join(m.dotfiles, "starship")) {
 			target, label = filepath.Join(m.dotfiles, "starship/.config/starship/starship.toml"), "managed"
 		}
-		_ = os.MkdirAll(filepath.Dir(target), 0755)
 		copyTo(target)
 		m.success("Applied Starship theme (" + label + ")")
 	case "yazi-tmtheme":
-		if target, _, ok := m.target("yazi"); ok {
+		if target, _ := m.target("yazi"); target != "" {
 			copyTo(filepath.Join(target, "syntect.tmTheme"))
 			m.success("Applied yazi syntect theme (preview highlighting)")
 		}
 	case "quickshell":
 		if isDir(filepath.Join(m.dotfiles, "quickshell")) {
 			target := filepath.Join(m.dotfiles, "quickshell/.config/quickshell/modules/Theme.qml")
-			_ = os.MkdirAll(filepath.Dir(target), 0755)
 			copyTo(target)
 			m.success("Applied Quickshell theme (managed)")
 		}
 	case "quickshell-client":
 		target := filepath.Join(m.dotfiles, "qslib/.local/share/qml/QsLib/Theme.qml")
-		_ = os.MkdirAll(filepath.Dir(target), 0755)
 		copyTo(target)
 		for _, app := range []string{"mlqs", "slqs", "dsqrd"} {
 			vend := filepath.Join(m.home, "personal", app, "ui/vendor/QsLib")
@@ -314,23 +306,22 @@ func (m *manager) apply(tool, mode string) bool {
 		}
 		m.success("Applied QsLib client theme (managed + vendored)")
 	case "kitty":
-		if target, label, ok := m.target(tool); ok {
-			_ = os.MkdirAll(target, 0755)
-			for source, dest := range map[string]string{"dark.theme": "dark-theme.auto.conf", "light.theme": "light-theme.auto.conf", "no-preference": "no-preference-theme.auto.conf"} {
-				if source == "no-preference" {
-					source = "light.theme"
-				}
-				path := filepath.Join(m.generated, "kitty", source)
-				if isFile(path) {
-					bestEffort(copyFile(path, filepath.Join(target, dest)))
+		if target, label := m.target(tool); target != "" {
+			copies := []struct{ source, destination string }{
+				{"dark.theme", "dark-theme.auto.conf"},
+				{"light.theme", "light-theme.auto.conf"},
+				{"light.theme", "no-preference-theme.auto.conf"},
+			}
+			for _, copy := range copies {
+				source := filepath.Join(m.generated, "kitty", copy.source)
+				if isFile(source) {
+					bestEffort(copyFile(source, filepath.Join(target, copy.destination)))
 				}
 			}
 			m.success("Applied kitty theme (" + label + ", OS-following)")
 		}
 	case "pi":
-		dir := filepath.Join(m.home, ".pi/agent/themes")
-		_ = os.MkdirAll(dir, 0755)
-		copyTo(filepath.Join(dir, mode+".json"))
+		copyTo(filepath.Join(m.home, ".pi/agent/themes", mode+".json"))
 		m.success("Applied Pi coding agent " + mode + " theme")
 	case "gtk":
 		m.applyGTK(generated, mode)
@@ -338,9 +329,7 @@ func (m *manager) apply(tool, mode string) bool {
 		m.applyKvantum(generated)
 	default:
 		m.warning("Unknown tool: " + tool)
-		return false
 	}
-	return true
 }
 
 func (m *manager) pinClaudeTheme() {
@@ -360,7 +349,7 @@ if s.get("theme") != "custom:dotfiles":
 `
 	cmd := exec.Command("python3", "-", path)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = strings.NewReader(script), os.Stdout, os.Stderr
-	_ = cmd.Run()
+	cmd.Run()
 }
 
 func (m *manager) applyGTK(generated, mode string) {
@@ -379,10 +368,11 @@ func (m *manager) applyGTK(generated, mode string) {
 }
 
 func (m *manager) applyKvantum(generated string) {
-	dir := filepath.Join(m.home, ".config/Kvantum/CustomTheme")
+	base := filepath.Join(m.home, ".config/Kvantum")
+	dir := filepath.Join(base, "CustomTheme")
 	bestEffort(os.MkdirAll(dir, 0755))
 	bestEffort(copyFile(generated, filepath.Join(dir, "CustomTheme.kvconfig")))
-	bestEffort(os.WriteFile(filepath.Join(m.home, ".config/Kvantum/kvantum.kvconfig"), []byte("[General]\ntheme=CustomTheme\n"), 0644))
+	bestEffort(os.WriteFile(filepath.Join(base, "kvantum.kvconfig"), []byte("[General]\ntheme=CustomTheme\n"), 0644))
 	svg := filepath.Join(dir, "CustomTheme.svg")
 	if !isFile(svg) {
 		bestEffort(os.WriteFile(svg, []byte("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\"><rect width=\"1\" height=\"1\" fill=\"none\"/></svg>\n"), 0644))
@@ -522,7 +512,7 @@ func (m *manager) wallpaper(mode string) {
 	cmd := exec.Command("waypaper", "--wallpaper", target, "--no-post-command")
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	if cmd.Start() == nil {
-		_ = cmd.Process.Release()
+		cmd.Process.Release()
 	}
 }
 
@@ -567,9 +557,7 @@ func (m *manager) run(name string, args ...string) bool {
 	return cmd.Run() == nil
 }
 func (m *manager) runQuiet(name string, args ...string) bool {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
-	return cmd.Run() == nil
+	return m.runInQuiet("", name, args...)
 }
 func (m *manager) runInQuiet(dir, name string, args ...string) bool {
 	cmd := exec.Command(name, args...)
@@ -594,19 +582,9 @@ func isExecutable(path string) bool {
 	return err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0111 != 0
 }
 func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+	contents, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	_, copyErr := io.Copy(out, in)
-	closeErr := out.Close()
-	if copyErr != nil {
-		return copyErr
-	}
-	return closeErr
+	return os.WriteFile(dst, contents, 0666)
 }

@@ -64,6 +64,8 @@ printf '%s\0' "$BROWSER_BIN" "$BROWSER_CLASS_PERSONAL" "$BROWSER_CLASS_WORK" "$B
 var spotifyURI = regexp.MustCompile(`spotify:([a-z]+):([A-Za-z0-9]+)`)
 var spotifyWeb = regexp.MustCompile(`open\.spotify\.com/(?:intl-[a-z-]+/)?([a-z]+)/([A-Za-z0-9]+)`)
 var spotifyType = regexp.MustCompile(`^(track|album|playlist|artist)$`)
+var workURL = regexp.MustCompile(`^https?://(www\.)?github\.com/lovablelabs(/|$)`)
+var youtubeURL = regexp.MustCompile(`^https?://((www|m|music)\.)?youtube\.com|^https?://youtu\.be`)
 
 func spotifyTarget(url string) (string, string, bool) {
 	if !strings.HasPrefix(url, "spotify:") &&
@@ -138,32 +140,12 @@ func lastBrowserProfile(config browserConfig) string {
 	if last != "" && last == readShellValue("/tmp/"+config.workClass+"-window-id") {
 		return "work"
 	}
-	if last != "" && last == readShellValue("/tmp/"+config.personalClass+"-window-id") {
-		return "personal"
-	}
 	return "personal"
 }
 
-func onWorkWorkspace() bool {
-	var workspaces []niriWorkspace
-	if niriJSON("workspaces", &workspaces) != nil {
-		return false
-	}
-	for _, workspace := range workspaces {
-		if workspace.Focused && strings.HasPrefix(workspace.Name, "lovable-") {
-			return true
-		}
-	}
-	return false
-}
-
-func browserMainWindow(class string) uint64 {
+func browserMainWindow(class string, workspaces []niriWorkspace) uint64 {
 	windows, err := niriWindows()
 	if err != nil {
-		return 0
-	}
-	var workspaces []niriWorkspace
-	if niriJSON("workspaces", &workspaces) != nil {
 		return 0
 	}
 	names := make(map[uint64]string, len(workspaces))
@@ -171,7 +153,7 @@ func browserMainWindow(class string) uint64 {
 		names[workspace.ID] = workspace.Name
 	}
 	stored, _ := strconv.ParseUint(readShellValue("/tmp/"+class+"-window-id"), 10, 64)
-	var fallback uint64
+	var fallback, first uint64
 	for _, window := range windows {
 		if window.AppID != class {
 			continue
@@ -183,21 +165,18 @@ func browserMainWindow(class string) uint64 {
 		if window.ID == stored {
 			fallback = window.ID
 		}
+		if first == 0 && !strings.HasPrefix(name, "lovable-") {
+			first = window.ID
+		}
 	}
 	if fallback != 0 {
 		return fallback
 	}
-	for _, window := range windows {
-		name := names[window.WorkspaceID]
-		if window.AppID == class && !(strings.HasPrefix(name, "lovable-") && name != "lovable-main") {
-			return window.ID
-		}
-	}
-	return 0
+	return first
 }
 
-func focusBrowserHome(class string) {
-	target := browserMainWindow(class)
+func focusBrowserHome(class string, workspaces []niriWorkspace) {
+	target := browserMainWindow(class, workspaces)
 	if target == 0 {
 		return
 	}
@@ -247,13 +226,23 @@ func runBrowser(args []string) error {
 		return nil
 	}
 	profile := forced
+	var workspaces []niriWorkspace
+	var workspaceErr error
 	if profile == "" {
-		profile = lastBrowserProfile(config)
-		if onWorkWorkspace() || strings.Contains(url, "lovable") || regexp.MustCompile(`^https?://(www\.)?github\.com/lovablelabs(/|$)`).MatchString(url) {
-			profile = "work"
-		}
-		if regexp.MustCompile(`^https?://((www|m|music)\.)?youtube\.com|^https?://youtu\.be`).MatchString(url) {
+		switch {
+		case youtubeURL.MatchString(url):
 			profile = "personal"
+		case strings.Contains(url, "lovable") || workURL.MatchString(url):
+			profile = "work"
+		default:
+			profile = lastBrowserProfile(config)
+			workspaces, workspaceErr = niriWorkspaces()
+			for _, workspace := range workspaces {
+				if workspace.Focused && strings.HasPrefix(workspace.Name, "lovable-") {
+					profile = "work"
+					break
+				}
+			}
 		}
 	}
 	data, class := config.personalData, config.personalClass
@@ -268,7 +257,12 @@ func runBrowser(args []string) error {
 			launch = append(launch, config.workFlags...)
 		}
 		if !newWindow {
-			focusBrowserHome(class)
+			if workspaces == nil {
+				workspaces, workspaceErr = niriWorkspaces()
+			}
+			if workspaceErr == nil {
+				focusBrowserHome(class, workspaces)
+			}
 		}
 		launch = append(launch, "--user-data-dir="+data, "--profile-directory="+config.profile, "--class="+class)
 		if newWindow {
@@ -285,10 +279,7 @@ func runBrowser(args []string) error {
 		return err
 	}
 	defer quiet.Close()
-	if err := syscall.Dup2(int(quiet.Fd()), int(os.Stdout.Fd())); err != nil {
-		return err
-	}
-	if err := syscall.Dup2(int(quiet.Fd()), int(os.Stderr.Fd())); err != nil {
+	if err := redirectOutput(quiet); err != nil {
 		return err
 	}
 	return syscall.Exec(path, append([]string{config.bin}, launch...), os.Environ())

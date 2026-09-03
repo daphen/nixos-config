@@ -37,23 +37,21 @@ print(h.hexdigest())
 `
 
 type cockpitState struct {
-	a             app
-	restart       bool
-	port          string
-	runtime, sock string
-	marker        string
-	ai            string
-	ssh           []string
-	localHash     string
-	wasRunning    bool
+	a       app
+	restart bool
+	port    string
+	sock    string
+	marker  string
+	ai      string
+	ssh     []string
 }
 
 func runCockpit(a app, restart bool) error {
 	runtime := envDefault("XDG_RUNTIME_DIR", "/tmp")
 	c := cockpitState{
 		a: a, restart: restart,
-		port:    envFallback("COCKPIT_VM_AGENTD_PORT", "HEIDR_VM_AGENTD_PORT", "17840"),
-		runtime: runtime, sock: filepath.Join(runtime, "agentd-work.sock"),
+		port:   envFallback("COCKPIT_VM_AGENTD_PORT", "HEIDR_VM_AGENTD_PORT", "17840"),
+		sock:   filepath.Join(runtime, "agentd-work.sock"),
 		marker: filepath.Join(runtime, "cockpit-role-bundle-work.restart-required"),
 		ai:     filepath.Join(a.home, "nixos", "dotfiles", "ai"),
 		ssh:    []string{"ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=25", a.user + "@" + a.host},
@@ -68,17 +66,17 @@ func runCockpit(a app, restart bool) error {
 		c.say("sync failed, do not spawn ticket sessions: " + filepath.Join(c.ai, "roles") + " missing")
 		return silentError{}
 	}
-	if err := c.checkPiSkew(); err != nil {
-		return err
-	}
+	c.checkPiSkew()
 	if err := c.syncBundle(); err != nil {
 		return err
 	}
-	key := shellOutput(c.bestOutput(nil, "fish", "-c", "source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY"))
+	key, _ := c.a.output("fish", "-c", "source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY")
+	key = strings.TrimRight(key, "\n")
 	if key == "" {
 		c.say("  ⚠ no OPENAI_API_KEY — pi will not start")
 	}
-	slack := shellOutput(c.bestOutput(nil, "op", "read", "op://Private/Slack MCP/text"))
+	slack, _ := c.a.output("op", "read", "op://Private/Slack MCP/text")
+	slack = strings.TrimRight(slack, "\n")
 	if slack == "" {
 		c.say("  (no Slack secret — run 'op signin' if you want the slack mcp)")
 	}
@@ -99,23 +97,23 @@ func (c cockpitState) say(text string) {
 	fmt.Fprintf(c.a.out, "\x1b[36m[vm-cockpit]\x1b[0m %s\n", text)
 }
 
-func (c cockpitState) checkPiSkew() error {
-	local := firstLine(c.bestOutput(nil, "pi", "--version"))
-	remote := firstLine(c.bestSSHOutput("export PATH=$HOME/.npm-global/bin:$PATH; pi --version 2>/dev/null | head -1"))
+func (c cockpitState) checkPiSkew() {
+	local, _ := c.a.output("pi", "--version")
+	remote := c.bestSSHOutput("export PATH=$HOME/.npm-global/bin:$PATH; pi --version 2>/dev/null | head -1")
+	local, _, _ = strings.Cut(local, "\n")
+	remote, _, _ = strings.Cut(remote, "\n")
 	if local != "" && remote != "" && local != remote {
 		c.say("WARNING: pi version skew — local " + local + ", VM " + remote + " (behaviour here does not predict the VM)")
 	}
-	return nil
 }
 
-func (c *cockpitState) syncBundle() error {
+func (c cockpitState) syncBundle() error {
 	hash, err := bundleHash(c.ai)
 	if err != nil {
 		return err
 	}
-	c.localHash = hash
-	remote := shellOutput(c.remoteBundleHash())
-	c.wasRunning = shellOutput(c.bestSSHOutput("pgrep -x agentd >/dev/null && echo yes || echo no")) == "yes"
+	remote := strings.TrimRight(c.remoteBundleHash(), "\n")
+	wasRunning := strings.TrimRight(c.bestSSHOutput("pgrep -x agentd >/dev/null && echo yes || echo no"), "\n") == "yes"
 	if remote == hash {
 		c.say("role bundle current (" + hash + ")")
 		_ = os.Remove(c.marker)
@@ -125,11 +123,14 @@ func (c *cockpitState) syncBundle() error {
 	if err := c.copyBundle(); err != nil {
 		return c.bundleFailure("")
 	}
-	verified := shellOutput(c.remoteBundleHash())
+	verified := strings.TrimRight(c.remoteBundleHash(), "\n")
 	if verified != hash {
-		return c.bundleFailure(" (local " + hash + ", remote " + emptyAs(verified, "missing") + ")")
+		if verified == "" {
+			verified = "missing"
+		}
+		return c.bundleFailure(" (local " + hash + ", remote " + verified + ")")
 	}
-	if c.wasRunning {
+	if wasRunning {
 		if err := touch(c.marker); err != nil {
 			return err
 		}
@@ -144,20 +145,16 @@ func (c *cockpitState) syncBundle() error {
 func (c cockpitState) copyBundle() error {
 	for _, rel := range cockpitRoleFiles {
 		source := filepath.Join(c.ai, filepath.FromSlash(rel))
-		if isDir(source) {
-			if err := c.runSSH("mkdir -p $HOME/.pi/agent/'" + rel + "'"); err != nil {
-				return err
-			}
-			if err := c.rsync(true, source+"/", c.a.user+"@"+c.a.host+":.pi/agent/"+rel+"/"); err != nil {
-				return err
-			}
-		} else {
-			if err := c.runSSH("mkdir -p $HOME/.pi/agent/'" + filepath.ToSlash(filepath.Dir(rel)) + "'"); err != nil {
-				return err
-			}
-			if err := c.rsync(false, source, c.a.user+"@"+c.a.host+":.pi/agent/"+rel); err != nil {
-				return err
-			}
+		directory := isDir(source)
+		remoteDir, suffix := filepath.ToSlash(filepath.Dir(rel)), ""
+		if directory {
+			remoteDir, suffix = rel, "/"
+		}
+		if err := c.runSSH("mkdir -p $HOME/.pi/agent/'" + remoteDir + "'"); err != nil {
+			return err
+		}
+		if err := c.rsync(directory, source+suffix, c.a.user+"@"+c.a.host+":.pi/agent/"+rel+suffix); err != nil {
+			return err
 		}
 	}
 	return c.rsync(false, filepath.Join(c.ai, "instructions.md"), c.a.user+"@"+c.a.host+":.pi/agent/AGENTS.md")
@@ -210,7 +207,7 @@ func (c cockpitState) startAgentd(key, slack string) error {
     sleep 4
   else echo "  already running (pid $(pgrep -x agentd | tr '\n' ' '), up $(ps -o etime= -p $(pgrep -x agentd | head -1) 2>/dev/null | tr -d ' '))"; fi
   (ss -tln 2>/dev/null || netstat -tln 2>/dev/null) | grep -q :%s && echo '  listening ✓' || tail -4 $HOME/agentd.log
-`, restart, c.keyringPassword(), key, slack, c.port, c.port)
+`, restart, envFallback("COCKPIT_KEYRING_PW", "HEIDR_KEYRING_PW", "heidr-vm"), key, slack, c.port, c.port)
 	cmd := exec.Command(c.ssh[0], append(c.ssh[1:], script)...)
 	text, err := cmd.CombinedOutput()
 	for _, line := range strings.Split(strings.TrimSuffix(string(text), "\n"), "\n") {
@@ -221,12 +218,8 @@ func (c cockpitState) startAgentd(key, slack string) error {
 	return err
 }
 
-func (c cockpitState) keyringPassword() string {
-	return envFallback("COCKPIT_KEYRING_PW", "HEIDR_KEYRING_PW", "heidr-vm")
-}
-
 func (c cockpitState) ensureTunnel() error {
-	if isSocket(c.sock) && healthySocket(c.sock) {
+	if healthySocket(c.sock) {
 		c.say("tunnel already healthy → " + c.sock)
 		return nil
 	}
@@ -239,15 +232,17 @@ func (c cockpitState) ensureTunnel() error {
 		return err
 	}
 	_ = cmd.Process.Release()
-	for i := 0; i < 8 && !isSocket(c.sock); i++ {
-		time.Sleep(time.Second)
+	for i := 0; i <= 8; i++ {
+		if isSocket(c.sock) {
+			c.say("  up ✓")
+			return nil
+		}
+		if i < 8 {
+			time.Sleep(time.Second)
+		}
 	}
-	if !isSocket(c.sock) {
-		c.say("  ✗ tunnel failed")
-		return silentError{}
-	}
-	c.say("  up ✓")
-	return nil
+	c.say("  ✗ tunnel failed")
+	return silentError{}
 }
 
 func (c cockpitState) remoteBundleHash() string {
@@ -269,44 +264,35 @@ func (c cockpitState) runSSH(script string) error {
 }
 
 func (c cockpitState) bestSSHOutput(script string) string {
-	cmd := exec.Command(c.ssh[0], append(c.ssh[1:], script)...)
-	cmd.Stderr = io.Discard
-	out, _ := cmd.Output()
-	return string(out)
-}
-
-func (c cockpitState) bestOutput(env []string, name string, args ...string) string {
-	cmd := exec.Command(name, args...)
-	cmd.Env, cmd.Stderr = commandEnv(env), io.Discard
-	out, _ := cmd.Output()
-	return string(out)
+	out, _ := c.a.output(c.ssh[0], append(c.ssh[1:], script)...)
+	return out
 }
 
 func bundleHash(root string) (string, error) {
 	var files []string
 	for _, rel := range cockpitRoleFiles {
-		path := filepath.Join(root, filepath.FromSlash(rel))
-		info, err := os.Stat(path)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return "", err
-		}
-		if !info.IsDir() {
-			files = append(files, path)
-			continue
-		}
-		err = filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+		rootPath := filepath.Join(root, filepath.FromSlash(rel))
+		err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+			if os.IsNotExist(err) && path == rootPath {
+				return nil
+			}
 			if err != nil {
 				return err
 			}
-			target, statErr := os.Stat(path)
-			if statErr != nil {
-				return statErr
+			regular := info.Mode().IsRegular()
+			if info.Mode()&os.ModeSymlink != 0 {
+				target, statErr := os.Stat(path)
+				if statErr != nil {
+					return statErr
+				}
+				regular = target.Mode().IsRegular()
 			}
-			if target.Mode().IsRegular() {
-				files = append(files, path)
+			if regular {
+				rel, relErr := filepath.Rel(root, path)
+				if relErr != nil {
+					return relErr
+				}
+				files = append(files, filepath.ToSlash(rel))
 			}
 			return nil
 		})
@@ -314,24 +300,19 @@ func bundleHash(root string) (string, error) {
 			return "", err
 		}
 	}
-	sort.Slice(files, func(i, j int) bool { return relativeSlash(root, files[i]) < relativeSlash(root, files[j]) })
+	sort.Strings(files)
 	h := sha256.New()
-	for _, path := range files {
-		data, err := os.ReadFile(path)
+	for _, rel := range files {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			return "", err
 		}
-		_, _ = h.Write([]byte(relativeSlash(root, path)))
+		_, _ = h.Write([]byte(rel))
 		_, _ = h.Write([]byte{0})
 		sum := sha256.Sum256(data)
 		_, _ = h.Write(sum[:])
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func relativeSlash(root, path string) string {
-	rel, _ := filepath.Rel(root, path)
-	return filepath.ToSlash(rel)
 }
 
 func healthySocket(path string) bool {
@@ -357,20 +338,4 @@ func touch(path string) error {
 		return err
 	}
 	return file.Close()
-}
-
-func firstLine(value string) string {
-	if i := strings.IndexByte(value, '\n'); i >= 0 {
-		return value[:i]
-	}
-	return value
-}
-
-func shellOutput(value string) string { return strings.TrimRight(value, "\n") }
-
-func emptyAs(value, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
 }

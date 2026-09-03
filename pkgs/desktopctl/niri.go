@@ -7,17 +7,16 @@ import (
 )
 
 type niriWindow struct {
-	ID             uint64        `json:"id"`
-	Title          string        `json:"title"`
-	AppID          string        `json:"app_id"`
-	Focused        bool          `json:"is_focused"`
-	FocusTimestamp niriTimestamp `json:"focus_timestamp"`
-	WorkspaceID    uint64        `json:"workspace_id"`
-}
-
-type niriTimestamp struct {
-	Seconds int64 `json:"secs"`
-	Nanos   int64 `json:"nanos"`
+	ID             uint64 `json:"id"`
+	Title          string `json:"title"`
+	AppID          string `json:"app_id"`
+	PID            int    `json:"pid"`
+	Focused        bool   `json:"is_focused"`
+	FocusTimestamp struct {
+		Seconds int64 `json:"secs"`
+		Nanos   int64 `json:"nanos"`
+	} `json:"focus_timestamp"`
+	WorkspaceID uint64 `json:"workspace_id"`
 }
 
 type niriWorkspace struct {
@@ -38,9 +37,15 @@ func niriWindows() ([]niriWindow, error) {
 	return windows, err
 }
 
-func focusedWorkspaceReference() string {
+func niriWorkspaces() ([]niriWorkspace, error) {
 	var workspaces []niriWorkspace
-	if niriJSON("workspaces", &workspaces) != nil {
+	err := niriJSON("workspaces", &workspaces)
+	return workspaces, err
+}
+
+func focusedWorkspaceReference() string {
+	workspaces, err := niriWorkspaces()
+	if err != nil {
 		return ""
 	}
 	for _, workspace := range workspaces {

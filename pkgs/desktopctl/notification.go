@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -48,20 +49,13 @@ func runNotification(args []string) error {
 }
 
 func runPastNotification(args []string) error {
-	field := func(i int) string {
-		if i < len(args) {
-			return args[i]
-		}
-		return ""
+	var fields [5]string
+	copy(fields[:], args)
+	app, summary, windowID, scope, session := fields[0], fields[1], fields[2], fields[3], fields[4]
+	if selector, command, ok := notificationJump(app); ok {
+		return notificationExec(notificationCommand("niri-jump-or-exec"), selector, command)
 	}
-	app, summary, windowID, scope, session := field(0), field(1), field(2), field(3), field(4)
 	switch app {
-	case "endcord", "Discord", "discord":
-		return notificationExec(notificationCommand("niri-jump-or-exec"), "title:dsqrd", notificationCommand("launch-discord-client"))
-	case "Slack", "slack", "slk":
-		return notificationExec(notificationCommand("niri-jump-or-exec"), "Slack", "slack")
-	case "mlqs":
-		return notificationExec(notificationCommand("niri-jump-or-exec"), "title:mlqs", notificationCommand("launch-mail-client"))
 	case "kitty":
 		name := session
 		if name == "" {
@@ -84,10 +78,7 @@ func runPastNotification(args []string) error {
 	case "agent-rail":
 		name := session
 		if name == "" {
-			name = strings.TrimPrefix(summary, "agent · ")
-			if name == summary {
-				name = ""
-			}
+			name = agentSession(summary)
 		}
 		if name != "" && focusCockpitSession(name, scope) {
 			return nil
@@ -107,15 +98,15 @@ func activeNotification(id *big.Rat) (notification, bool, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return notification{}, false, nil
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	var notifications []notification
 	if err := decoder.Decode(&notifications); err != nil {
 		return notification{}, false, err
 	}
 	for _, candidate := range notifications {
-		value, err := notificationNumber(string(candidate.ID))
-		if err == nil && value.Cmp(id) == 0 {
+		value, ok := new(big.Rat).SetString(string(candidate.ID))
+		if ok && value.Cmp(id) == 0 {
 			return candidate, true, nil
 		}
 	}
@@ -147,16 +138,11 @@ func dispatchActiveNotification(id string, n notification) error {
 		_, _ = quickshellCall("", "notifications", "invoke", id)
 		_, _ = quickshellCall("", "notifications", "dismiss", id)
 	}
+	if selector, command, ok := notificationJump(n.App); ok {
+		invokeDismiss()
+		return notificationExec(notificationCommand("niri-jump-or-exec"), selector, command)
+	}
 	switch n.App {
-	case "endcord", "Discord", "discord":
-		invokeDismiss()
-		return notificationExec(notificationCommand("niri-jump-or-exec"), "title:dsqrd", notificationCommand("launch-discord-client"))
-	case "Slack", "slack", "slk":
-		invokeDismiss()
-		return notificationExec(notificationCommand("niri-jump-or-exec"), "Slack", "slack")
-	case "mlqs":
-		invokeDismiss()
-		return notificationExec(notificationCommand("niri-jump-or-exec"), "title:mlqs", notificationCommand("launch-mail-client"))
 	case "kitty":
 		name, scope := hintString(n, "cockpit-context"), hintString(n, "cockpit-scope")
 		if name == "" {
@@ -176,10 +162,7 @@ func dispatchActiveNotification(id string, n notification) error {
 		_, _ = quickshellCall("", "notifications", "dismiss", id)
 		return nil
 	case "agent-rail":
-		name := strings.TrimPrefix(n.Summary, "agent · ")
-		if name == n.Summary {
-			name = ""
-		}
+		name := agentSession(n.Summary)
 		if name != "" && focusCockpitSession(name, hintString(n, "cockpit-scope")) {
 			_, _ = quickshellCall("", "notifications", "dismiss", id)
 			return nil
@@ -203,6 +186,27 @@ func dispatchActiveNotification(id string, n notification) error {
 	}
 }
 
+func notificationJump(app string) (string, string, bool) {
+	switch app {
+	case "endcord", "Discord", "discord":
+		return "title:dsqrd", notificationCommand("launch-discord-client"), true
+	case "Slack", "slack", "slk":
+		return "Slack", "slack", true
+	case "mlqs":
+		return "title:mlqs", notificationCommand("launch-mail-client"), true
+	default:
+		return "", "", false
+	}
+}
+
+func agentSession(summary string) string {
+	name, found := strings.CutPrefix(summary, "agent · ")
+	if !found {
+		return ""
+	}
+	return name
+}
+
 func hintString(n notification, key string) string {
 	value, _ := n.Hints[key].(string)
 	return value
@@ -215,14 +219,10 @@ func focusAppWindow(app string) {
 	}
 	for _, window := range windows {
 		if window.AppID != "" && appMatches(window.AppID, app) {
-			_ = niriAction(io.Discard, io.Discard, "focus-window", "--id", json.Number(stringID(window.ID)).String())
+			_ = niriAction(io.Discard, io.Discard, "focus-window", "--id", strconv.FormatUint(window.ID, 10))
 			return
 		}
 	}
-}
-
-func stringID(id uint64) string {
-	return new(big.Int).SetUint64(id).String()
 }
 
 func appMatches(windowApp, notificationApp string) bool {
@@ -262,7 +262,7 @@ func focusCockpitSession(name, scope string) bool {
 		windows, _ := niriWindows()
 		for _, window := range windows {
 			if window.Title == strings.TrimRight(string(title), "\n") {
-				_ = niriAction(io.Discard, io.Discard, "focus-window", "--id", stringID(window.ID))
+				_ = niriAction(io.Discard, io.Discard, "focus-window", "--id", strconv.FormatUint(window.ID, 10))
 				break
 			}
 		}
@@ -274,9 +274,7 @@ func focusCockpitSession(name, scope string) bool {
 func timedQuickshellCall(instance, target, method string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	command := []string{"ipc", "-i", instance, "call", target, method}
-	command = append(command, args...)
-	return exec.CommandContext(ctx, "qs", command...).Output()
+	return exec.CommandContext(ctx, "qs", quickshellArgs(instance, target, method, args...)...).Output()
 }
 
 func cockpitContext(summary string) string {
@@ -333,8 +331,8 @@ func focusWorktreeFromSummary(summary string) {
 	}
 	workspace := strings.Replace(match, "lovable.daphen-", "lovable-", 1)
 	_ = niriAction(io.Discard, io.Discard, "focus-workspace", workspace)
-	var workspaces []niriWorkspace
-	if niriJSON("workspaces", &workspaces) != nil {
+	workspaces, err := niriWorkspaces()
+	if err != nil {
 		return
 	}
 	var workspaceID uint64
@@ -351,7 +349,7 @@ func focusWorktreeFromSummary(summary string) {
 	windows, _ := niriWindows()
 	for _, window := range windows {
 		if window.WorkspaceID == workspaceID && window.AppID == "claude" {
-			_ = niriAction(io.Discard, io.Discard, "focus-window", "--id", stringID(window.ID))
+			_ = niriAction(io.Discard, io.Discard, "focus-window", "--id", strconv.FormatUint(window.ID, 10))
 			return
 		}
 	}

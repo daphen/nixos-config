@@ -70,10 +70,9 @@ func view(target, mediaType string) error {
 	case "video":
 		return viewVideo(files, geo)
 	case "audio":
-		args := []string{"--no-terminal", "--force-window=immediate", "--keep-open=yes", "--loop-file=no", fmt.Sprintf("--geometry=%dx120", geo.windowW)}
-		return detached("mpv", append(args, files...)...)
+		return detached("mpv", append([]string{"--no-terminal", "--force-window=immediate", "--keep-open=yes", "--loop-file=no", fmt.Sprintf("--geometry=%dx120", geo.windowW)}, files...)...)
 	default:
-		return runVisible("xdg-open", target)
+		return run(true, "xdg-open", target)
 	}
 }
 
@@ -146,13 +145,7 @@ func imageGeometry(file string, g geometry) (int, int) {
 	w, h := iw/g.scale, ih/g.scale
 	floorW, floorH := float64(g.screenW)*0.60, float64(g.screenH)*0.60
 	if w < floorW && h < floorH {
-		factor := floorW / w
-		if floorH/h < factor {
-			factor = floorH / h
-		}
-		if factor > 3 {
-			factor = 3
-		}
+		factor := min(floorW/w, floorH/h, 3)
 		w, h = w*factor, h*factor
 	}
 	if w > float64(g.windowW) {
@@ -161,57 +154,51 @@ func imageGeometry(file string, g geometry) (int, int) {
 	if h > float64(g.windowH) {
 		w, h = w*float64(g.windowH)/h, float64(g.windowH)
 	}
-	if w < 200 {
-		w = 200
-	}
-	if h < 150 {
-		h = 150
-	}
+	w, h = max(w, 200), max(h, 150)
 	return int(w), int(h)
 }
 
 func viewImage(files []string, bg string, g geometry) error {
 	w, h := imageGeometry(files[0], g)
-	args := []string{"-b", bg, "-W", strconv.Itoa(w), "-H", strconv.Itoa(h)}
-	if err := detached("imv", append(args, files...)...); err != nil {
+	if err := detached("imv", append([]string{"-b", bg, "-W", strconv.Itoa(w), "-H", strconv.Itoa(h)}, files...)...); err != nil {
 		return err
 	}
 	return startPositioning()
 }
 
 func viewVideo(files []string, g geometry) error {
-	args := []string{"--loop", "--no-terminal", fmt.Sprintf("--geometry=%dx%d", g.windowW, g.windowH)}
-	return detached("mpv", append(args, files...)...)
+	return detached("mpv", append([]string{"--loop", "--no-terminal", fmt.Sprintf("--geometry=%dx%d", g.windowW, g.windowH)}, files...)...)
 }
 
 func viewURL(target string, log io.Writer, bg string, g geometry) error {
 	tryURL := target
-	if strings.HasSuffix(tryURL, ".gifv") {
-		tryURL = strings.TrimSuffix(tryURL, ".gifv") + ".gif"
+	if base, ok := strings.CutSuffix(target, ".gifv"); ok {
+		tryURL = base + ".gif"
 	}
 	ctypeBytes, _ := exec.Command("curl", "-fsIL", "--max-time", "10", "-o", "/dev/null", "-w", "%{content_type}", tryURL).Output()
 	ctype := string(ctypeBytes)
 	fmt.Fprintf(log, "  HEAD %s -> %s\n", tryURL, ctype)
-	if !strings.HasPrefix(ctype, "image/") && !strings.HasPrefix(ctype, "video/") {
-		return runVisible("xdg-open", target)
+	isImage := strings.HasPrefix(ctype, "image/")
+	if !isImage && !strings.HasPrefix(ctype, "video/") {
+		return run(true, "xdg-open", target)
 	}
 	tmp, err := os.CreateTemp("", "endcord-media.")
 	if err != nil {
 		return err
 	}
 	tmp.Close()
-	if err := runVisible("curl", "-fsSL", "--max-time", "10", "-o", tmp.Name(), tryURL); err != nil {
+	if err := run(true, "curl", "-fsSL", "--max-time", "10", "-o", tmp.Name(), tryURL); err != nil {
 		os.Remove(tmp.Name())
-		return runVisible("xdg-open", target)
+		return run(true, "xdg-open", target)
 	}
-	if strings.HasPrefix(ctype, "image/") {
+	if isImage {
 		return viewImage([]string{tmp.Name()}, bg, g)
 	}
 	return viewVideo([]string{tmp.Name()}, g)
 }
 
 func detached(name string, args ...string) error {
-	return run("setsid", append([]string{"-f", name}, args...)...)
+	return run(false, "setsid", append([]string{"-f", name}, args...)...)
 }
 
 func startPositioning() error {
@@ -220,19 +207,13 @@ func startPositioning() error {
  pid=$(pgrep -n -x imv-wayland || pgrep -n -x imv)
  [ -n "$pid" ] && imv-msg "$pid" center
 done`
-	cmd := exec.Command("setsid", "-f", "sh", "-c", script)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, io.Discard, io.Discard
-	return cmd.Run()
+	return run(false, "setsid", "-f", "sh", "-c", script)
 }
 
-func run(name string, args ...string) error {
+func run(visible bool, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, io.Discard, io.Discard
-	return cmd.Run()
-}
-
-func runVisible(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if visible {
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	}
 	return cmd.Run()
 }

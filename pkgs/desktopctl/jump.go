@@ -12,8 +12,6 @@ import (
 
 const jumpUsage = "Usage: niri-jump-or-exec <app-id-or-title-pattern> <command>"
 
-type windowMatcher func(niriWindow) bool
-
 func jumpOrExec(args []string) error {
 	here := len(args) > 0 && args[0] == "--here"
 	if here {
@@ -75,14 +73,20 @@ func focusedWindowID() string {
 	return ""
 }
 
-func makeWindowMatcher(selector string) (windowMatcher, error) {
+func makeWindowMatcher(selector string) (func(niriWindow) bool, error) {
 	if pattern, ok := strings.CutPrefix(selector, "title:"); ok {
 		re, err := regexp.Compile("(?i:" + pattern + ")")
-		return func(window niriWindow) bool { return err == nil && re.MatchString(window.Title) }, err
+		if err != nil {
+			return nil, err
+		}
+		return func(window niriWindow) bool { return re.MatchString(window.Title) }, nil
 	}
 	if pattern, ok := strings.CutPrefix(selector, "regex:"); ok {
 		re, err := regexp.Compile(pattern)
-		return func(window niriWindow) bool { return err == nil && re.MatchString(window.AppID) }, err
+		if err != nil {
+			return nil, err
+		}
+		return func(window niriWindow) bool { return re.MatchString(window.AppID) }, nil
 	}
 	return func(window niriWindow) bool { return window.AppID == selector }, nil
 }

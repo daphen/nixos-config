@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"net"
 	"os"
 	"os/exec"
@@ -12,11 +11,6 @@ import (
 	"syscall"
 	"time"
 )
-
-type mailWindow struct {
-	Title string `json:"title"`
-	PID   int    `json:"pid"`
-}
 
 type mailUI struct {
 	pid   int
@@ -34,53 +28,65 @@ func runMail() error {
 		os.Getenv("PATH"),
 	}, ":"))
 	current := mailExecutable("mlqs")
-	for _, pid := range mailPIDsByComm("mlqs") {
+	daemons, uis := mailProcesses()
+	killedDaemon := false
+	for _, pid := range daemons {
 		exe, err := os.Readlink("/proc/" + strconv.Itoa(pid) + "/exe")
-		if err == nil && current != "" && exe != current {
-			if mailSignal(pid, syscall.SIGTERM) == nil {
-				mailWaitAndKill(pid)
-			}
+		if err != nil || current == "" || exe == current {
+			continue
 		}
+		if mailSignal(pid, syscall.SIGTERM) == nil {
+			killedDaemon = true
+			mailWaitAndKill(pid)
+		}
+	}
+	if killedDaemon {
+		_, uis = mailProcesses()
 	}
 	currentUI := ""
 	if current != "" {
 		currentUI = filepath.Join(filepath.Dir(filepath.Dir(current)), "share/mlqs/ui")
 	}
-	uis, seen := mailUIPIDs(), make(map[int]bool)
+	seen := make(map[int]bool)
 	for _, pid := range uis {
 		seen[pid] = true
 	}
-	for _, pid := range mailWindowPIDs("mlqs") {
-		if !seen[pid] {
-			uis = append(uis, pid)
+	windows, _ := niriWindows()
+	for _, window := range windows {
+		if window.Title == "mlqs" && window.PID != 0 && !seen[window.PID] {
+			uis = append(uis, window.PID)
 		}
 	}
 	keep := 0
-	for _, pid := range uis {
-		if mailAlive(pid) && currentUI != "" && mailUIConfig(pid) == currentUI {
+	for i := len(uis) - 1; i >= 0; i-- {
+		pid := uis[i]
+		if currentUI != "" && mailAlive(pid) && mailUIConfig(pid) == currentUI {
 			keep = pid
+			break
 		}
 	}
 	for _, pid := range uis {
-		if pid != keep && mailAlive(pid) {
+		if pid != keep {
 			_ = mailSignal(pid, syscall.SIGTERM)
 		}
 	}
 	if mailSummon() == nil {
-		for range 12 {
-			if mailHasWindow("mlqs") {
-				return nil
-			}
-			time.Sleep(50 * time.Millisecond)
+		var found bool
+		windows, found = mailWaitForWindow("mlqs")
+		if found {
+			return nil
 		}
+	} else {
+		windows, _ = niriWindows()
 	}
 	windowPIDs := make(map[int]bool)
-	for _, window := range mailWindows() {
+	for _, window := range windows {
 		if window.PID != 0 {
 			windowPIDs[window.PID] = true
 		}
 	}
-	for _, pid := range mailUIPIDs() {
+	_, uis = mailProcesses()
+	for _, pid := range uis {
 		if !windowPIDs[pid] {
 			_ = mailSignal(pid, syscall.SIGTERM)
 		}
@@ -104,28 +110,8 @@ func mailExecutable(name string) string {
 	return path
 }
 
-func mailPIDsByComm(want string) []int {
-	entries, _ := os.ReadDir("/proc")
-	var pids []int
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil {
-			continue
-		}
-		comm, err := os.ReadFile("/proc/" + entry.Name() + "/comm")
-		if err == nil && strings.TrimSpace(string(comm)) == want {
-			pids = append(pids, pid)
-		}
-	}
-	return pids
-}
-
 func mailSignal(pid int, signal syscall.Signal) error {
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return err
-	}
-	return process.Signal(signal)
+	return syscall.Kill(pid, signal)
 }
 
 func mailAlive(pid int) bool { return mailSignal(pid, 0) == nil }
@@ -163,28 +149,38 @@ func mailUIConfig(pid int) string {
 	return ""
 }
 
-func mailUIPIDs() []int {
+func mailProcesses() ([]int, []int) {
 	entries, _ := os.ReadDir("/proc")
+	var daemons []int
 	var found []mailUI
 	for _, entry := range entries {
 		pid, err := strconv.Atoi(entry.Name())
 		if err != nil {
 			continue
 		}
-		comm, err := os.ReadFile("/proc/" + entry.Name() + "/comm")
-		if err != nil || !strings.Contains(strings.TrimSpace(string(comm)), "quickshell") {
-			continue
-		}
-		if cfg := mailUIConfig(pid); !strings.HasSuffix(cfg, "mlqs/ui") {
-			continue
-		}
-		stat, err := os.ReadFile("/proc/" + entry.Name() + "/stat")
+		root := "/proc/" + entry.Name()
+		data, err := os.ReadFile(root + "/comm")
 		if err != nil {
 			continue
 		}
-		end := strings.LastIndexByte(string(stat), ')')
-		fields := strings.Fields(string(stat)[end+1:])
-		if end < 0 || len(fields) < 20 {
+		comm := strings.TrimSpace(string(data))
+		if comm == "mlqs" {
+			daemons = append(daemons, pid)
+		}
+		if !strings.Contains(comm, "quickshell") || !strings.HasSuffix(mailUIConfig(pid), "mlqs/ui") {
+			continue
+		}
+		data, err = os.ReadFile(root + "/stat")
+		if err != nil {
+			continue
+		}
+		stat := string(data)
+		end := strings.LastIndexByte(stat, ')')
+		if end < 0 {
+			continue
+		}
+		fields := strings.Fields(stat[end+1:])
+		if len(fields) < 20 {
 			continue
 		}
 		start, err := strconv.ParseUint(fields[19], 10, 64)
@@ -192,31 +188,12 @@ func mailUIPIDs() []int {
 			found = append(found, mailUI{pid, start})
 		}
 	}
-	sort.SliceStable(found, func(i, j int) bool {
-		return found[i].start < found[j].start
-	})
-	pids := make([]int, len(found))
-	for i := range found {
-		pids[i] = found[i].pid
+	sort.SliceStable(found, func(i, j int) bool { return found[i].start < found[j].start })
+	uis := make([]int, len(found))
+	for i, process := range found {
+		uis[i] = process.pid
 	}
-	return pids
-}
-
-func mailWindows() []mailWindow {
-	data, _ := commandOutput("niri", "msg", "--json", "windows")
-	var windows []mailWindow
-	_ = json.Unmarshal(data, &windows)
-	return windows
-}
-
-func mailWindowPIDs(title string) []int {
-	var pids []int
-	for _, window := range mailWindows() {
-		if window.Title == title && window.PID != 0 {
-			pids = append(pids, window.PID)
-		}
-	}
-	return pids
+	return daemons, uis
 }
 
 func mailSummon() error {
@@ -234,13 +211,19 @@ func mailSummon() error {
 	return err
 }
 
-func mailHasWindow(title string) bool {
-	for _, window := range mailWindows() {
-		if window.Title == title {
-			return true
+func mailWaitForWindow(title string) ([]niriWindow, bool) {
+	var windows []niriWindow
+	for range 12 {
+		windows, _ = niriWindows()
+		for _, window := range windows {
+			if window.Title == title {
+				return windows, true
+			}
 		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	return false
+	windows, _ = niriWindows()
+	return windows, false
 }
 
 func mailExecClient() error {
@@ -249,10 +232,7 @@ func mailExecClient() error {
 		return err
 	}
 	defer log.Close()
-	if err := syscall.Dup2(int(log.Fd()), int(os.Stdout.Fd())); err != nil {
-		return err
-	}
-	if err := syscall.Dup2(int(log.Fd()), int(os.Stderr.Fd())); err != nil {
+	if err := redirectOutput(log); err != nil {
 		return err
 	}
 	client, err := exec.LookPath("mlqs-client")

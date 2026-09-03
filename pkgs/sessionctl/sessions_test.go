@@ -70,19 +70,22 @@ printf '%s\n' "$@" > "$SETSID_LOG"
 			t.Fatalf("selected id = %q", result)
 		}
 		rows := read(t, input)
-		assertContains(t, rows, "1\t5m ago")
+		assertContains(t, rows, "1\tnewer\t5m ago")
 		assertContains(t, rows, "My renamed session")
 		assertContains(t, rows, "latest user text")
-		assertContains(t, rows, "2\t30m ago")
+		assertContains(t, rows, "2\tworktree\t30m ago")
 		assertContains(t, rows, "2409-worktree")
-		assertContains(t, rows, "3\t1h ago")
+		assertContains(t, rows, "3\tolder\t1h ago")
 		assertContains(t, rows, "Generated topic")
 		if strings.Contains(rows, "ignored") || strings.Contains(rows, "must not appear") {
 			t.Fatalf("unfiltered rows:\n%s", rows)
 		}
 		args := read(t, log)
-		for _, expected := range []string{"--height=100%", "--reverse", "--no-sort", "--preview-window=down:60%:wrap:follow", "ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up", "ctrl-r:execute", "claude-rename", "sessionctl preview {1}"} {
+		for _, expected := range []string{"--with-nth=3", "--height=100%", "--reverse", "--no-sort", "--preview-window=down:60%:wrap:follow", "ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up", "ctrl-r:execute", "claude-rename", "--id {2}", "sessionctl preview {1}"} {
 			assertContains(t, args, expected)
+		}
+		if strings.Contains(args, "sed ") || strings.Contains(args, "cut ") {
+			t.Fatalf("rename binding still resolves id through shell tools:\n%s", args)
 		}
 	})
 

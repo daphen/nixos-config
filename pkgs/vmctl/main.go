@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-var ticketPattern = regexp.MustCompile(`(?i)^EVERY-[0-9]+$`)
+var (
+	ticketPattern = regexp.MustCompile(`(?i)^EVERY-[0-9]+$`)
+	binaryPath    = regexp.MustCompile(`(?i)\.(png|jpg|jpeg|gif|webp|ico|icns|pdf|mp4|woff2?|ttf)$`)
+)
 
 type app struct {
 	out, err io.Writer
@@ -118,7 +121,7 @@ func (a app) align(ticket string) error {
 	}
 	a.installDeps(local)
 
-	base, err := a.output(nil, "git", "-C", local, "merge-base", "HEAD", "origin/main")
+	base, err := a.output("git", "-C", local, "merge-base", "HEAD", "origin/main")
 	if err != nil {
 		return err
 	}
@@ -126,7 +129,7 @@ func (a app) align(ticket string) error {
 	if strings.TrimSpace(base) != "" {
 		diffArgs = append(diffArgs, strings.TrimSpace(base))
 	}
-	changed, err := a.output(nil, "git", diffArgs...)
+	changed, err := a.output("git", diffArgs...)
 	if err != nil {
 		return err
 	}
@@ -136,14 +139,14 @@ func (a app) align(ticket string) error {
 	_ = a.quiet(nil, "git", "-C", local, "fetch", "-q", "--no-tags", "origin", "main")
 
 	cm := filepath.Join(envDefault("XDG_RUNTIME_DIR", "/tmp"), "heidr-vm-cm")
-	head, err := a.output(nil, "ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+	head, err := a.output("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
 		"-o", "ControlMaster=auto", "-o", "ControlPath="+cm, "-o", "ControlPersist=600", "-o", "ConnectTimeout=20",
 		a.user+"@"+a.host, "git -C '/home/"+a.user+"/src/lovable-"+ticket+"' rev-parse HEAD")
 	head = strings.Join(strings.Fields(head), "")
 	if err != nil || !isCommit(head) {
 		return nil
 	}
-	cur, err := a.output(nil, "git", "-C", local, "rev-parse", "HEAD")
+	cur, err := a.output("git", "-C", local, "rev-parse", "HEAD")
 	if err != nil {
 		return err
 	}
@@ -189,88 +192,115 @@ func (a app) installDeps(local string) {
 	}
 }
 
-func (a app) sync(ticket, raw string) error {
+type syncRun struct {
+	a                          app
+	mutagen, vmwt, local, repo string
+	name, vmhead               string
+}
+
+func newSyncRun(a app, ticket, raw string) (syncRun, error) {
 	mutagen, err := exec.LookPath("mutagen")
 	if err != nil {
 		fmt.Fprintln(a.err, "✗ mutagen not on PATH")
-		return silentError{}
+		return syncRun{}, silentError{}
 	}
-	vmwt := "/home/" + a.user + "/src/lovable-" + ticket
-	local := filepath.Join(a.home, "work", "lovable.daphen-"+ticket)
-	repo := filepath.Join(a.home, "work", "lovable")
-	name := "vmwt-" + ticket
-	sshArgs := []string{"-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user + "@" + a.host}
-	vmhead, err := a.output(nil, "ssh", append(sshArgs, "git -C '"+vmwt+"' rev-parse HEAD")...)
+	s := syncRun{
+		a: a, mutagen: mutagen,
+		vmwt:  "/home/" + a.user + "/src/lovable-" + ticket,
+		local: filepath.Join(a.home, "work", "lovable.daphen-"+ticket),
+		repo:  filepath.Join(a.home, "work", "lovable"),
+		name:  "vmwt-" + ticket,
+	}
+	sshArgs := []string{"-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user + "@" + a.host, "git -C '" + s.vmwt + "' rev-parse HEAD"}
+	head, err := a.output("ssh", sshArgs...)
 	if err != nil {
-		return silentError{}
+		return syncRun{}, silentError{}
 	}
-	vmhead = strings.Join(strings.Fields(vmhead), "")
-	if vmhead == "" {
-		fmt.Fprintf(a.err, "✗ no worktree at %s on %s — run vm-wt %s first\n", vmwt, a.vm, raw)
-		return silentError{}
+	s.vmhead = strings.Join(strings.Fields(head), "")
+	if s.vmhead == "" {
+		fmt.Fprintf(a.err, "✗ no worktree at %s on %s — run vm-wt %s first\n", s.vmwt, a.vm, raw)
+		return syncRun{}, silentError{}
 	}
-	a.say("VM head: " + prefix(vmhead, 11))
+	return s, nil
+}
 
-	a.say("pause sync while the checkout moves …")
-	_ = a.quiet(nil, mutagen, "sync", "pause", name)
-	a.say("refresh origin/main so the diff base is honest …")
-	_ = a.quiet(nil, "git", "-C", repo, "fetch", "-q", "--no-tags", "origin", "main")
-	if a.quiet(nil, "git", "-C", repo, "cat-file", "-e", vmhead+"^{commit}") != nil {
-		a.say("fetching that commit from the VM …")
+func (a app) sync(ticket, raw string) error {
+	s, err := newSyncRun(a, ticket, raw)
+	if err != nil {
+		return err
+	}
+	a.say("VM head: " + prefix(s.vmhead, 11))
+	if err := s.prepareCheckout(); err != nil {
+		return err
+	}
+	if err := s.seedChanges(); err != nil {
+		return err
+	}
+	s.ensureMutagen()
+	return a.report(s.local)
+}
+
+func (s syncRun) prepareCheckout() error {
+	s.a.say("pause sync while the checkout moves …")
+	_ = s.a.quiet(nil, s.mutagen, "sync", "pause", s.name)
+	s.a.say("refresh origin/main so the diff base is honest …")
+	_ = s.a.quiet(nil, "git", "-C", s.repo, "fetch", "-q", "--no-tags", "origin", "main")
+	if s.a.quiet(nil, "git", "-C", s.repo, "cat-file", "-e", s.vmhead+"^{commit}") != nil {
+		s.a.say("fetching that commit from the VM …")
 		sshEnv := []string{"GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25"}
-		if a.quiet(sshEnv, "git", "-C", repo, "fetch", "--quiet", "ssh://"+a.user+"@"+a.host+vmwt, vmhead) != nil &&
-			a.quiet(sshEnv, "git", "-C", repo, "fetch", "--quiet", "ssh://"+a.user+"@"+a.host+"/home/"+a.user+"/src/lovable", vmhead) != nil {
-			_ = a.quiet(nil, "git", "-C", repo, "fetch", "--quiet", "origin", vmhead)
+		if s.a.quiet(sshEnv, "git", "-C", s.repo, "fetch", "--quiet", "ssh://"+s.a.user+"@"+s.a.host+s.vmwt, s.vmhead) != nil &&
+			s.a.quiet(sshEnv, "git", "-C", s.repo, "fetch", "--quiet", "ssh://"+s.a.user+"@"+s.a.host+"/home/"+s.a.user+"/src/lovable", s.vmhead) != nil {
+			_ = s.a.quiet(nil, "git", "-C", s.repo, "fetch", "--quiet", "origin", s.vmhead)
 		}
 	}
-	if isDir(filepath.Join(local, ".git")) || isFile(filepath.Join(local, ".git")) {
-		a.say("align " + local + " to the VM's base …")
-		if err := a.quiet(nil, "git", "-C", local, "checkout", "--force", "--detach", vmhead); err != nil {
+	if pathExists(filepath.Join(s.local, ".git")) {
+		s.a.say("align " + s.local + " to the VM's base …")
+		if err := s.a.quiet(nil, "git", "-C", s.local, "checkout", "--force", "--detach", s.vmhead); err != nil {
 			return err
 		}
-		if err := a.quiet(nil, "git", "-C", local, "clean", "-qfd"); err != nil {
-			return err
-		}
-	} else {
-		a.say("create local worktree " + local + " at the VM's base …")
-		text, err := a.combined(nil, "git", "-C", repo, "worktree", "add", "--detach", local, vmhead)
-		if text != "" {
-			fmt.Fprintln(a.out, lastLine(text))
-		}
-		if err != nil {
-			return err
-		}
+		return s.a.quiet(nil, "git", "-C", s.local, "clean", "-qfd")
 	}
+	s.a.say("create local worktree " + s.local + " at the VM's base …")
+	text, err := s.a.combined("git", "-C", s.repo, "worktree", "add", "--detach", s.local, s.vmhead)
+	if text != "" {
+		fmt.Fprintln(s.a.out, lastLine(text))
+	}
+	return err
+}
 
-	a.say("seed the agent's work one-way (rsync, so nothing bidirectional can eat it) …")
-	a.rsync(vmwt, local)
-	bins, _ := a.binaryChanges(local)
-	if bins != "" {
-		args := append([]string{"update-index", "--skip-worktree"}, strings.Split(bins, "\n")...)
-		cmd := exec.Command("git", args...)
-		cmd.Dir, cmd.Stdout, cmd.Stderr = local, a.out, a.err
-		if err := cmd.Run(); err != nil {
-			return err
-		}
-		a.say(fmt.Sprintf("  hid %d LFS binaries from git status", lineCount(bins)))
+func (s syncRun) seedChanges() error {
+	s.a.say("seed the agent's work one-way (rsync, so nothing bidirectional can eat it) …")
+	s.a.rsync(s.vmwt, s.local)
+	bins := s.a.binaryChanges(s.local)
+	if bins == "" {
+		return nil
 	}
-	if a.quiet(nil, mutagen, "sync", "list", name) == nil {
-		a.say("resume sync …")
-		_ = a.quiet(nil, mutagen, "sync", "resume", name)
+	cmd := exec.Command("git", append([]string{"update-index", "--skip-worktree"}, strings.Split(bins, "\n")...)...)
+	cmd.Dir, cmd.Stdout, cmd.Stderr = s.local, s.a.out, s.a.err
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	s.a.say(fmt.Sprintf("  hid %d LFS binaries from git status", lineCount(bins)))
+	return nil
+}
+
+func (s syncRun) ensureMutagen() {
+	if s.a.quiet(nil, s.mutagen, "sync", "list", s.name) == nil {
+		s.a.say("resume sync …")
+		_ = s.a.quiet(nil, s.mutagen, "sync", "resume", s.name)
+		return
+	}
+	s.a.say("create sync (two-way-resolved, VM wins) …")
+	args := []string{"sync", "create", "--name=" + s.name, "--sync-mode=two-way-resolved", "--watch-polling-interval=600"}
+	for _, ignore := range mutagenIgnores {
+		args = append(args, "--ignore="+ignore)
+	}
+	args = append(args, s.a.user+"@"+s.a.host+":"+s.vmwt, s.local)
+	if s.a.quiet(nil, s.mutagen, args...) == nil {
+		s.a.say("  created")
 	} else {
-		a.say("create sync (two-way-resolved, VM wins) …")
-		args := []string{"sync", "create", "--name=" + name, "--sync-mode=two-way-resolved", "--watch-polling-interval=600"}
-		for _, ignore := range mutagenIgnores {
-			args = append(args, "--ignore="+ignore)
-		}
-		args = append(args, a.user+"@"+a.host+":"+vmwt, local)
-		if a.quiet(nil, mutagen, args...) == nil {
-			a.say("  created")
-		} else {
-			a.say("  ✗ create failed")
-		}
+		s.a.say("  ✗ create failed")
 	}
-	return a.report(local)
 }
 
 var mutagenIgnores = []string{
@@ -285,7 +315,7 @@ func (a app) rsync(vmwt, local string) {
 		args = append(args, "--exclude", pattern)
 	}
 	args = append(args, "-e", "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", a.user+"@"+a.host+":"+vmwt+"/", local+"/")
-	text, _ := a.combined(nil, "rsync", args...)
+	text, _ := a.combined("rsync", args...)
 	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
 		if line != "" && !strings.HasPrefix(line, "Warning:") {
 			fmt.Fprintln(a.out, line)
@@ -293,25 +323,26 @@ func (a app) rsync(vmwt, local string) {
 	}
 }
 
-func (a app) binaryChanges(local string) (string, error) {
-	text, err := a.outputDir(local, nil, "git", "status", "--porcelain")
+func (a app) binaryChanges(local string) string {
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir, cmd.Env, cmd.Stderr = local, os.Environ(), io.Discard
+	text, err := cmd.Output()
 	if err != nil {
-		return "", nil
+		return ""
 	}
 	var found []string
-	binary := regexp.MustCompile(`(?i)\.(png|jpg|jpeg|gif|webp|ico|icns|pdf|mp4|woff2?|ttf)$`)
-	for _, line := range strings.Split(text, "\n") {
+	for _, line := range strings.Split(string(text), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[0] == "M" && binary.MatchString(fields[1]) {
+		if len(fields) >= 2 && fields[0] == "M" && binaryPath.MatchString(fields[1]) {
 			found = append(found, fields[1])
 		}
 	}
-	return strings.Join(found, "\n"), nil
+	return strings.Join(found, "\n")
 }
 
 func (a app) report(local string) error {
 	a.say("local diff vs the VM's base:")
-	status, err := a.output(nil, "git", "-C", local, "status", "--porcelain")
+	status, err := a.output("git", "-C", local, "status", "--porcelain")
 	if err != nil {
 		return err
 	}
@@ -322,7 +353,7 @@ func (a app) report(local string) error {
 		}
 		fmt.Fprintln(a.out, "    "+line)
 	}
-	stat, err := a.output(nil, "git", "-C", local, "diff", "--shortstat")
+	stat, err := a.output("git", "-C", local, "diff", "--shortstat")
 	if err != nil {
 		return err
 	}
@@ -335,27 +366,19 @@ func (a app) report(local string) error {
 
 func (a app) say(text string) { fmt.Fprintf(a.out, "\x1b[36m[vm-sync]\x1b[0m %s\n", text) }
 
-func (a app) output(env []string, name string, args ...string) (string, error) {
-	return a.outputDir("", env, name, args...)
-}
-func (a app) outputDir(dir string, env []string, name string, args ...string) (string, error) {
+func (a app) output(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
-	cmd.Dir, cmd.Env, cmd.Stderr = dir, commandEnv(env), io.Discard
+	cmd.Stderr = io.Discard
 	value, err := cmd.Output()
 	return string(value), err
 }
-func (a app) combined(env []string, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	cmd.Env = commandEnv(env)
-	value, err := cmd.CombinedOutput()
+func (a app) combined(name string, args ...string) (string, error) {
+	value, err := exec.Command(name, args...).CombinedOutput()
 	return string(value), err
 }
 func (a app) quiet(env []string, name string, args ...string) error {
-	return a.quietDir("", env, name, args...)
-}
-func (a app) quietDir(dir string, env []string, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
-	cmd.Dir, cmd.Env, cmd.Stdout, cmd.Stderr = dir, commandEnv(env), io.Discard, io.Discard
+	cmd.Env, cmd.Stdout, cmd.Stderr = commandEnv(env), io.Discard, io.Discard
 	return cmd.Run()
 }
 
@@ -386,6 +409,10 @@ func isCommit(value string) bool {
 }
 func isFile(path string) bool { info, err := os.Stat(path); return err == nil && !info.IsDir() }
 func isDir(path string) bool  { info, err := os.Stat(path); return err == nil && info.IsDir() }
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
 func prefix(value string, n int) string {
 	if len(value) < n {
 		return value

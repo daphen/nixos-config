@@ -16,13 +16,12 @@ import (
 func runWorktree(a app, ticket, raw string) error {
 	runtime := envDefault("XDG_RUNTIME_DIR", "/tmp")
 	sock := filepath.Join(runtime, "agentd-work.sock")
-	info, err := os.Stat(sock)
-	if err != nil || info.Mode()&os.ModeSocket == 0 {
+	if !isSocket(sock) {
 		fmt.Fprintf(a.err, "✗ %s missing — run vm-cockpit first\n", sock)
 		return silentError{}
 	}
 	marker := filepath.Join(runtime, "heidr-role-bundle-work.restart-required")
-	if _, err := os.Stat(marker); err == nil {
+	if pathExists(marker) {
 		fmt.Fprintln(a.err, "✗ role bundle updated, agentd restart required — do not spawn ticket sessions")
 		return silentError{}
 	}
@@ -46,13 +45,13 @@ func runWorktree(a app, ticket, raw string) error {
 		"echo '  started (logs: ~/wt-"+ticket+".log on the VM, or tmux attach -t wt-"+ticket+")'; fi")
 
 	worktreeSay(a, "local worktree + sync via vm-sync …")
-	text, _ := worktreeCombined(a, filepath.Join(a.home, ".local", "bin", "vm-sync"), raw)
+	text, _ := a.combined(filepath.Join(a.home, ".local", "bin", "vm-sync"), raw)
 	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
 		if line != "" {
 			fmt.Fprintln(a.out, "  "+line)
 		}
 	}
-	if isDir(filepath.Join(mirror, ".git")) || isFile(filepath.Join(mirror, ".git")) {
+	if pathExists(filepath.Join(mirror, ".git")) {
 		worktreeSay(a, "local mirror ready: "+mirror)
 	} else {
 		worktreeSay(a, "✗✗ NO LOCAL MIRROR — nvim will show no files for this ticket.")
@@ -89,14 +88,7 @@ func worktreeSSH(a app, script string) {
 }
 
 func worktreeSSHResult(a app, script string) (string, error) {
-	return worktreeCombined(a, "ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user+"@"+a.host, script)
-}
-
-func worktreeCombined(a app, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	cmd.Env = os.Environ()
-	value, err := cmd.CombinedOutput()
-	return string(value), err
+	return a.combined("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user+"@"+a.host, script)
 }
 
 func worktreeDeps(a app, mirror string) {
