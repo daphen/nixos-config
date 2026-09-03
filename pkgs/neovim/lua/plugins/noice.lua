@@ -31,6 +31,14 @@ return {
 				},
 				{
 					filter = {
+						event = "lsp",
+						kind = "progress",
+						find = "[Pp]yright",
+					},
+					opts = { skip = true },
+				},
+				{
+					filter = {
 						event = "notify",
 						find = "No information available",
 					},
