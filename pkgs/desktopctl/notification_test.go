@@ -157,6 +157,26 @@ func TestNotificationLiveCockpitSelectsScopedSessionAndTitle(t *testing.T) {
 	}
 }
 
+func TestNotificationPastScopedCockpitSummarySelectsSession(t *testing.T) {
+	f := newNotificationDesktop(t)
+	env := map[string]string{
+		"INSTANCES":     `[{"id":"live","pid":12}]`,
+		"SCOPE_MODE":    "personal",
+		"SESSIONS":      "personal/ai-cockpit active",
+		"COCKPIT_TITLE": "Cockpit Personal",
+		"WINDOWS":       `[{"id":88,"title":"Cockpit Personal"}]`,
+	}
+	if output, err := f.run(t, env, "--past", "kitty", "Cockpit · personal/ai-cockpit"); err != nil {
+		t.Fatalf("%v: %s", err, output)
+	}
+	log := f.readLog(t)
+	for _, want := range []string{"scopeMode", "sessions", "selectSession ai-cockpit", "focus-window --id 88"} {
+		if !strings.Contains(log, want) {
+			t.Fatalf("missing %q in log:\n%s", want, log)
+		}
+	}
+}
+
 func TestNotificationKittyAndAgentRailFallbacksDiffer(t *testing.T) {
 	for _, test := range []struct {
 		app, summary, hint string

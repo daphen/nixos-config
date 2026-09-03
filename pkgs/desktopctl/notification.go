@@ -57,9 +57,13 @@ func runPastNotification(args []string) error {
 	}
 	switch app {
 	case "kitty":
+		fallbackName, fallbackScope := cockpitTarget(summary)
 		name := session
 		if name == "" {
-			name = cockpitContext(summary)
+			name = fallbackName
+		}
+		if scope == "" {
+			scope = fallbackScope
 		}
 		if focusCockpitSession(name, scope) || focusLegacyCockpit(summary) {
 			return nil
@@ -144,9 +148,13 @@ func dispatchActiveNotification(id string, n notification) error {
 	}
 	switch n.App {
 	case "kitty":
+		fallbackName, fallbackScope := cockpitTarget(n.Summary)
 		name, scope := hintString(n, "cockpit-context"), hintString(n, "cockpit-scope")
 		if name == "" {
-			name = cockpitContext(n.Summary)
+			name = fallbackName
+		}
+		if scope == "" {
+			scope = fallbackScope
 		}
 		if focusCockpitSession(name, scope) || focusLegacyCockpit(n.Summary) {
 			_, _ = quickshellCall("", "notifications", "dismiss", id)
@@ -277,12 +285,29 @@ func timedQuickshellCall(instance, target, method string, args ...string) ([]byt
 	return exec.CommandContext(ctx, "qs", quickshellArgs(instance, target, method, args...)...).Output()
 }
 
-func cockpitContext(summary string) string {
+func cockpitTarget(summary string) (string, string) {
 	match := cockpitTitle.FindStringSubmatch(summary)
 	if len(match) == 0 {
-		return ""
+		return "", ""
 	}
-	return strings.TrimPrefix(match[2], "lovable.daphen-")
+	name := strings.TrimPrefix(match[2], "lovable.daphen-")
+	prefix, rest, found := strings.Cut(name, "/")
+	if !found || rest == "" {
+		return name, ""
+	}
+	switch prefix {
+	case "work":
+		return rest, "work"
+	case "personal", "lovable", "chat":
+		return rest, "personal"
+	default:
+		return name, ""
+	}
+}
+
+func cockpitContext(summary string) string {
+	name, _ := cockpitTarget(summary)
+	return name
 }
 
 func focusLegacyCockpit(summary string) bool {
