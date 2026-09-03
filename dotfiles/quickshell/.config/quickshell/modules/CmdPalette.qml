@@ -1336,7 +1336,7 @@ PanelWindow {
                         Rectangle {
                             anchors.fill: parent
                             anchors.margins: -3
-                            radius: 16
+                            radius: 19
                             color: "transparent"
                             border.width: 2
                             border.color: Theme.cursor
