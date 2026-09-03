@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-if command -v sessionctl >/dev/null 2>&1; then
-    exec sessionctl picker "$@"
-fi
-exec "$(dirname "$0")/spawn-claude-session-picker.bash" "$@"
+ctl="$(command -v sessionctl || true)"
+[[ -n "$ctl" ]] || ctl="/etc/profiles/per-user/${USER:-${LOGNAME:-daphen}}/bin/sessionctl"
+exec "$ctl" picker "$@"

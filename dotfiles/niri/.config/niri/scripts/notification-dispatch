@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-if command -v desktopctl >/dev/null 2>&1; then NIRI_SCRIPTS_DIR="$dir" exec desktopctl notification-dispatch "$@"; fi
-exec "$dir/notification-dispatch.bash" "$@"
+ctl="$(command -v desktopctl || true)"
+[[ -n "$ctl" ]] || ctl="/etc/profiles/per-user/${USER:-${LOGNAME:-daphen}}/bin/desktopctl"
+NIRI_SCRIPTS_DIR="$dir" exec "$ctl" notification-dispatch "$@"

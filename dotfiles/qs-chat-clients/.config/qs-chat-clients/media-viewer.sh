@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-if command -v mediactl >/dev/null 2>&1; then
-    exec mediactl view "$@"
-fi
-exec "${BASH_SOURCE[0]%/*}/media-viewer.bash" "$@"
+ctl="$(command -v mediactl || true)"
+[[ -n "$ctl" ]] || ctl="/etc/profiles/per-user/${USER:-${LOGNAME:-daphen}}/bin/mediactl"
+exec "$ctl" view "$@"

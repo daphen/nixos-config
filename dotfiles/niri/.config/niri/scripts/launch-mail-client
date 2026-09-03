@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-if command -v desktopctl >/dev/null 2>&1; then exec desktopctl launch-mail-client "$@"; fi
-exec "$dir/launch-mail-client.bash" "$@"
+ctl="$(command -v desktopctl || true)"
+[[ -n "$ctl" ]] || ctl="/etc/profiles/per-user/${USER:-${LOGNAME:-daphen}}/bin/desktopctl"
+exec "$ctl" launch-mail-client "$@"

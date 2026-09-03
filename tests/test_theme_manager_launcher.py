@@ -20,6 +20,9 @@ class ThemeManagerLauncherTests(unittest.TestCase):
             legacy = bindir / "theme-manager"
             legacy.write_text(f"#!/bin/sh\ntouch {marker}\nexit 9\n")
             legacy.chmod(0o755)
+            themectl = bindir / "themectl"
+            themectl.write_text("#!/bin/sh\nexit 0\n")
+            themectl.chmod(0o755)
             env = os.environ | {
                 "HOME": str(root),
                 "PATH": f"{bindir}:/run/current-system/sw/bin",

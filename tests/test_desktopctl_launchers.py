@@ -10,7 +10,7 @@ SCRIPTS = ROOT / "dotfiles/niri/.config/niri/scripts"
 
 
 class DesktopctlLauncherTests(unittest.TestCase):
-    def test_wrappers_route_to_go_and_keep_executable_backups(self):
+    def test_wrappers_route_to_go(self):
         cases = {
             "browser-dispatch": ("browser-dispatch", SCRIPTS / "browser-config.sh"),
             "notification-dispatch": ("notification-dispatch", SCRIPTS),
@@ -32,8 +32,7 @@ class DesktopctlLauncherTests(unittest.TestCase):
                 if expected_path is not None:
                     self.assertEqual(lines[1], str(expected_path))
                 self.assertLessEqual(len((SCRIPTS / name).read_text().splitlines()), 5)
-                backup = SCRIPTS / f"{name}.bash"
-                self.assertTrue(backup.exists() and os.access(backup, os.X_OK))
+                self.assertNotIn(".bash", (SCRIPTS / name).read_text())
 
 
 if __name__ == "__main__":

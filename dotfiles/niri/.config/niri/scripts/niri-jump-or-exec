@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-if command -v desktopctl >/dev/null 2>&1; then exec desktopctl niri-jump-or-exec "$@"; fi
-exec "$dir/niri-jump-or-exec.bash" "$@"
+ctl="$(command -v desktopctl || true)"
+[[ -n "$ctl" ]] || ctl="/etc/profiles/per-user/${USER:-${LOGNAME:-daphen}}/bin/desktopctl"
+exec "$ctl" niri-jump-or-exec "$@"

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-if command -v vmctl >/dev/null 2>&1; then
-  exec vmctl cockpit "$@"
-fi
-exec "${BASH_SOURCE[0]%/*}/vm-cockpit.bash" "$@"
+ctl="$(command -v vmctl || true)"
+[[ -n "$ctl" ]] || ctl="/etc/profiles/per-user/${USER:-${LOGNAME:-daphen}}/bin/vmctl"
+exec "$ctl" cockpit "$@"

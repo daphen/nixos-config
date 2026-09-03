@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-if command -v sessionctl >/dev/null 2>&1; then
-    exec sessionctl preview "$@"
-fi
-exec "$(dirname "$0")/claude-session-preview.bash" "$@"
+ctl="$(command -v sessionctl || true)"
+[[ -n "$ctl" ]] || ctl="/etc/profiles/per-user/${USER:-${LOGNAME:-daphen}}/bin/sessionctl"
+exec "$ctl" preview "$@"

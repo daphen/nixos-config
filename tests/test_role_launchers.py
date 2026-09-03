@@ -55,6 +55,10 @@ class LauncherPayloadTests(unittest.TestCase):
             tmp = Path(td); runtime = tmp / "run"; runtime.mkdir()
             fake = FakeAgentd(runtime / "agentd-work.sock"); fake.start()
             bindir = tmp / "bin"; bindir.mkdir()
+            subprocess.run(
+                ["go", "build", "-o", bindir / "vmctl", "."],
+                cwd=ROOT / "pkgs/vmctl", check=True, timeout=60,
+            )
             (bindir / "ssh").write_text("#!/bin/sh\nexit 0\n")
             (bindir / "ssh").chmod(0o755)
             localbin = tmp / ".local/bin"; localbin.mkdir(parents=True)
