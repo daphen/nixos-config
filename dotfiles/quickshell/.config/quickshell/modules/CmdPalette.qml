@@ -1264,10 +1264,6 @@ PanelWindow {
                             layer.effect: MultiEffect {
                                 maskEnabled: true
                                 maskSource: roundedCardMask
-                                shadowEnabled: filmCard.focused
-                                shadowColor: Qt.rgba(0, 0, 0, 0.45)
-                                shadowBlur: 0.7
-                                shadowVerticalOffset: 5
                             }
 
                             Image {
