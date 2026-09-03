@@ -870,6 +870,25 @@ PanelWindow {
         return entries[idx]
     }
 
+    function closeSelectedTab() {
+        const entry = actionEntry()
+        if (!entry || entry.divider || entry.kind !== "tab") return
+        const closingIndex = filmTabs.findIndex(tab => tab.id === entry.tabId)
+        if (closingIndex >= 0 && filmTabs.length > 1) {
+            const landingIndex = closingIndex < filmTabs.length - 1
+                ? closingIndex + 1 : closingIndex - 1
+            const landing = filmEntry(landingIndex)
+            filmFocused = true
+            filmIndex = landingIndex
+            syncAddressToFilm(landingIndex)
+            previewTab(landing)
+        }
+        closeScrollY = list.contentY
+        preservingCloseScroll = true
+        closeScrollTimeout.restart()
+        PaletteState.closeTab(entry.tabId)
+    }
+
     // Drop a stale chin scope when the daemon reports a different
     // focused window (external focus changes).
     Connections {
@@ -985,14 +1004,7 @@ PanelWindow {
             root.filterTab = (root.filterTab + dir + n) % n
             event.accepted = true
         } else if ((event.key === Qt.Key_D || event.key === Qt.Key_W) && ctrl) {
-            // ⌃w matches browser muscle memory; ⌃d kept as the original bind
-            const e = root.actionEntry()
-            if (e && !e.divider && e.kind === "tab") {
-                root.closeScrollY = list.contentY
-                root.preservingCloseScroll = true
-                closeScrollTimeout.restart()
-                PaletteState.closeTab(e.tabId)
-            }
+            root.closeSelectedTab()
             event.accepted = true
         } else if (event.key === Qt.Key_Slash && ctrl) {
             const helpIdx = root.filterTabs.length - 1
