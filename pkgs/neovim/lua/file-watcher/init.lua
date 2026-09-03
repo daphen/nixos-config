@@ -184,6 +184,14 @@ local function navigate_to_path(path)
 	pcall(vim.cmd, "normal! zz")
 end
 
+local function publish_change(path)
+	pcall(vim.cmd, "checktime")
+	pcall(vim.api.nvim_exec_autocmds, "User",
+		{ pattern = "FileWatcherChanged", data = { path = path, root = state.root } })
+	navigate_to_path(path)
+	trace((state.last_skip and ("skip: " .. state.last_skip) or "JUMP") .. " " .. path)
+end
+
 local function queue_nav(fullpath)
 	-- Filter junk BEFORE coalescing — guards run on the pending slot, so an
 	-- artifact event arriving after a real edit would displace and kill the
@@ -200,19 +208,16 @@ local function queue_nav(fullpath)
 	state.nav_timer:start(150, 0, vim.schedule_wrap(function()
 		local p = state.pending_nav
 		state.pending_nav = nil
-		if p then
-			-- Reload buffers whose file changed on disk (agent edits, rebase, …) so
-			-- the buffer text matches disk BEFORE hunk-nvim redraws its signs —
-			-- otherwise a stale buffer shows no diff and the git-based signs land on
-			-- the wrong lines. autoread (on) makes this reload unmodified buffers
-			-- silently; a buffer with unsaved edits is left alone (no clobber).
-			pcall(vim.cmd, "checktime")
-			-- Decoupled from the nav gates below: subscribers (hunk-nvim) want
-			-- the signal even when the cursor jump is suppressed.
-			pcall(vim.api.nvim_exec_autocmds, "User",
-				{ pattern = "FileWatcherChanged", data = { path = p, root = state.root } })
-			navigate_to_path(p)
-			trace((state.last_skip and ("skip: " .. state.last_skip) or "JUMP") .. " " .. p)
+		if not p then return end
+		local buf = vim.fn.bufnr(p)
+		-- Agent writes bypass conform's save hook; format only the Markdown already visible to the user.
+		if p:match("%.md$") and vim.fn.executable("mdformat") == 1
+			and buf >= 0 and vim.api.nvim_buf_is_loaded(buf) and not vim.bo[buf].modified then
+			vim.system({ "mdformat", "--wrap", "80", p }, {}, function()
+				vim.schedule(function() publish_change(p) end)
+			end)
+		else
+			publish_change(p)
 		end
 	end))
 end
