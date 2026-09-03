@@ -383,6 +383,7 @@ FloatingWindow {
         anchorsRev++
         layersRev++
         restoreOrbState()
+        Qt.callLater(() => generate(false))
     }
     function resetAnchors() {
         anchorsModel.clear()
