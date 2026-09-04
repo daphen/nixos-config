@@ -10,6 +10,21 @@
 # answers it, so dead entries and the bar both fail fast.
 set -uo pipefail
 
+# Candidate ids come from quickshell itself, not from `ls -t | head -12`: dead registry
+# dirs accumulate (66 of them by 2026-08-27) and pushed the one LIVE cockpit out of the
+# newest-12 window, so Super+T and Ctrl+l silently resolved nothing.
+live_ids() {
+  local ids
+  ids=$(qs list -a --json 2>/dev/null | python3 -c 'import json,sys
+try:
+    print("\n".join(i["id"] for i in json.load(sys.stdin) if i.get("pid") and i.get("id")))
+except Exception: pass' 2>/dev/null)
+  # Empty is a real possibility (json shape change, no live instances): fall back to the
+  # directory scan, but wide enough that dead dirs cannot bury a live one.
+  [ -n "$ids" ] || ids=$(ls -1t "${reg}" 2>/dev/null | head -40)
+  printf '%s\n' "$ids"
+}
+
 reg="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell/by-id"
 nvim_sock="${COCKPIT_NVIM_SOCK:-${HEIDR_NVIM_SOCK:-}}"
 
@@ -46,7 +61,7 @@ resolve_id() {
   # Parent binding wins outright: a caller inside a cockpit's nvim passes that nvim's
   # socket (cockpit-cross), which exactly one instance owns — no niri, no title heuristics.
   if [ -n "$nvim_sock" ]; then
-    for i in $(ls -1t "$reg" 2>/dev/null | head -12); do
+    for i in $(live_ids); do
       t=$(probe "$i" nvimSock) || continue
       if [ "$t" = "$nvim_sock" ]; then echo "$i"; return 0; fi
     done
@@ -54,7 +69,7 @@ resolve_id() {
   # With per-mode cockpits (work + private simultaneously), the instance you mean is
   # the one whose window is FOCUSED — match its title to each instance's `title` fn.
   # Fallback: newest live instance, the pre-multi behavior.
-  for i in $(ls -1t "$reg" 2>/dev/null | head -12); do
+  for i in $(live_ids); do
     t=$(probe "$i" title) || continue
     case "$t" in cockpit-qs*) ;; *) continue;; esac
     [ -z "$fallback" ] && fallback="$i"

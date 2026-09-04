@@ -4,7 +4,7 @@ Multi-machine NixOS flake. System + home-manager + dotfiles all live in this
 one repo. Niri (Wayland), a centralized theme system, Quickshell bar/pickers,
 and a portable dev-env flake output for remote sandboxes.
 
-For the desktop architecture (Quickshell, theme system, niri stacks, daemons),
+For the desktop architecture (Quickshell, theme system, Niri launchers, daemons),
 see [`dotfiles/SYSTEM.md`](dotfiles/SYSTEM.md). This file is about the Nix
 plumbing: how the repo is laid out, how dotfiles get linked, and how to bring
 up a new machine.

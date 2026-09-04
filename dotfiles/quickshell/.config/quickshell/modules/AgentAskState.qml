@@ -127,7 +127,11 @@ Singleton {
             const socket = _sockets[index]
             if (!orchestrator || !socket || !socket.connected) continue
             for (const escalation of _pendingEscalations)
-                socket.write(JSON.stringify({ type: "prompt", session: orchestrator.name || orchestrator.id, message: escalation.prompt }) + "\n")
+                // steer, not prompt: a prompt queues until the orchestrator's next
+                // idle, and its turns run long — the blocked worker sat waiting
+                // while the answer was minutes-queued. Steer injects at the next
+                // tool boundary and falls back to a prompt when idle.
+                socket.write(JSON.stringify({ type: "steer", session: orchestrator.name || orchestrator.id, message: escalation.prompt }) + "\n")
             _pendingEscalations = []
             return
         }

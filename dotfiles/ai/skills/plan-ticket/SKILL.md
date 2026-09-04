@@ -76,8 +76,11 @@ the plan; elsewhere, pass the key to `--finalize`/`--go`/`--reconcile` or open t
 
 **Plan location (`<plandir>`) — resolve once per run:**
 - If `~/personal/notes/storage/` exists **AND is the real synced vault** — verify with
-  `pgrep -f "notes-cli -watch" >/dev/null` (the sync watcher only runs on David's
-  machine) → **`~/personal/notes/storage/plans/`**. The plan is then durable, synced,
+  `[ -d ~/personal/notes/.git ]`, i.e. the vault sits inside its own git repo (with
+  `cli/`, `setup.sh`, …). Do NOT use `pgrep -f "notes-cli -watch"`: the watcher also runs
+  on the dev VM, so that test passed there and EVERY-2563's re-plan was written to a
+  VM-side `storage/plans/` that David's nvim never sees (2026-08-28). A phantom vault has
+  a bare `storage/` with only the dirs agents created. → **`~/personal/notes/storage/plans/`**. The plan is then durable, synced,
   searchable (`notes-memory`), and referenceable across cycles. `mkdir -p` the plans
   subdir. **Never `mkdir -p` the vault root itself**: on a VM/sandbox a bare directory
   at that path is a PHANTOM — plans written there are invisible to David's nvim and
@@ -151,6 +154,12 @@ conversing with the agent. Your job here is the best full draft you can produce.
 5. Write `<plandir>/<key>.progress.json` (`phase: "draft"`, branch, resolved
    `session`, `planned[]` from the surface area, all `status: "pending"`; `flow[]`
    seeded from the `◆` steps — one entry each, in flow order, all `status: "pending"`).
+5b. **The budget is not optional.** PLAN does not finish without a
+   `**Budget: ~N lines changed.**` line in the surface-area section. EVERY-2563's first
+   two drafts shipped with no budget while the new shape rules landed fine — guidance in
+   the template is not a gate. Derive N from the surface area you just listed; if you
+   cannot estimate it, the plan is not specific enough to implement yet.
+
 6. **Open it in neovim** so the user drives the rest from there: run
    `~/.local/bin/plan-open "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" <plandir>/<key>.md`.
    `plan-open` deterministically runs `mdformat --wrap 80` first and refuses to continue
@@ -163,7 +172,13 @@ conversing with the agent. Your job here is the best full draft you can produce.
    (status `planned`) in the editor.
 
 Quality bar:
-- **The shape**: dumb-simple, five-second read.
+- **The shape**: two sentences — what is wrong today, then what it will do instead —
+  written for someone who has never seen the ticket. Name the actors, ban noun stacks
+  (three nouns in a row) and term-of-art nouns (envelope, contract, surface, primitive,
+  seam, slot, boundary), never count unnamed things, and keep blockers out of it. The
+  test is whether the reader can repeat it back after one read. See the template's
+  worked example: "one typed, atomic envelope for five preview-shape verbs" is a
+  failure, not a summary.
 - **The flow**: show existing steps for context and mark NEW work with ◆; this is
   how the user sees the work is minimal and where it slots in.
 - **Decision points**: FLOW forks only — how the thing should behave for its
@@ -276,6 +291,8 @@ new scope to add; also honor any manual edits the user already made to the artif
 1. Read `<plandir>/<key>.md` (normally already `--finalize`d into clean
    directives); honor the user's edits — their text wins.
 2. Refuse to start if any **Your call:** is `(unresolved)`; list them and stop.
+2a. Refuse to start if the plan carries no `Budget: ~N lines` line — go back to PLAN and
+   add one. Implementing without a declared size is how +970-line tickets happen.
 2a. If progress `session` is non-empty, call `agent_whoami` and refuse unless both
    the session name matches that field and its current roster binding is this plan's
    key. Rebinding a long-lived session to another task immediately prevents the old

@@ -44,10 +44,13 @@ PY
 )
 
 if [[ -n "$target_id" ]]; then
-    currently=$(niri msg --json focused-window 2>/dev/null \
-        | python3 -c "import json,sys; d=json.load(sys.stdin) or {}; print(d.get('id',''))" \
+    current=$(niri msg --json focused-window 2>/dev/null \
+        | python3 -c "import json,sys; d=json.load(sys.stdin) or {}; print(f\"{d.get('id','')}\\t{d.get('app_id','')}\")" \
         2>/dev/null || echo "")
-    if [[ "$currently" != "$target_id" ]]; then
+    current_id=${current%%$'\t'*}
+    current_app=${current#*$'\t'}
+    if [[ "$current_app" != "browser-personal" && "$current_app" != "browser-work" \
+          && "$current_id" != "$target_id" ]]; then
         niri msg action focus-window --id "$target_id" 2>/dev/null || true
     fi
 fi

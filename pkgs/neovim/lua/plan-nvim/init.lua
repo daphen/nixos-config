@@ -44,11 +44,34 @@ end
 -- Vault when present (durable, synced by notes-cli, searchable via notes-memory);
 -- else the worktree's .plans/ (lovbox sandboxes have no vault). Surface-area paths
 -- still resolve against the cwd's git root, so goto_file works wherever the plan lives.
-local function plans_dir(root)
+-- NOTE: plans_dir is for LISTING and watching. To open one plan by key use plan_path,
+-- which prefers the worktree copy a remote worker actually writes.
+local function vault_plans()
 	if vim.fn.isdirectory(vim.fn.expand("~/personal/notes/storage")) == 1 then
 		return vim.fn.expand("~/personal/notes/storage/plans")
 	end
+	return nil
+end
+
+local function worktree_plans(root)
 	return (root or state.root or git_root() or vim.fn.getcwd()) .. "/.plans"
+end
+
+local function plans_dir(root)
+	return vault_plans() or worktree_plans(root)
+end
+
+-- Where a SPECIFIC plan actually lives. A VM worker writes to its worktree's .plans/
+-- (no vault there — the vault is a git repo on David's machine only), mutagen mirrors
+-- that into the local worktree, and the vault copy then goes stale silently: EVERY-2563's
+-- rewrite sat unread for hours while `:e!` faithfully reloaded the old vault file. So look
+-- for the file where the writer puts it FIRST, and only then fall back to the vault.
+local function plan_path(key, root)
+	local wt = worktree_plans(root) .. "/" .. key .. ".md"
+	if vim.fn.filereadable(wt) == 1 then return wt end
+	local vault = vault_plans()
+	if vault then return vault .. "/" .. key .. ".md" end
+	return wt
 end
 
 local function list_plans(root)
@@ -969,7 +992,7 @@ resolve_plan_path = function()
 	local root = git_root() or vim.fn.getcwd()
 	local key = root and plan_key(root)
 	if key then
-		local target = plans_dir(root) .. "/" .. key .. ".md"
+		local target = plan_path(key, root)
 		if vim.uv.fs_stat(target) then
 			state.root = root
 			state.plan_path = target
@@ -1185,7 +1208,7 @@ function M.autostart()
 	if not state.root then return end
 	local key = plan_key(state.root)
 	if not key then return end
-	local target = plans_dir() .. "/" .. key .. ".md"
+	local target = plan_path(key)
 	local function try_open()
 		if vim.uv.fs_stat(target) then open_path(target, true); return true end
 		return false
@@ -1207,7 +1230,7 @@ end
 -- Opens the plan only from a scratch/dashboard buffer; otherwise just notifies, so it
 -- never yanks you out of active editing. No PLAN_NVIM_OPEN needed, unlike autostart.
 local function watch_for_plan(key)
-	local target = plans_dir() .. "/" .. key .. ".md"
+	local target = plan_path(key)
 	if state.watcher then pcall(function() state.watcher:close() end) end
 	local h = vim.uv.new_fs_event()
 	if not h then return end

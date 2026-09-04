@@ -1793,6 +1793,7 @@ local function desktop_notify(session, body, urgency)
     if a.id == session then name = short_name(a.name or session); break end
   end
   pcall(fn.jobstart, { "notify-send", "-u", urgency or "normal", "-a", "agent-rail",
+    "-h", "string:cockpit-scope:" .. scope, "-h", "string:cockpit-session:" .. name,
     "agent · " .. name, body or "" }, { detach = true })
 end
 
@@ -4356,7 +4357,16 @@ end
 -- rail is the only component that sees every scope's events AND maps a remote session's
 -- paths onto the local mirror — this nvim's own client spans one scope, so cockpit
 -- live-follow cannot originate in here. Both args are LOCAL absolute paths.
+-- How long a "I'm reading here" pause survives without any cursor movement. Focusing
+-- the rail (or another window) sends nvim no signal, so without this the pause latched
+-- forever and a parent watching a streaming child silently followed nothing.
+local FOLLOW_PAUSE_TTL = 45
+local function follow_pause_expired()
+  return S._follow_paused and (os.time() - (S._follow_paused_at or 0)) > FOLLOW_PAUSE_TTL
+end
+
 function M.follow_remote(cwd, path, force, line, needle_b64)
+  if follow_pause_expired() then S._follow_paused, S._follow_paused_at = nil, nil end
   -- v:null over --remote-expr arrives as vim.NIL, which is TRUTHY in Lua —
   -- unnormalized it read as "a line was given", skipping both the snippet
   -- search and the git fallback (every follow landed at the file top).
@@ -4396,7 +4406,8 @@ function M.follow_remote(cwd, path, force, line, needle_b64)
   -- last (a multi-repo plan otherwise self-blocks after its first out-of-repo edit).
   local plans = fn.expand("~/personal/notes/storage/plans/")
   local ours = S._follow and S._follow:gsub(":%d+$", "")
-  if bn ~= "" and not (cwd and cwd ~= "" and bn:sub(1, #cwd) == cwd)
+  local stale = (os.time() - (S._follow_paused_at or 0)) > FOLLOW_PAUSE_TTL
+  if bn ~= "" and not stale and not (cwd and cwd ~= "" and bn:sub(1, #cwd) == cwd)
      and bn:sub(1, #plans) ~= plans and not bn:find("/%.plans/")
      and bn ~= ours then return "" end
   follow_edit(cwd, path, line, true, nil, snippet)
@@ -5956,7 +5967,7 @@ vim.api.nvim_create_autocmd("BufEnter", {
     -- Plan buffers are spectating, not working — they must never pause follow
     -- (watching the plan of a working session is follow's main use-case).
     if name:find("/notes/storage/plans/", 1, true) or name:find("/%.plans/") then return end
-    if name ~= ours then S._follow_paused = true end
+    if name ~= ours then S._follow_paused, S._follow_paused_at = true, os.time() end
   end,
 })
 -- Reading counts, not just navigating: moving the cursor in a real file means
@@ -5971,7 +5982,7 @@ vim.api.nvim_create_autocmd("CursorMoved", {
     local name = vim.api.nvim_buf_get_name(ev.buf)
     if name == "" or vim.bo[ev.buf].buftype == "nofile" then return end
     if name:find("/notes/storage/plans/", 1, true) or name:find("/%.plans/") then return end
-    S._follow_paused = true
+    S._follow_paused, S._follow_paused_at = true, os.time()
   end,
 })
 

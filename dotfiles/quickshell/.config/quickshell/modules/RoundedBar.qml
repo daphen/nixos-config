@@ -24,8 +24,57 @@ PanelWindow {
         || Modules.NotificationJumpPickerState.open
         || Modules.AgentAskState.inputOpen
         || Modules.CockpitState.open
+    readonly property var exclusivePickerStates: [
+        Modules.LauncherState,
+        Modules.ReviewCreatePickerState,
+        Modules.LovboxPickerState,
+        Modules.BluetoothPickerState,
+        Modules.TimerState,
+        Modules.NetworkPickerState,
+        Modules.AsusProfilePickerState,
+        Modules.EmojiPickerState,
+        Modules.ClaudeRenamePickerState,
+        Modules.ColorFormatPickerState,
+        Modules.ClipboardPickerState,
+        Modules.NotesPickerState,
+        Modules.TodoListPickerState,
+        Modules.NotificationJumpPickerState,
+        Modules.CockpitState,
+        Modules.PaletteState
+    ]
+    function claimPicker(activeState) {
+        if (!activeState.open) return
+        for (const state of exclusivePickerStates)
+            if (state !== activeState) state.open = false
+        Modules.AgentAskState.inputOpen = false
+    }
+    function claimAgentAsk() {
+        if (!Modules.AgentAskState.inputOpen) return
+        for (const state of exclusivePickerStates) state.open = false
+    }
+
+    Instantiator {
+        model: bar.exclusivePickerStates
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onOpenChanged() { bar.claimPicker(modelData) }
+        }
+    }
+    Connections {
+        target: Modules.AgentAskState
+        function onInputOpenChanged() { bar.claimAgentAsk() }
+    }
+
     readonly property var workingRoots: Modules.AgentAskState.workingRoots
-    readonly property bool fullscreen: !pickerActive && Modules.NiriState.outputIsFullscreen(
+    readonly property bool focusedOutput: {
+        const focused = Modules.NiriState.focusedOutput()
+        return !!screen && (focused.length > 0
+            ? screen.name === focused
+            : screen === Quickshell.screens[0])
+    }
+    readonly property bool pickerVisible: pickerActive && focusedOutput
+    readonly property bool fullscreen: !pickerVisible && Modules.NiriState.outputIsFullscreen(
         screen ? screen.name : "", screen ? screen.height : 0)
     readonly property var workingActivities: {
         const activities = []
@@ -63,7 +112,7 @@ PanelWindow {
     color: "transparent"
     WlrLayershell.namespace: "qs-rounded-bar"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: pickerActive
+    WlrLayershell.keyboardFocus: pickerVisible
         ? WlrKeyboardFocus.Exclusive
         : WlrKeyboardFocus.None
     mask: Region { item: capsule }
@@ -89,7 +138,7 @@ PanelWindow {
                 easing.bezierCurve: Lib.Motion.curveEmphasized
             }
         }
-        expanded: bar.pickerActive
+        expanded: bar.pickerVisible
         collapsedHeight: Modules.Theme.barHeight
         expandedHeight: Modules.Theme.barHeight + bar.activePickerHeight
         width: Math.min(parent.width - 32, Math.max(
@@ -290,6 +339,7 @@ PanelWindow {
                 topMargin: Modules.Theme.barHeight
             }
             z: 2
+            visible: bar.pickerVisible
 
             Modules.Launcher { id: launcherPicker; anchors.fill: parent }
             Modules.ReviewCreatePicker { id: reviewCreatePicker; anchors.fill: parent }
@@ -307,12 +357,7 @@ PanelWindow {
             Modules.NotificationJumpPicker {
                 id: notificationJumpPicker
                 anchors.fill: parent
-                handlesJump: {
-                    const focused = Modules.NiriState.focusedOutput()
-                    return !!bar.screen && (focused.length > 0
-                        ? bar.screen.name === focused
-                        : bar.screen === Quickshell.screens[0])
-                }
+                handlesJump: bar.focusedOutput
             }
             Modules.AgentAskPicker { id: agentAskPicker; anchors.fill: parent }
             Modules.CockpitPicker { id: cockpitPicker; anchors.fill: parent }

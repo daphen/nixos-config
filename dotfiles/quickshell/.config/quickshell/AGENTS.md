@@ -1,0 +1,1 @@
+../../../ai/contexts/quickshell.md

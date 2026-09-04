@@ -34,6 +34,32 @@ import {
 // field the client stamps; human sends via the rail / `agent` CLI carry no `from`, never gated.
 const say = (s: string) => ({ content: [{ type: "text" as const, text: s }], details: undefined });
 
+export type AgentReviewParams = {
+  pr?: string;
+  devenv?: boolean;
+  manualTestProject?: string;
+  browserProfileSeed?: string;
+  allowSandboxStart?: boolean;
+  runtimeContract?: "production" | "exact-branch";
+  teardownContext?: string;
+};
+
+export function buildAgentReviewArgs(params: AgentReviewParams): { args?: string[]; error?: string } {
+  const startup = params.pr || params.devenv || params.manualTestProject || params.browserProfileSeed || params.allowSandboxStart || params.runtimeContract;
+  if (params.teardownContext && startup) return { error: "teardownContext is mutually exclusive with startup options" };
+  if (!params.teardownContext && !params.pr) return { error: "pr is required unless teardownContext is set" };
+  if (params.manualTestProject && !params.runtimeContract) return { error: "manualTestProject requires runtimeContract production|exact-branch" };
+  if (params.runtimeContract && !params.manualTestProject) return { error: "runtimeContract requires manualTestProject" };
+  if (params.teardownContext) return { args: ["review", "--teardown", String(params.teardownContext)] };
+  const args = ["review", String(params.pr)];
+  if (params.devenv) args.push("--devenv");
+  if (params.manualTestProject) args.push("--manual-test", String(params.manualTestProject));
+  if (params.browserProfileSeed) args.push("--browser-profile-seed", String(params.browserProfileSeed));
+  if (params.runtimeContract) args.push("--runtime-contract", params.runtimeContract);
+  if (params.allowSandboxStart) args.push("--allow-sandbox-start");
+  return { args };
+}
+
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "agent_roster",
@@ -171,21 +197,14 @@ export default function (pi: ExtensionAPI) {
       manualTestProject: Type.Optional(Type.String({ description: "prepare the canonical VM-backed manual-test harness for this project UUID" })),
       browserProfileSeed: Type.Optional(Type.String({ description: "authenticated stopped Chromium profile to clone into the isolated context" })),
       allowSandboxStart: Type.Optional(Type.Boolean({ description: "allow exactly one bounded browser-flow sandbox start when no live iframe exists; requires explicit current-turn approval" })),
+      runtimeContract: Type.Optional(StringEnum(["production", "exact-branch"] as const, { description: "required with manualTestProject: explicitly use production CDN runtime or the exact branch-built script_tag runtime" })),
       teardownContext: Type.Optional(Type.String({ description: "stop and remove one owned pr-N manual-test context; mutually exclusive with pr" })),
     }),
     async execute(_id, params: any) {
       const bin = (process.env.HOME ?? "") + "/.local/bin/agent";
-      if (params.teardownContext && (params.pr || params.devenv || params.manualTestProject || params.browserProfileSeed || params.allowSandboxStart)) {
-        return say("agent review failed: teardownContext is mutually exclusive with startup options");
-      }
-      if (!params.teardownContext && !params.pr) return say("agent review failed: pr is required unless teardownContext is set");
-      const args = params.teardownContext
-        ? ["review", "--teardown", String(params.teardownContext)]
-        : ["review", String(params.pr)];
-      if (params.devenv) args.push("--devenv");
-      if (params.manualTestProject) args.push("--manual-test", String(params.manualTestProject));
-      if (params.browserProfileSeed) args.push("--browser-profile-seed", String(params.browserProfileSeed));
-      if (params.allowSandboxStart) args.push("--allow-sandbox-start");
+      const built = buildAgentReviewArgs(params);
+      if (built.error) return say("agent review failed: " + built.error);
+      const args = built.args!;
       return await new Promise((resolve) => {
         execFile(bin, args, { timeout: 600_000 }, (err, _out, stderr) => {
           if (err) resolve(say("agent review failed: " + String(stderr || (err as Error).message).trim()));

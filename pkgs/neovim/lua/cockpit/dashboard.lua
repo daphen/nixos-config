@@ -201,7 +201,21 @@ function M.build(spec)
     actions = spec.actions or {},
     tabs = {},
   }
-  if spec.kind == "home" then
+  if spec.remote_cwd then
+    -- The session's files live on another host and no local mirror exists. Say so with
+    -- the command that fixes it: falling through to the home view showed the ticket list
+    -- and made a broken vm-sync look like "this session has no changes" (EVERY-2447).
+    model.cards[#model.cards + 1] = {
+      title = "REMOTE SESSION — no local mirror",
+      rows = {
+        { text = spec.remote_cwd .. " does not exist on this machine." },
+        { text = "" },
+        { text = "vm-sync " .. (spec.identity or ""):upper() .. "   ← creates the local worktree + live sync" },
+        { text = "" },
+        { text = "Until then this session's diff is only visible on the VM." },
+      },
+    }
+  elseif spec.kind == "home" then
     if spec.scope == "personal" then personal_home(model, spec) else lovable_home(model, spec) end
   else
     session(model, spec)

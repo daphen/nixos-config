@@ -870,6 +870,25 @@ PanelWindow {
         return entries[idx]
     }
 
+    function closeSelectedTab() {
+        const entry = actionEntry()
+        if (!entry || entry.divider || entry.kind !== "tab") return
+        const closingIndex = filmTabs.findIndex(tab => tab.id === entry.tabId)
+        if (closingIndex >= 0 && filmTabs.length > 1) {
+            const landingIndex = closingIndex < filmTabs.length - 1
+                ? closingIndex + 1 : closingIndex - 1
+            const landing = filmEntry(landingIndex)
+            filmFocused = true
+            filmIndex = landingIndex
+            syncAddressToFilm(landingIndex)
+            previewTab(landing)
+        }
+        closeScrollY = list.contentY
+        preservingCloseScroll = true
+        closeScrollTimeout.restart()
+        PaletteState.closeTab(entry.tabId)
+    }
+
     // Drop a stale chin scope when the daemon reports a different
     // focused window (external focus changes).
     Connections {
@@ -934,6 +953,12 @@ PanelWindow {
             if (root.filterNavFocused) root.filterNavFocused = false
             else PaletteState.hide()
             event.accepted = true
+        } else if (ctrl && !shift && event.key === Qt.Key_Space) {
+            if (!event.isAutoRepeat) PaletteState.playPauseMedia()
+            event.accepted = true
+        } else if (ctrl && !shift && event.key === Qt.Key_T) {
+            root.openBlankTab()
+            event.accepted = true
         } else if (event.key === Qt.Key_Tab && !root.searchMode) {
             const kw = root.query.trim().toLowerCase()
             const t = root.webTemplates.find(t => t.key === kw)
@@ -982,14 +1007,7 @@ PanelWindow {
             root.filterTab = (root.filterTab + dir + n) % n
             event.accepted = true
         } else if ((event.key === Qt.Key_D || event.key === Qt.Key_W) && ctrl) {
-            // ⌃w matches browser muscle memory; ⌃d kept as the original bind
-            const e = root.actionEntry()
-            if (e && !e.divider && e.kind === "tab") {
-                root.closeScrollY = list.contentY
-                root.preservingCloseScroll = true
-                closeScrollTimeout.restart()
-                PaletteState.closeTab(e.tabId)
-            }
+            root.closeSelectedTab()
             event.accepted = true
         } else if (event.key === Qt.Key_Slash && ctrl) {
             const helpIdx = root.filterTabs.length - 1
@@ -1228,18 +1246,24 @@ PanelWindow {
                         opacity: distance <= 4 ? 1 : Math.max(0, 5 - distance)
 
                         Rectangle {
+                            id: roundedCardMask
+                            anchors.fill: parent
+                            radius: 16
+                            color: "#ffffff"
+                            visible: false
+                            layer.enabled: true
+                        }
+
+                        Rectangle {
                             anchors.fill: parent
                             radius: 16
                             color: Theme.surface1
                             border.width: 1
                             border.color: Theme.hairline
-                            clip: true
-                            layer.enabled: filmCard.focused
+                            layer.enabled: true
                             layer.effect: MultiEffect {
-                                shadowEnabled: true
-                                shadowColor: Qt.rgba(0, 0, 0, 0.45)
-                                shadowBlur: 0.7
-                                shadowVerticalOffset: 5
+                                maskEnabled: true
+                                maskSource: roundedCardMask
                             }
 
                             Image {
@@ -1308,7 +1332,7 @@ PanelWindow {
                         Rectangle {
                             anchors.fill: parent
                             anchors.margins: -3
-                            radius: 16
+                            radius: 19
                             color: "transparent"
                             border.width: 2
                             border.color: Theme.cursor
@@ -1320,20 +1344,50 @@ PanelWindow {
                             anchors.top: parent.top
                             anchors.right: parent.right
                             anchors.margins: 10
-                            width: 30
-                            height: 30
-                            radius: 15
+                            width: 34
+                            height: 34
+                            radius: 17
                             z: 30
-                            visible: filmCard.modelData.audible === true
-                                || filmCard.modelData.muted === true
-                            color: Qt.rgba(0, 0, 0, 0.72)
+                            visible: String(filmCard.modelData.url || "")
+                                .match(/^https?:\/\/(www\.)?(youtube\.com\/watch|youtu\.be\/)/) !== null
+                            color: mediaControlHover.hovered
+                                ? Theme.cursor : Qt.rgba(0, 0, 0, 0.76)
 
-                            Icon {
+                            Item {
                                 anchors.centerIn: parent
                                 width: 16
                                 height: 16
-                                name: filmCard.modelData.muted ? "volume" : "volume-up"
-                                color: "#ffffff"
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    anchors.horizontalCenterOffset: 1
+                                    visible: !PaletteState.mediaPlaying
+                                    text: "▶"
+                                    color: mediaControlHover.hovered ? Theme.bg : "#ffffff"
+                                    font.family: root.sans
+                                    font.pixelSize: 16
+                                }
+
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: 4
+                                    visible: PaletteState.mediaPlaying
+
+                                    Repeater {
+                                        model: 2
+                                        Rectangle {
+                                            width: 3
+                                            height: 13
+                                            radius: 1
+                                            color: mediaControlHover.hovered ? Theme.bg : "#ffffff"
+                                        }
+                                    }
+                                }
+                            }
+
+                            HoverHandler {
+                                id: mediaControlHover
+                                cursorShape: Qt.PointingHandCursor
                             }
                         }
 
@@ -1347,8 +1401,7 @@ PanelWindow {
                                         && p.x <= mediaControl.x + mediaControl.width
                                         && p.y >= mediaControl.y
                                         && p.y <= mediaControl.y + mediaControl.height) {
-                                    PaletteState.setMuted(filmCard.modelData.id,
-                                        filmCard.modelData.muted !== true)
+                                    PaletteState.playPauseMedia()
                                     return
                                 }
                                 root.filmFocused = true
@@ -1629,6 +1682,25 @@ PanelWindow {
                             width: 1
                             height: 22
                             color: Theme.hairline
+                        }
+
+                        Item {
+                            width: 36
+                            height: 36
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 9
+                                color: mediaHover.hovered ? Theme.selection : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "⏯"
+                                    color: mediaHover.hovered ? Theme.fg : Theme.fg_muted
+                                    font.family: root.sans
+                                    font.pixelSize: 18
+                                }
+                            }
+                            HoverHandler { id: mediaHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: PaletteState.playPauseMedia() }
                         }
 
                         Item {

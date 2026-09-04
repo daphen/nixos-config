@@ -9,7 +9,9 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -118,6 +120,31 @@ class LauncherPayloadTests(unittest.TestCase):
             module.start_rail_session("review-pr-77", Path("/tmp/review"), "/review-pr 77")
         responder.join(2)
         self.assertEqual(notifications, ["review failed: spawn refused"])
+
+    def test_agent_cli_forwards_runtime_contract_to_canonical_launcher(self):
+        script = ROOT / "dotfiles/bin/.local/bin/agent"
+        loader = importlib.machinery.SourceFileLoader("agent_cli", str(script))
+        spec = importlib.util.spec_from_loader("agent_cli", loader)
+        assert spec is not None
+        module: Any = importlib.util.module_from_spec(spec); loader.exec_module(module)
+        args = SimpleNamespace(
+            teardown=None, pr="83188", devenv=False,
+            manual_test="project-id", browser_profile_seed="/tmp/stopped-profile",
+            runtime_contract="exact-branch", allow_sandbox_start=True,
+        )
+        with mock.patch.object(module.os, "execv") as execv:
+            module.cmd_review(args)
+        forwarded = execv.call_args.args[1]
+        self.assertIn("--runtime-contract", forwarded)
+        self.assertEqual(forwarded[forwarded.index("--runtime-contract") + 1], "exact-branch")
+        self.assertIn("--allow-sandbox-start", forwarded)
+
+    def test_agent_cli_parser_accepts_runtime_contract(self):
+        result = subprocess.run(
+            [ROOT / "dotfiles/bin/.local/bin/agent", "review", "--help"],
+            check=True, capture_output=True, text=True, timeout=10,
+        )
+        self.assertIn("--runtime-contract {production,exact-branch}", result.stdout)
 
     def test_orchestrator_seed_spawns_orchestrator(self):
         with tempfile.TemporaryDirectory() as td:

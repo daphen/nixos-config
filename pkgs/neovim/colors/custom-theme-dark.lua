@@ -16,15 +16,15 @@ local c = {
   bg_secondary = "#1B1B1B",
   bg_tertiary = "#1B1B1B",
   bg_selection = "#2E2E2E",
-  bg_surface = "#1A1A1A",
+  bg_surface = "#262626",
   bg_overlay = "#292826",
   bg_prompt = "#323A40",
   bg_info = "#45474B",
   bg_success = "#313734",
   -- elevation ladder (derived by theme-processor: fg over surface1)
-  bg_surface1 = "#1A1A1A",
+  bg_surface1 = "#262626",
   bg_surface2 = "#2D2D2D",
-  bg_dim = "#101010",
+  bg_dim = "#0a0a0a",
   bg_surface3 = "#393939",
 
   -- Foreground colors

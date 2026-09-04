@@ -16,9 +16,9 @@ notify_timeout_in_secs = 0
 notify_transient = false
 tracks_playback_limit = 50
 app_refresh_duration_in_ms = 32
-# poll playback state — 0 (event-driven only) left the Playback pane on
-# "Loading…" forever when playback was started by the CLI (link handler)
-playback_refresh_duration_in_ms = 1000
+# Keep external playback visible without exhausting Spotify's Web API quota;
+# 0 left CLI-started playback on "Loading…", while frequent polling blocked commands with 429s.
+playback_refresh_duration_in_ms = 60000
 page_size_in_rows = 20
 play_icon = "▶"
 pause_icon = "▌▌"

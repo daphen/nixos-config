@@ -4,8 +4,34 @@
 > The artifact is the source of truth. Edit any section; `--go` honors your edits.
 
 ## The shape
-One to three lines, dumbest possible terms — what we're doing and why.
-Readable in five seconds, no detail.
+Two sentences, in this order: **what happens today that is wrong**, then **what it will
+do instead**. Write it for someone who has never seen the ticket and does not know this
+codebase's vocabulary — a colleague reading over your shoulder, not a reviewer who
+already agrees with you.
+
+Hard rules, because "dumbest possible terms" alone produced dense jargon:
+- **Name the actors and the action.** "The agent asks the canvas worker to…" beats
+  "actions are validated". Who does what to what.
+- **No noun stacks.** Three or more nouns in a row is a rewrite: "typed atomic
+  envelope", "pointer-only state", "source-guidance slot" tell the reader nothing.
+- **No term-of-art nouns** unless the ticket is literally about naming them: envelope,
+  contract, surface, primitive, seam, vocabulary, slot, boundary.
+- **No counts of unnamed things.** "five preview-shape verbs" — name them or drop the
+  number.
+- **Nothing but the change.** Blockers, decisions, scope and sequencing have their own
+  sections; a blocker in the shape hides the shape.
+- **The test:** could the reader repeat it back in their own words after ONE read? If it
+  needs a second pass, it is not the shape yet.
+
+Worked example — this failed the test:
+> Replace freeform canvas actions with one typed, atomic envelope for five preview-shape
+> verbs. The server validates and persists pointer-only state.
+
+and this is the same change, passing it:
+> Today the agent can send the canvas worker almost any shape-change it likes, and the
+> worker copies whatever it is given onto the record. Instead the agent will send one
+> request containing only named operations — create, update, set status, move, delete a
+> shape — which the server checks and then applies all together or not at all.
 
 ## The flow
 The end-to-end flow with existing steps shown for context and NEW work marked **◆**.

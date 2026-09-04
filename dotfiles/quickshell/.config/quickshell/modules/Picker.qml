@@ -154,9 +154,9 @@ Item {
     property string query: search ? search.text : ""
     function clearQuery() { if (search) search.text = "" }
     property int selectedIndex: 0
-    implicitHeight: Math.min(480, inputWrap.height + tabsRow.height
-                             + (listVisible ? listContentHeight : 0) + footer.height)
-                    + previewPane.height
+    readonly property real baseHeight: Math.min(480, inputWrap.height + tabsRow.height
+                                                + (listVisible ? listContentHeight : 0) + footer.height)
+    implicitHeight: baseHeight + ((previewOpen && hasPreview) ? 252 : 0)
     readonly property color panelBorder: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b,
                                                  Theme.mode === "light" ? 0.15 : 0.10)
 
@@ -646,9 +646,12 @@ Item {
                     // Option chips (card rows: agent questions, invitations) —
                     // small pills at the row's right edge naming the answers.
                     Row {
-                        visible: !rowItem.isDivider && rowItem.modelData && (rowItem.modelData.chips || []).length > 0
-                        anchors.right: parent.right
-                        anchors.rightMargin: 28
+                        id: optionChips
+                        readonly property bool active: !rowItem.isDivider && rowItem.modelData
+                            && (rowItem.modelData.chips || []).length > 0
+                        visible: active
+                        anchors.right: rowIcon.active ? rowIcon.left : parent.right
+                        anchors.rightMargin: rowIcon.active ? 8 : 28
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 5
                         Repeater {
@@ -751,13 +754,12 @@ Item {
                         visible: !rowItem.isDivider && !rowItem.hasDetail
                         anchors.left: rowGlyph.active ? rowGlyph.right : (hlDot.visible ? hlDot.left : parent.left)
                         anchors.leftMargin: rowGlyph.active ? 10 : (hlDot.visible ? 16 : 28)
-                        // Thumbnail pickers reserve the thumb column on EVERY row so
-                        // text and image labels share one right edge (no ragged
-                        // labels running under where thumbnails sit).
-                        anchors.right: root.previewField.length > 0 ? parent.right
+                        anchors.right: rowItem.hasThumb ? parent.right
+                                     : optionChips.active ? optionChips.left
                                      : trailingText.visible ? trailingText.left
                                      : (rowIcon.active ? rowIcon.left : parent.right)
-                        anchors.rightMargin: root.previewField.length > 0 ? (root.thumbSize + 56)
+                        anchors.rightMargin: rowItem.hasThumb ? (root.thumbSize + 56)
+                                           : optionChips.active ? 12
                                            : trailingText.visible ? 12 : 28
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
@@ -908,18 +910,9 @@ Item {
             Rectangle {
                 id: previewPane
                 width: parent.width
-                // animate our own height (Vaul); the notch tracks it. visible
-                // stays true while shrinking so the close animates out too.
-                height: (root.previewOpen && root.hasPreview) ? 252 : 0
+                height: Math.max(0, Math.min(252, root.height - root.baseHeight))
                 visible: height > 1
                 clip: true
-                Behavior on height {
-                    NumberAnimation {
-                        duration: 200
-                        easing.type: Easing.BezierSpline
-                        easing.bezierCurve: [0.165, 0.84, 0.44, 1.0, 1.0, 1.0]
-                    }
-                }
                 color: "transparent"
                 Rectangle {
                     anchors.top: parent.top

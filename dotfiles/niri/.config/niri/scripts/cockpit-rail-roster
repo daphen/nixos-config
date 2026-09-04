@@ -6,6 +6,21 @@
 # NEVER hops to another cockpit or workspace (the old hop drove context switches
 # nobody asked for).
 set -uo pipefail
+
+# Candidate ids come from quickshell itself, not from `ls -t | head -12`: dead registry
+# dirs accumulate (66 of them by 2026-08-27) and pushed the one LIVE cockpit out of the
+# newest-12 window, so Super+T and Ctrl+l silently resolved nothing.
+live_ids() {
+  local ids
+  ids=$(qs list -a --json 2>/dev/null | python3 -c 'import json,sys
+try:
+    print("\n".join(i["id"] for i in json.load(sys.stdin) if i.get("pid") and i.get("id")))
+except Exception: pass' 2>/dev/null)
+  # Empty is a real possibility (json shape change, no live instances): fall back to the
+  # directory scan, but wide enough that dead dirs cannot bury a live one.
+  [ -n "$ids" ] || ids=$(ls -1t "${REG}" 2>/dev/null | head -40)
+  printf '%s\n' "$ids"
+}
 REG="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell/by-id"
 
 out=$(niri msg --json windows 2>/dev/null | python3 -c '
@@ -22,7 +37,7 @@ focws=$(printf '%s\n' "$out" | sed -n 2p)
 
 id_for_title() {
   local i t
-  for i in $(ls -1t "$REG" 2>/dev/null | head -12); do
+  for i in $(live_ids); do
     t=$(timeout 2 qs ipc -i "$i" call cockpit title 2>/dev/null) || continue
     [ "$t" = "$1" ] && { echo "$i"; return 0; }
   done

@@ -214,7 +214,16 @@ PanelWindow {
 
     Connections {
         target: Notifications
-        function onToastHandled(id) { if (root.open && root.nId === id) root.hide() }
+        function onToastHandled(id) {
+            if (!root.open || root.nId !== id) return
+            revealDelay.stop()
+            holdTimer.stop()
+            closeDelay.stop()
+            root.open = false
+            root.endShowing()
+            root.active = false
+            root.notif = null
+        }
     }
     Timer { id: revealDelay; interval: 16; onTriggered: if (root.active) root.open = true }
     // Wordy messages (3+ wrapped lines) get 2s more reading time.

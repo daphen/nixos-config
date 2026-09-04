@@ -26,6 +26,7 @@ import argparse
 import glob
 import json
 import os
+import shlex
 import socket
 import subprocess
 import sys
@@ -273,13 +274,60 @@ def agentd_connect(scope: str) -> str:
     raise SystemExit(f"agent spawn: could not reach agentd ({scope}) at {path}")
 
 
+def _work_ssh_command() -> list[str]:
+    unit = HOME / ".config/systemd/user/agentd-work-tunnel.service"
+    try:
+        line = next(line for line in unit.read_text().splitlines() if line.startswith("ExecStart="))
+        argv = shlex.split(line.split("=", 1)[1])
+    except (OSError, StopIteration, ValueError) as exc:
+        raise RuntimeError(f"cannot read {unit}") from exc
+    if len(argv) < 2:
+        raise RuntimeError(f"invalid ExecStart in {unit}")
+    out = [argv[0]]
+    i = 1
+    while i < len(argv) - 1:
+        if argv[i] == "-N":
+            i += 1
+        elif argv[i] == "-L":
+            i += 2
+        else:
+            out.append(argv[i])
+            i += 1
+    out.append(argv[-1])
+    return out
+
+
+def _validate_work_dir(d: Path) -> bool:
+    try:
+        ssh = _work_ssh_command()
+    except RuntimeError as exc:
+        print(f"agent spawn: cannot validate remote directory: {exc}", file=sys.stderr)
+        return False
+    result = subprocess.run(
+        ssh + [f"test -d {shlex.quote(str(d))}"],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        check=False)
+    if result.returncode == 0:
+        return True
+    if result.returncode == 1:
+        print(f"agent spawn: not a remote directory: {d}", file=sys.stderr)
+    else:
+        print(f"agent spawn: remote directory validation failed (ssh exit {result.returncode})", file=sys.stderr)
+    return False
+
+
 def cmd_spawn(a) -> int:
     d = Path(a.dir).expanduser()
-    if not d.is_dir():
-        print(f"agent spawn: not a directory: {a.dir} "
-              f"(worktree creation belongs in cockpit-add/cockpit-spawn)", file=sys.stderr)
-        return 1
-    d = d.resolve()
+    if a.scope == "work":
+        d = d.resolve()
+        if not _validate_work_dir(d):
+            return 1
+    else:
+        if not d.is_dir():
+            print(f"agent spawn: not a directory: {a.dir} "
+                  f"(worktree creation belongs in cockpit-add/cockpit-spawn)", file=sys.stderr)
+            return 1
+        d = d.resolve()
     scope = a.scope or os.environ.get("COCKPIT_SCOPE") or os.environ.get("HEIDR_SCOPE") or os.environ.get("AGENT_SCOPE")
     if not scope:
         s = str(d)
@@ -320,6 +368,8 @@ def cmd_review(a) -> int:
         argv += ["--manual-test", a.manual_test]
     if a.browser_profile_seed:
         argv += ["--browser-profile-seed", a.browser_profile_seed]
+    if a.runtime_contract:
+        argv += ["--runtime-contract", a.runtime_contract]
     if a.allow_sandbox_start:
         argv += ["--allow-sandbox-start"]
     os.execv(script, argv)  # replace: agent-review owns the rest (fetch/worktree/spawn)
@@ -472,6 +522,7 @@ def main() -> int:
     p_review.add_argument("--devenv", action="store_true", help="also boot local devenv for the review worktree")
     p_review.add_argument("--manual-test", metavar="PROJECT_ID", help="prepare the canonical VM-backed manual-test harness")
     p_review.add_argument("--browser-profile-seed", help="authenticated stopped Chromium profile to clone")
+    p_review.add_argument("--runtime-contract", choices=("production", "exact-branch"), help="explicit manual-test runtime provenance contract")
     p_review.add_argument("--allow-sandbox-start", action="store_true", help="allow one bounded sandbox start")
     p_review.add_argument("--teardown", metavar="CONTEXT_ID", help="remove one owned manual-test context")
     p_review.set_defaults(fn=cmd_review)

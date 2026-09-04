@@ -1,0 +1,16 @@
+{
+  "ticket": "remote-session-restore-cli",
+  "branch": "main",
+  "session": "remote-session-restore-cli",
+  "phase": "implementing",
+  "flow": [
+    {"step": "Validate an explicit work-scope cwd on its configured remote host.", "status": "done"},
+    {"step": "Lock the public CLI behavior with focused process-level tests.", "status": "active"}
+  ],
+  "planned": [
+    {"file": "dotfiles/bin/.local/bin/agent", "action": "modify", "status": "done", "note": "Explicit work scope now validates cwd with the SSH executable, options, user, and host from the deployed tunnel unit before using the unchanged agentd spawn transport."},
+    {"file": "tests/test_agent_spawn_cli.py", "action": "create", "status": "touched"}
+  ],
+  "unplanned": [],
+  "updated_at": "2026-09-04T12:39:00Z"
+}

@@ -269,9 +269,16 @@ Singleton {
     // focusing any Claude session clears its own prompt.
     function _matchesFocus(notification) {
         const covers = focusedAppCovers[focusedApp]
-        if (!covers) return false
         const a = (notification.appName || "").toLowerCase()
-        if (covers.indexOf(a) === -1) return false
+        if (covers) {
+            if (covers.indexOf(a) === -1) return false
+        } else {
+            const focused = (focusedApp || "").toLowerCase().replace(/\.desktop$/, "")
+            const desktop = (notification.desktopEntry || "").toLowerCase().replace(/\.desktop$/, "")
+            const appMatches = a === focused || focused.endsWith("." + a) || a.endsWith("." + focused)
+            const desktopMatches = desktop && (desktop === focused || focused.endsWith("." + desktop) || desktop.endsWith("." + focused))
+            if (!appMatches && !desktopMatches) return false
+        }
         if (a === "kitty") {
             const hints = notification.hints || ({})
             const hint = (hints["niri-window"] !== undefined) ? String(hints["niri-window"]) : ""
@@ -285,10 +292,11 @@ Singleton {
     }
 
     onFocusedKeyChanged: {
-        if (!focusedAppCovers[focusedApp]) return
+        if (!focusedApp) return
         const all = notifServer.trackedNotifications.values.slice()
         for (let i = 0; i < all.length; i++) {
             if (!_matchesFocus(all[i])) continue
+            if (root.visibleToastIds[all[i].id]) root.toastHandled(all[i].id)
             // Messages survive as history (just marked read); Claude prompts
             // clear the moment you focus the session that raised them.
             if (root.isMessageApp(all[i])) root.markSeen(all[i])

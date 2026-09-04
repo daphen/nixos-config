@@ -19,6 +19,7 @@ Singleton {
     property var chin: []
     property var quickmarks: []
     property var currentTabId: null
+    property bool mediaPlaying: false
     // Bumped on every state push so bindings recompute.
     property int gen: 0
 
@@ -41,7 +42,8 @@ Singleton {
     function activateWindow(profile, windowId) { send({ cmd: "activate-window", profile: profile, windowId: windowId }) }
     function quickmarkAdd(name, url)      { send({ cmd: "quickmark-add", name: name, url: url }) }
     function closeTab(tabId)              { send({ cmd: "close-tab", tabId: tabId }) }
-    function setMuted(tabId, muted)       { send({ cmd: "set-muted", tabId: tabId, muted: !!muted }) }
+    function playPauseMedia()             { send({ cmd: "play-pause-media" }) }
+    function requestMediaStatus()         { send({ cmd: "media-status" }) }
     function saveSynced()                 { send({ cmd: "save-synced" }) }
     function refresh()                    { send({ cmd: "refresh" }) }
 
@@ -65,6 +67,10 @@ Singleton {
         }
         if (m.type === "saved") {
             root.saveResult(m.result || "fail")
+            return
+        }
+        if (m.type === "media-state") {
+            root.mediaPlaying = m.playing === true
             return
         }
         if (m.type !== "state") return
@@ -91,6 +97,14 @@ Singleton {
             onConnectionStateChanged: root.daemonConnected = connected
         }
     }
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.open && root.daemonConnected
+        triggeredOnStart: true
+        onTriggered: root.requestMediaStatus()
+    }
+
     Timer {
         interval: 2000
         repeat: true

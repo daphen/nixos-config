@@ -19,7 +19,7 @@ spec.loader.exec_module(harness)
 
 
 class HarnessTests(unittest.TestCase):
-    def context(self, home: Path, worktree: Path | None = None):
+    def context(self, home: Path, worktree: Path | None = None, **kwargs):
         worktree = worktree or home / "review"
         worktree.mkdir(parents=True, exist_ok=True)
         return harness.ManualHarness(
@@ -32,6 +32,7 @@ class HarnessTests(unittest.TestCase):
             vm_host="review-vm.example",
             vm_user="reviewer",
             state_home=home / ".local/state",
+            **kwargs,
         )
 
     def test_deterministic_tools_use_valid_cache_and_prepend_path(self):
@@ -245,7 +246,7 @@ class HarnessTests(unittest.TestCase):
             certification = (manual.root / "browser-readiness.mjs").read_text()
             for proof in ("CONNECTION_HELLO", "scriptVersion", "vite-hmr", "DS_SPECIMEN_PROPS", "live iframe identity changed"):
                 self.assertIn(proof, certification)
-            self.assertIn("sandbox-start one-shot marker already exists", certification)
+            self.assertIn("sandbox-start POST was already issued", certification)
 
     def test_sandbox_start_collector_blocks_second_post_before_execution(self):
         with tempfile.TemporaryDirectory() as td:
@@ -263,15 +264,128 @@ class HarnessTests(unittest.TestCase):
             self.assertEqual(text.count("startRequest={fetchRequestId:"), 1)
             self.assertEqual(text.count("blockedDuplicateStarts++"), 1)
 
+    def test_existing_sandbox_recovery_fulfills_attach_from_allowlisted_get(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            gate = text.index('if(isSandboxStart&&!allowStart)')
+            recovery_block = text[gate:text.index('}else if(isSandboxStart){', gate)]
+            discovery = recovery_block.index('/sandbox/url`,{headers:{Authorization:authorization}')
+            allowlist = recovery_block.index('if(isProjectHost(host))', discovery)
+            fulfill = recovery_block.index('Fetch.fulfillRequest', allowlist)
+            response = recovery_block.index('body:Buffer.from(JSON.stringify(discovered))', fulfill)
+            self.assertEqual([discovery, allowlist, fulfill, response], sorted([discovery, allowlist, fulfill, response]))
+            self.assertNotIn('prior?.state', recovery_block)
+            self.assertNotIn('Fetch.continueRequest', recovery_block)
+            self.assertNotIn('method:"POST"', recovery_block)
+            self.assertNotIn('Fetch.failRequest', recovery_block[allowlist:response])
+            self.assertIn('host=>host===`${projectId}.lovableproject-dev.com`||host===`id-preview--${projectId}.gpt-eng.com`', text)
+
+    def test_cdp_evaluation_surfaces_the_remote_exception_description(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            self.assertIn('result.exceptionDetails.exception?.description??result.exceptionDetails.text', text)
+
+    def test_malformed_or_empty_cdp_target_urls_are_ignored_and_page_uses_runtime_location(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            self.assertIn('const targetUrl=target=>{try{return new URL(target.url)}catch{return null;}}', text)
+            self.assertIn('readyPageUrl=new URL(await parent.evaluate("location.href"))', text)
+            self.assertNotIn('readyPage?new URL(readyPage.url)', text)
+            self.assertNotIn('new URL(target.url).pathname', text)
+
+    def test_live_sandbox_targets_use_the_same_exact_host_allowlist(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            selector = text[text.index('const isProjectHost='):text.index('let list=await targets()')]
+            self.assertIn('host===`${projectId}.lovableproject-dev.com`', selector)
+            self.assertIn('host===`id-preview--${projectId}.gpt-eng.com`', selector)
+            self.assertIn('isProjectHost(url.hostname)', selector)
+            self.assertNotIn('.includes(', selector)
+            specimen = text[text.index('const specimenTarget='):text.index('if(!specimenTarget)')]
+            self.assertIn('pathname.startsWith("/__component/preview/")', specimen)
+            self.assertIn('isProjectHost(url.hostname)', specimen)
+
+    def test_consumed_start_rejects_any_new_start_approval_even_with_live_iframe(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td), allow_sandbox_start=True).render_browser_readiness()
+            self.assertIn('if(allowStart&&startState.requestCount>0)throw Error', text)
+            self.assertNotIn('if(!live&&allowStart&&startState.requestCount>0)', text)
+
+    def test_consumed_no_start_attach_replaces_only_an_unresponsive_page_target(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td), allow_sandbox_start=False).render_browser_readiness()
+            configure = text.index('const configureParent=async target=>')
+            timeout_gate = text.index('const unused=startState.requestCount===0&&startState.status==="unused",consumedAttach=startState.requestCount===1&&startState.status==="succeeded"&&!allowStart', configure)
+            create = text.index('Target.createTarget', timeout_gate)
+            close_old = text.index('Target.closeTarget",{targetId:page.id}', create)
+            configure_replacement = text.index('parent=await configureParent(page)', close_old)
+            navigation = text.index('await navigate()', configure_replacement)
+            self.assertEqual([configure, timeout_gate, create, close_old, configure_replacement, navigation], sorted([configure, timeout_gate, create, close_old, configure_replacement, navigation]))
+            self.assertIn('const unused=startState.requestCount===0', text[configure:create])
+            self.assertIn('targetRecovery={reason:error.message,replacedTargetId:replacement.targetId}', text)
+
+    def test_browser_certification_always_performs_fresh_intercepted_navigation(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            interception = text.index('Fetch.enable')
+            navigation = text.index('Page.navigate', interception)
+            self.assertLess(interception, navigation)
+            self.assertIn('agent_review_certification=${Date.now()}', text[navigation:])
+            self.assertNotIn('Page.reload', text)
+
+    def test_browser_readiness_recovers_cold_vite_502_once_before_start(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            failure_capture = text.index('response.status>=500&&parsed.origin===browserOrigin')
+            recovery_gate = text.index('!startRequest&&!recoveryNavigated&&failedModuleUrls.size', failure_capture)
+            health_proof = text.index('const response=await fetch(url', recovery_gate)
+            retry = text.index('recoveryNavigated=true;apiStatus=null;apiAuthorization=null;await navigate()', health_proof)
+            mutation = text.index('DS_SPECIMEN_PROPS', retry)
+            self.assertEqual([failure_capture, recovery_gate, health_proof, retry, mutation], sorted([failure_capture, recovery_gate, health_proof, retry, mutation]))
+            self.assertIn('navigationRecovery:{attempts:navigationAttempts,recovered:recoveryNavigated}', text)
+            self.assertIn('Date.now()+180000', text)
+
+    def test_approved_start_requires_authenticated_project_probe_before_post(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td), allow_sandbox_start=True).render_browser_readiness()
+            approved = text.index('}else if(isSandboxStart){')
+            authorization = text.index('const authorization=request.headers?.Authorization', approved)
+            preflight = text.index('const preflight=await fetch(`http://127.0.0.1:51302/projects/${projectId}/sandbox/url`', authorization)
+            success = text.index('if(!preflight.ok||!isProjectHost(preflightHost))', preflight)
+            allowlist = text.index('isProjectHost(preflightHost)', success)
+            continue_post = text.index('Fetch.continueRequest', allowlist)
+            account = text.index('startState.requestCount++', continue_post)
+            self.assertEqual([approved, authorization, preflight, success, allowlist, continue_post, account], sorted([approved, authorization, preflight, success, allowlist, continue_post, account]))
+
+    def test_authenticated_project_success_accepts_only_gets_in_exact_project_namespace(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            observer = text.index('if(requestMethods.get(event.params.requestId)==="GET"')
+            exact = text.index('parsed.pathname===`/projects/${projectId}`', observer)
+            descendants = text.index('parsed.pathname.startsWith(`/projects/${projectId}/`)', exact)
+            success = text.index('response.status>=200&&response.status<300', descendants)
+            self.assertEqual([observer, exact, descendants, success], sorted([observer, exact, descendants, success]))
+            self.assertNotIn('requestMethods.get(event.params.requestId)==="POST"&&(parsed.pathname', text)
+
+    def test_authenticated_project_observer_joins_extra_info_in_either_order(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            observer = text.index('Network.requestWillBeSentExtraInfo')
+            auth = text.index('requestAuthorizations.set(event.params.requestId,authorization)', observer)
+            prior_status = text.index('projectStatuses.get(event.params.requestId)', auth)
+            response = text.index('Network.responseReceived', prior_status)
+            stored_status = text.index('projectStatuses.set(event.params.requestId,response.status)', response)
+            self.assertEqual([observer, auth, prior_status, response, stored_status], sorted([observer, auth, prior_status, response, stored_status]))
+
     def test_sandbox_start_collector_records_one_request_response_pair(self):
         with tempfile.TemporaryDirectory() as td:
             text = self.context(Path(td)).render_browser_readiness()
             request = text.index("startRequest={fetchRequestId:")
             response = text.index("startResponse={status:response.status", request)
             missing_response = text.index("sandbox-start request completed without an observed response", response)
-            certification = text.index("sandboxStart:startRequest?{request:startRequest,response:startResponse}", missing_response)
+            certification = text.index("sandboxStart:{requestCount:startState.requestCount,status:startState.status", missing_response)
             self.assertEqual([request, response, missing_response, certification], sorted([request, response, missing_response, certification]))
-            recorded_request = text[request:text.index("};await parent.send", request)]
+            recorded_request = text[request:text.index('};await parent.send("Fetch.continueRequest"', request)]
             self.assertNotIn("headers", recorded_request)
             self.assertNotIn("Authorization", recorded_request)
 
@@ -287,11 +401,33 @@ class HarnessTests(unittest.TestCase):
                 self.assertIn(control, text)
             self.assertIn("typedControls?.viewport.width!==1920", text)
 
+    def test_fixture_snapshot_requires_preview_and_tldraw_until_deadline(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            loop = text.index('while(Date.now()<deadline&&!fixtureSnapshot)')
+            preview = text.index("document.querySelector('#preview-panel')", loop)
+            editor = text.index("if(!editor)throw Error('tldraw editor missing')", preview)
+            timeout = text.index('if(!fixtureSnapshot)throw fixtureError', editor)
+            self.assertEqual([loop, preview, editor, timeout], sorted([loop, preview, editor, timeout]))
+
+    def test_canonical_button_selection_retries_until_ready_or_deadline(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            loop_at = text.index("while(Date.now()<deadline&&!canonicalSelection)")
+            shape_at = text.index("shape:component-anchor-Button", loop_at)
+            sleep_at = text.index("await sleep(100)", shape_at)
+            timeout_at = text.index("canonical Button selection timed out", sleep_at)
+            typed_controls_at = text.index("while(Date.now()<deadline){typedControls", timeout_at)
+            self.assertEqual(
+                [loop_at, shape_at, sleep_at, timeout_at, typed_controls_at],
+                sorted([loop_at, shape_at, sleep_at, timeout_at, typed_controls_at]),
+            )
+
     def test_specimen_reset_is_required_before_success_certification(self):
         with tempfile.TemporaryDirectory() as td:
             text = self.context(Path(td)).render_browser_readiness()
             finally_at = text.index("}finally{")
-            reset_at = text.index('payload:{props:{}}', finally_at)
+            reset_at = text.index('payload:{props:${JSON.stringify(fixtureSnapshot.specimenProps)}}', finally_at)
             restored_at = text.index('restored:digest(restored)', reset_at)
             write_at = text.index("fs.writeFileSync(certification", restored_at)
             self.assertLess(finally_at, reset_at)
@@ -314,6 +450,28 @@ class HarnessTests(unittest.TestCase):
             self.assertLess(reset_guard_at, failure_at)
             self.assertIn("certification failed and specimen reset failed", text)
 
+    def test_cleanup_state_is_outer_scoped_for_finally(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            outer = text.index("branchRuntimeUrl=null,apiAuthorization=null,")
+            try_at = text.index("try{", outer)
+            finally_at = text.index("}finally{", try_at)
+            cleanup_use = text.index("JSON.stringify(apiAuthorization)", finally_at)
+            self.assertLess(outer, try_at)
+            self.assertLess(try_at, finally_at)
+            self.assertLess(finally_at, cleanup_use)
+            self.assertNotIn("let hydrated=false,apiStatus=null,apiAuthorization=null", text)
+
+    def test_specimen_cleanup_restores_snapshotted_original_props(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            snapshot = text.index("specimenProps:structuredClone(canonical?.props?.specimenProps??{})")
+            mutation = text.index('payload:{props:{variant:"destructive"', snapshot)
+            finally_at = text.index("}finally{", mutation)
+            restore = text.index("payload:{props:${JSON.stringify(fixtureSnapshot.specimenProps)}}", finally_at)
+            self.assertEqual([snapshot, mutation, finally_at, restore], sorted([snapshot, mutation, finally_at, restore]))
+            self.assertNotIn("payload:{props:{}}", text[finally_at:])
+
     def test_incomplete_canvas_runtime_fingerprint_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             text = self.context(Path(td)).render_browser_readiness()
@@ -322,6 +480,111 @@ class HarnessTests(unittest.TestCase):
             self.assertIn("49fc9bddb4ff4d5cd63ba9af87f43c207e3659479360f23a3721f44bb85ae85f", text)
             self.assertIn("Object.values(runtimeCapabilities).some(value=>!value)", text)
             self.assertIn("authoritative fingerprint or handler completeness is invalid", text)
+
+    def test_remote_setup_fast_paths_exact_ready_context_then_stops_only_its_holder(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).remote_setup_script()
+            ready = text.index('bash "$state/readiness.sh" "9999999999999999999999999999999999999999"')
+            exit_ready = text.index("exit 0", ready)
+            stop_owned = text.index('systemctl --user stop "$unit"', exit_ready)
+            install = text.index("pnpm --config.enableGlobalVirtualStore=false install --force", stop_owned)
+            patch = text.index('"$patchelf" --set-interpreter', install)
+            self.assertEqual([ready, exit_ready, stop_owned, install, patch], sorted([ready, exit_ready, stop_owned, install, patch]))
+            self.assertNotIn("pkill", text)
+            self.assertNotIn("killall", text)
+
+    def test_sandbox_start_accounting_is_separate_and_consumed_after_post_issue(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            self.assertIn('startStateFile=`${root}/sandbox-start-state.json`', text)
+            self.assertNotIn("priorCertification?.sandboxStart", text)
+            request = text.index("startRequest={fetchRequestId:")
+            continued = text.index('await parent.send("Fetch.continueRequest"', request)
+            consumed = text.index("startState.requestCount++", continued)
+            issued = text.index('persistStartState("issued"', consumed)
+            self.assertEqual([request, continued, consumed, issued], sorted([request, continued, consumed, issued]))
+            self.assertNotIn('persistStartState("issuing"', text)
+            self.assertIn('sandboxStart:{requestCount:startState.requestCount,status:startState.status', text)
+
+    def test_navigation_timeout_requires_later_exact_app_and_live_iframe_proof(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            timeout = text.index('if(error.message!=="Page.navigate timed out")throw error')
+            exact_page = text.index('readyPageUrl.pathname!==`/projects/${projectId}`', timeout)
+            live_proof = text.index('if(navigationTimedOut&&!live)throw Error', exact_page)
+            self.assertLess(timeout, exact_page)
+            self.assertLess(exact_page, live_proof)
+
+    def test_acceptance_provenance_is_complete_and_rejects_mixed_runtime_before_mutation(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            mixed = text.index("mixed production CDN runtime with exact-branch parent")
+            snapshot = text.index("fixtureSnapshot=await parent.evaluate", mixed)
+            mutation = text.index('type:"DS_SPECIMEN_PROPS"', snapshot)
+            self.assertLess(mixed, snapshot)
+            self.assertLess(snapshot, mutation)
+            for proof in ("servedMonorepoSha", "runtimeSource:{url:", "liveSandboxUrl", "iframeVite101", "connectionHello", "sameDocumentId"):
+                self.assertIn(proof, text)
+            self.assertIn('transport:"window.postMessage"', text)
+            self.assertIn("DS specimen mutation crossed document identity", text)
+
+    def test_exact_branch_runtime_contract_is_context_owned_https_and_browser_local(self):
+        with tempfile.TemporaryDirectory() as td:
+            manual = self.context(Path(td), runtime_contract="exact-branch")
+            remote = manual.remote_setup_script()
+            browser = manual.render_browser_readiness()
+            units = manual.render_units()
+            self.assertIn("pnpm --dir script_tag build", remote)
+            self.assertIn("script_tag/dist/lovable.js", remote)
+            self.assertIn("runtime_https", manual.units)
+            self.assertIn("runtime-https.mjs", units[manual.units["runtime_https"]])
+            self.assertIn("--ignore-certificate-errors", units[manual.units["browser"]])
+            self.assertIn('const selector="https://cdn.gpteng.co/lovable.js"', browser)
+            self.assertIn("Fetch.fulfillRequest", browser)
+            self.assertIn("runtimeOverride.url", browser)
+            self.assertIn("fetched exact runtime content digest/fingerprint mismatch", browser)
+            self.assertIn("iframe-reported runtime version does not match exact runtime contract", browser)
+            manual.write()
+            self.assertIn("access-control-allow-origin", (manual.root / "runtime-https.mjs").read_text())
+            self.assertNotIn("localStorage", browser)
+
+    def test_runtime_contract_rejects_missing_or_wrong_exact_runtime_before_mutation(self):
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaisesRegex(ValueError, "runtime_contract"):
+                self.context(Path(td), runtime_contract="ticket-special")
+            text = self.context(Path(td), runtime_contract="exact-branch").render_browser_readiness()
+            missing = text.index("exact-branch runtime contract URL/content digest/fingerprint/script version is missing or invalid")
+            wrong = text.index("fetched exact runtime content digest/fingerprint mismatch")
+            mutation = text.index('type:"DS_SPECIMEN_PROPS"', wrong)
+            self.assertLess(missing, mutation)
+            self.assertLess(wrong, mutation)
+            self.assertIn("production runtime contract must not load an override artifact", text)
+
+    def test_correct_exact_runtime_contract_requires_url_digest_fingerprint_and_iframe_version(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td), runtime_contract="exact-branch").render_browser_readiness()
+            for proof in ("runtimeOverride.url", "runtimeOverride.contentDigest", "runtimeOverride.fingerprint", "runtimeOverride.scriptVersion", "hello.message.payload.scriptVersion!==runtimeOverride.scriptVersion"):
+                self.assertIn(proof, text)
+            launcher = (ROOT / "dotfiles/niri/.config/niri/scripts/agent-review").read_text()
+            self.assertIn("--runtime-contract", launcher)
+            self.assertIn("requires explicit --runtime-contract production|exact-branch", launcher)
+            self.assertNotIn("every-2739", launcher.lower())
+
+    def test_cleanup_snapshots_fixture_and_deletes_only_attempt_created_candidates(self):
+        with tempfile.TemporaryDirectory() as td:
+            text = self.context(Path(td)).render_browser_readiness()
+            snapshot = text.index("candidateIds:candidates.map")
+            selection = text.index("editor.select(shape.id)", snapshot)
+            finally_at = text.index("}finally{", selection)
+            difference = text.index("!before.candidateIds.includes(shape.id)", finally_at)
+            deletion = text.index("editor.deleteShapes(createdCandidates", difference)
+            restore_page = text.index("editor.setCurrentPage(before.pageId)", deletion)
+            restore_selection = text.index("editor.select(...before.selectedShapeIds)", restore_page)
+            self.assertEqual([snapshot, selection, finally_at, difference, deletion, restore_page, restore_selection], sorted([snapshot, selection, finally_at, difference, deletion, restore_page, restore_selection]))
+            self.assertIn("candidateFiles:", text)
+            self.assertIn("preservedCandidateFiles:before.candidateFiles", text)
+            self.assertIn("!before.candidateFiles.includes(path)", text)
+            self.assertIn("method:'DELETE'", text)
 
     def test_phase_one_readiness_is_ordered_and_fail_closed(self):
         with tempfile.TemporaryDirectory() as td:
@@ -333,7 +596,10 @@ class HarnessTests(unittest.TestCase):
             ]
             positions = [text.index(check) for check in checks]
             self.assertEqual(positions, sorted(positions))
-            self.assertIn("Date.now()+60000", text)
+            self.assertIn("Date.now()+300000", text)
+            launcher = (ROOT / "dotfiles/niri/.config/niri/scripts/agent-review").read_text()
+            self.assertIn("timeout=FULL_READINESS_TIMEOUT_SECONDS", launcher)
+            self.assertGreaterEqual(harness.FULL_READINESS_TIMEOUT_SECONDS, 360)
 
     def test_browser_profile_requires_stopped_authenticated_seed(self):
         with tempfile.TemporaryDirectory() as td:
