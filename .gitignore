@@ -33,6 +33,10 @@ Thumbs.db
 
 # Local testing
 test-vm/
+.playwright-mcp/
+__pycache__/
+*.py[cod]
+/paper-*.png
 secrets.nix
 
 # codex-managed system skills, dropped into the symlinked skills dir
