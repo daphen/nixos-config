@@ -134,19 +134,16 @@ no browser page. Structure it as plain markdown, same content as step 5:
 - `## Intent` — satisfied / missing / out-of-scope against the linked ticket.
 - `## Verification` — what you actually ran + results; CI rollup for the rest.
 
-Then open it via the rail's `:CockpitEdit` command (best-effort; silently no-ops
-outside the cockpit). Use `:CockpitEdit`, NOT a bare `:e` — `:CockpitEdit` opens in a real
-editor window and never a rail buffer (it skips every `agent-*` window and makes a
-fresh vsplit if only the rail is up), so the review can't land in the composer/chat
-even when a rail pane is focused:
+Then pass the completed file through the deterministic review opener:
 
 ```
-sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kitty-cockpit-nvim"
-[ -S "$sock" ] && kitty @ --to "unix:$sock" send-text $'\x1c\x0e'":CockpitEdit ~/personal/notes/storage/reviews/pr-<num>.md"$'\r'
+~/.local/bin/review-open ~/personal/notes/storage/reviews/pr-<num>.md
 ```
 
-(`\x1c\x0e` = `<C-\><C-n>` to force normal mode first; then the `:CockpitEdit` command
-picks the editor window itself.)
+This command is mandatory. It runs `mdformat --wrap 80` before any GUI action and
+fails closed when formatting fails or `mdformat` is unavailable. In Cockpit it then
+uses `:CockpitEdit` so the review opens in a real editor window rather than a rail
+buffer; outside Cockpit, formatting still completes and opening silently no-ops.
 
 To restyle every review, change this section — the file is plain markdown rendered by
 the editor's markdown setup, never a hand-tuned page. Never post it to the PR.

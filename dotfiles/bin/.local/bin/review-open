@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+review="${1:?usage: review-open <review-file>}"
+review=$(realpath "$review")
+if [ ! -f "$review" ]; then
+  echo "review-open: review not found: $review" >&2
+  exit 1
+fi
+formatter=$(command -v mdformat || true)
+if [ -z "$formatter" ]; then
+  echo "review-open: mdformat is required" >&2
+  exit 1
+fi
+"$formatter" --wrap 80 "$review"
+
+ipc="$HOME/.config/niri/scripts/cockpit-ipc"
+[ -x "$ipc" ] || exit 0
+sock=$("$ipc" nvimSock 2>/dev/null || true)
+[ -S "$sock" ] || exit 0
+quoted=$(python3 -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$review")
+nvim --server "$sock" --remote-expr 'execute("CockpitEdit " . fnameescape('"$quoted"'))' >/dev/null
