@@ -7,8 +7,8 @@ to the agent: jump to the files it names, resolve decision points, and approve
 
 Parsing is deliberately loose — it keys off the template's markdown markers
 (`> Status:`, `### D`, `**Your call:**`, table rows), so reworded sections don't
-break it. Watches .plans/ with its own fs_event because the gitignored dir never
-reaches the file-watcher's git-derived watch set.
+break it. Watches plan sidecars with its own fs_event because they are observed
+state, not open buffers covered by native autoread.
 ]]
 
 local M = {}
@@ -23,7 +23,6 @@ local state = {
 	watcher = nil,
 	poller = nil,
 	poll_stamp = "",
-	file_watchers = {},
 	following = false, -- --go follow mode: open files as the agent touches them
 	follow_win = nil,
 	follow_cur = nil,
@@ -33,7 +32,7 @@ local state = {
 }
 
 -- Assigned lower down; forward-declared so earlier closures capture the upvalue.
-local arm_surface_watches, follow_step, resolve_next_decision
+local follow_step, resolve_next_decision
 
 local resolve_plan_path -- defined below; M.open needs it as an upvalue
 local function git_root()
@@ -190,7 +189,6 @@ end
 local function refresh_from_artifacts()
 	read_status()
 	read_progress()
-	pcall(vim.cmd, "checktime") -- reload the plan buffer when the agent rewrites it (answers, --finalize)
 	-- An amend (from nvim OR the agent TUI) bumps amended_at; bring the plan up
 	-- so you review the additions and re-approve, even from a code buffer.
 	local amended = state.progress and state.progress.amended_at
@@ -219,7 +217,6 @@ local function refresh_from_artifacts()
 			for _, f in ipairs((state.progress or {}).planned or {}) do state.follow_seen[f.file] = f.status end
 			vim.notify("plan: --go detected — follow mode on")
 		end
-		arm_surface_watches(state.root) -- surface area can grow (unplanned files)
 		follow_step() -- open the file the agent is currently touching
 	elseif phase == "reconciled" then
 		state.following = false -- implementation done; stop following
@@ -759,7 +756,7 @@ function M.ask_visual()
 end
 
 -- Dispatch /plan-ticket --finalize to the repo's agent: bake resolved decisions into
--- directives, strip the Q&A. The cleaned plan reloads via the watcher (checktime).
+-- directives and strip the Q&A. Native autoread reloads the cleaned plan.
 function M.finalize()
 	if not state.plan_path then
 		vim.notify("plan: no plan open", vim.log.levels.INFO)
@@ -774,41 +771,9 @@ function M.finalize()
 	if dispatch("/plan-ticket --finalize " .. ticket) then vim.notify("plan: dispatched --finalize") end
 end
 
--- The plugin's own fs_event watches the vault (where plan + progress.json live).
--- During --go the *code* changes in the worktree, which that watcher never sees, so
--- arm a second set of watches on the surface-area files' parent dirs — bounded to the
--- containment boundary — firing checktime so open code buffers reload as the agent
--- writes them. Parent dirs (not files) so newly-created files are caught too.
-arm_surface_watches = function(root)
-	for _, h in ipairs(state.file_watchers) do pcall(function() h:close() end) end
-	state.file_watchers = {}
-	if not root or not state.progress then return end
-	local dirs, seen = {}, {}
-	local function add(file)
-		local dir = vim.fn.fnamemodify(root .. "/" .. file, ":h")
-		if not seen[dir] and vim.fn.isdirectory(dir) == 1 then
-			seen[dir] = true
-			table.insert(dirs, dir)
-		end
-	end
-	for _, f in ipairs(state.progress.planned or {}) do add(f.file) end
-	for _, f in ipairs(state.progress.unplanned or {}) do add(f.file) end
-	for _, dir in ipairs(dirs) do
-		local h = vim.uv.new_fs_event()
-		if h then
-			pcall(function()
-				h:start(dir, {}, vim.schedule_wrap(function(err)
-					if not err then pcall(vim.cmd, "checktime") end
-				end))
-			end)
-			table.insert(state.file_watchers, h)
-		end
-	end
-end
-
 -- --go follow mode: as progress.json flips files, open the one the agent is currently
 -- touching (or just finished) in the follow window — so nvim tracks the agent even for
--- files you never opened (checktime only reloads already-open buffers; this opens them).
+-- files you never opened (native autoread only reloads already-open buffers; this opens them).
 -- Opened via win_call so it never steals focus from where you're working.
 -- A REAL editor window — never the agent rail (agent-* buffers), a float, or a
 -- special buffer. Editing a file into the rail's composer/chat clobbers it (files
@@ -1034,7 +999,6 @@ function M.go()
 	if state.root then vim.fn.chdir(state.root) end
 	vim.o.autoread = true
 	read_progress()
-	arm_surface_watches(state.root)
 	-- follow the agent: this window now tracks whatever file it's editing. Baseline the
 	-- current statuses so only flips after --go open a file.
 	state.following = true

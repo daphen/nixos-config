@@ -88,8 +88,7 @@
     # Pinned nixpkgs for iwd 3.12 (fixes repeated SIGSEGV in build_ciphers_common during roaming)
     nixpkgs-iwd.url = "github:nixos/nixpkgs/34c521aa2928ec0f0b376f60d33816fe768ea60d";
 
-    # Pinned nixpkgs for neovim 0.11.6 — nvim 0.12 broke too many plugins
-    # (treesitter, markview, etc.); revisit when ecosystem catches up.
+    # Kept until the concurrently dirty lock file can be reconciled; no package resolves through it.
     nixpkgs-neovim.url = "github:nixos/nixpkgs/46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9";
 
     # Fast-moving apps channel — bumped independently of the system nixpkgs
@@ -125,11 +124,9 @@
         iwd = (import nixpkgs-iwd { inherit system; }).iwd;
       };
 
-      # Pin neovim to 0.11.6 — nvim 0.12 broke nvim-treesitter master, markview,
-      # and a chunk of plugins that haven't migrated. Re-evaluate when the
-      # plugin ecosystem stabilises on 0.12.
       neovimOverlay = final: prev: {
-        neovim-unwrapped = (import nixpkgs-neovim { inherit system; config.allowUnfree = true; }).neovim-unwrapped;
+        neovim-unwrapped = nvimPkgs.neovim013Unwrapped;
+        neovim = nvimPkgs.neovim;
       };
 
       # Enable Widevine DRM on browsers that need it

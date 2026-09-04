@@ -173,7 +173,6 @@ local S = {
   changes_open = {},                -- changes bufline(0-idx) -> { path, l1 }
   gitdiff = {},                     -- cwd -> { files, bypath }
   diff_jobs = {},                   -- cwd -> active job id
-  diff_timers = {},                 -- cwd -> debounce timer
   editor_win = nil,                 -- stable non-rail editor window
   composerbuf = nil, composerwin = nil,
   ns = nil, composer_ns = nil, chip_ns = nil,
@@ -1832,12 +1831,8 @@ local function reveal_decision(title)
   end
 end
 
--- Deterministic agent→buffer sync. The rail knows every file the agent edited
--- this turn (from the edit/write hunks); at turn end (writes settled) reload each
--- OPEN buffer from disk and refresh its hunk signs — so the change shows even if
--- the inotify file-watcher missed it. A buffer with unsaved edits is never
--- clobbered; we flag the conflict instead.
-local function sync_edited(cwd, paths)
+-- Warn when an agent wrote a buffer that also has unsaved local edits.
+local function warn_edited_conflicts(cwd, paths)
   for path in pairs(paths or {}) do
     local abs = fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
     local bufnr
@@ -1847,9 +1842,6 @@ local function sync_edited(cwd, paths)
     if bufnr then
       if vim.bo[bufnr].modified then
         vim.notify("agent edited " .. fn.fnamemodify(abs, ":.") .. " — you have unsaved changes; not reloaded", vim.log.levels.WARN)
-      else
-        pcall(vim.cmd, "checktime " .. bufnr)
-        pcall(function() require("hunk-nvim.signs").refresh(bufnr) end)
       end
     end
   end
@@ -2025,9 +2017,8 @@ handle = function(obj)
       local scwd = session_cwd(obj.session)
       local text, hunks = msg_text({ content = partial.content }, scwd)
       S.stream[obj.session] = text
-      -- Record this session's edits LIVE (sub-turn) so the inotify live-follow can
-      -- verify a disk change belongs to THIS session — not a co-located agent sharing
-      -- the cwd. Keys are absolute to match the (absolute) inotify path.
+      -- Record this session's edits live so semantic follow and conflict warnings
+      -- stay attributed when multiple agents share one working directory.
       -- ONLY record paths that are real files on disk: this event streams the edit
       -- tool's path a char at a time, so a partial like "/home/daph" would otherwise
       -- get recorded as its own "edited file" (the prefix-row garbage). A partial
@@ -2036,8 +2027,7 @@ handle = function(obj)
         S.edited[obj.session] = S.edited[obj.session] or {}
         for _, h in ipairs(hunks) do
           local abs = edit_abs(scwd, h.path)
-          -- Value is the freshest locator snippet (or true when the tool gave
-          -- none) — the inotify follow uses it to land on the edited hunk.
+          -- Keep the freshest locator snippet for semantic follow.
           if abs and fn.filereadable(abs) == 1 then
             S.edited[obj.session][abs] = h.snippet or S.edited[obj.session][abs] or true
           end
@@ -2188,9 +2178,8 @@ handle = function(obj)
         end
       end
     end
-    -- writes settled → reload the exact files the agent edited (see sync_edited)
     local ed = S.edited[obj.session]
-    if ed then S.edited[obj.session] = nil; vim.schedule(function() sync_edited(session_cwd(obj.session), ed) end) end
+    if ed then S.edited[obj.session] = nil; vim.schedule(function() warn_edited_conflicts(session_cwd(obj.session), ed) end) end
     -- Turn recap for the done divider: pull the agent's ⟢ one-liner out of the final
     -- assistant message (stripping the marker line so it isn't shown twice), and pair
     -- it with the +adds/−dels of the files it touched this turn.
@@ -2444,7 +2433,6 @@ end
 -- forks a subprocess that BLOCKS the switch every time — so memoize per cwd. A
 -- session's worktree doesn't stop being a repo mid-life, so a stale-cache risk isn't
 -- real here; this removes one synchronous git fork from every session switch.
-local in_repo_cache = {}
 local function reroot(cwd)
   if not cwd or cwd == "" then return end
   if fn.getcwd() == cwd then return end -- already rooted here (e.g. parent ↔ its sub-agent) — nothing to do
@@ -2458,22 +2446,11 @@ local function reroot(cwd)
   -- of every switch. Do the cheap cd now; the git isrepo probe is memoised per cwd.
   step("tcd", function() pcall(vim.cmd, "noautocmd tcd " .. fn.fnameescape(cwd)) end)
   step("plan_bind", function() pcall(function() require("plan-nvim").bind() end) end)
-  local in_repo = in_repo_cache[cwd]
-  step("git_isrepo", function()
-    if in_repo == nil then
-      in_repo = fn.system({ "git", "-C", cwd, "rev-parse", "--is-inside-work-tree" }):match("true") ~= nil
-      in_repo_cache[cwd] = in_repo
-    end
-  end)
   if rec then
     pcall(fn.writefile, { "  reroot: " .. table.concat(rec, " ") }, "/tmp/cockpit-switch-timing.log", "a")
   end
-  -- The expensive tail — the DirChanged fan-out (git re-scan) and the file-watcher tree
-  -- walk (~250-750ms) — runs DEFERRED, off the switch's paint path. Bail if the user has
-  -- since switched to a different worktree, so we don't scan a dir we've already left.
   vim.schedule(function()
     if fn.getcwd() ~= cwd then return end
-    if in_repo then pcall(function() require("file-watcher").start() end) end
     pcall(api.nvim_exec_autocmds, "DirChanged", { modeline = false })
   end)
 end
@@ -6024,55 +6001,6 @@ function M.setup(opts)
   api.nvim_create_autocmd("ColorScheme", {
     callback = function() set_hl(); vim.defer_fn(set_hl, 120) end,
   })
-  api.nvim_create_autocmd("User", {
-    pattern = "FileWatcherChanged",
-    callback = function(event)
-      local cwd = S.selected and session_cwd(S.selected)
-      local path = event.data and event.data.path
-      if not cwd or not path or path:sub(1, #cwd + 1) ~= cwd .. "/" then return end
-      local rel = path:sub(#cwd + 2)
-      -- fast path: async, per-file git diff + hunk signs ~75ms after the write
-      local timer = S.diff_timers[cwd] or uv.new_timer()
-      S.diff_timers[cwd] = timer
-      timer:stop()
-      timer:start(75, 0, vim.schedule_wrap(function() refresh_git_changes(cwd, rel) end))
-      -- live-follow: track the agent into the editor AS it writes (not at turn end),
-      -- coalesced so a multi-file burst doesn't thrash the window. Leading+trailing
-      -- throttle: jump ~130ms after the first change (once the diff above has landed
-      -- so follow_edit finds the hunk line), then at most once per 600ms, always
-      -- ending on the newest file. Cheap — follow_edit reads the in-memory diff (no
-      -- git spawn), self-guards focus (no steal while you're editing), dedups repeats.
-      S.follow_pending = { cwd = cwd, path = path, sid = S.selected }
-      if not S.follow_cd then
-        local function fire()
-          local p = S.follow_pending; S.follow_pending = nil
-          if not p or p.sid ~= S.selected then return end -- switched sessions → drop
-          local abs = edit_abs(p.cwd, p.path)
-          -- Attribution gate (bulletproof for shared-cwd multi-agent): only follow a
-          -- file THIS session's own tool-calls edited, recorded live from
-          -- message_update. Excludes a co-located agent's writes in a shared cwd, plus
-          -- history/state/log files nothing edited via a tool. inotify has no agent
-          -- info; agentd's per-session stream is the only ground truth for authorship.
-          local ed = S.edited[p.sid]
-          if not (abs and ed and ed[abs]) then return end
-          -- And only when it's a real tracked hunk to reveal (skips untracked scratch).
-          local rel = abs:sub(1, #p.cwd + 1) == p.cwd .. "/" and abs:sub(#p.cwd + 2) or abs
-          local g = S.gitdiff[p.cwd]
-          if not (g and g.bypath[rel]) then return end
-          local snip = ed[abs]
-          follow_edit(p.cwd, abs, nil, nil, nil, type(snip) == "string" and snip or nil)
-        end
-        vim.defer_fn(fire, 130)
-        S.follow_cd = uv.new_timer()
-        S.follow_cd:start(600, 0, vim.schedule_wrap(function()
-          if S.follow_cd then S.follow_cd:stop(); pcall(function() S.follow_cd:close() end) end
-          S.follow_cd = nil
-          if S.follow_pending then fire() end
-        end))
-      end
-    end,
-  })
-
   api.nvim_create_user_command("CockpitRail", function() M.toggle() end, {})
   api.nvim_create_user_command("CockpitReconnect", function()
     S.connected = false

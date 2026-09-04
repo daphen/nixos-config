@@ -373,8 +373,7 @@ local function debounced_refresh(bufnr)
 	end, M.config.debounce_ms)
 end
 
--- On external changes (rebase, agent edits) signalled by file-watcher, refresh
--- the cached base if HEAD moved and repaint every visible buffer. No polling.
+-- On native external reloads, refresh the cached base if HEAD moved and repaint every visible buffer.
 -- M.current_base gates the expensive resolve behind a rev-parse, so an ordinary
 -- save pays ~3ms here, not the full history scan.
 local function on_external_change()
@@ -462,9 +461,8 @@ function M.setup(opts)
 		group = group,
 		callback = function(ev) debounced_refresh(ev.buf) end,
 	})
-	vim.api.nvim_create_autocmd("User", {
+	vim.api.nvim_create_autocmd("FileChangedShellPost", {
 		group = group,
-		pattern = "FileWatcherChanged",
 		callback = on_external_change,
 	})
 

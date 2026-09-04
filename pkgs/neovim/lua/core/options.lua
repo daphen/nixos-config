@@ -100,12 +100,8 @@ opt.backup = false
 opt.writebackup = false
 opt.updatetime = 300
 
--- Auto-reload files when changed externally
+-- Auto-reload files through Neovim 0.13's native file watcher.
 opt.autoread = true
-vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHoldI" }, {
-	pattern = "*",
-	command = "if mode() != 'c' | checktime | endif",
-})
 vim.api.nvim_create_autocmd("FileChangedShellPost", {
 	pattern = "*",
 	-- echomsg (kept in :messages) without WarningMsg, so it no longer promotes to

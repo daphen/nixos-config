@@ -26,7 +26,7 @@ let
   agentd = import ../../pkgs/agentd { inherit pkgs; src = inputs.agentd; };
   mediactl = import ../../pkgs/mediactl { inherit pkgs; };
   mutagenEvented = import ../../pkgs/mutagen-evented.nix { inherit pkgs; };
-  # nvim — the converged config (0.12, lz.n, native LSP), with the desktop
+  # nvim — the converged config (exact 0.13, lz.n, native LSP), with the desktop
   # "full" profile (extras like pyright gated behind NVIM_PROFILE=full and
   # layered onto PATH). Lua lives in ~/nixos/pkgs/neovim and is read live from
   # ~/.config/nvim (out-of-store symlink), so lua edits apply on nvim restart

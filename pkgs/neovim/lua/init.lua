@@ -9,7 +9,6 @@ vim.filetype.add({ extension = { mdx = "mdx" } })
 -- Skip in kitty-scrollback nvim — that's a pager, not an editor.
 if vim.env.KITTY_SCROLLBACK_NVIM ~= "true" then
   require("hunk-nvim").setup()
-  require("file-watcher").setup()
   require("plan-nvim").setup()
   require("cockpit").setup()
 

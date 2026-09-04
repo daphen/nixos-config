@@ -230,14 +230,14 @@ in {
   # Portable neovim — config baked into the Nix store.
   # Run anywhere with Nix: nix run github:daphen/nixos-config#neovim
   neovim = inputs.wrapper-modules.wrappers.neovim.wrap {
-    inherit pkgs;
+    pkgs = neovim013Pkgs;
     imports = [ nvimWrapper ];
   };
 
   # Dev mode — reads lua config from ~/nixos/pkgs/neovim/ so edits
   # take effect instantly without rebuilding. Binary is `vim` to coexist.
   devMode = inputs.wrapper-modules.wrappers.neovim.wrap {
-    inherit pkgs;
+    pkgs = neovim013Pkgs;
     imports = [
       nvimWrapper
       { settings.test_mode = true; }
@@ -251,12 +251,12 @@ in {
     text = ''
       if [ -d "$HOME/nixos/pkgs/neovim/lua" ]; then
         exec ${lib.getExe (inputs.wrapper-modules.wrappers.neovim.wrap {
-          inherit pkgs;
+          pkgs = neovim013Pkgs;
           imports = [ nvimWrapper { settings.test_mode = true; } ];
         })} "$@"
       else
         exec ${lib.getExe (inputs.wrapper-modules.wrappers.neovim.wrap {
-          inherit pkgs;
+          pkgs = neovim013Pkgs;
           imports = [ nvimWrapper ];
         })} "$@"
       fi
@@ -265,19 +265,21 @@ in {
 
   # Make `neovim` the default for `nix run .` with no attribute
   default = inputs.wrapper-modules.wrappers.neovim.wrap {
-    inherit pkgs;
+    pkgs = neovim013Pkgs;
     imports = [ nvimWrapper ];
   };
 
   # Local desktop nvim: live-reads lua from ~/.config/nvim (→ dotfiles via
   # the unwrapped_config default), so edits apply instantly. Binary `nvim`.
   neovimLocal = inputs.wrapper-modules.wrappers.neovim.wrap {
-    inherit pkgs;
+    pkgs = neovim013Pkgs;
     imports = [
       nvimWrapper
       { settings.test_mode = true; binName = "nvim"; }
     ];
   };
+
+  neovim013Unwrapped = neovim013Pkgs.neovim-unwrapped;
 
   neovim013Local = inputs.wrapper-modules.wrappers.neovim.wrap {
     pkgs = neovim013Pkgs;
