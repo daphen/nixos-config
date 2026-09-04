@@ -171,13 +171,13 @@ class LauncherPayloadTests(unittest.TestCase):
 
     def test_reviewer_and_watcher_never_foreground_wait(self):
         roles = ROOT / "dotfiles/ai/roles"
-        reviewer = (roles / "lovable-reviewer.md").read_text()
-        watcher = (roles / "lovable-watcher.md").read_text()
+        reviewer = " ".join((roles / "lovable-reviewer.md").read_text().split())
+        watcher = " ".join((roles / "lovable-watcher.md").read_text().split())
         self.assertIn("repository-supported auto-merge", reviewer)
         self.assertIn("make one attempt", reviewer)
         self.assertIn("Never use `--watch`, `sleep`", reviewer)
-        self.assertIn("roster must remain idle between checks", watcher)
-        self.assertIn("Never use `sleep`, `--watch`", watcher)
+        self.assertIn("remain idle between checks", watcher)
+        self.assertIn("Never sleep, `--watch`", watcher)
         agents_extension = (ROOT / "dotfiles/ai/pi-extensions/agents/index.ts").read_text()
         self.assertIn('name: "agent_schedule_self"', agents_extension)
         self.assertIn('name: "agent_stop_self"', agents_extension)
