@@ -12,6 +12,26 @@ let
     shellcheck    # shell lint
   ];
 
+  neovim013Pkgs = pkgs.extend (_final: prev: {
+    neovim-unwrapped = prev.neovim-unwrapped.overrideAttrs (old: {
+      version = "0.13.0-dev-1511+g5209695703";
+      src = prev.fetchFromGitHub {
+        owner = "neovim";
+        repo = "neovim";
+        rev = "5209695703db4096923c203f235d78aec0cbdec8";
+        hash = "sha256-3K9uQyHP/G8EXvfBLmUq5acGa9EwfrsgbGtepS+UwSw=";
+      };
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace CMakeLists.txt \
+          --replace-fail 'set(NVIM_VERSION_PRERELEASE "-dev")' \
+                         'set(NVIM_VERSION_PRERELEASE "-dev-1511+g5209695703")'
+      '';
+      meta = old.meta // {
+        changelog = "https://github.com/neovim/neovim/commit/5209695703db4096923c203f235d78aec0cbdec8";
+      };
+    });
+  });
+
   # Custom plugins not yet packaged in nixpkgs. Commits pinned from current
   # lazy-lock.json. Hashes are lib.fakeHash placeholders — Nix will tell us
   # the real hash on first build; update them then.
@@ -256,6 +276,14 @@ in {
     imports = [
       nvimWrapper
       { settings.test_mode = true; binName = "nvim"; }
+    ];
+  };
+
+  neovim013Local = inputs.wrapper-modules.wrappers.neovim.wrap {
+    pkgs = neovim013Pkgs;
+    imports = [
+      nvimWrapper
+      { settings.test_mode = true; binName = "nvim-013"; }
     ];
   };
 }

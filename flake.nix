@@ -273,6 +273,7 @@
         x86_64-linux = {
           neovim = nvimPkgs.neovim;
           neovim-local = nvimPkgs.neovimLocal;
+          neovim-013 = nvimPkgs.neovim013Local;
           dev-env = mkDevEnv "x86_64-linux";
           default = mkDevEnv "x86_64-linux";
         };
