@@ -51,6 +51,7 @@ in {
     "opencode/opencode.json".source = link "${dotfiles}/opencode/.config/opencode/opencode.json";
     "opencode/themes".source = link "${dotfiles}/opencode/.config/opencode/themes";
     "fastfetch".source = link "${dotfiles}/fastfetch/.config/fastfetch";
+    "btop".source = link "${dotfiles}/btop/.config/btop";
     "waypaper".source = link "${dotfiles}/waypaper/.config/waypaper";
     "imv".source = link "${dotfiles}/imv/.config/imv";
     "themes".source = link "${dotfiles}/themes/.config/themes";

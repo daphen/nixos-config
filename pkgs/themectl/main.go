@@ -240,6 +240,11 @@ func (m *manager) apply(tool, mode string) {
 	case "process-compose":
 		copyTo(filepath.Join(m.home, ".config/process-compose/theme.yaml"))
 		m.success("Applied process-compose theme (local)")
+	case "btop":
+		if target, label := m.target(tool); target != "" {
+			copyTo(filepath.Join(target, "themes/custom.theme"))
+			m.success("Applied btop theme (" + label + ", new instances pick it up)")
+		}
 	case "claude-code":
 		copyTo(filepath.Join(m.home, ".claude/themes/dotfiles.json"))
 		m.success("Wrote claude-code " + mode + " theme to dotfiles.json")

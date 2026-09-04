@@ -721,6 +721,13 @@ window-rule {
     default-window-height { fixed 750; }
 }
 
+window-rule {
+    match app-id="btop"
+    open-floating true
+    default-column-width { fixed 1600; }
+    default-window-height { fixed 1000; }
+}
+
 // Lovable createwt/startwt picker (kitty + fzf/rofi prompt) - floating
 window-rule {
     match app-id="lovable_picker"
@@ -829,8 +836,7 @@ binds {
     Super+Ctrl+Shift+t { spawn "qs" "ipc" "call" "todos" "toggle"; }  // permanent quick-todo list
     Super+Slash hotkey-overlay-title="Switch to TTY2" { spawn-sh "for s in $(loginctl list-sessions --no-legend | awk '{print $1}'); do if [ \"$(loginctl show-session \"$s\" -p VTNr --value)\" = 2 ]; then exec loginctl activate \"$s\"; fi; done"; }
 
-    // Super+B: jump to an already-running lovbox workspace.
-    Super+b       { spawn "qs" "ipc" "call" "lovbox" "toggle"; }
+    Super+b hotkey-overlay-title="System monitor" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here btop 'kitty --class btop btop'"; }
 
     // Notes capture picker — type chooses routing into the vault
     Super+n       hotkey-overlay-title="Capture note" { spawn "qs" "ipc" "call" "notes" "toggle"; }

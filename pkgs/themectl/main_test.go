@@ -139,12 +139,12 @@ func TestGenerateUsesSpecificThenGenericTemplatesAndMasksFailures(t *testing.T) 
 
 func TestApplyCoversEveryAdapterAndContinuesAfterFailures(t *testing.T) {
 	f := setup(t)
-	tools := []string{"nvim", "fish", "tmux", "fzf", "tide", "spotify-player", "opencode", "process-compose", "claude-code", "chromium-palette", "newtab", "starship", "clipse", "yazi", "yazi-tmtheme", "quickshell", "quickshell-client", "kitty", "pi", "swaylock", "gtk", "kvantum", "unknown"}
+	tools := []string{"nvim", "fish", "tmux", "fzf", "tide", "spotify-player", "opencode", "process-compose", "btop", "claude-code", "chromium-palette", "newtab", "starship", "clipse", "yazi", "yazi-tmtheme", "quickshell", "quickshell-client", "kitty", "pi", "swaylock", "gtk", "kvantum", "unknown"}
 	for _, tool := range tools {
 		f.generated(tool, "dark")
 	}
 	f.write("dotfiles/themes/.config/themes/generated/kitty/light.theme", "kitty light theme\n")
-	for _, tool := range []string{"nvim", "spotify-player", "opencode", "clipse", "yazi", "kitty", "swaylock"} {
+	for _, tool := range []string{"nvim", "spotify-player", "opencode", "btop", "clipse", "yazi", "kitty", "swaylock"} {
 		os.MkdirAll(filepath.Join(f.home, ".config", tool), 0755)
 	}
 	for _, dir := range []string{"dotfiles/fish/.config/fish/conf.d", "dotfiles/starship", "dotfiles/quickshell", "home/personal/chromium-palette/src/pages/popup", "home/personal/chromium-palette/node_modules/.bin", "home/personal/newtab/src/newtab", "home/personal/newtab/node_modules/.bin", "home/personal/mlqs/ui/vendor/QsLib"} {
@@ -168,6 +168,7 @@ func TestApplyCoversEveryAdapterAndContinuesAfterFailures(t *testing.T) {
 		"dotfiles/fish/.config/fish/conf.d/z_custom_theme_colors.fish": "fish theme\n",
 		"home/.config/fzf/opts.conf":                                   "fzf theme\n",
 		"home/.config/process-compose/theme.yaml":                      "process-compose theme\n",
+		"home/.config/btop/themes/custom.theme":                        "btop theme\n",
 		"home/.claude/themes/dotfiles.json":                            "claude-code theme\n",
 		"home/personal/chromium-palette/src/pages/popup/_theme.scss":   "chromium-palette theme\n",
 		"home/personal/newtab/src/newtab/theme.generated.css":          "newtab theme\n",
@@ -190,7 +191,7 @@ func TestApplyCoversEveryAdapterAndContinuesAfterFailures(t *testing.T) {
 	if settings := mustRead(t, filepath.Join(f.home, ".claude/settings.json")); !strings.Contains(settings, `"theme": "custom:dotfiles"`) || !strings.Contains(settings, `"other": true`) {
 		t.Errorf("claude settings = %s", settings)
 	}
-	for _, text := range []string{"Tmux theme generated (will apply on next start)", "chromium-palette rebuild failed", "Rebuilt newtab (reload the tab)", "Applied GTK theme", "Applied Kvantum Qt theme"} {
+	for _, text := range []string{"Tmux theme generated (will apply on next start)", "Applied btop theme (local, new instances pick it up)", "chromium-palette rebuild failed", "Rebuilt newtab (reload the tab)", "Applied GTK theme", "Applied Kvantum Qt theme"} {
 		if !strings.Contains(out, text) {
 			t.Errorf("missing adapter output %q", text)
 		}

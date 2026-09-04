@@ -83,6 +83,7 @@ in
     # sshfs/mutagen — mutagen syncs the lovbox worktree to the local mirror so the
     # local nvim edits the box's files at native speed (sshfs hung on the monorepo).
     mutagenEvented
+    btop
   ]) ++ [
     # Helium browser via the upstream auto-bumped flake. Ships its own
     # .desktop and icon, so no xdg.desktopEntries needed.
