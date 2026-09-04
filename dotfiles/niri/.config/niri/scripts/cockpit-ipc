@@ -68,7 +68,11 @@ resolve_id() {
 # (~100ms for what a single call does in ~40), and every relaunch adds another dead
 # by-id dir to walk. A stale cache costs one failed call, not a wedged keybind — and the
 # reply is validated the same way, so a dead id or the bar can never be mistaken for Cockpit.
-cache="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cockpit-ipc.id"
+if [ -n "$nvim_sock" ]; then
+  cache="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cockpit-ipc.$(basename "$nvim_sock").id"
+else
+  cache="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cockpit-ipc.id"
+fi
 
 call_id() {   # call_id <id> <fn> [args…] — echoes the reply, non-zero if not a live cockpit
   local i="$1"; shift
@@ -78,23 +82,21 @@ call_id() {   # call_id <id> <fn> [args…] — echoes the reply, non-zero if no
   printf '%s\n' "$out"
 }
 
-# One niri round-trip: how many cockpit windows exist, and which title is focused.
-# grep -c was WRONG here — niri prints single-line JSON, so it counted 1 forever and
-# the cache short-circuited every call: all crossings went to whichever instance was
-# cached, focus ignored (Ctrl+l dead in exactly one cockpit, randomly).
 nwin=0; focused=""
-if out=$(niri msg --json windows 2>/dev/null | python3 -c '
+if [ -z "$nvim_sock" ]; then
+  # Without a parent socket, window focus chooses the target.
+  if out=$(niri msg --json windows 2>/dev/null | python3 -c '
 import json, sys
 ws = json.load(sys.stdin)
 hs = [w for w in ws if str(w.get("title") or "").startswith("cockpit-qs")]
 foc = next((str(w.get("title") or "") for w in ws if w.get("is_focused")), "")
 print(len(hs), foc)' 2>/dev/null); then
-  nwin="${out%% *}"; focused="${out#* }"
+    nwin="${out%% *}"; focused="${out#* }"
+  fi
 fi
-# The cache only short-circuits when a SINGLE cockpit window exists: with two cockpits
-# the right target depends on which window is focused, so resolve every time (one
-# title probe per live instance — still fast).
-if [ -z "$nvim_sock" ] && [ "${nwin:-0}" -le 1 ] && [ -r "$cache" ]; then
+# A socket-keyed cache is already bound to one Cockpit. Without a parent socket,
+# short-circuit only when one Cockpit window exists because focus chooses the target.
+if { [ -n "$nvim_sock" ] || [ "${nwin:-0}" -le 1 ]; } && [ -r "$cache" ]; then
   cid=$(cat "$cache" 2>/dev/null || true)
   if [ -n "${cid:-}" ] && call_id "$cid" "$@"; then exit 0; fi
 fi
