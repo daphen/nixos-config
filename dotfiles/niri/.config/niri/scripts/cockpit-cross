@@ -6,4 +6,23 @@ fn="focusRight"; [ "$dir" = left ] && fn="focusLeft"
 # Called from inside the pane's nvim: its listen address is unique to the Cockpit that
 # spawned it, so the crossing binds to its PARENT instance — no window-focus lookup.
 [ -n "${NVIM_LISTEN_ADDRESS:-}" ] && export COCKPIT_NVIM_SOCK="$NVIM_LISTEN_ADDRESS" HEIDR_NVIM_SOCK="$NVIM_LISTEN_ADDRESS"
+
+runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+nvim_socket="${COCKPIT_NVIM_SOCK:-}"
+cache="$runtime/cockpit-ipc.${nvim_socket##*/}.id"
+if [ -r "$cache" ]; then
+  IFS= read -r instance < "$cache"
+  socket="$runtime/quickshell/by-id/$instance/ipc.sock"
+  if [ "$dir" = right ]; then
+    packet='\003\000\000\000\016\000c\000o\000c\000k\000p\000i\000t\000\000\000\024\000f\000o\000c\000u\000s\000R\000i\000g\000h\000t\000\000\000\000'
+  else
+    packet='\003\000\000\000\016\000c\000o\000c\000k\000p\000i\000t\000\000\000\022\000f\000o\000c\000u\000s\000L\000e\000f\000t\000\000\000\000'
+  fi
+  # Send QuickShell's existing IPC frame directly; any unrecognized response falls back to its CLI.
+  status=""
+  IFS= read -r -n 1 status < <(printf "$packet" | nc -w 1 -N -U "$socket" 2>/dev/null)
+  [ "$status" = $'\005' ] && exit 0
+  rm -f "$cache"
+fi
+
 exec "$(dirname "$0")/cockpit-ipc" "$fn"
