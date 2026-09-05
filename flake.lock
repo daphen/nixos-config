@@ -23,11 +23,12 @@
         ],
         "quickshell": [
           "quickshell"
-        ]
+        ],
+        "rio": "rio"
       },
       "locked": {
-        "lastModified": 1788347452,
-        "narHash": "sha256-jqnS/FSl518Zyq1uMuxcMyaIq0lSXem8j4YOu85b5lQ=",
+        "lastModified": 1788633778,
+        "narHash": "sha256-wIisOC59hP8NAEQssHFIWaEf06jay6y0P0CWjF/Or0c=",
         "path": "/home/daphen/personal/ai-cockpit",
         "type": "path"
       },
@@ -447,6 +448,22 @@
         "owner": "quickshell-mirror",
         "ref": "v0.3.0",
         "repo": "quickshell",
+        "type": "github"
+      }
+    },
+    "rio": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788439194,
+        "narHash": "sha256-9ge90M9i/H0Z2ojZsUqWC0xv1HXqXTdDvTPq+GODyKA=",
+        "owner": "raphamorim",
+        "repo": "rio",
+        "rev": "f2391b6744281a30e47702dbb5c214c55cee98cd",
+        "type": "github"
+      },
+      "original": {
+        "owner": "raphamorim",
+        "repo": "rio",
         "type": "github"
       }
     },
