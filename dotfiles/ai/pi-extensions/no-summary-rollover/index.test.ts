@@ -64,7 +64,7 @@ describe("no-summary rollover extension", () => {
     expect(result.compaction.summary).toContain("⟢ Verified the public behavior.");
     expect(result.compaction.summary).toContain("Older checkpoint");
     expect(result.compaction.details).toEqual({
-      strategy: "deterministic-threshold-v1",
+      strategy: "deterministic-threshold-v2",
       readFiles: ["read.ts"],
       modifiedFiles: ["changed.ts", "created.ts"],
     });
@@ -76,13 +76,36 @@ describe("no-summary rollover extension", () => {
     expect(handler(compactEvent("overflow"))).toBeUndefined();
   });
 
-  test("falls back when Pi has no safe complete turn to replace", () => {
-    const handler = registeredHandler();
-    expect(handler(compactEvent())).toBeUndefined();
-    const split = compactEvent("threshold", [user("prefix")]);
+  test("preserves split-turn continuity and includes only completed tool batches", () => {
+    const split = compactEvent("threshold", [user("Keep the older deployment constraint.")]);
     split.preparation.isSplitTurn = true;
-    split.preparation.turnPrefixMessages = split.preparation.messagesToSummarize;
-    expect(handler(split)).toBeUndefined();
+    split.preparation.turnPrefixMessages = [
+      user("Continue validating PR 97422 without restarting its worker."),
+      {
+        ...assistant("Checking the current state."),
+        content: [
+          { type: "text", text: "Checking the current state." },
+          { type: "toolCall", id: "call-1", name: "read", arguments: { path: "state.json" } },
+        ],
+      },
+      { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "review pending" }], timestamp: 3 },
+      {
+        ...assistant("Next operation started."),
+        content: [{ type: "toolCall", id: "call-2", name: "write", arguments: { path: "unsafe" } }],
+      },
+    ];
+
+    const result = registeredHandler()(split);
+    expect(result.compaction.firstKeptEntryId).toBe("kept-entry");
+    expect(result.compaction.tokensBefore).toBe(123_456);
+    expect(result.compaction.summary).toContain("Keep the older deployment constraint.");
+    expect(result.compaction.summary).toContain("Continue validating PR 97422");
+    expect(result.compaction.summary).toContain("tool read completed: review pending");
+    expect(result.compaction.summary).not.toContain("tool write completed");
+  });
+
+  test("falls back when Pi has no context to replace", () => {
+    expect(registeredHandler()(compactEvent())).toBeUndefined();
   });
 
   test("is UTF-8 safe, bounded, and synchronous", () => {

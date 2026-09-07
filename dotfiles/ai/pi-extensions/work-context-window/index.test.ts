@@ -1,55 +1,46 @@
 import { describe, expect, test } from "bun:test";
 import workContextWindow from "./index";
 
+function registeredExtension() {
+  const handlers: Record<string, (event: any, ctx: any) => Promise<void>> = {};
+  const selected: Record<string, unknown>[] = [];
+  const pi = {
+    on(name: string, handler: (event: any, ctx: any) => Promise<void>) { handlers[name] = handler; },
+    async setModel(model: Record<string, unknown>) {
+      selected.push(model);
+      await handlers.model_select?.({ type: "model_select", model, source: "set" }, {});
+      return true;
+    },
+  };
+  workContextWindow(pi as never);
+  return { handlers, selected };
+}
+
+const astra = {
+  provider: "openai",
+  id: "gpt-6-astra",
+  reasoning: true,
+  contextWindow: 1_050_000,
+  maxTokens: 128_000,
+};
+
 describe("Work context window", () => {
-  test("reselects the current model with only its context window changed", async () => {
-    let start: ((event: unknown, ctx: unknown) => Promise<void>) | undefined;
-    let selected: Record<string, unknown> | undefined;
-    const pi = {
-      on(name: string, handler: typeof start) {
-        expect(name).toBe("session_start");
-        start = handler;
-      },
-      async setModel(model: Record<string, unknown>) {
-        selected = model;
-        return true;
-      },
-    };
+  test("reselects the startup model with only its context window changed", async () => {
+    const { handlers, selected } = registeredExtension();
+    await handlers.session_start({ type: "session_start", reason: "resume" }, { model: astra });
+    expect(selected).toEqual([{ ...astra, contextWindow: 200_000 }]);
+  });
 
-    workContextWindow(pi as never);
-    await start?.(
-      { type: "session_start", reason: "resume" },
-      {
-        model: {
-          provider: "openai",
-          id: "gpt-6-astra",
-          reasoning: true,
-          contextWindow: 1_050_000,
-          maxTokens: 128_000,
-        },
-      },
-    );
-
-    expect(selected).toEqual({
-      provider: "openai",
-      id: "gpt-6-astra",
-      reasoning: true,
-      contextWindow: 200_000,
-      maxTokens: 128_000,
-    });
+  test("reapplies the scope after model restore without recursion", async () => {
+    const { handlers, selected } = registeredExtension();
+    await handlers.model_select({ type: "model_select", model: astra, source: "restore" }, {});
+    expect(selected).toEqual([{ ...astra, contextWindow: 200_000 }]);
   });
 
   test("does nothing without a model or when already scoped", async () => {
-    let start: ((event: unknown, ctx: unknown) => Promise<void>) | undefined;
-    let calls = 0;
-    const pi = {
-      on(_name: string, handler: typeof start) { start = handler; },
-      async setModel() { calls++; return true; },
-    };
-
-    workContextWindow(pi as never);
-    await start?.({ type: "session_start", reason: "resume" }, { model: undefined });
-    await start?.({ type: "session_start", reason: "resume" }, { model: { contextWindow: 200_000 } });
-    expect(calls).toBe(0);
+    const { handlers, selected } = registeredExtension();
+    await handlers.session_start({ type: "session_start", reason: "resume" }, { model: undefined });
+    await handlers.model_select({ type: "model_select", model: { ...astra, contextWindow: 200_000 }, source: "set" }, {});
+    expect(selected).toEqual([]);
   });
 });
