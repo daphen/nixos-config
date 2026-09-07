@@ -32,7 +32,9 @@
         "../pi-extensions/ask/index.ts",
         "../pi-extensions/user-bash/index.ts",
         "../pi-extensions/tool-compress/index.ts",
-        "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts"
+        "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts",
+        "../pi-extensions/scoped/no-summary-rollover/index.ts",
+        "../pi-extensions/scoped/work-context-window/index.ts"
       ],
       "skills": [
         "../skills/i-have-adhd/SKILL.md",
