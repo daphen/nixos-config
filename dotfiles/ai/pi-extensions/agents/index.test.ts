@@ -8,6 +8,18 @@ describe("agent_review runtime contract bridge", () => {
     expect(review.parameters.properties.runtimeContract.enum).toEqual(["production", "exact-branch"]);
   });
 
+  test("agent_whoami uses the launch identity instead of an ambiguous cwd", async () => {
+    let whoami: any;
+    agentsExtension({ registerTool(tool: any) { if (tool.name === "agent_whoami") whoami = tool; } } as any);
+    const previous = process.env.COCKPIT_AGENT_NAME;
+    process.env.COCKPIT_AGENT_NAME = "exact-session-that-does-not-exist";
+    const result = await whoami.execute();
+    if (previous === undefined) delete process.env.COCKPIT_AGENT_NAME;
+    else process.env.COCKPIT_AGENT_NAME = previous;
+    expect(result.content[0].text).toContain("identity exact-session-that-does-not-exist");
+    expect(result.content[0].text).not.toContain("ambiguous session path");
+  });
+
   test("forwards exact-branch runtime contract to the canonical launcher", () => {
     expect(buildAgentReviewArgs({
       pr: "83188",

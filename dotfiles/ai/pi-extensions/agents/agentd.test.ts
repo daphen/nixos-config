@@ -11,6 +11,7 @@ import {
   readSessionTurns,
   readTurns,
   reportReviewFindings,
+  resolveSession,
   scheduleSelf,
   spawnMessage,
   stopSelf,
@@ -128,6 +129,22 @@ describe("spawn profile payload", () => {
     expect(requests[1]).toMatchObject({ from: "worker", fromProfile: "lovable-worker", contextId: "ctx-1", outcome: "implemented" });
     for (const [key, value] of Object.entries(old)) value === undefined ? delete process.env[key === "runtime" ? "XDG_RUNTIME_DIR" : key === "profile" ? "HEIDR_AGENT_PROFILE" : key === "name" ? "HEIDR_AGENT_NAME" : key === "parent" ? "HEIDR_AGENT_PARENT" : "HEIDR_AGENT_CWD"] : process.env[key === "runtime" ? "XDG_RUNTIME_DIR" : key === "profile" ? "HEIDR_AGENT_PROFILE" : key === "name" ? "HEIDR_AGENT_NAME" : key === "parent" ? "HEIDR_AGENT_PARENT" : "HEIDR_AGENT_CWD"] = value;
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("shared cwd resolution refuses ambiguity while exact names still work", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-resolve-"));
+    const servers = ["lovable", "personal"].map((scope) => net.createServer((client) => {
+      client.write(JSON.stringify({ type: "roster", sessions: [{ name: scope === "lovable" ? "worker" : "nixos", cwd: "/repo" }] }) + "\n");
+    }));
+    await Promise.all(servers.map((server, i) => new Promise<void>((resolve) => server.listen(path.join(dir, `agentd-${i}.sock`), resolve))));
+    const previous = process.env.XDG_RUNTIME_DIR;
+    process.env.XDG_RUNTIME_DIR = dir;
+    expect((await resolveSession("nixos"))?.session.name).toBe("nixos");
+    await expect(resolveSession("/repo")).rejects.toThrow("ambiguous session path");
+    if (previous === undefined) delete process.env.XDG_RUNTIME_DIR;
+    else process.env.XDG_RUNTIME_DIR = previous;
+    await Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

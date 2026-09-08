@@ -115,8 +115,9 @@ export interface Resolved {
 // Match a free-form ref against every scope's roster. Exact id/name wins; then a
 // cwd-path relationship; then a substring on name/cwd or an id prefix.
 export async function resolveSession(ref: string): Promise<Resolved | null> {
-  const abs = expandPath(ref);
-  let byCwd: Resolved | null = null;
+  const pathRef = ref.startsWith("/") || ref.startsWith("~") || ref.startsWith(".") || fs.existsSync(ref);
+  const abs = pathRef ? expandPath(ref) : null;
+  const byCwd: Resolved[] = [];
   let bySub: Resolved | null = null;
   for (const s of scopeSocks()) {
     for (const sess of await readRoster(s.path)) {
@@ -125,11 +126,15 @@ export async function resolveSession(ref: string): Promise<Resolved | null> {
       const cwd = String(sess.cwd ?? "");
       const r: Resolved = { session: { ...sess, scope: s.scope }, scope: s.scope, sockPath: s.path, cwd };
       if (id === ref || name === ref) return r;
-      if (!byCwd && abs && cwd && (cwd === abs || abs.startsWith(cwd + "/") || cwd.startsWith(abs + "/"))) byCwd = r;
+      if (abs && cwd && (cwd === abs || abs.startsWith(cwd + "/") || cwd.startsWith(abs + "/"))) byCwd.push(r);
       if (!bySub && ((name && name.includes(ref)) || (cwd && cwd.includes(ref)) || (id && id.startsWith(ref)))) bySub = r;
     }
   }
-  return byCwd ?? bySub;
+  if (byCwd.length > 1) {
+    const matches = byCwd.map((r) => `${r.scope}/${r.session.name ?? r.session.id ?? "unnamed"}`).join(", ");
+    throw new Error(`ambiguous session path ${JSON.stringify(ref)} matches ${matches}; use an exact session name`);
+  }
+  return byCwd[0] ?? bySub;
 }
 
 // This agent's OWN session name, resolved from its cwd. Stamped as `from` on

@@ -331,13 +331,18 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "agent_whoami",
     label: "Who am I",
-    description: "Return this agent's own registered session name (and scope), resolved from its working directory.",
+    description: "Return this agent's own registered session name and scope, using its launch identity rather than guessing from cwd.",
     promptSnippet: "agent_whoami: this agent's own session name",
     parameters: Type.Object({}),
     async execute() {
-      const r = await resolveSession(process.cwd());
-      if (!r) return say(`Not registered in any roster (cwd ${process.cwd()}).`);
-      return say(`${r.session.name ?? "(unnamed)"} · ${r.scope} · ${r.cwd} · plan ${r.session.plan || "none"}`);
+      const ownName = process.env.COCKPIT_AGENT_NAME ?? process.env.HEIDR_AGENT_NAME;
+      try {
+        const r = await resolveSession(ownName || process.cwd());
+        if (!r) return say(`Not registered in any roster (identity ${ownName || process.cwd()}).`);
+        return say(`${r.session.name ?? "(unnamed)"} · ${r.scope} · ${r.cwd} · plan ${r.session.plan || "none"}`);
+      } catch (error) {
+        return say(String((error as Error).message ?? error));
+      }
     },
   });
 }

@@ -100,7 +100,7 @@ def resolve(ref: str, cwd_path: str | None = None, scope_filter: str | None = No
     Returns (scope, sock_path, session) or None."""
     abs_target = str(Path(cwd_path or ref).expanduser().resolve()) if (cwd_path or _looks_pathy(ref)) else None
     allowed = set(scope_filter.split(",")) if scope_filter else None
-    by_cwd = None
+    by_cwd = []
     by_sub = None
     for sc, sp, s in all_sessions():
         if allowed is not None and sc not in allowed:
@@ -113,10 +113,13 @@ def resolve(ref: str, cwd_path: str | None = None, scope_filter: str | None = No
         if abs_target and cwd and (cwd == abs_target
                                    or abs_target.startswith(cwd + "/")
                                    or cwd.startswith(abs_target + "/")):
-            by_cwd = by_cwd or (sc, sp, s)
+            by_cwd.append((sc, sp, s))
         if not cwd_path and ((name and ref in name) or (cwd and ref in cwd) or (sid and sid.startswith(ref))):
             by_sub = by_sub or (sc, sp, s)
-    return by_cwd or by_sub
+    if len(by_cwd) > 1:
+        matches = ", ".join(f"{sc}/{s.get('name') or s.get('id') or 'unnamed'}" for sc, _sp, s in by_cwd)
+        raise SystemExit(f"agent: ambiguous cwd {abs_target!r} matches {matches}; use an exact session name")
+    return (by_cwd[0] if by_cwd else None) or by_sub
 
 
 def _looks_pathy(ref: str) -> bool:
