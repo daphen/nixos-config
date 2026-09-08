@@ -6,24 +6,22 @@ local function open_changed_files_picker()
 		return
 	end
 	local uv = vim.loop or vim.uv
-	local repo_root = vim.fn.systemlist({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })[1]
+	local cockpit = package.loaded["cockpit"]
+	local cwd = vim.fn.getcwd()
+	if cockpit then
+		cwd = cockpit.workspace_cwd()
+		if not cwd then return end
+	end
+	local repo_root = vim.fs.root(cwd, ".git")
 	if not repo_root or repo_root == "" then
 		vim.notify("Not in a git worktree", vim.log.levels.ERROR)
 		return
 	end
-	-- Base for THIS worktree (getcwd's root), via base_for — NOT current_base(),
-	-- which is keyed to the FOCUSED buffer's repo. With a rail pane or a cross-repo
-	-- file focused (the vault plan .md), current_base() handed back the vault's base
-	-- and the picker diffed the worktree against it → the whole cross-repo divergence
-	-- (1161 files on a fresh worktree). base_for(root) matches lualine + the agent rail.
-	local base = signs.base_for(repo_root)
-	if not base or base == "" then
-		vim.notify("Couldn't infer base commit", vim.log.levels.ERROR)
-		return
-	end
-	local branch = vim.fn.systemlist({ "git", "-C", repo_root, "branch", "--show-current" })[1] or ""
-	Snacks.picker.pick({
-		title = (branch ~= "" and (branch .. "  ·  ") or "") .. "changed vs " .. base:sub(1, 8),
+	local picker = Snacks.picker.pick({
+		title = "Changed files",
+		cwd = repo_root,
+		show_delay = 0,
+		previewers = { diff = { style = "syntax" } },
 		layout = {
 			layout = {
 				backdrop = false,
@@ -38,38 +36,45 @@ local function open_changed_files_picker()
 				{ win = "list", border = "none" },
 			},
 		},
-		-- A function finder runs async: snacks opens the picker frame
-		-- instantly and the git work (diff + untracked scan + mtime sort)
-		-- populates rows after, instead of blocking the open ~150ms.
-		finder = function()
-			local files = vim.fn.systemlist({ "git", "-C", repo_root, "diff", "--name-only", base })
-			-- git diff omits untracked files; query them separately (repo-root-relative).
-			local untracked = vim.fn.systemlist({ "git", "-C", repo_root, "ls-files", "--others", "--exclude-standard" })
-			local seen = {}
-			for _, f in ipairs(files) do seen[f] = true end
-			for _, f in ipairs(untracked) do
-				if not seen[f] then table.insert(files, f); seen[f] = true end
-			end
-			-- Rail image pastes live in .heidr-pastes/ (gitignore-exempt scratch);
-			-- they're attachments, not changed work — noise in a changed-files picker.
-			local filtered = {}
-			for _, f in ipairs(files) do
-				if not f:match("^%.heidr%-pastes/") and not f:match("^%.cockpit%-pastes/") then
-					table.insert(filtered, f)
+		finder = function(_, ctx)
+			return function(cb)
+				local proc = require("snacks.picker.source.proc").proc
+				local function git(args, quiet, sep)
+					local lines = {}
+					proc({ cmd = args[1], args = vim.list_slice(args, 2), notify = not quiet, sep = sep }, ctx)(function(item)
+						lines[#lines + 1] = item.text
+					end)
+					return #lines > 0 and lines or nil
 				end
+				local base = signs.resolve_base(repo_root, function(args) return git(args, true) end)
+				if not base or base == "" then
+					ctx.async:schedule(function() vim.notify("Couldn't infer base commit", vim.log.levels.ERROR) end)
+					return
+				end
+				local branch = (git({ "git", "-C", repo_root, "branch", "--show-current" }, true) or {})[1] or ""
+				ctx.async:schedule(function()
+					ctx.picker.title = (branch ~= "" and (branch .. "  ·  ") or "") .. "changed vs " .. base:sub(1, 8)
+					ctx.picker:update_titles()
+				end)
+				local files = git({ "git", "-C", repo_root, "diff", "--name-only", "-z", base }, false, "\0") or {}
+				local untracked = git({ "git", "-C", repo_root, "ls-files", "--others", "--exclude-standard", "-z" }, false, "\0") or {}
+				local seen, added, items = {}, {}, {}
+				for _, file in ipairs(files) do seen[file] = true end
+				for _, file in ipairs(untracked) do
+					added[file] = true
+					if not seen[file] then files[#files + 1] = file; seen[file] = true end
+				end
+				for _, file in ipairs(files) do
+					if not file:match("^%.heidr%-pastes/") and not file:match("^%.cockpit%-pastes/") then
+						local path = repo_root .. "/" .. file
+						local st = uv.fs_stat(path)
+						items[#items + 1] = { text = file, file = path, base = base, untracked = added[file],
+							mtime = st and (st.mtime.sec * 1000 + math.floor(st.mtime.nsec / 1e6)) or 0 }
+					end
+				end
+				table.sort(items, function(a, b) return a.mtime > b.mtime end)
+				for _, item in ipairs(items) do cb(item) end
 			end
-			files = filtered
-			local mtime_of = {}
-			for _, f in ipairs(files) do
-				local st = uv.fs_stat((repo_root or ".") .. "/" .. f)
-				mtime_of[f] = st and (st.mtime.sec * 1000 + math.floor((st.mtime.nsec or 0) / 1e6)) or 0
-			end
-			table.sort(files, function(a, b) return mtime_of[a] > mtime_of[b] end)
-			-- file must be absolute: git paths are repo-root-relative and
-			-- nvim's cwd may be a subdir (e.g. dotfiles/nvim/.config/nvim).
-			return vim.tbl_map(function(f)
-				return { text = f, file = (repo_root or ".") .. "/" .. f }
-			end, files)
 		end,
 		-- Strip the default workspace-package prefix; show plain paths.
 		format = function(item)
@@ -82,32 +87,31 @@ local function open_changed_files_picker()
 				ctx.preview:notify("No file to preview", "warn")
 				return false
 			end
-			local diff = vim.fn.systemlist({
-				"git", "-C", repo_root, "diff", base, "--", item.text,
+			local preview = require("snacks.picker.preview")
+			if item.untracked then return preview.file(ctx) end
+			local job
+			job = preview.cmd({ "git", "-C", repo_root, "diff", item.base, "--", item.text }, ctx, {
+				ft = "diff",
+				on_exit = function(_, code)
+					if job and not job.killed and job:buf_valid() and (code ~= 0 or table.concat(job.lines, "") == "") then
+						preview.file(ctx)
+					end
+				end,
 			})
-			local ft = "diff"
-			if vim.v.shell_error ~= 0 or #diff == 0 then
-				-- Untracked: fall back to file contents.
-				local ok2, lines = pcall(vim.fn.readfile, item.file)
-				if ok2 then
-					diff = lines
-					ft = vim.filetype.match({ filename = item.file }) or ""
-				end
-			end
-			ctx.preview:set_lines(diff or {})
-			ctx.preview:highlight({ ft = ft })
 		end,
 		confirm = function(picker, item)
 			picker:close()
 			if item and item.file then vim.cmd("edit " .. vim.fn.fnameescape(item.file)) end
 		end,
 	})
+	picker:show()
 end
 
 return {
 	"snacks.nvim",
 	lazy = false,
 	after = function()
+		vim.api.nvim_create_user_command("CockpitChanges", open_changed_files_picker, {})
 		local utils = require("utils")
 		local root_markers = { "package.json", ".git", "tsconfig.json", "Cargo.toml", "pyproject.toml" }
 

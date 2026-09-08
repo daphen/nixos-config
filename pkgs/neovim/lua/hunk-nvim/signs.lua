@@ -50,7 +50,8 @@ end
 --
 -- Exposed as M.resolve_base so other callers (e.g. the snacks picker) can
 -- use the same base and stay in sync with the inline overlay.
-function M.resolve_base(repo_root)
+function M.resolve_base(repo_root, run)
+	local git_exec = run or git_exec
 	repo_root = repo_root or state.repo_root
 	if not repo_root then
 		local out = vim.fn.systemlist({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })
@@ -60,12 +61,12 @@ function M.resolve_base(repo_root)
 
 	-- Reset the tracked trunk; only the merge-base path (3) sets it, so the
 	-- other bases (override / LoL root / HEAD) don't get a stale trunk-move check.
-	state.trunk = nil
+	if not run then state.trunk = nil end
 
 	-- 1. Explicit override
 	local override = vim.g.hunk_signs_base
 	if override and override ~= "" then return override end
-	local env = vim.fn.getenv("HUNK_SIGNS_BASE")
+	local env = (vim.uv or vim.loop).os_getenv("HUNK_SIGNS_BASE")
 	if env and env ~= vim.NIL and env ~= "" then return env end
 
 	-- 2. LoL true-root init commit. It is always a parentless root, so scan
@@ -73,11 +74,16 @@ function M.resolve_base(repo_root)
 	-- large repo vs ~30ms for roots). Restricting to roots also skips the same
 	-- subject in monorepo test fixtures, which aren't roots.
 	local roots = git_exec({ "git", "-C", repo_root, "rev-list", "--max-parents=0", "HEAD" })
-	if roots then
+	if roots and #roots > 0 then
+		local args = { "git", "-C", repo_root, "log", "--no-walk=unsorted", "--format=%H%x09%s" }
+		vim.list_extend(args, roots)
+		local subjects = {}
+		for _, line in ipairs(git_exec(args) or {}) do
+			local sha, subject = line:match("^(%x+)\t(.*)$")
+			if sha then subjects[sha] = subject end
+		end
 		for _, root in ipairs(roots) do
-			local subj = git_exec({ "git", "-C", repo_root, "log", "-1", "--format=%s", root })
-			if subj and subj[1]
-				and subj[1]:find("[skip lovable] Initialize Lovable project", 1, true) then
+			if subjects[root] and subjects[root]:find("[skip lovable] Initialize Lovable project", 1, true) then
 				return root
 			end
 		end
@@ -99,7 +105,7 @@ function M.resolve_base(repo_root)
 		end
 	end
 	if trunk then
-		state.trunk = trunk -- remember it so current_base can watch it move
+		if not run then state.trunk = trunk end
 		local mb = git_exec({ "git", "-C", repo_root, "merge-base", "HEAD", trunk })
 		if mb and #mb > 0 then return mb[1] end
 	end

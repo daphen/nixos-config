@@ -83,8 +83,9 @@ local function root_chip()
 	local r = find_pkg(here)
 	if not r then return "" end
 	local folder = r:match("([^/]+)$") or ""
-	local ticket = folder:match("^lovable%.daphen%-(%a+%-%d+)") or folder:match("^lovable%.(review%-%d+)")
-	return ticket or folder
+	local review = folder:match("^lovable%.(review%-%d+)")
+	local ticket = folder:upper():match("([A-Z][A-Z0-9]+%-%d+)")
+	return review or ticket or folder
 end
 
 local function gather()
