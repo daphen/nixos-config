@@ -79,7 +79,7 @@ function fileSection(fileOps: { read: Set<string>; written: Set<string>; edited:
 
 export default function noSummaryRollover(pi: ExtensionAPI) {
   pi.on("session_before_compact", (event) => {
-    if (event.reason !== "threshold") return;
+    if (event.reason !== "threshold" && event.reason !== "overflow") return;
     const preparation = event.preparation;
     if (preparation.messagesToSummarize.length === 0 && preparation.turnPrefixMessages.length === 0 && !preparation.previousSummary) return;
 
@@ -111,7 +111,7 @@ export default function noSummaryRollover(pi: ExtensionAPI) {
         summary,
         firstKeptEntryId: preparation.firstKeptEntryId,
         tokensBefore: preparation.tokensBefore,
-        details: { strategy: "deterministic-threshold-v2", readFiles: files.readFiles, modifiedFiles: files.modifiedFiles },
+        details: { strategy: "deterministic-auto-v3", readFiles: files.readFiles, modifiedFiles: files.modifiedFiles },
       },
     };
   });

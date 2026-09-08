@@ -64,20 +64,18 @@ describe("no-summary rollover extension", () => {
     expect(result.compaction.summary).toContain("⟢ Verified the public behavior.");
     expect(result.compaction.summary).toContain("Older checkpoint");
     expect(result.compaction.details).toEqual({
-      strategy: "deterministic-threshold-v2",
+      strategy: "deterministic-auto-v3",
       readFiles: ["read.ts"],
       modifiedFiles: ["changed.ts", "created.ts"],
     });
   });
 
-  test("leaves manual and overflow compaction with Pi", () => {
-    const handler = registeredHandler();
-    expect(handler(compactEvent("manual"))).toBeUndefined();
-    expect(handler(compactEvent("overflow"))).toBeUndefined();
+  test("leaves explicit manual compaction with Pi", () => {
+    expect(registeredHandler()(compactEvent("manual"))).toBeUndefined();
   });
 
   test("preserves split-turn continuity and includes only completed tool batches", () => {
-    const split = compactEvent("threshold", [user("Keep the older deployment constraint.")]);
+    const split = compactEvent("overflow", [user("Keep the older deployment constraint.")]);
     split.preparation.isSplitTurn = true;
     split.preparation.turnPrefixMessages = [
       user("Continue validating PR 97422 without restarting its worker."),
@@ -98,6 +96,8 @@ describe("no-summary rollover extension", () => {
     const result = registeredHandler()(split);
     expect(result.compaction.firstKeptEntryId).toBe("kept-entry");
     expect(result.compaction.tokensBefore).toBe(123_456);
+    expect(result.compaction.usage).toBeUndefined();
+    expect(result.compaction.details.strategy).toBe("deterministic-auto-v3");
     expect(result.compaction.summary).toContain("Keep the older deployment constraint.");
     expect(result.compaction.summary).toContain("Continue validating PR 97422");
     expect(result.compaction.summary).toContain("tool read completed: review pending");
