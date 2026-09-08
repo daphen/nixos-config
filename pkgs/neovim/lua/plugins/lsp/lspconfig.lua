@@ -147,26 +147,8 @@ return {
 			},
 		})
 
-		-- Lovable essentials: always on (lean sandbox set).
-		-- gopls must run inside the worktree's direnv env: the lovable repo's
-		-- go.work pins a go version the devenv provides — with the bare system
-		-- env, gopls dies on "go.work requires go >= X" the moment upstream
-		-- bumps past the system toolchain.
-		vim.lsp.config("gopls", {
-			-- Native cmd-as-function (on_new_config is an lspconfig-ism the native
-			-- config silently drops — the first version of this was inert).
-			cmd = function(dispatchers, config)
-				local root = config and config.root_dir
-				local argv = { "gopls" }
-				-- .envrc lives at the REPO root; gopls roots at the go.mod/go.work
-				-- dir below it — walk up.
-				local envroot = vim.fs.root(root or vim.fn.getcwd(), ".envrc")
-				if envroot then
-					argv = { "direnv", "exec", envroot, "gopls" }
-				end
-				return vim.lsp.rpc.start(argv, dispatchers, { cwd = root })
-			end,
-		})
+		local environment_config = require("lsp-environment")
+		vim.lsp.config("gopls", { cmd = { "gopls" } })
 
 		local servers = { "ts_ls", "eslint", "oxlint", "html", "tailwindcss", "gopls", "nil_ls", "lua_ls" }
 		-- Full profile (nvim-next on the desktop): extras we use locally but
@@ -174,6 +156,15 @@ return {
 		-- the matching server binaries on PATH.
 		if vim.env.NVIM_PROFILE == "full" then
 			vim.list_extend(servers, { "pyright" })
+		end
+		local local_servers = {
+			ts_ls = "typescript-language-server", eslint = "vscode-eslint-language-server",
+			html = "vscode-html-language-server", tailwindcss = "tailwindcss-language-server",
+		}
+		for _, server in ipairs(servers) do
+			local binary = local_servers[server]
+			local command = binary and { binary, "--stdio" } or vim.lsp.config[server].cmd
+			vim.lsp.config(server, environment_config(vim.lsp.config[server], command, binary ~= nil))
 		end
 		vim.lsp.enable(servers)
 
