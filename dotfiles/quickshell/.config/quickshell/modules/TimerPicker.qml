@@ -290,6 +290,9 @@ Item {
                                 keys.forceActiveFocus(); event.accepted = true
                             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                                 root.start(); event.accepted = true
+                            } else if ((event.key === Qt.Key_H || event.key === Qt.Key_L)
+                                    && (event.modifiers & Qt.ControlModifier)) {
+                                event.accepted = true
                             }
                         }
                     }

@@ -476,6 +476,9 @@ Item {
                                      || (event.key === Qt.Key_H && (event.modifiers & Qt.ControlModifier))) ? -1 : 1
                         root.tab = (root.tab + dir + root.tabs.length) % root.tabs.length
                         event.accepted = true
+                    } else if ((event.key === Qt.Key_H || event.key === Qt.Key_L)
+                            && (event.modifiers & Qt.ControlModifier)) {
+                        event.accepted = true
                     }
                 }
 
