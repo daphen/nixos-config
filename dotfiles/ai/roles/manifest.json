@@ -24,6 +24,7 @@
         "agent_whoami",
         "ask_user",
         "request_user_bash",
+        "open_in_nvim",
         "mcp"
       ],
       "extensions": [
@@ -31,6 +32,7 @@
         "../pi-extensions/agents/index.ts",
         "../pi-extensions/ask/index.ts",
         "../pi-extensions/user-bash/index.ts",
+        "../pi-extensions/open-in-nvim/index.ts",
         "../pi-extensions/tool-compress/index.ts",
         "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts",
         "../pi-extensions/scoped/no-summary-rollover/index.ts",
@@ -38,6 +40,7 @@
       ],
       "skills": [
         "../skills/i-have-adhd/SKILL.md",
+        "../skills/slack-format/SKILL.md",
         "../skills/notes/SKILL.md",
         "../skills/cycle/SKILL.md",
         "../skills/daily/SKILL.md",
@@ -68,6 +71,7 @@
         "agent_disposition_review_findings",
         "ask_user",
         "request_user_bash",
+        "open_in_nvim",
         "mcp"
       ],
       "extensions": [
@@ -75,6 +79,7 @@
         "../pi-extensions/agents/index.ts",
         "../pi-extensions/ask/index.ts",
         "../pi-extensions/user-bash/index.ts",
+        "../pi-extensions/open-in-nvim/index.ts",
         "../pi-extensions/tool-compress/index.ts",
         "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts"
       ],
@@ -108,6 +113,7 @@
         "agent_whoami",
         "ask_user",
         "request_user_bash",
+        "open_in_nvim",
         "mcp"
       ],
       "extensions": [
@@ -115,6 +121,7 @@
         "../pi-extensions/agents/index.ts",
         "../pi-extensions/ask/index.ts",
         "../pi-extensions/user-bash/index.ts",
+        "../pi-extensions/open-in-nvim/index.ts",
         "../pi-extensions/tool-compress/index.ts",
         "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts"
       ],

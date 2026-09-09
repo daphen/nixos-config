@@ -10,6 +10,7 @@ User's Slack composer does NOT interpret markdown — `**bold**` shows up litera
 ## When to invoke
 
 - User says "format for slack", "copy for slack", "slackify", "to clipboard for slack", or similar.
+- Bare "slackify" always means transform, then write to the clipboard—not chat-only output.
 - User has just produced a draft (often by asking the assistant to write a Slack message) and wants it on the clipboard.
 - Default target: the most recent message-style block the assistant produced. If unclear, ask which text to format.
 
@@ -33,7 +34,9 @@ User's Slack composer does NOT interpret markdown — `**bold**` shows up litera
 
 9. **Strip trailing whitespace** and collapse runs of 3+ newlines down to 2.
 
-10. **Do not** alter content semantically.
+10. **Capitalization:** use normal sentence capitalization, including after periods, even in casual prose. Never lowercase text to make it “casual”; preserve proper-name, acronym, code, and URL casing.
+
+11. **Do not** alter content semantically.
 
 ## Don't convert
 
@@ -52,6 +55,8 @@ SLACK_EOF
 ```
 
 Fall back to `xclip -selection clipboard` if `wl-copy` isn't available.
+
+Do not ask for a separate copy request or approval. Report success only after the write succeeds; when clipboard reading is available, verify an exact match without changing the intended content.
 
 ## Output to the user
 
@@ -75,4 +80,5 @@ If the input had something that needed special handling (a markdown table, a cod
 
 - Don't add a preamble or signature to the clipboard content. Pure paste.
 - Don't dump the transformed text into chat output. Clipboard only.
+- Never post to Slack; this skill only prepares the clipboard.
 - Don't try to convert markdown tables silently. Ask first.
