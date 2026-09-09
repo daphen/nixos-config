@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 var binary string
@@ -231,8 +230,6 @@ func TestSwitchValidationOrderingSystemNiriAndWallpaper(t *testing.T) {
 	for _, name := range []string{"gsettings", "dconf", "systemctl", "fish"} {
 		f.mock(name, "printf '%s %s\\n' '"+name+"' \"$*\" >> '"+log+"'")
 	}
-	f.mock("swaybg", "printf 'swaybg %s\\n' \"$*\" >> '"+log+"'; sleep 2 & wait")
-	f.mock("waypaper", "printf 'waypaper %s\\n' \"$*\" >> '"+log+"'; swaybg -i \"$2\" -m fill -c '#ffffff' &")
 	f.mock("python3", "while IFS= read -r line || [ -n \"$line\" ]; do printf '%s\\n' \"$line\"; done < \"$2\" > \"$5\"; printf 'python %s\\n' \"$*\" >> '"+log+"'")
 	f.write("dotfiles/themes/.config/themes/theme-processor.py", "")
 	f.write("dotfiles/themes/.config/themes/colors.json", "{}")
@@ -255,45 +252,44 @@ func TestSwitchValidationOrderingSystemNiriAndWallpaper(t *testing.T) {
 			t.Errorf("niri missing %s:\n%s", want, niri)
 		}
 	}
-	deadline := time.Now().Add(time.Second)
-	for !strings.Contains(readIfExists(log), "waypaper --wallpaper "+wall+" --no-post-command") && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
 	commands := readIfExists(log)
-	ordered(t, commands, "gsettings set", "python ", "gsettings set", "dconf write", "waypaper --wallpaper")
+	ordered(t, commands, "gsettings set", "python ", "gsettings set", "dconf write")
+	if strings.Contains(commands, "waypaper") || strings.Contains(commands, "swaybg") {
+		t.Fatalf("switch launched a wallpaper renderer:\n%s", commands)
+	}
 	out, err = f.run("switch", "sepia")
 	if err == nil || out != "\x1b[0;31m[ERROR]\x1b[0m Invalid theme mode: sepia. Use 'dark' or 'light'\n" {
 		t.Fatalf("invalid mode: err=%v output=%q", err, out)
 	}
 }
 
-func TestWallpaperFallsBackToSwaybgAndReportsTotalFailure(t *testing.T) {
+func TestWallpaperValidationNeverLaunchesRenderer(t *testing.T) {
 	f := setup(t)
 	wall := f.write("wall.png", "png")
 	if err := os.MkdirAll(filepath.Join(f.home, ".config/themes"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(wall, filepath.Join(f.home, ".config/themes/wallpaper-dark")); err != nil {
+	link := filepath.Join(f.home, ".config/themes/wallpaper-dark")
+	if err := os.Symlink(wall, link); err != nil {
 		t.Fatal(err)
 	}
 	log := filepath.Join(f.root, "commands")
-	f.mock("waypaper", "printf 'waypaper %s\\n' \"$*\" >> '"+log+"'; exit 7")
-	f.mock("swaybg", "printf 'swaybg %s\\n' \"$*\" >> '"+log+"'; sleep 2 & wait")
+	f.mock("waypaper", "printf 'waypaper %s\\n' \"$*\" >> '"+log+"'")
+	f.mock("swaybg", "printf 'swaybg %s\\n' \"$*\" >> '"+log+"'")
 	out, err := f.run("switch", "dark")
-	if err != nil || !strings.Contains(out, "Waypaper did not leave a wallpaper process; trying swaybg directly") {
-		t.Fatalf("fallback: err=%v output=%q", err, out)
+	if err != nil || !strings.Contains(out, "Theme switched to dark mode") {
+		t.Fatalf("valid wallpaper: err=%v output=%q", err, out)
 	}
-	deadline := time.Now().Add(time.Second)
-	for !strings.Contains(readIfExists(log), "swaybg -i "+wall) && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
+	if commands := readIfExists(log); commands != "" {
+		t.Fatalf("wallpaper renderer launched:\n%s", commands)
 	}
-	commands := mustRead(t, log)
-	ordered(t, commands, "waypaper --wallpaper "+wall, "swaybg -i "+wall+" -m fill -c #ffffff")
 
-	os.Remove(filepath.Join(f.bin, "swaybg"))
+	if err := os.Remove(wall); err != nil {
+		t.Fatal(err)
+	}
 	out, err = f.run("switch", "dark")
-	if err == nil || !strings.Contains(out, "Could not apply wallpaper: swaybg is not available") || strings.Contains(out, "Theme switched to dark mode") {
-		t.Fatalf("total failure: err=%v output=%q", err, out)
+	if err != nil || !strings.Contains(out, "No wallpaper set for dark") || !strings.Contains(out, "Theme switched to dark mode") {
+		t.Fatalf("broken wallpaper: err=%v output=%q", err, out)
 	}
 }
 

@@ -1,6 +1,7 @@
 singleton Theme 1.0 Theme.qml
 singleton NiriState 1.0 NiriState.qml
 RoundedBar 1.0 RoundedBar.qml
+Wallpaper 1.0 Wallpaper.qml
 Clock 1.0 Clock.qml
 DateText 1.0 DateText.qml
 Battery 1.0 Battery.qml

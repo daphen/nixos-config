@@ -293,11 +293,10 @@ EOPY
 
     if [[ "$SET_LINK" == 1 ]]; then
         ln -sf "$out" "$THEMES_DIR/wallpaper-$mode"
-        if [[ "$(cat "$HOME/.config/theme_mode" 2>/dev/null)" == "$mode" ]] && command -v waypaper &>/dev/null; then
-            # swaybg never reloads its texture — make sure no stale instance
-            # survives the handoff.
-            pkill -x swaybg 2>/dev/null || true
-            waypaper --wallpaper "$out" &>/dev/null &
+        if [[ "$(cat "$HOME/.config/theme_mode" 2>/dev/null)" == "$mode" ]]; then
+            # Rewriting the canonical mode file wakes the wallpaper watcher even
+            # when the selected mode itself did not change.
+            touch "$HOME/.config/theme_mode"
         fi
     fi
 }

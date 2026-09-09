@@ -1,9 +1,12 @@
 import Quickshell
+import QtQuick
 import QtQml
 import "modules"
 
 ShellRoot {
     id: root
+
+    Loader { source: "modules/Wallpaper.qml" }
 
     // Per-screen surfaces — Variants reconciles when monitors come and
     // go, so undocking doesn't leave an orphan layer-shell window from

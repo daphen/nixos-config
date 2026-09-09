@@ -395,9 +395,6 @@ spawn-sh-at-startup "$HOME/.config/niri/scripts/launch-agentd-scope personal"
 // the wrapper's argv, world-readable via ps for the daemon's whole lifetime.
 spawn-sh-at-startup "$HOME/.config/niri/scripts/launch-agentd-scope chat"
 
-// Auto-restore wallpaper on startup with waypaper
-spawn-at-startup "waypaper" "--restore"
-
 // Start Kanata keyboard remapper in background
 spawn-at-startup "bash" "-c" "/home/daphen/.config/kanata/start-kanata.sh"
 
@@ -621,8 +618,8 @@ layer-rule {
 }
 
 
-// Put swaybg (namespace "wallpaper") into the backdrop: niri blurs the
-// backdrop, not the background layer, so this is what makes the wallpaper
+// Put the Quickshell wallpaper layer into the backdrop: niri blurs the
+// backdrop, not the background layer, so this makes the wallpaper
 // show through transparent windows AND get blurred. Requires the
 // workspace background-color to be transparent (it is, line 168).
 layer-rule {
