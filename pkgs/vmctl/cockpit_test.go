@@ -109,6 +109,11 @@ func TestCockpitDifferentBundleCopiesVerifiesAndMarksRunningDaemon(t *testing.T)
 	if !strings.Contains(calls, "--delete") || strings.Contains(calls, "--delete -e") && !strings.Contains(calls, "roles/") {
 		t.Fatalf("directory copy flags missing:\n%s", calls)
 	}
+	for _, path := range []string{"pi-extensions/open-in-nvim/", "pi-extensions/scoped/"} {
+		if !strings.Contains(calls, path) {
+			t.Errorf("required role resource %q was not copied:\n%s", path, calls)
+		}
+	}
 }
 
 func TestCockpitCopyFailureIsFatalAndLeavesMarker(t *testing.T) {
