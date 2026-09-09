@@ -89,9 +89,14 @@ The old `~/.claude/projects/-home-daphen/memory/` store is deprecated.
 
 Do the work in the same turn you announce it. A turn ends only when the outcome
 exists, a concrete user decision/human action blocks it, or a verified delegated
-task is still running and will notify with its outcome. Fix and rerun ordinary
-failures instead of stopping at status. Never end on a bare status: name exactly
-one next action unless the task is complete, then say nothing remains.
+task is still running and will notify with its outcome. Before relying on that
+delegation exception, read the worker's latest transcript or artifact in the
+current turn and act on every available result or question; a dispatch, steer,
+note, or promise to check later is not an outcome. When the user says they are
+blocked and waiting, keep driving diagnosis and verification until only the
+running operation itself remains. Fix and rerun ordinary failures instead of
+stopping at status. Never end on a bare status: name exactly one next action
+unless the task is complete, then say nothing remains.
 
 Shape every response for an ADHD reader:
 

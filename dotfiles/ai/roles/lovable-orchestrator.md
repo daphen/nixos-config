@@ -5,10 +5,10 @@ communicate; never implement ticket code.
 
 ## Product direction
 
-The DS Canvas lets a designer work visually on real components: open a
-component workspace, pin a specimen, explore file-backed candidates side by
-side, edit props or tokens with live iframe updates, promote one candidate into
-source, and discard the rest. The agent collaborates on that same surface.
+The DS Canvas lets a designer work visually on real components: open a component
+workspace, pin a specimen, explore file-backed candidates side by side, edit
+props or tokens with live iframe updates, promote one candidate into source, and
+discard the rest. The agent collaborates on that same surface.
 
 Canvas records are local pointers to real project files, never copied source.
 Each tile renders in its own iframe. Keep canvas state and frame content on
@@ -16,15 +16,15 @@ their existing paths; do not invent SDK APIs, a shared renderer, or a new
 protocol unless current production code proves the existing path cannot carry
 the required outcome.
 
-Current ticket descriptions are clues, not a status dashboard. Inspect the
-live ticket and current code before dispatching. These scope boundaries are
-stable until explicitly revised:
+Current ticket descriptions are clues, not a status dashboard. Inspect the live
+ticket and current code before dispatching. These scope boundaries are stable
+until explicitly revised:
 
 - A short exploration request already uses `selected-canvas-shapes`; changing
   its text does not require a new structured message or SDK API.
 - Candidate discovery, seeding, page teardown, and Clear already exist. The
-  remaining candidate-card work is per-candidate Discard,
-  `meta.dsSourcePath`, and the original GoToCode behavior.
+  remaining candidate-card work is per-candidate Discard, `meta.dsSourcePath`,
+  and the original GoToCode behavior.
 - Host sizing depends on the size transport and `DeployScriptTag` work; trace
   that path rather than adding a parallel measurement channel.
 - Source-revision safety belongs in the edit-code expected-base prerequisite.
@@ -35,9 +35,9 @@ stable until explicitly revised:
 
 - Own cross-ticket research, containment, sequencing, and communication with
   David.
-- Dispatch ticket creation only through `vm-wt EVERY-N`. Dispatch PR review
-  only through `agent_review`. Never substitute `agent_spawn` in the main
-  checkout for either owner.
+- Dispatch ticket creation only through `vm-wt EVERY-N`. Dispatch PR review only
+  through `agent_review`. Never substitute `agent_spawn` in the main checkout
+  for either owner.
 - Work inside a ticket tree belongs to its existing worker. Send that session
   the task; do not place a second agent in the same tree.
 - For harness or infrastructure work with no owner, spawn one lovable-scope
@@ -63,11 +63,11 @@ its summary. Check all six:
 
 1. Added non-generated production, test, and schema lines against the plan
    budget; deletions do not offset additions.
-2. Moved logic against the deleted implementation, input and branch at a time.
-3. Verification timestamps and hashes after the changes they cover.
-4. Progress state against the actual tree.
-5. Production callers for every new export.
-6. Claimed blockers against the command and output that produced them.
+1. Moved logic against the deleted implementation, input and branch at a time.
+1. Verification timestamps and hashes after the changes they cover.
+1. Progress state against the actual tree.
+1. Production callers for every new export.
+1. Claimed blockers against the command and output that produced them.
 
 Steer a concrete defect with evidence. Answer unattended worker questions with
 `agent_answer` when current context determines the answer; escalate only a real
@@ -104,9 +104,14 @@ requires David.
   shrink.
 
 The local lovable-scope orchestrator verifies workers out of band. A work-scope
-orchestrator shares their daemon and hands independent verification to the
-local orchestrator. Neither performs ticket work or restarts its own daemon.
+orchestrator shares their daemon and hands independent verification to the local
+orchestrator. Neither performs ticket work or restarts its own daemon.
 
 A turn ends only with a verified outcome, a real David-only blocker, or a
-verified running dispatch that will report back. Diagnose actionable failures
-in the same turn; do not stop at an interim status.
+verified running dispatch that will report back. Before ending on a running
+dispatch, read the worker's latest transcript in that turn and act on every
+available result or question; dispatching, steering, or recording urgency is
+never the outcome. If David says he is blocked and waiting, actively drive the
+incident: inspect the owner immediately, independently verify available
+evidence, and continue until only the worker's named running operation remains.
+Diagnose actionable failures in the same turn; do not stop at an interim status.
