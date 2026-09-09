@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -8,12 +9,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 )
 
 var (
-	ticketPattern = regexp.MustCompile(`(?i)^EVERY-[0-9]+$`)
-	binaryPath    = regexp.MustCompile(`(?i)\.(png|jpg|jpeg|gif|webp|ico|icns|pdf|mp4|woff2?|ttf)$`)
+	ticketPattern           = regexp.MustCompile(`(?i)^EVERY-[0-9]+$`)
+	explicitCheckoutPattern = regexp.MustCompile(`^lovable\.[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
 
 type app struct {
@@ -52,35 +52,58 @@ func command(args []string, out, errOut io.Writer) error {
 	case "sync":
 		return syncCommand(a, args[1:])
 	case "worktree":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: vmctl worktree EVERY-N")
+		teardown := len(args) == 3 && args[1] == "--teardown"
+		scriptTag := len(args) == 3 && args[1] == "--script-tag"
+		if len(args) != 2 && !teardown && !scriptTag {
+			return fmt.Errorf("usage: vmctl worktree [--teardown | --script-tag] EVERY-N")
 		}
-		ticket, err := parseTicket(args[1])
+		raw := args[len(args)-1]
+		ticket, err := parseTicket(raw)
 		if err != nil {
 			return err
 		}
-		return runWorktree(a, ticket, args[1])
+		if teardown {
+			return teardownWorktreeTunnel(a, ticket)
+		}
+		return runWorktree(a, ticket, raw, scriptTag)
 	default:
 		return fmt.Errorf("usage: vmctl <sync|worktree|cockpit> [arguments]")
 	}
 }
 
 func syncCommand(a app, args []string) error {
-	align := len(args) > 0 && args[0] == "--align"
-	if align {
-		args = args[1:]
+	align, prepare := false, false
+	remoteCwd := ""
+	for len(args) > 0 {
+		switch args[0] {
+		case "--align":
+			align = true
+			args = args[1:]
+		case "--prepare":
+			prepare = true
+			args = args[1:]
+		case "--remote-cwd":
+			if len(args) < 2 {
+				return fmt.Errorf("usage: vmctl sync [--prepare | --align] [--remote-cwd VM_CHECKOUT] EVERY-N")
+			}
+			remoteCwd = args[1]
+			args = args[2:]
+		default:
+			goto parsed
+		}
 	}
-	if len(args) != 1 {
-		return fmt.Errorf("usage: vmctl sync [--align] EVERY-N")
+parsed:
+	if len(args) != 1 || (align && prepare) {
+		return fmt.Errorf("usage: vmctl sync [--prepare | --align] [--remote-cwd VM_CHECKOUT] EVERY-N")
 	}
 	ticket, err := parseTicket(args[0])
 	if err != nil {
 		return err
 	}
 	if align {
-		return a.align(ticket)
+		return a.align(ticket, args[0], remoteCwd)
 	}
-	return a.sync(ticket, args[0])
+	return a.sync(ticket, args[0], remoteCwd, prepare)
 }
 
 func parseTicket(raw string) (string, error) {
@@ -114,230 +137,420 @@ func envFallback(primary, legacy, fallback string) string {
 	return fallback
 }
 
-func (a app) align(ticket string) error {
-	local := filepath.Join(a.home, "work", "lovable.daphen-"+ticket)
-	if info, err := os.Stat(local); err != nil || !info.IsDir() {
-		return nil
+func (a app) align(ticket, raw, remoteCwd string) error {
+	s, err := newSyncRun(a, ticket, raw, remoteCwd)
+	if err != nil {
+		return err
 	}
-	a.installDeps(local)
+	if err := s.requireManaged(); err != nil {
+		return err
+	}
+	if !pathExists(filepath.Join(s.local, ".git")) {
+		return fmt.Errorf("mirror missing: %s", s.local)
+	}
+	if err := s.fetchVMBranch(); err != nil {
+		return err
+	}
+	return s.alignHead()
+}
 
-	base, err := a.output("git", "-C", local, "merge-base", "HEAD", "origin/main")
-	if err != nil {
-		return err
+func (a app) prepareMirrorDependencies(local string) error {
+	if !isFile(filepath.Join(local, "package.json")) {
+		return fmt.Errorf("mirror dependency setup refused: %s/package.json is missing", local)
 	}
-	diffArgs := []string{"-C", local, "diff", "--name-only"}
-	if strings.TrimSpace(base) != "" {
-		diffArgs = append(diffArgs, strings.TrimSpace(base))
+	steps := []struct {
+		name string
+		args []string
+	}{
+		{"pnpm install", []string{"install", "--frozen-lockfile", "--prefer-offline"}},
+		{"web Paraglide generation", []string{"--dir", "web", "run", "paraglide:build"}},
 	}
-	changed, err := a.output("git", diffArgs...)
-	if err != nil {
-		return err
-	}
-	if lineCount(changed) <= 150 {
-		return nil
-	}
-	_ = a.quiet(nil, "git", "-C", local, "fetch", "-q", "--no-tags", "origin", "main")
-
-	cm := filepath.Join(envDefault("XDG_RUNTIME_DIR", "/tmp"), "heidr-vm-cm")
-	head, err := a.output("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
-		"-o", "ControlMaster=auto", "-o", "ControlPath="+cm, "-o", "ControlPersist=600", "-o", "ConnectTimeout=20",
-		a.user+"@"+a.host, "git -C '/home/"+a.user+"/src/lovable-"+ticket+"' rev-parse HEAD")
-	head = strings.Join(strings.Fields(head), "")
-	if err != nil || !isCommit(head) {
-		return nil
-	}
-	cur, err := a.output("git", "-C", local, "rev-parse", "HEAD")
-	if err != nil {
-		return err
-	}
-	cur = strings.TrimSpace(cur)
-	if cur == head {
-		return nil
-	}
-	if a.quiet(nil, "git", "-C", local, "cat-file", "-e", head+"^{commit}") != nil {
-		sshEnv := []string{"GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ControlPath=" + cm}
-		if a.quiet(sshEnv, "git", "-C", local, "fetch", "-q", "ssh://"+a.user+"@"+a.host+"/home/"+a.user+"/src/lovable", head) != nil &&
-			a.quiet(nil, "git", "-C", local, "fetch", "-q", "origin", head) != nil {
-			return nil
+	for _, step := range steps {
+		fmt.Fprintf(a.out, "[vm-sync] %s in %s …\n", step.name, local)
+		args := append([]string{"exec", local, "pnpm"}, step.args...)
+		cmd := exec.Command("direnv", args...)
+		cmd.Dir, cmd.Stdout, cmd.Stderr = local, a.out, a.err
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("%s failed in %s: %w", step.name, local, err)
 		}
 	}
-	if a.quiet(nil, "git", "-C", local, "reset", "-q", head) != nil {
-		return nil
-	}
-	fmt.Fprintf(a.out, "[vm-sync] %s: HEAD %s -> %s (files untouched)\n", ticket, prefix(cur, 11), prefix(head, 11))
 	return nil
 }
 
-func (a app) installDeps(local string) {
-	if !isFile(filepath.Join(local, "package.json")) || isDir(filepath.Join(local, "node_modules")) {
-		return
-	}
-	logPath := filepath.Join(local, ".pnpm-install.log")
-	if info, err := os.Stat(logPath); err == nil && time.Since(info.ModTime()) < 10*time.Minute {
-		return
-	}
-	allow := exec.Command("direnv", "allow", ".")
-	allow.Dir, allow.Stdout, allow.Stderr = local, a.out, io.Discard
-	if allow.Run() != nil {
-		return
-	}
-	log, err := os.Create(logPath)
-	if err != nil {
-		return
-	}
-	cmd := exec.Command("nohup", "direnv", "exec", local, "pnpm", "install", "--frozen-lockfile", "--prefer-offline")
-	cmd.Dir, cmd.Stdout, cmd.Stderr = local, log, log
-	if cmd.Start() != nil {
-		_ = log.Close()
-	}
-}
-
 type syncRun struct {
-	a                          app
-	mutagen, vmwt, local, repo string
-	name, vmhead               string
+	a                              app
+	mutagen, wt, vmwt, local, repo string
+	name, vmhead, vmbranch         string
 }
 
-func newSyncRun(a app, ticket, raw string) (syncRun, error) {
-	mutagen, err := exec.LookPath("mutagen")
-	if err != nil {
-		fmt.Fprintln(a.err, "✗ mutagen not on PATH")
-		return syncRun{}, silentError{}
+func explicitSyncPaths(a app, ticket, remoteCwd string) (string, string, string, error) {
+	root := "/home/" + a.user + "/src"
+	clean := filepath.Clean(remoteCwd)
+	base := filepath.Base(clean)
+	marker := "-" + ticket
+	at := strings.Index(strings.ToLower(base), marker)
+	if clean != remoteCwd || filepath.Dir(clean) != root || !explicitCheckoutPattern.MatchString(base) ||
+		at < 0 || (len(base) > at+len(marker) && base[at+len(marker)] != '-') {
+		return "", "", "", fmt.Errorf("invalid VM checkout %q: expected %s/lovable.<name>-%s[-suffix]", remoteCwd, root, ticket)
 	}
+	return clean, filepath.Join(a.home, "work", base), "vmwt-" + strings.TrimPrefix(base, "lovable."), nil
+}
+
+func newSyncRun(a app, ticket, raw, remoteCwd string) (syncRun, error) {
 	s := syncRun{
-		a: a, mutagen: mutagen,
+		a:     a,
 		vmwt:  "/home/" + a.user + "/src/lovable-" + ticket,
 		local: filepath.Join(a.home, "work", "lovable.daphen-"+ticket),
 		repo:  filepath.Join(a.home, "work", "lovable"),
 		name:  "vmwt-" + ticket,
 	}
-	sshArgs := []string{"-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user + "@" + a.host, "git -C '" + s.vmwt + "' rev-parse HEAD"}
-	head, err := a.output("ssh", sshArgs...)
+	if remoteCwd != "" {
+		var err error
+		s.vmwt, s.local, s.name, err = explicitSyncPaths(a, ticket, remoteCwd)
+		if err != nil {
+			return syncRun{}, err
+		}
+	}
+	var err error
+	if s.mutagen, err = executable(a.home, "mutagen"); err != nil {
+		return syncRun{}, err
+	}
+	if s.wt, err = executable(a.home, "wt"); err != nil {
+		return syncRun{}, err
+	}
+	gitLFS, err := executable(a.home, "git-lfs")
 	if err != nil {
+		return syncRun{}, err
+	}
+	if err := a.quiet(nil, gitLFS, "version"); err != nil {
+		return syncRun{}, fmt.Errorf("git-lfs preflight failed: %w", err)
+	}
+	sshArgs := []string{"-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user + "@" + a.host,
+		"test -d '" + s.vmwt + "' && git -C '" + s.vmwt + "' rev-parse HEAD && git -C '" + s.vmwt + "' branch --show-current"}
+	details, err := a.output("ssh", sshArgs...)
+	if err != nil {
+		fmt.Fprintf(a.err, "✗ VM checkout does not exist: %s\n", s.vmwt)
 		return syncRun{}, silentError{}
 	}
-	s.vmhead = strings.Join(strings.Fields(head), "")
-	if s.vmhead == "" {
+	lines := strings.Fields(details)
+	if len(lines) > 0 {
+		s.vmhead = lines[0]
+	}
+	if len(lines) > 1 {
+		s.vmbranch = lines[1]
+	}
+	if !isCommit(s.vmhead) {
 		fmt.Fprintf(a.err, "✗ no worktree at %s on %s — run vm-wt %s first\n", s.vmwt, a.vm, raw)
 		return syncRun{}, silentError{}
 	}
 	return s, nil
 }
 
-func (a app) sync(ticket, raw string) error {
-	s, err := newSyncRun(a, ticket, raw)
+func (a app) sync(ticket, raw, remoteCwd string, prepareOnly bool) error {
+	s, err := newSyncRun(a, ticket, raw, remoteCwd)
 	if err != nil {
+		return err
+	}
+	if _, err := s.managedSession(); err != nil {
 		return err
 	}
 	a.say("VM head: " + prefix(s.vmhead, 11))
-	if err := s.prepareCheckout(); err != nil {
+	created, err := s.prepareCheckout()
+	if err != nil {
 		return err
 	}
-	if err := s.seedChanges(); err != nil {
+	if created {
+		if err := s.seedNewMirror(); err != nil {
+			return err
+		}
+		if err := s.refreshSeedStatCache(); err != nil {
+			return err
+		}
+	}
+	if err := s.ensureMutagen(); err != nil {
 		return err
 	}
-	s.ensureMutagen()
+	current, err := a.output("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user+"@"+a.host, "git -C '"+s.vmwt+"' rev-parse HEAD")
+	if err != nil || strings.TrimSpace(current) != s.vmhead {
+		return fmt.Errorf("VM HEAD moved during sync; captured %s, now %s; retry preparation", prefix(s.vmhead, 11), prefix(strings.TrimSpace(current), 11))
+	}
+	if !created {
+		if err := s.alignHead(); err != nil {
+			return err
+		}
+	}
+	localHead, err := a.output("git", "-C", s.local, "rev-parse", "HEAD")
+	if err != nil || strings.TrimSpace(localHead) != s.vmhead {
+		return fmt.Errorf("mirror head verification failed for %s: expected %s, got %s", s.local, prefix(s.vmhead, 11), prefix(strings.TrimSpace(localHead), 11))
+	}
+	if prepareOnly {
+		a.say("prepared files, Git metadata, and sync without dependency or environment execution")
+		return a.report(s.local)
+	}
+	if err := a.prepareMirrorDependencies(s.local); err != nil {
+		return err
+	}
 	return a.report(s.local)
 }
 
-func (s syncRun) prepareCheckout() error {
-	s.a.say("pause sync while the checkout moves …")
-	_ = s.a.quiet(nil, s.mutagen, "sync", "pause", s.name)
-	s.a.say("refresh origin/main so the diff base is honest …")
-	_ = s.a.quiet(nil, "git", "-C", s.repo, "fetch", "-q", "--no-tags", "origin", "main")
-	if s.a.quiet(nil, "git", "-C", s.repo, "cat-file", "-e", s.vmhead+"^{commit}") != nil {
-		s.a.say("fetching that commit from the VM …")
-		sshEnv := []string{"GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25"}
-		if s.a.quiet(sshEnv, "git", "-C", s.repo, "fetch", "--quiet", "ssh://"+s.a.user+"@"+s.a.host+s.vmwt, s.vmhead) != nil &&
-			s.a.quiet(sshEnv, "git", "-C", s.repo, "fetch", "--quiet", "ssh://"+s.a.user+"@"+s.a.host+"/home/"+s.a.user+"/src/lovable", s.vmhead) != nil {
-			_ = s.a.quiet(nil, "git", "-C", s.repo, "fetch", "--quiet", "origin", s.vmhead)
+func (s syncRun) prepareCheckout() (bool, error) {
+	if err := s.fetchVMBranch(); err != nil {
+		return false, err
+	}
+	if pathExists(s.local) {
+		if !pathExists(filepath.Join(s.local, ".git")) {
+			return false, fmt.Errorf("refusing existing destination %s: not a git checkout", s.local)
 		}
-	}
-	if pathExists(filepath.Join(s.local, ".git")) {
-		s.a.say("align " + s.local + " to the VM's base …")
-		if err := s.a.quiet(nil, "git", "-C", s.local, "checkout", "--force", "--detach", s.vmhead); err != nil {
-			return err
+		managed, err := s.managedSession()
+		if err != nil {
+			return false, err
 		}
-		return s.a.quiet(nil, "git", "-C", s.local, "clean", "-qfd")
+		if !managed {
+			if err := s.requireCleanIncompleteCheckout(); err != nil {
+				return false, err
+			}
+		}
+		return false, nil
 	}
-	s.a.say("create local worktree " + s.local + " at the VM's base …")
-	text, err := s.a.combined("git", "-C", s.repo, "worktree", "add", "--detach", s.local, s.vmhead)
-	if text != "" {
-		fmt.Fprintln(s.a.out, lastLine(text))
+	if s.vmbranch == "" {
+		return false, fmt.Errorf("VM checkout %s is detached; refusing to invent a local mirror branch", s.vmwt)
 	}
-	return err
+	if err := s.a.quiet(nil, "git", "check-ref-format", "--branch", s.vmbranch); err != nil {
+		return false, fmt.Errorf("invalid VM branch %q", s.vmbranch)
+	}
+	if s.a.quiet(nil, "git", "-C", s.repo, "show-ref", "--verify", "--quiet", "refs/heads/"+s.vmbranch) == nil {
+		return false, fmt.Errorf("refusing existing local branch %s without its expected worktree", s.vmbranch)
+	}
+	args := []string{"-C", s.repo, "switch", "--create", s.vmbranch, "--base", s.vmhead, "--no-verify", "--no-cd", "-y"}
+	s.a.say("create local mirror with Worktrunk at " + s.local + " …")
+	cmd := exec.Command(s.wt, args...)
+	cmd.Env = append(os.Environ(), "COLUMNS=120", "WORKTRUNK_WORKTREE_PATH="+s.local)
+	if text, err := cmd.CombinedOutput(); err != nil {
+		return false, fmt.Errorf("Worktrunk mirror creation failed: %s", strings.TrimSpace(string(text)))
+	}
+	if root, err := s.a.output("git", "-C", s.local, "rev-parse", "--show-toplevel"); err != nil || filepath.Clean(strings.TrimSpace(root)) != s.local {
+		return false, fmt.Errorf("Worktrunk did not create the expected mirror %s", s.local)
+	}
+	return true, nil
 }
 
-func (s syncRun) seedChanges() error {
-	s.a.say("seed the agent's work one-way (rsync, so nothing bidirectional can eat it) …")
-	s.a.rsync(s.vmwt, s.local)
-	bins := s.a.binaryChanges(s.local)
-	if bins == "" {
-		return nil
-	}
-	cmd := exec.Command("git", append([]string{"update-index", "--skip-worktree"}, strings.Split(bins, "\n")...)...)
-	cmd.Dir, cmd.Stdout, cmd.Stderr = s.local, s.a.out, s.a.err
+func (s syncRun) seedNewMirror() error {
+	s.a.say("seed new mirror one-way from the VM before enabling two-way sync …")
+	args := []string{"-a", "--delete", "--exclude=.git", "--exclude=node_modules", "--exclude=.devenv", "--exclude=.direnv", "--exclude=.wrangler", "--exclude=.envrc.local", "--exclude=.env.local", "--exclude=.env", "--exclude=*.sqlite*", "--exclude=.next", "--exclude=.turbo", "--exclude=target", "--exclude=dist", "--exclude=__pycache__", "--exclude=.venv", "--exclude=/bazel-*"}
+	args = append(args, "-e", "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", s.a.user+"@"+s.a.host+":"+s.vmwt+"/", s.local+"/")
+	cmd := exec.Command("rsync", args...)
+	cmd.Stdout, cmd.Stderr = s.a.out, s.a.err
 	if err := cmd.Run(); err != nil {
-		return err
+		return fmt.Errorf("initial one-way mirror seed failed: %w", err)
 	}
-	s.a.say(fmt.Sprintf("  hid %d LFS binaries from git status", lineCount(bins)))
 	return nil
 }
 
-func (s syncRun) ensureMutagen() {
-	if s.a.quiet(nil, s.mutagen, "sync", "list", s.name) == nil {
-		s.a.say("resume sync …")
-		_ = s.a.quiet(nil, s.mutagen, "sync", "resume", s.name)
-		return
+func (s syncRun) refreshSeedStatCache() error {
+	if s.a.quiet(nil, "git", "-C", s.local, "diff", "--cached", "--quiet") != nil ||
+		s.a.quiet(nil, "git", "-C", s.local, "diff", "--no-ext-diff", "--no-textconv", "--quiet") != nil {
+		return nil
 	}
-	s.a.say("create sync (two-way-resolved, VM wins) …")
-	args := []string{"sync", "create", "--name=" + s.name, "--sync-mode=two-way-resolved", "--watch-polling-interval=600"}
-	for _, ignore := range mutagenIgnores {
-		args = append(args, "--ignore="+ignore)
+	before, err := s.a.output("git", "-C", s.local, "write-tree")
+	if err != nil {
+		return err
 	}
-	args = append(args, s.a.user+"@"+s.a.host+":"+s.vmwt, s.local)
-	if s.a.quiet(nil, s.mutagen, args...) == nil {
-		s.a.say("  created")
+	if err := s.a.quiet(nil, "git", "-C", s.local, "add", "--update"); err != nil {
+		return fmt.Errorf("LFS stat refresh failed: %w", err)
+	}
+	after, err := s.a.output("git", "-C", s.local, "write-tree")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(before) != strings.TrimSpace(after) {
+		_ = s.a.quiet(nil, "git", "-C", s.local, "read-tree", strings.TrimSpace(before))
+		return fmt.Errorf("LFS stat refresh changed the index tree; original tree restored")
+	}
+	return nil
+}
+
+func (s syncRun) fetchVMBranch() error {
+	if s.vmbranch == "" {
+		return nil
+	}
+	sshEnv := []string{"GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25"}
+	url := "ssh://" + s.a.user + "@" + s.a.host + "/home/" + s.a.user + "/src/lovable"
+	if s.a.quiet(sshEnv, "git", "-C", s.repo, "fetch", "--quiet", "--no-tags", url, s.vmbranch) != nil {
+		return fmt.Errorf("could not fetch VM branch %s", s.vmbranch)
+	}
+	got, err := s.a.output("git", "-C", s.repo, "rev-parse", "FETCH_HEAD")
+	if err != nil || strings.TrimSpace(got) != s.vmhead {
+		return fmt.Errorf("fetched branch %s is not VM HEAD %s", s.vmbranch, prefix(s.vmhead, 11))
+	}
+	return nil
+}
+
+func (s syncRun) alignHead() error {
+	cur, err := s.a.output("git", "-C", s.local, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	cur = strings.TrimSpace(cur)
+	if cur == s.vmhead {
+		return nil
+	}
+	if s.a.quiet(nil, "git", "-C", s.local, "merge-base", "--is-ancestor", cur, s.vmhead) != nil {
+		return fmt.Errorf("mirror HEAD %s diverges from VM HEAD %s; files and metadata left untouched", prefix(cur, 11), prefix(s.vmhead, 11))
+	}
+	if s.a.quiet(nil, "git", "-C", s.local, "diff", "--cached", "--quiet") != nil {
+		return fmt.Errorf("mirror has staged changes; refusing HEAD/index alignment so staging is preserved")
+	}
+	if err := s.a.quiet(nil, "git", "-C", s.local, "reset", "--mixed", s.vmhead); err != nil {
+		return err
+	}
+	fmt.Fprintf(s.a.out, "[vm-sync] HEAD/index %s -> %s (working files preserved)\n", prefix(cur, 11), prefix(s.vmhead, 11))
+	return nil
+}
+
+type mutagenEndpoint struct {
+	Protocol, User, Host, Path string
+	Connected, Scanned         bool
+}
+
+type mutagenListing struct {
+	Name        string `json:"name"`
+	Alpha, Beta mutagenEndpoint
+	Ignore      struct {
+		Paths []string `json:"paths"`
+	} `json:"ignore"`
+	Paused bool   `json:"paused"`
+	Status string `json:"status"`
+}
+
+func (s syncRun) requireCleanIncompleteCheckout() error {
+	top, err := s.a.output("git", "-C", s.local, "rev-parse", "--show-toplevel")
+	if err != nil || filepath.Clean(strings.TrimSpace(top)) != s.local {
+		return fmt.Errorf("refusing unmanaged mirror %s: checkout identity is not exact", s.local)
+	}
+	common, err := s.a.output("git", "-C", s.local, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil || filepath.Clean(strings.TrimSpace(common)) != filepath.Join(s.repo, ".git") {
+		return fmt.Errorf("refusing unmanaged mirror %s: checkout is not owned by %s", s.local, s.repo)
+	}
+	branch, err := s.a.output("git", "-C", s.local, "branch", "--show-current")
+	if err != nil || strings.TrimSpace(branch) != s.vmbranch {
+		return fmt.Errorf("refusing unmanaged mirror %s: expected branch %s", s.local, s.vmbranch)
+	}
+	head, err := s.a.output("git", "-C", s.local, "rev-parse", "HEAD")
+	if err != nil || strings.TrimSpace(head) != s.vmhead {
+		return fmt.Errorf("refusing unmanaged mirror %s: expected HEAD %s", s.local, prefix(s.vmhead, 11))
+	}
+	status, err := s.a.output("git", "-C", s.local, "status", "--porcelain")
+	if err != nil || strings.TrimSpace(status) != "" {
+		return fmt.Errorf("refusing unmanaged mirror %s: local changes require explicit repair", s.local)
+	}
+	return nil
+}
+
+func (s syncRun) requireManaged() error {
+	managed, err := s.managedSession()
+	if err != nil {
+		return err
+	}
+	if !managed {
+		return fmt.Errorf("refusing unmanaged mirror %s: expected Mutagen session %s", s.local, s.name)
+	}
+	return nil
+}
+
+func (s syncRun) managedSession() (bool, error) {
+	text, err := s.a.combined(s.mutagen, "sync", "list", "--template", "{{ json . }}")
+	if err != nil {
+		return false, fmt.Errorf("cannot inspect Mutagen sessions: %w", err)
+	}
+	var sessions []mutagenListing
+	if json.Unmarshal([]byte(text), &sessions) != nil {
+		return false, fmt.Errorf("cannot verify Mutagen ownership for %s", s.name)
+	}
+	matches := sessions[:0]
+	for _, session := range sessions {
+		if session.Name == s.name {
+			matches = append(matches, session)
+		}
+	}
+	if len(matches) == 0 {
+		return false, nil
+	}
+	if len(matches) != 1 {
+		return false, fmt.Errorf("multiple Mutagen sessions matched %s", s.name)
+	}
+	if err := s.validateMutagenIdentity(matches[0]); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s syncRun) validateMutagenIdentity(session mutagenListing) error {
+	if session.Alpha.Protocol != "ssh" || session.Alpha.User != s.a.user || session.Alpha.Host != s.a.host || filepath.Clean(session.Alpha.Path) != s.vmwt || session.Beta.Protocol != "local" || filepath.Clean(session.Beta.Path) != s.local {
+		return fmt.Errorf("Mutagen session %s has mismatched endpoints; refusing to modify it", s.name)
+	}
+	for _, pattern := range session.Ignore.Paths {
+		if pattern == "bazel-*" {
+			return fmt.Errorf("Mutagen session %s has unsafe unanchored bazel-* ignore; repair stale paths explicitly before syncing", s.name)
+		}
+	}
+	return nil
+}
+
+func (s syncRun) ensureMutagen() error {
+	managed, err := s.managedSession()
+	if err != nil {
+		return err
+	}
+	if managed {
+		s.a.say("resume verified sync …")
+		if err := s.a.quiet(nil, s.mutagen, "sync", "resume", s.name); err != nil {
+			return fmt.Errorf("Mutagen resume failed for %s", s.name)
+		}
 	} else {
-		s.a.say("  ✗ create failed")
+		s.a.say("create sync (two-way-resolved, VM wins) …")
+		args := []string{"sync", "create", "--name=" + s.name, "--sync-mode=two-way-resolved", "--watch-polling-interval=600"}
+		for _, ignore := range mutagenIgnores {
+			args = append(args, "--ignore="+ignore)
+		}
+		args = append(args, s.a.user+"@"+s.a.host+":"+s.vmwt, s.local)
+		if err := s.a.quiet(nil, s.mutagen, args...); err != nil {
+			return fmt.Errorf("Mutagen create failed for %s", s.name)
+		}
 	}
+	if err := s.a.quiet(nil, s.mutagen, "sync", "flush", s.name); err != nil {
+		return fmt.Errorf("Mutagen synchronization failed for %s", s.name)
+	}
+	return s.requireReadyMutagen()
+}
+
+func (s syncRun) requireReadyMutagen() error {
+	text, err := s.a.combined(s.mutagen, "sync", "list", "--template", "{{ json . }}")
+	if err != nil {
+		return fmt.Errorf("cannot verify Mutagen readiness: %w", err)
+	}
+	var sessions []mutagenListing
+	if json.Unmarshal([]byte(text), &sessions) != nil {
+		return fmt.Errorf("cannot verify Mutagen readiness for %s", s.name)
+	}
+	for _, session := range sessions {
+		if session.Name != s.name {
+			continue
+		}
+		if err := s.validateMutagenIdentity(session); err != nil {
+			return err
+		}
+		if session.Paused || session.Status != "watching" || !session.Alpha.Connected || !session.Alpha.Scanned || !session.Beta.Connected || !session.Beta.Scanned {
+			return fmt.Errorf("Mutagen session %s is not ready: status=%s paused=%t alpha-connected=%t alpha-scanned=%t beta-connected=%t beta-scanned=%t", s.name, session.Status, session.Paused, session.Alpha.Connected, session.Alpha.Scanned, session.Beta.Connected, session.Beta.Scanned)
+		}
+		return nil
+	}
+	return fmt.Errorf("Mutagen session %s disappeared after synchronization", s.name)
 }
 
 var mutagenIgnores = []string{
-	".git", "node_modules", ".devenv", ".direnv", ".wrangler", "*.sqlite", "*.sqlite-shm", "*.sqlite-wal",
-	".next", ".turbo", "target", "dist", "__pycache__", ".venv", "bazel-*", "*.log", "*.png", "*.jpg",
+	".git", "node_modules", ".devenv", ".direnv", ".wrangler", ".envrc.local", ".env.local", ".env", "*.sqlite", "*.sqlite-shm", "*.sqlite-wal",
+	".next", ".turbo", "target", "dist", "__pycache__", ".venv", "/bazel-*", "*.log", "*.png", "*.jpg",
 	"*.jpeg", "*.gif", "*.webp", "*.ico", "*.icns", "*.pdf", "*.mp4", "*.woff", "*.woff2", "*.ttf", "!.heidr-pastes/**",
-}
-
-func (a app) rsync(vmwt, local string) {
-	args := []string{"-a"}
-	for _, pattern := range []string{".git", "node_modules", ".devenv", ".direnv", ".wrangler", "*.sqlite*", ".next", ".turbo", "target", "dist", "__pycache__", ".venv", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.ico", "*.icns", "*.pdf", "*.mp4", "*.woff", "*.woff2", "*.ttf"} {
-		args = append(args, "--exclude", pattern)
-	}
-	args = append(args, "-e", "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", a.user+"@"+a.host+":"+vmwt+"/", local+"/")
-	text, _ := a.combined("rsync", args...)
-	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
-		if line != "" && !strings.HasPrefix(line, "Warning:") {
-			fmt.Fprintln(a.out, line)
-		}
-	}
-}
-
-func (a app) binaryChanges(local string) string {
-	cmd := exec.Command("git", "status", "--porcelain")
-	cmd.Dir, cmd.Env, cmd.Stderr = local, os.Environ(), io.Discard
-	text, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	var found []string
-	for _, line := range strings.Split(string(text), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[0] == "M" && binaryPath.MatchString(fields[1]) {
-			found = append(found, fields[1])
-		}
-	}
-	return strings.Join(found, "\n")
 }
 
 func (a app) report(local string) error {
@@ -383,18 +596,21 @@ func (a app) quiet(env []string, name string, args ...string) error {
 }
 
 func commandEnv(extra []string) []string { return append(os.Environ(), extra...) }
+func executable(home, name string) (string, error) {
+	if path, err := exec.LookPath(name); err == nil {
+		return path, nil
+	}
+	path := filepath.Join("/etc/profiles/per-user", filepath.Base(home), "bin", name)
+	if isFile(path) {
+		return path, nil
+	}
+	return "", fmt.Errorf("%s is unavailable", name)
+}
 func envDefault(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
 	return fallback
-}
-func lineCount(text string) int {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return 0
-	}
-	return strings.Count(text, "\n") + 1
 }
 func isCommit(value string) bool {
 	if value == "" {
@@ -418,10 +634,6 @@ func prefix(value string, n int) string {
 		return value
 	}
 	return value[:n]
-}
-func lastLine(value string) string {
-	lines := strings.Split(strings.TrimSuffix(value, "\n"), "\n")
-	return lines[len(lines)-1]
 }
 
 type silentError struct{}

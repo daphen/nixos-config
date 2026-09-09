@@ -37,7 +37,7 @@ def log(msg: str) -> None:
     print(f"[vm-slice-reaper] {msg}", flush=True)
 
 
-def roster() -> dict:
+def roster() -> dict | None:
     """Live sessions from agentd, by name. Prefers the unix socket, falls back to TCP."""
     for kind, target in (("unix", SOCK), ("tcp", TCP)):
         try:
@@ -63,7 +63,7 @@ def roster() -> dict:
             return {x.get("name"): x for x in data.get("sessions", []) if x.get("name")}
         except Exception:
             continue
-    return {}
+    return None
 
 
 def slice_dirs() -> set[str]:
@@ -121,6 +121,20 @@ def dormant(entry: dict | None) -> tuple[bool, str]:
     return False, f"status {status or 'unknown'} without an idle stamp"
 
 
+def owner_dormant(worktree: str, live: dict) -> tuple[bool, str]:
+    target = os.path.realpath(os.path.normpath(os.path.join(SRC, worktree)))
+    owners = [entry for entry in live.values()
+              if entry.get("cwd") and os.path.realpath(os.path.normpath(entry["cwd"])) == target]
+    if not owners:
+        return dormant(None)
+    states = [(entry, *dormant(entry)) for entry in owners]
+    for entry, is_dormant, why in states:
+        if not is_dormant:
+            return False, f"owner {entry.get('name')}: {why}"
+    return True, "; ".join(f"owner {entry.get('name')}: {why}"
+                           for entry, _, why in states)
+
+
 def stop_slice(worktree: str) -> bool:
     wt = os.path.join(SRC, worktree)
     for port in pc_ports(worktree):
@@ -144,11 +158,15 @@ def reap_one(worktree_path: str, session: str) -> int:
     # A stop is not always final: a re-prompt wakes the session straight back up. Give it
     # a breath, then confirm the session really is gone before killing a 6GB slice.
     time.sleep(int(os.environ.get("SLICE_HOOK_DELAY", "20")))
-    entry = roster().get(session)
-    if entry and (entry.get("status") or "") not in ("asleep", ""):
-        log(f"hook: {session} came back ({entry.get('status')}) — keeping {worktree}")
+    live = roster()
+    if not live:
+        log("hook: agentd roster unavailable — refusing to reap blind")
         return 0
-    log(f"hook: reaping {worktree} (session {session} stopped)")
+    ok, why = owner_dormant(worktree, live)
+    if not ok:
+        log(f"hook: keeping {worktree}: {why}")
+        return 0
+    log(f"hook: reaping {worktree} ({why}; session {session} stopped)")
     if not stop_slice(worktree):
         log(f"  no process-compose answered for {worktree}")
     tmux = subprocess.run(["tmux", "ls"], capture_output=True, text=True).stdout
@@ -187,7 +205,7 @@ def main() -> int:
         if worktree in ("lovable",):
             continue
         name = session_name_for(worktree)
-        ok, why = dormant(live.get(name))
+        ok, why = owner_dormant(worktree, live)
         if not ok:
             log(f"keep {worktree}: {why}")
             continue
