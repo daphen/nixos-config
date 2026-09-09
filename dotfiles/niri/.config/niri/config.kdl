@@ -756,7 +756,7 @@ binds {
 
     // Mod-Shift-/, which is usually the same as Mod-?,
     // shows a list of important hotkeys.
-    Mod+Shift+Slash { show-hotkey-overlay; }
+    Mod+Shift+Slash hotkey-overlay-title="Niri Shortcut Help" { show-hotkey-overlay; }
 
     // Suggested binds for running programs: app launcher, screen locker.
     Super+Space hotkey-overlay-title="Run an Application" { spawn "qs" "ipc" "call" "launcher" "toggle"; }
@@ -764,35 +764,35 @@ binds {
     // 1Password lives in the tray (close-to-tray default): focus the window
     // if mapped, else spawn — which summons the tray instance (~instant)
     Super+P hotkey-overlay-title="1Password credential picker" { spawn "opqs-client"; }
-    Super+Shift+P { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 1password 1password"; }
+    Super+Shift+P hotkey-overlay-title="Open 1Password" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 1password 1password"; }
     Super+Ctrl+q hotkey-overlay-title="Force Kill Focused Window" { spawn "/home/daphen/.config/niri/scripts/force-kill-focused"; }
     Super+Shift+Ctrl+q hotkey-overlay-title="Lock the Screen" { spawn "swaylock"; }
 
     // Use spawn-sh to run a shell command. Do this if you need pipes, multiple commands, etc.
     // Note: the entire command goes as a single argument. It's passed verbatim to `sh -c`.
     // For example, this is a standard bind to toggle the screen reader (orca).
-    Super+Alt+S allow-when-locked=true hotkey-overlay-title=null { spawn-sh "pkill orca || exec orca"; }
+    Super+Alt+S allow-when-locked=true hotkey-overlay-title="Screen Reader" { spawn-sh "pkill orca || exec orca"; }
 
     // Jump-or-exec keybinds for quick app access
-    Super+c { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:dsqrd $HOME/.config/niri/scripts/launch-discord-client"; }
-    Super+e { spawn-sh "$HOME/.config/niri/scripts/spawn-terminal-with-yazi"; }
+    Super+c hotkey-overlay-title="Discord" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:dsqrd $HOME/.config/niri/scripts/launch-discord-client"; }
+    Super+e hotkey-overlay-title="Files" { spawn-sh "$HOME/.config/niri/scripts/spawn-terminal-with-yazi"; }
     // Open the notification-center picker (active + recently-dismissed);
     // pick one to jump to its window/app.
-    Super+i { spawn-sh "$HOME/.config/niri/scripts/inbox-jump"; }
+    Super+i hotkey-overlay-title="Notifications" { spawn-sh "$HOME/.config/niri/scripts/inbox-jump"; }
     // Super+Ctrl+g: resume an existing claude session (fzf picker)
-    Super+Ctrl+g { spawn-sh "kitty --class lovable_picker $HOME/.config/niri/scripts/spawn-claude-session-picker"; }
+    Super+Ctrl+g hotkey-overlay-title="Resume Agent Session" { spawn-sh "kitty --class lovable_picker $HOME/.config/niri/scripts/spawn-claude-session-picker"; }
     Super+Shift+g hotkey-overlay-title="Chat" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here title:qstns $HOME/personal/qstns/run.sh"; }
-    Super+Shift+f { spawn-sh "$HOME/.config/niri/scripts/fork-claude-session"; }
+    Super+Shift+f hotkey-overlay-title="Fork Agent Session" { spawn-sh "$HOME/.config/niri/scripts/fork-claude-session"; }
     Super+r hotkey-overlay-title="Create PR review" { spawn "qs" "ipc" "call" "review-create" "toggle"; }
     // Super+G — jump to the cockpit's nvim window (hosts the agent rail).
     // Super+D — cycle through every kitty window (plain + cockpit agent/nvim/
     // devenv), the general terminal-cycle role.
-    Super+g { spawn-sh "$HOME/.config/niri/scripts/cockpit-focus nvim"; }
-    Super+d { spawn-sh "$HOME/.config/niri/scripts/focus-kitty-cycle"; }
-    Super+Shift+d { spawn-sh "SHOW_FASTFETCH=1 kitty"; }
-    Super+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
-    Super+Shift+s { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
-    Super+a { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 'spotify_player' 'kitty --class spotify_player /home/daphen/.config/niri/scripts/spotify-player-launch'"; }
+    Super+g hotkey-overlay-title="Focus Cockpit Editor" { spawn-sh "$HOME/.config/niri/scripts/cockpit-focus nvim"; }
+    Super+d hotkey-overlay-title="Cycle Terminals" { spawn-sh "$HOME/.config/niri/scripts/focus-kitty-cycle"; }
+    Super+Shift+d hotkey-overlay-title="New Terminal" { spawn-sh "SHOW_FASTFETCH=1 kitty"; }
+    Super+s hotkey-overlay-title="Slack" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
+    Super+Shift+s hotkey-overlay-title="Slack" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
+    Super+a hotkey-overlay-title="Spotify" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 'spotify_player' 'kitty --class spotify_player /home/daphen/.config/niri/scripts/spotify-player-launch'"; }
     // Browser keybinds. Browser binary lives in browser-config.sh —
     // these scripts are browser-agnostic.
     // Super+Q  = personal (direct launch-or-focus, single tracked window)
@@ -800,12 +800,12 @@ binds {
     //   browser-work window, falling back to the browser-work script when
     //   no candidate window matches. browser-work in INACTIVE worktrees is
     //   excluded automatically via ws-tracker's excluded-id list.
-    Super+q { spawn-sh "/home/daphen/.config/niri/scripts/browser-personal"; }
+    Super+q hotkey-overlay-title="Personal Browser" { spawn-sh "/home/daphen/.config/niri/scripts/browser-personal"; }
     // browser-work targets the work-CLASS window only (stateless); the old
     // ws-focus cycled both profiles once its personal-id tracker went stale.
-    Super+w { spawn-sh "$HOME/.config/niri/scripts/browser-work"; }
-    Super+Shift+q { spawn-sh "/home/daphen/.config/niri/scripts/chromium-launch"; }
-    Super+Shift+w { spawn-sh "$HOME/.config/niri/scripts/browser-work-new"; }
+    Super+w hotkey-overlay-title="Work Browser" { spawn-sh "$HOME/.config/niri/scripts/browser-work"; }
+    Super+Shift+q hotkey-overlay-title="New Personal Browser Window" { spawn-sh "/home/daphen/.config/niri/scripts/chromium-launch"; }
+    Super+Shift+w hotkey-overlay-title="New Work Browser Window" { spawn-sh "$HOME/.config/niri/scripts/browser-work-new"; }
 
     Super+f hotkey-overlay-title="Toggle Command Palette" { spawn-sh "$HOME/.config/niri/scripts/palette-toggle"; }
     Super+Shift+m hotkey-overlay-title="Add Quickmark" { spawn "palette-ipc" "add-quickmark"; }
@@ -829,14 +829,12 @@ binds {
     Super+Ctrl+t hotkey-overlay-title="Cockpit contexts" { spawn "qs" "ipc" "call" "cockpit" "toggle"; }
     // Super+O: flip to the previously used cockpit context (vim ctrl-o style).
     Super+o hotkey-overlay-title="Previous context" { spawn-sh "$HOME/.config/niri/scripts/cockpit-toggle"; }
-    Super+Ctrl+Shift+t { spawn "qs" "ipc" "call" "todos" "toggle"; }  // permanent quick-todo list
-    Super+Slash hotkey-overlay-title="Switch to TTY2" { spawn-sh "for s in $(loginctl list-sessions --no-legend | awk '{print $1}'); do if [ \"$(loginctl show-session \"$s\" -p VTNr --value)\" = 2 ]; then exec loginctl activate \"$s\"; fi; done"; }
-
-    Super+b hotkey-overlay-title="System monitor" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here btop 'kitty --class btop btop'"; }
+    Super+Ctrl+Shift+t hotkey-overlay-title="Todos" { spawn "qs" "ipc" "call" "todos" "toggle"; }  // permanent quick-todo list
+    Super+b hotkey-overlay-title="System Monitor" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here btop 'kitty --class btop btop'"; }
 
     // Notes capture picker — type chooses routing into the vault
     Super+n       hotkey-overlay-title="Capture note" { spawn "qs" "ipc" "call" "notes" "toggle"; }
-    Super+Shift+n hotkey-overlay-title="Quick inbox note" { spawn "/home/daphen/.config/quickshell/scripts/notes-capture" "note"; }
+    Super+Shift+n hotkey-overlay-title="Quick Inbox Note" { spawn "/home/daphen/.config/quickshell/scripts/notes-capture" "note"; }
 
     // Theme toggle is now reachable from the app launcher ("Toggle Theme").
 
@@ -860,7 +858,7 @@ binds {
     F4  allow-when-locked=true { spawn-sh "brightnessctl --device='*kbd_backlight' set 33%+"; }
     F5  allow-when-locked=true { spawn "/home/daphen/.config/niri/scripts/brightness-throttled" "5%-"; }
     F6  allow-when-locked=true { spawn "/home/daphen/.config/niri/scripts/brightness-throttled" "5%+"; }
-    F8  allow-when-locked=true { spawn "qs" "ipc" "call" "emoji" "toggle"; }
+    F8  allow-when-locked=true hotkey-overlay-title="Emoji" { spawn "qs" "ipc" "call" "emoji" "toggle"; }
     F9  allow-when-locked=true { spawn-sh "$HOME/.config/niri/scripts/toggle-mic"; }
     F10 allow-when-locked=true { spawn-sh "$HOME/.config/niri/scripts/toggle-camera"; }
 
@@ -958,31 +956,31 @@ binds {
     // Screenshot keybinds
     // Focused window straight to clipboard + Screenshots dir, no UI.
     Super+Shift+e hotkey-overlay-title="Screenshot window" { screenshot-window; }
-    Super+Ctrl+e { screenshot-screen; }      // Screenshot active monitor
-    Super+Ctrl+Shift+e { spawn "/home/daphen/.config/niri/scripts/screenshot-to-clipboard"; }  // Screenshot selection to clipboard
+    Super+Ctrl+e hotkey-overlay-title="Screenshot Monitor" { screenshot-screen; }      // Screenshot active monitor
+    Super+Ctrl+Shift+e hotkey-overlay-title="Screenshot Region" { spawn "/home/daphen/.config/niri/scripts/screenshot-to-clipboard"; }  // Screenshot selection to clipboard
 
     // Screen recording (wf-recorder + slurp). Same keybind toggles start/stop.
-    Super+Shift+r repeat=false { spawn "/home/daphen/.config/niri/scripts/record-toggle" "region"; }   // Record region
+    Super+Shift+r repeat=false hotkey-overlay-title="Record Region" { spawn "/home/daphen/.config/niri/scripts/record-toggle" "region"; }   // Record region
 
     // Color picker
-    Super+Ctrl+c { spawn "/home/daphen/.config/niri/scripts/pick-color"; }  // Pick color from screen
-    Super+Ctrl+Shift+c { spawn "qs" "ipc" "call" "color-format" "toggle"; }  // Change color picker format
+    Super+Ctrl+c hotkey-overlay-title="Pick Screen Color" { spawn "/home/daphen/.config/niri/scripts/pick-color"; }  // Pick color from screen
+    Super+Ctrl+Shift+c hotkey-overlay-title="Change Color Format" { spawn "qs" "ipc" "call" "color-format" "toggle"; }  // Change color picker format
 
     // Do-not-disturb toggle. Quickshell watches the file via DndState.
-    Super+Ctrl+Shift+d { spawn-sh "f=$HOME/.config/quickshell/dnd; if [ -e \"$f\" ]; then rm -f \"$f\"; else mkdir -p \"$(dirname \"$f\")\" && touch \"$f\"; fi"; }
+    Super+Ctrl+Shift+d hotkey-overlay-title="Do Not Disturb" { spawn-sh "f=$HOME/.config/quickshell/dnd; if [ -e \"$f\" ]; then rm -f \"$f\"; else mkdir -p \"$(dirname \"$f\")\" && touch \"$f\"; fi"; }
 
     // Rofi keybinds
-    Super+Ctrl+V { spawn "qs" "ipc" "call" "clipboard" "toggle"; }  // Clipboard history (quickshell picker over clipse's store)
-    Super+Ctrl+I { spawn "qs" "ipc" "call" "timers" "toggle"; }  // Timers (set/cancel countdowns)
-    Super+Ctrl+B { spawn "qs" "ipc" "call" "bluetooth" "toggle"; }  // Open bluetooth menu
-    Super+Ctrl+N { spawn "qs" "ipc" "call" "network" "toggle"; }    // Open wifi picker
-    Super+Ctrl+Shift+B { spawn-sh "$HOME/.config/niri/scripts/waybar-theme --cycle"; }  // Cycle waybar theme
-    Super+Ctrl+P { spawn "qs" "ipc" "call" "asus-profile" "toggle"; }  // Switch ASUS performance profile
-    Super+Ctrl+A { spawn "/home/daphen/.config/niri/scripts/toggle-headphones"; }  // Toggle whichever headphones are on (Px8 or AirPods)
-    Super+Ctrl+R { spawn "/home/daphen/.config/niri/scripts/claude-rename"; }  // Rename focused Claude session via QS prompt
+    Super+Ctrl+V hotkey-overlay-title="Clipboard History" { spawn "qs" "ipc" "call" "clipboard" "toggle"; }  // Clipboard history (quickshell picker over clipse's store)
+    Super+Ctrl+I hotkey-overlay-title="Timers" { spawn "qs" "ipc" "call" "timers" "toggle"; }  // Timers (set/cancel countdowns)
+    Super+Ctrl+B hotkey-overlay-title="Bluetooth" { spawn "qs" "ipc" "call" "bluetooth" "toggle"; }  // Open bluetooth menu
+    Super+Ctrl+N hotkey-overlay-title="Network" { spawn "qs" "ipc" "call" "network" "toggle"; }    // Open wifi picker
+    Super+Ctrl+Shift+B hotkey-overlay-title="Cycle Bar Theme" { spawn-sh "$HOME/.config/niri/scripts/waybar-theme --cycle"; }  // Cycle waybar theme
+    Super+Ctrl+P hotkey-overlay-title="ASUS Performance Profile" { spawn "qs" "ipc" "call" "asus-profile" "toggle"; }  // Switch ASUS performance profile
+    Super+Ctrl+A hotkey-overlay-title="Headphones" { spawn "/home/daphen/.config/niri/scripts/toggle-headphones"; }  // Toggle whichever headphones are on (Px8 or AirPods)
+    Super+Ctrl+R hotkey-overlay-title="Rename Agent Session" { spawn "/home/daphen/.config/niri/scripts/claude-rename"; }  // Rename focused Claude session via QS prompt
 
     // Dismiss all notifications
-    Super+Escape { spawn "qs" "ipc" "call" "notifications" "dismissAll"; }
+    Super+Escape hotkey-overlay-title="Dismiss Notifications" { spawn "qs" "ipc" "call" "notifications" "dismissAll"; }
 }
 
 // Clipboard management with clipse

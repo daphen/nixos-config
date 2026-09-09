@@ -26,6 +26,7 @@ Item {
     // subtitleColorField.
     property string trailingField: ""
     property string trailingColorField: ""
+    property bool trailingKeycaps: false
     // Opt-in computed subtitle: a function of the item, re-evaluated whenever
     // anything it reads changes (QML tracks reads through calls) — so live
     // text like a ticking countdown never has to churn the items array.
@@ -186,6 +187,21 @@ Item {
             if (i > 0) h += 2
         }
         return h
+    }
+
+    function shortcutParts(shortcut) {
+        const labels = { Super: "super", Ctrl: "ctrl", Shift: "⇧", Alt: "alt", Escape: "esc", Enter: "↵" }
+        const combos = String(shortcut || "").split(/\s+\/\s+/)
+        const out = []
+        for (let i = 0; i < combos.length; i++) {
+            if (i > 0) out.push({ separator: true, text: "/" })
+            const keys = combos[i].split("+")
+            for (let j = 0; j < keys.length; j++) {
+                const key = keys[j].trim()
+                if (key) out.push({ separator: false, text: labels[key] || key.toLowerCase() })
+            }
+        }
+        return out
     }
 
     // Rows under a divider until the next one — shown as the section count.
@@ -674,9 +690,43 @@ Item {
                         }
                     }
 
+                    Row {
+                        id: trailingCaps
+                        visible: !rowItem.isDivider && root.trailingKeycaps
+                            && root.trailingField.length > 0 && rowItem.modelData
+                            && String(rowItem.modelData[root.trailingField] || "").length > 0
+                        anchors.right: rowIcon.active ? rowIcon.left : parent.right
+                        anchors.rightMargin: rowIcon.active ? 8 : 28
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+                        Repeater {
+                            model: root.shortcutParts(rowItem.modelData
+                                ? rowItem.modelData[root.trailingField] : "")
+                            Item {
+                                required property var modelData
+                                width: modelData.separator ? separator.implicitWidth : cap.width
+                                height: 22
+                                KeyCap {
+                                    id: cap
+                                    visible: !parent.modelData.separator
+                                    text: parent.modelData.text
+                                }
+                                Text {
+                                    id: separator
+                                    visible: parent.modelData.separator
+                                    anchors.centerIn: parent
+                                    text: parent.modelData.text
+                                    color: Theme.fg_muted
+                                    font.family: notch.sans
+                                    font.pixelSize: 11
+                                }
+                            }
+                        }
+                    }
+
                     Text {
                         id: trailingText
-                        visible: !rowItem.isDivider && root.trailingField.length > 0
+                        visible: !root.trailingKeycaps && !rowItem.isDivider && root.trailingField.length > 0
                             && rowItem.modelData
                             && String(rowItem.modelData[root.trailingField] || "").length > 0
                         anchors.right: rowIcon.active ? rowIcon.left : parent.right
@@ -754,11 +804,12 @@ Item {
                         anchors.leftMargin: rowGlyph.active ? 10 : (hlDot.visible ? 16 : 28)
                         anchors.right: rowItem.hasThumb ? parent.right
                                      : optionChips.active ? optionChips.left
+                                     : trailingCaps.visible ? trailingCaps.left
                                      : trailingText.visible ? trailingText.left
                                      : (rowIcon.active ? rowIcon.left : parent.right)
                         anchors.rightMargin: rowItem.hasThumb ? (root.thumbSize + 56)
                                            : optionChips.active ? 12
-                                           : trailingText.visible ? 12 : 28
+                                           : (trailingCaps.visible || trailingText.visible) ? 12 : 28
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
                         Text {
