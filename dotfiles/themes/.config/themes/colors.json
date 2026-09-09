@@ -42,19 +42,19 @@
         -0.0119,
         -0.0239,
         -0.0539,
-        -0.0811
+        -0.08302
       ],
       "dC": [
         0.0,
         0.0,
         0.0,
-        0.0
+        0.005381
       ],
       "dH": [
         0.0,
         0.0,
         0.0,
-        0.0
+        196.4176
       ],
       "dBorder": [
         0.12,
@@ -118,6 +118,9 @@
         "method": "accent.orange",
         "tag": "accent.blue",
         "attribute": "accent.cyan",
+        "item_hover": "background.surface2",
+        "item_selected": "background.selection",
+        "item_cursor": "background.surface3",
         "cursor": "#FF570D",
         "highlight_low": "#2F2E3E",
         "highlight_medium": "#545168",
@@ -203,6 +206,9 @@
         "method": "accent.orange",
         "tag": "accent.orange",
         "attribute": "accent.cyan",
+        "item_hover": "background.surface2",
+        "item_selected": "background.selection",
+        "item_cursor": "background.surface3",
         "cursor": "#FF570D",
         "highlight_low": "#E8EAED",
         "highlight_medium": "#D5D8DD",

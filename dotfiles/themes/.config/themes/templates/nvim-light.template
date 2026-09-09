@@ -63,6 +63,9 @@ local c = {
   method = "{{light.semantic.method}}",
   tag = "{{light.semantic.tag}}",
   attribute = "{{light.semantic.attribute}}",
+  item_hover = "{{light.semantic.item_hover}}",
+  item_selected = "{{light.semantic.item_selected}}",
+  item_cursor = "{{light.semantic.item_cursor}}",
 
   -- Highlights
   highlight_low = "{{light.semantic.highlight_low}}",

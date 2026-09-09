@@ -63,6 +63,9 @@ local c = {
   method = "{{dark.semantic.method}}",
   tag = "{{dark.semantic.tag}}",
   attribute = "{{dark.semantic.attribute}}",
+  item_hover = "{{dark.semantic.item_hover}}",
+  item_selected = "{{dark.semantic.item_selected}}",
+  item_cursor = "{{dark.semantic.item_cursor}}",
 
   -- Highlights
   highlight_low = "{{dark.semantic.highlight_low}}",

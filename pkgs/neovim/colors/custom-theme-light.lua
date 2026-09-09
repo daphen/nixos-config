@@ -25,7 +25,7 @@ local c = {
   bg_surface1 = "#F7F7F7",
   bg_surface2 = "#EDEDED",
   bg_dim = "#F5F5F7",
-  bg_surface3 = "#E4E4E4",
+  bg_surface3 = "#E3E3E7",
 
   -- Foreground colors
   fg = "#10100E",
@@ -63,6 +63,9 @@ local c = {
   method = "#e16511",
   tag = "#e16511",
   attribute = "#243560",
+  item_hover = "#EDEDED",
+  item_selected = "#F4F5F2",
+  item_cursor = "#E3E3E7",
 
   -- Highlights
   highlight_low = "#E8EAED",

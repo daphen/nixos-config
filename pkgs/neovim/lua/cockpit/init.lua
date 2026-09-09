@@ -306,7 +306,7 @@ local function set_hl()
   hl("CockpitElectricSoft", { fg = elec_soft, bold = true })
   -- active dashboard tab: an Electric pill (elevated bg) so the selected view reads at a
   -- glance against the dimmed inactive tabs, without a full box on the border line.
-  hl("CockpitTabActive", { fg = "#5566ff", bg = p.bg_surface3 or p.bg_selection or cardbg, bold = true })
+  hl("CockpitTabActive", { fg = "#5566ff", bg = p.item_selected or p.bg_selection or cardbg, bold = true })
   -- Neutral heading colour for titles/section labels: orange is a SIGNAL (selection,
   -- active state, identity), not the colour of every header — a bold near-fg reads as
   -- a heading while keeping the accent rare and meaningful.
@@ -328,9 +328,9 @@ local function set_hl()
   -- cell, not a ▌ glyph, so it's continuous across rows (glyphs leave inter-row
   -- gaps in fonts that don't draw block chars full-height).
   hl("CockpitCard", { bg = cardbg })
-  -- active-session name chip: a distinct elevation from the box surface / CockpitCard so
-  -- the selected name reads as its own pill (bg_surface3 / selection tone).
-  hl("CockpitNameCard", { bg = p.bg_surface3 or p.bg_selection or p.bg_surface2 or cardbg })
+  -- active-session name chip: the shared selected-item tone keeps it distinct
+  -- from the structural box surface.
+  hl("CockpitNameCard", { bg = p.item_selected or p.bg_selection or cardbg })
   -- chat: your (user) message blocks get a subtle full-width background; the agent's
   -- turn-recap (✧ …) gets a lighter callout background. Both are HIGHLIGHTS (no border
   -- chars in the buffer) so yanking the chat still copies clean text.
@@ -349,7 +349,7 @@ local function set_hl()
   -- markview's char-level bg which stops at the text and reads ragged.
   hl("CockpitCode", { bg = mix(dark, elec, light and 0.03 or 0.09) })
   hl("CockpitBarSolid", { bg = accent }) -- the roster's focus edge — ONLY drawn while the roster pane is focused
-  hl("CockpitSel", { bg = p.bg_surface3 or p.bg_selection or surface, bold = true }) -- picker selection bar
+  hl("CockpitSel", { bg = p.item_cursor or p.bg_surface3 or surface, bold = true }) -- picker selection bar
   -- volt-style scope-box surfaces: two elevations off the theme's surface ladder so
   -- boxes read as distinct filled panels and can be layered (a box, an inner box).
   hl("CockpitBox", { bg = surface })

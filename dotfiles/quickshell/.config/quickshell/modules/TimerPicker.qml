@@ -135,7 +135,7 @@ Item {
                             width: pRow.implicitWidth + 18
                             height: 28
                             radius: 10
-                            color: pHov.hovered ? Theme.surface : Theme.surface1
+                            color: pHov.hovered ? Theme.itemHover : Theme.surface1
                             border.color: Theme.hairline
                             border.width: 1
                             Row {
@@ -189,8 +189,8 @@ Item {
                         width: 92
                         height: 72
                         radius: 13
-                        color: segCol.isSeg ? Theme.selection
-                             : segHov.hovered ? Theme.surface : Theme.surface1
+                        color: segCol.isSeg ? Theme.itemSelected
+                             : segHov.hovered ? Theme.itemHover : Theme.surface1
                         border.width: 1
                         border.color: Theme.hairline
                         Text {
@@ -338,10 +338,8 @@ Item {
                             anchors.leftMargin: 14
                             anchors.rightMargin: 14
                             radius: 13
-                            color: index === root.selectedTimer ? Theme.selection
-                                 : rHov.hovered ? Theme.surface : "transparent"
-                            border.width: 1
-                            border.color: index === root.selectedTimer ? Theme.hairline : "transparent"
+                            color: index === root.selectedTimer ? Theme.itemCursor
+                                 : rHov.hovered ? Theme.itemHover : "transparent"
                         }
                         HoverHandler { id: rHov }
                         TapHandler { onTapped: root.selectedTimer = index }

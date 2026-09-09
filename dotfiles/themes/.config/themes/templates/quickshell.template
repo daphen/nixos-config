@@ -25,6 +25,9 @@ Singleton {
             "surface1":    "{{light.background.surface1}}",
             "surface2":    "{{light.background.surface2}}",
             "surface3":    "{{light.background.surface3}}",
+            "itemHover":    "{{light.semantic.item_hover}}",
+            "itemSelected": "{{light.semantic.item_selected}}",
+            "itemCursor":   "{{light.semantic.item_cursor}}",
             "overlay":     "{{light.background.overlay}}",
             "prompt":      "{{light.background.prompt}}",
             "success_bg":  "{{light.background.success}}",
@@ -59,6 +62,9 @@ Singleton {
             "surface1":    "{{dark.background.surface1}}",
             "surface2":    "{{dark.background.surface2}}",
             "surface3":    "{{dark.background.surface3}}",
+            "itemHover":    "{{dark.semantic.item_hover}}",
+            "itemSelected": "{{dark.semantic.item_selected}}",
+            "itemCursor":   "{{dark.semantic.item_cursor}}",
             "overlay":     "{{dark.background.overlay}}",
             "prompt":      "{{dark.background.prompt}}",
             "success_bg":  "{{dark.background.success}}",
@@ -95,6 +101,9 @@ Singleton {
     readonly property color surface1:     palettes[mode].surface1
     readonly property color surface2:     palettes[mode].surface2
     readonly property color surface3:     palettes[mode].surface3
+    readonly property color itemHover:    palettes[mode].itemHover
+    readonly property color itemSelected: palettes[mode].itemSelected
+    readonly property color itemCursor:   palettes[mode].itemCursor
     readonly property color overlay:      palettes[mode].overlay
     readonly property color prompt:       palettes[mode].prompt
     readonly property color success_bg:   palettes[mode].success_bg

@@ -24,7 +24,10 @@ Singleton {
             "surface0":    "#FBFBFB",
             "surface1":    "#F7F7F7",
             "surface2":    "#EDEDED",
-            "surface3":    "#E4E4E4",
+            "surface3":    "#E3E3E7",
+            "itemHover":    "#EDEDED",
+            "itemSelected": "#F4F5F2",
+            "itemCursor":   "#E3E3E7",
             "overlay":     "#E9EAE7",
             "prompt":      "#EEEFEC",
             "success_bg":  "#DDDBCC",
@@ -59,6 +62,9 @@ Singleton {
             "surface1":    "#262626",
             "surface2":    "#2D2D2D",
             "surface3":    "#393939",
+            "itemHover":    "#2D2D2D",
+            "itemSelected": "#2E2E2E",
+            "itemCursor":   "#393939",
             "overlay":     "#292826",
             "prompt":      "#323A40",
             "success_bg":  "#313734",
@@ -95,6 +101,9 @@ Singleton {
     readonly property color surface1:     palettes[mode].surface1
     readonly property color surface2:     palettes[mode].surface2
     readonly property color surface3:     palettes[mode].surface3
+    readonly property color itemHover:    palettes[mode].itemHover
+    readonly property color itemSelected: palettes[mode].itemSelected
+    readonly property color itemCursor:   palettes[mode].itemCursor
     readonly property color overlay:      palettes[mode].overlay
     readonly property color prompt:       palettes[mode].prompt
     readonly property color success_bg:   palettes[mode].success_bg

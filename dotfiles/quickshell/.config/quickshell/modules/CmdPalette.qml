@@ -1517,12 +1517,9 @@ PanelWindow {
                         anchors.rightMargin: 14
                         radius: 13
                         color: rowItem.index === root.selectedIndex && !root.filmFocused
-                            ? Theme.selection
-                            : rowItem.isPreviewedTab ? Theme.surface2
-                            : rowHover.hovered ? Theme.surface : "transparent"
-                        border.width: 1
-                        border.color: (rowItem.index === root.selectedIndex && !root.filmFocused)
-                            || rowItem.isPreviewedTab ? Theme.hairline : "transparent"
+                            ? Theme.itemCursor
+                            : rowItem.isPreviewedTab ? Theme.itemSelected
+                            : rowHover.hovered ? Theme.itemHover : "transparent"
 
                         Rectangle {
                             id: iconBox
@@ -1640,7 +1637,7 @@ PanelWindow {
                                 Rectangle {
                                     anchors.fill: parent
                                     radius: 9
-                                    color: dockHover.hovered ? Theme.selection : "transparent"
+                                    color: dockHover.hovered ? Theme.itemHover : "transparent"
 
                                     Image {
                                         id: dockIcon
@@ -1690,7 +1687,7 @@ PanelWindow {
                             Rectangle {
                                 anchors.fill: parent
                                 radius: 9
-                                color: mediaHover.hovered ? Theme.selection : "transparent"
+                                color: mediaHover.hovered ? Theme.itemHover : "transparent"
                                 Text {
                                     anchors.centerIn: parent
                                     text: "⏯"
@@ -1709,7 +1706,7 @@ PanelWindow {
                             Rectangle {
                                 anchors.fill: parent
                                 radius: 9
-                                color: reloadHover.hovered ? Theme.selection : "transparent"
+                                color: reloadHover.hovered ? Theme.itemHover : "transparent"
                                 Text {
                                     anchors.centerIn: parent
                                     text: "↻"
@@ -1728,7 +1725,7 @@ PanelWindow {
                             Rectangle {
                                 anchors.fill: parent
                                 radius: 9
-                                color: addTabHover.hovered ? Theme.selection : "transparent"
+                                color: addTabHover.hovered ? Theme.itemHover : "transparent"
                                 Text {
                                     anchors.centerIn: parent
                                     text: "+"
@@ -1785,8 +1782,8 @@ PanelWindow {
                             width: chinTabLabel.implicitWidth + 16
                             height: 26
                             radius: 10
-                            color: isActive ? Theme.selection
-                                 : chinTabHover.hovered ? Theme.surface : "transparent"
+                            color: isActive ? Theme.itemSelected
+                                 : chinTabHover.hovered ? Theme.itemHover : "transparent"
                             border.width: root.filterNavFocused && isActive ? 2 : 0
                             border.color: Theme.cursor
                             Text {
@@ -1844,10 +1841,8 @@ PanelWindow {
                             height: 26
                             width: Math.min(pillRow.implicitWidth + 16, Math.min(220, chinRow.maxPill))
                             radius: 10
-                            color: isActive ? Theme.selection
-                                 : pillHover.hovered ? Theme.surface : "transparent"
-                            border.color: isActive ? root.panelBorder : "transparent"
-                            border.width: 1
+                            color: isActive ? Theme.itemSelected
+                                 : pillHover.hovered ? Theme.itemHover : "transparent"
                             Row {
                                 id: pillRow
                                 anchors.centerIn: parent
