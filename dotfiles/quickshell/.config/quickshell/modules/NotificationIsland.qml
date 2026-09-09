@@ -3,6 +3,7 @@ import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
+import QsLib as Lib
 import "."
 
 // Floating notification capsule — the sole presentation surface.
@@ -32,7 +33,7 @@ PanelWindow {
     anchors.bottom: true
     margins.bottom: 6
     implicitWidth: 600
-    implicitHeight: Math.max(174, capsule.height + 24)
+    implicitHeight: 220
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -78,6 +79,42 @@ PanelWindow {
     property bool nIsPhone: false
     property string nWindowId: ""
     property int extraCount: 0         // arrivals that replaced content this show
+    property var firstPresentation: ({})
+    property var secondPresentation: ({})
+    property bool hasPresentation: false
+    readonly property var activeContent: contentSwap.showSecond ? secondContent : firstContent
+
+    function presentationSnapshot() {
+        return {
+            summary: nSummary,
+            body: nBody,
+            image: showingAsk ? askAvatar : nImage,
+            appIcon: nAppIcon,
+            isCalendar: nIsCalendar,
+            isPhone: nIsPhone,
+            extraCount: extraCount,
+            showingAsk: showingAsk,
+            askOptions: askOptions.slice()
+        }
+    }
+
+    function updatePresentation(animate) {
+        const next = presentationSnapshot()
+        if (!hasPresentation) {
+            firstPresentation = next
+            contentSwap.showSecond = false
+            hasPresentation = true
+            return
+        }
+        if (!animate) {
+            if (contentSwap.showSecond) secondPresentation = next
+            else firstPresentation = next
+            return
+        }
+        if (contentSwap.showSecond) firstPresentation = next
+        else secondPresentation = next
+        contentSwap.showSecond = !contentSwap.showSecond
+    }
 
     Connections {
         target: Notifications
@@ -126,6 +163,7 @@ PanelWindow {
     }
 
     function showAsk(item) {
+        const wasOpen = open
         if (notif) endShowing()
         notif = null
         ask = item
@@ -139,6 +177,7 @@ PanelWindow {
         nIsPhone = false
         nWindowId = ""
         extraCount = Math.max(0, AgentAskState.asks.length - 1)
+        updatePresentation(wasOpen)
         closeDelay.stop()
         holdTimer.stop()
         reveal()
@@ -187,6 +226,7 @@ PanelWindow {
         nWindowId = (n.hints && n.hints["niri-window"] !== undefined)
             ? String(n.hints["niri-window"]) : ""
         extraCount = wasOpen ? extraCount + 1 : 0
+        updatePresentation(wasOpen)
         Notifications.setToastVisible(nId, true)
         closeDelay.stop()
         reveal()
@@ -227,7 +267,7 @@ PanelWindow {
     }
     Timer { id: revealDelay; interval: 16; onTriggered: if (root.active) root.open = true }
     // Wordy messages (3+ wrapped lines) get 2s more reading time.
-    Timer { id: holdTimer; interval: bodyText.lineCount >= 3 ? 7000 : 5000; onTriggered: if (!root.showingAsk) root.hide() }
+    Timer { id: holdTimer; interval: activeContent.bodyLineCount >= 3 ? 7000 : 5000; onTriggered: if (!root.showingAsk) root.hide() }
     Timer {
         id: closeDelay
         interval: 400
@@ -264,8 +304,8 @@ PanelWindow {
         id: capsule
         anchors.horizontalCenter: parent.horizontalCenter
         y: root.height - height
-        height: Math.max(52, content.implicitHeight + 22)
-        width: Math.min(Math.max(content.implicitWidth + 32, 300), 560)
+        height: Math.max(52, activeContent.implicitHeight + 22)
+        width: Math.min(Math.max(activeContent.implicitWidth + 32, 300), 560)
         topLeftRadius: bottomLeftRadius
         topRightRadius: bottomRightRadius
         bottomLeftRadius: Math.min(height / 2, Theme.notchRadius + 6)
@@ -275,6 +315,13 @@ PanelWindow {
         // starts at the bar's bottom edge.
         color: Theme.notch
         clip: true
+
+        Behavior on width {
+            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+        }
+        Behavior on height {
+            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+        }
 
         Rectangle {
             anchors.fill: parent
@@ -309,12 +356,11 @@ PanelWindow {
             }
         }
 
-        Column {
-            id: content
-            y: (parent.height - height) / 2
-            anchors.horizontalCenter: parent.horizontalCenter
+        component IslandContent: Column {
+            required property var presentation
+            readonly property int bodyLineCount: bodyText.lineCount
+            anchors.centerIn: parent
             spacing: 8
-            opacity: 1
 
             Row {
             id: contentTop
@@ -327,19 +373,19 @@ PanelWindow {
                     anchors.fill: parent
                     radius: 17
                     // Ask avatars are bare glyphs — no ground behind the logo.
-                    color: root.showingAsk ? "transparent" : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
+                    color: presentation.showingAsk ? "transparent" : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
                     Image {
                         id: avatar
                         anchors.fill: parent
-                        anchors.margins: root.showingAsk ? 2 : 0
-                        source: root.showingAsk ? root.askAvatar : root.nImage
+                        anchors.margins: presentation.showingAsk ? 2 : 0
+                        source: presentation.image || ""
                         visible: status === Image.Ready
                         // SVGs rasterize AT sourceSize — forcing a square there squishes
                         // before the fit can help. Ask glyphs rasterize at true aspect.
-                        sourceSize.width: root.showingAsk ? 54 : 68
+                        sourceSize.width: presentation.showingAsk ? 54 : 68
                         sourceSize.height: 68
                         // Fit, not crop: the scope glyphs aren't square (122:152).
-                        fillMode: root.showingAsk ? Image.PreserveAspectFit : Image.PreserveAspectCrop
+                        fillMode: presentation.showingAsk ? Image.PreserveAspectFit : Image.PreserveAspectCrop
                         asynchronous: true
                     }
                     // no avatar → the app's brand glyph; unknown app → monogram
@@ -348,7 +394,7 @@ PanelWindow {
                         anchors.centerIn: parent
                         width: 18; height: 18
                         visible: false
-                        source: root.nAppIcon
+                        source: presentation.appIcon || ""
                         sourceSize.width: 36; sourceSize.height: 36
                         asynchronous: true
                     }
@@ -357,13 +403,14 @@ PanelWindow {
                         source: appGlyph
                         visible: avatar.status !== Image.Ready && appGlyph.status === Image.Ready
                         colorization: 1
-                        colorizationColor: root.nIsCalendar ? Theme.sky : Theme.fg_secondary
+                        colorizationColor: presentation.isCalendar ? Theme.sky : Theme.fg_secondary
                     }
                     Text {
                         anchors.centerIn: parent
                         visible: avatar.status !== Image.Ready
-                                 && (root.nAppIcon === "" || appGlyph.status !== Image.Ready)
-                        text: root.nSummary.length ? root.nSummary[0].toUpperCase() : "•"
+                                 && (!presentation.appIcon || appGlyph.status !== Image.Ready)
+                        text: presentation.summary && presentation.summary.length
+                            ? presentation.summary[0].toUpperCase() : "•"
                         color: Theme.fg_muted
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
@@ -380,7 +427,7 @@ PanelWindow {
                 width: Math.min(Math.max(summaryText.implicitWidth, bodyText.implicitWidth), 420)
                 Text {
                     id: summaryText
-                    text: root.nSummary
+                    text: presentation.summary || ""
                     color: Theme.fg
                     elide: Text.ElideRight
                     width: parent.width
@@ -391,7 +438,7 @@ PanelWindow {
                 Text {
                     id: bodyText
                     visible: text.length > 0
-                    text: root.nBody
+                    text: presentation.body || ""
                     color: Theme.fg
                     elide: Text.ElideRight
                     wrapMode: Text.WordWrap
@@ -405,7 +452,7 @@ PanelWindow {
             // Provenance marker: this arrived from the phone. Sits opposite the
             // avatar so the left badge can carry the caller's picture.
             Item {
-                visible: root.nIsPhone
+                visible: presentation.isPhone || false
                 anchors.verticalCenter: parent.verticalCenter
                 width: 16; height: 16
                 Image {
@@ -426,7 +473,7 @@ PanelWindow {
             }
 
             Rectangle {
-                visible: root.extraCount > 0
+                visible: (presentation.extraCount || 0) > 0
                 anchors.verticalCenter: parent.verticalCenter
                 width: extraText.implicitWidth + 12
                 height: extraText.implicitHeight + 6
@@ -435,7 +482,7 @@ PanelWindow {
                 Text {
                     id: extraText
                     anchors.centerIn: parent
-                    text: "+" + root.extraCount
+                    text: "+" + (presentation.extraCount || 0)
                     color: Theme.fg_muted
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
@@ -446,11 +493,12 @@ PanelWindow {
 
             // Answer buttons: their own bottom row, centered in the capsule.
             Row {
-                visible: root.showingAsk && root.askOptions.length > 0
+                visible: (presentation.showingAsk || false)
+                    && (presentation.askOptions || []).length > 0
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 6
                 Repeater {
-                    model: root.askOptions
+                    model: presentation.askOptions || []
                     Rectangle {
                         required property string modelData
                         required property int index
@@ -474,6 +522,26 @@ PanelWindow {
                         TapHandler { onTapped: root.answerAskOption(index, modelData) }
                     }
                 }
+            }
+        }
+
+        Lib.Crossfade {
+            id: contentSwap
+            anchors.centerIn: parent
+            width: activeContent.implicitWidth
+            height: activeContent.implicitHeight
+            enterDuration: 220
+            exitDuration: 180
+            shift: 0
+            blurAmount: 0.16
+
+            first: IslandContent {
+                id: firstContent
+                presentation: root.firstPresentation
+            }
+            second: IslandContent {
+                id: secondContent
+                presentation: root.secondPresentation
             }
         }
 
