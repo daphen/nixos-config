@@ -132,6 +132,52 @@ func TestRepairIncompleteMirror(t *testing.T) {
 	}
 }
 
+func TestRefreshIgnoredAssetAndRefuseModifiedBytes(t *testing.T) {
+	home, path, local, head, _ := repairFixture(t)
+	old := []byte("stale ignored bytes\n")
+	os.WriteFile(filepath.Join(local, "image.png"), old, 0o644)
+	os.WriteFile(filepath.Join(path, "mutagen"), []byte("#!/bin/sh\nprintf '%s\\n' '"+matchingSessionJSON(home)+"'\n"), 0o755)
+	oldHash := fmt.Sprintf("%x", sha256.Sum256(old))
+	newHash := fmt.Sprintf("%x", sha256.Sum256([]byte("verified png bytes\n")))
+	result := runEnv(t, home, path, []string{"VMHEAD=" + head}, "sync", "--refresh-ignored", "image.png", oldHash, newHash, "EVERY-3315")
+	if result.err != nil || string(mustRead(t, filepath.Join(local, "image.png"))) != "verified png bytes\n" {
+		t.Fatalf("result=%+v", result)
+	}
+	os.WriteFile(filepath.Join(local, "image.png"), old, 0o644)
+	raced := runEnv(t, home, path, []string{"VMHEAD=" + head, "MUTATE_DURING_QUERY=yes"}, "sync", "--refresh-ignored", "image.png", oldHash, newHash, "EVERY-3315")
+	if raced.err == nil || string(mustRead(t, filepath.Join(local, "image.png"))) != "raced edit\n" {
+		t.Fatalf("raced edit was overwritten: %+v", raced)
+	}
+	os.WriteFile(filepath.Join(local, "image.png"), []byte("personal edit\n"), 0o644)
+	result = runEnv(t, home, path, []string{"VMHEAD=" + head}, "sync", "--refresh-ignored", "image.png", oldHash, newHash, "EVERY-3315")
+	if result.err == nil || !strings.Contains(result.stderr, "local bytes changed") || string(mustRead(t, filepath.Join(local, "image.png"))) != "personal edit\n" {
+		t.Fatalf("modified asset was not preserved: %+v", result)
+	}
+	os.WriteFile(filepath.Join(local, "image.png"), old, 0o644)
+	failedDelete := runEnv(t, home, path, []string{"VMHEAD=" + head, "LS_TREE_FAIL=yes"}, "sync", "--refresh-ignored", "image.png", oldHash, "-", "EVERY-3315")
+	if failedDelete.err == nil || !pathExists(filepath.Join(local, "image.png")) {
+		t.Fatalf("unproven deletion changed asset: %+v", failedDelete)
+	}
+	outside := filepath.Join(local, "../outside.png")
+	os.WriteFile(outside, old, 0o644)
+	for _, invalid := range []string{"../outside.png", "/tmp/outside.png"} {
+		if got := runEnv(t, home, path, []string{"VMHEAD=" + head}, "sync", "--refresh-ignored", invalid, oldHash, newHash, "EVERY-3315"); got.err == nil {
+			t.Fatalf("unsafe path accepted: %s", invalid)
+		}
+	}
+	os.Remove(filepath.Join(local, "image.png"))
+	os.Symlink(outside, filepath.Join(local, "image.png"))
+	if got := runEnv(t, home, path, []string{"VMHEAD=" + head}, "sync", "--refresh-ignored", "image.png", oldHash, newHash, "EVERY-3315"); got.err == nil || string(mustRead(t, outside)) != string(old) {
+		t.Fatal("symlink asset accepted or target changed")
+	}
+	os.Remove(filepath.Join(local, "image.png"))
+	os.WriteFile(filepath.Join(local, "image.png"), old, 0o644)
+	runGit(t, local, "add", "image.png")
+	if got := runEnv(t, home, path, []string{"VMHEAD=" + head}, "sync", "--refresh-ignored", "image.png", oldHash, newHash, "EVERY-3315"); got.err == nil || !strings.Contains(got.stderr, "staged changes") {
+		t.Fatalf("staged asset accepted: %+v", got)
+	}
+}
+
 func TestRepairRequiresMutagenIgnoredPath(t *testing.T) {
 	home, path, local, head, object := repairFixture(t)
 	result := runEnv(t, home, path, []string{"VMHEAD=" + head}, "sync", "--repair", "extra.ts", filepath.Base(object), "19", "EVERY-3315")
@@ -641,11 +687,20 @@ func repairFixture(t *testing.T) (string, string, string, string, string) {
 		}
 		os.Symlink(target, filepath.Join(bin, name))
 	}
-	ssh := "#!/bin/sh\ncase \"$*\" in *'branch --show-current'*) printf '%s\\n%s\\n' \"$VMHEAD\" daphen/every-3315;; *'status --porcelain'*) [ ! -f \"$HOME/vm-dirty\" ] || echo ' M remote.ts';; esac\n"
+	ssh := "#!/bin/sh\ncase \"$*\" in *'branch --show-current'*) printf '%s\\n%s\\n' \"$VMHEAD\" daphen/every-3315;; *'status --porcelain'*) [ ! -f \"$HOME/vm-dirty\" ] || echo ' M remote.ts';; *'cat-file --filters'*) [ \"${MUTATE_DURING_QUERY-}\" != yes ] || printf 'raced edit\\n' > \"$HOME/work/lovable.daphen-every-3315/image.png\"; printf 'verified png bytes\\n';; *'ls-tree --name-only'*) [ \"${LS_TREE_FAIL-}\" != yes ];; esac\n"
 	os.WriteFile(filepath.Join(bin, "ssh"), []byte(ssh), 0o755)
 	os.WriteFile(filepath.Join(bin, "mutagen"), []byte("#!/bin/sh\necho '[]'\n"), 0o755)
 	os.WriteFile(filepath.Join(bin, "wt"), []byte("#!/bin/sh\nexit 99\n"), 0o755)
 	return home, bin, local, head, object
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bytes
 }
 
 func matchingSessionJSON(home string) string {

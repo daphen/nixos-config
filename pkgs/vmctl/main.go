@@ -75,6 +75,17 @@ func command(args []string, out, errOut io.Writer) error {
 }
 
 func syncCommand(a app, args []string) error {
+	if len(args) == 5 && args[0] == "--refresh-ignored" {
+		ticket, err := parseTicket(args[4])
+		if err != nil {
+			return err
+		}
+		s, err := newSyncRun(a, ticket, args[4], "")
+		if err != nil {
+			return err
+		}
+		return s.refreshIgnoredAsset(args[1], args[2], args[3])
+	}
 	align, prepare, repair := false, false, false
 	remoteCwd, repairPath, repairOID, repairSize := "", "", "", int64(0)
 	for len(args) > 0 {
@@ -522,6 +533,58 @@ func (s syncRun) repairIncompleteCheckout(path, expectedOID string, expectedSize
 		return fmt.Errorf("branch attachment failed for %s", s.vmbranch)
 	}
 	s.a.say("repaired detached mirror on " + s.vmbranch + " from verified local LFS objects")
+	return nil
+}
+
+func (s syncRun) refreshIgnoredAsset(path, oldHash, newHash string) error {
+	validHash := regexp.MustCompile(`^[0-9a-f]{64}$`)
+	if filepath.Clean(path) != path || filepath.IsAbs(path) || strings.HasPrefix(path, "../") || !regexp.MustCompile(`^[A-Za-z0-9_./-]+$`).MatchString(path) || !ignoredByMutagen(path) || !validHash.MatchString(oldHash) || newHash != "-" && !validHash.MatchString(newHash) {
+		return fmt.Errorf("refusing ignored asset refresh: invalid specification")
+	}
+	if err := s.requireReadyMutagen(); err != nil {
+		return err
+	}
+	head, _ := s.a.output("git", "-C", s.local, "rev-parse", "HEAD")
+	top, _ := s.a.output("git", "-C", s.local, "rev-parse", "--show-toplevel")
+	localPath := filepath.Join(s.local, path)
+	parent, parentErr := filepath.EvalSymlinks(filepath.Dir(localPath))
+	unchanged := func() bool {
+		info, statErr := os.Lstat(localPath)
+		bytes, readErr := os.ReadFile(localPath)
+		return statErr == nil && readErr == nil && info.Mode().IsRegular() && fmt.Sprintf("%x", sha256.Sum256(bytes)) == oldHash
+	}
+	if !unchanged() || parentErr != nil || parent != s.local && !strings.HasPrefix(parent, s.local+string(filepath.Separator)) || strings.TrimSpace(head) != s.vmhead || filepath.Clean(strings.TrimSpace(top)) != s.local {
+		return fmt.Errorf("refusing ignored asset refresh: mirror identity or local bytes changed")
+	}
+	if s.a.quiet(nil, "git", "-C", s.local, "diff", "--cached", "--quiet", "--", path) != nil {
+		return fmt.Errorf("refusing ignored asset refresh: targeted asset has staged changes")
+	}
+	remoteObject, remote := s.vmhead+":"+path, ""
+	if newHash == "-" {
+		state, queryErr := s.a.output("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", s.a.user+"@"+s.a.host, "git -C '"+s.vmwt+"' ls-tree --name-only '"+s.vmhead+"' -- '"+path+"'")
+		if queryErr != nil || strings.TrimSpace(state) != "" {
+			return fmt.Errorf("refusing ignored asset refresh: asset is not proven deleted at VM HEAD")
+		}
+	} else {
+		var outputErr error
+		remote, outputErr = s.a.output("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", s.a.user+"@"+s.a.host, "git -C '"+s.vmwt+"' cat-file --filters '"+remoteObject+"'")
+		if outputErr != nil || fmt.Sprintf("%x", sha256.Sum256([]byte(remote))) != newHash {
+			return fmt.Errorf("ignored asset refresh failed for %s: VM asset does not match authorized hash", path)
+		}
+	}
+	if !unchanged() {
+		return fmt.Errorf("refusing ignored asset refresh: local bytes changed during VM query")
+	}
+	var err error
+	if newHash == "-" {
+		err = os.Remove(localPath)
+	} else {
+		err = os.WriteFile(localPath, []byte(remote), 0o644)
+	}
+	if err != nil {
+		return fmt.Errorf("ignored asset refresh failed for %s: %w", path, err)
+	}
+	s.a.say("refreshed verified ignored asset " + path)
 	return nil
 }
 
