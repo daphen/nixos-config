@@ -13,7 +13,7 @@ Picker {
 
     items: {
         const all = DesktopEntries.applications.values
-        const out = []
+        const out = [{ label: "Choose Wallpaper", subtitle: "Desktop appearance", action: "wallpaper" }]
         for (let i = 0; i < all.length; i++) {
             const app = all[i]
             if (app.noDisplay) continue
@@ -28,6 +28,7 @@ Picker {
     }
 
     onEnter: item => {
-        if (item && item.app && item.app.execute) item.app.execute()
+        if (item && item.action === "wallpaper") WallpaperPickerState.show()
+        else if (item && item.app && item.app.execute) item.app.execute()
     }
 }

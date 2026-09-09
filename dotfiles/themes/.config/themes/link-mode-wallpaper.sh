@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # Point the current theme mode's wallpaper symlink at $1.
 #
-# Wired as waypaper's post_command ($wallpaper) so that picking a wallpaper
-# in waypaper adopts it as the default for whichever mode is active. The
-# reverse direction (mode -> wallpaper) already lives in theme-manager.sh's
-# apply_wallpaper. Together the mode's wallpaper is always whatever was last
-# chosen while in that mode.
+# Used by the wallpaper picker to adopt an image as the default for whichever
+# mode is active.
 set -euo pipefail
 
 img="${1:-}"
@@ -25,4 +22,5 @@ link="$HOME/.config/themes/wallpaper-$mode"
 [ "$(readlink -f "$link" 2>/dev/null)" = "$img" ] && exit 0
 
 ln -sfn "$img" "$link"
+touch "$HOME/.config/theme_mode"
 echo "wallpaper-$mode -> $img"

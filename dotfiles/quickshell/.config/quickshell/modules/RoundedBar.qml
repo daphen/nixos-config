@@ -16,6 +16,7 @@ PanelWindow {
         || Modules.NetworkPickerState.open
         || Modules.AsusProfilePickerState.open
         || Modules.EmojiPickerState.open
+        || Modules.WallpaperPickerState.open
         || Modules.ClaudeRenamePickerState.open
         || Modules.ColorFormatPickerState.open
         || Modules.ClipboardPickerState.open
@@ -33,6 +34,7 @@ PanelWindow {
         Modules.NetworkPickerState,
         Modules.AsusProfilePickerState,
         Modules.EmojiPickerState,
+        Modules.WallpaperPickerState,
         Modules.ClaudeRenamePickerState,
         Modules.ColorFormatPickerState,
         Modules.ClipboardPickerState,
@@ -91,6 +93,7 @@ PanelWindow {
         networkPicker.open ? networkPicker.implicitHeight : 0,
         asusProfilePicker.open ? asusProfilePicker.implicitHeight : 0,
         emojiPicker.open ? emojiPicker.implicitHeight : 0,
+        wallpaperPicker.open ? wallpaperPicker.implicitHeight : 0,
         claudeRenamePicker.open ? claudeRenamePicker.implicitHeight : 0,
         colorFormatPicker.open ? colorFormatPicker.implicitHeight : 0,
         clipboardPicker.open ? clipboardPicker.implicitHeight : 0,
@@ -349,6 +352,7 @@ PanelWindow {
             Modules.NetworkPicker { id: networkPicker; anchors.fill: parent }
             Modules.AsusProfilePicker { id: asusProfilePicker; anchors.fill: parent }
             Modules.EmojiPicker { id: emojiPicker; anchors.fill: parent }
+            Modules.WallpaperPicker { id: wallpaperPicker; anchors.fill: parent }
             Modules.ClaudeRenamePicker { id: claudeRenamePicker; anchors.fill: parent }
             Modules.ColorFormatPicker { id: colorFormatPicker; anchors.fill: parent }
             Modules.ClipboardPicker { id: clipboardPicker; anchors.fill: parent }
