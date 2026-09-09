@@ -1,6 +1,6 @@
 return {
 	"conform.nvim",
-	event = "VimEnter",  -- Defer loading to avoid startup lag in large projects
+	event = { "BufReadPre", "BufNewFile", "VimEnter" },
 	after = function()
 		local conform = require("conform")
 		local utils = require("utils")
@@ -237,6 +237,39 @@ return {
 				lsp_fallback = true,
 			},
 		})
+
+		local function format_read(buf)
+			if not vim.api.nvim_buf_is_loaded(buf) or vim.bo[buf].modified or vim.bo[buf].readonly
+				or not vim.bo[buf].modifiable or vim.bo[buf].buftype ~= "" then return end
+			local path = vim.api.nvim_buf_get_name(buf)
+			if not path:match("%.md$") and not path:match("%.markdown$") then return end
+			if vim.fn.executable("mdformat") ~= 1 then return end
+			local input = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n") .. (vim.bo[buf].endofline and "\n" or "")
+			local tick = vim.api.nvim_buf_get_changedtick(buf)
+			vim.system({ "mdformat", "--wrap", "80", "-" }, { stdin = input, text = true }, function(result)
+				vim.schedule(function()
+					if result.code ~= 0 then
+						vim.notify("Markdown formatting failed: " .. path, vim.log.levels.ERROR)
+						return
+					end
+					if result.stdout == input or not vim.api.nvim_buf_is_loaded(buf) or vim.bo[buf].modified
+						or vim.bo[buf].readonly or vim.api.nvim_buf_get_changedtick(buf) ~= tick
+						or vim.api.nvim_buf_get_name(buf) ~= path then return end
+					local ok, disk = pcall(vim.fn.readfile, path, "b")
+					if not ok or table.concat(disk, "\n") ~= input then return end
+					vim.fn.writefile(vim.split(result.stdout, "\n", { plain = true }), path, "b")
+					vim.cmd("checktime " .. buf)
+				end)
+			end)
+		end
+		vim.api.nvim_create_autocmd({ "BufReadPost", "FileChangedShellPost" }, {
+			group = vim.api.nvim_create_augroup("MarkdownReadFormatting", { clear = true }),
+			pattern = { "*.md", "*.markdown" },
+			callback = function(ev) vim.schedule(function() format_read(ev.buf) end) end,
+		})
+		for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+			vim.schedule(function() format_read(buf) end)
+		end
 
 		vim.keymap.set({ "n", "v" }, "<leader>cf", function()
 			conform.format({

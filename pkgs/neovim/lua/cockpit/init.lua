@@ -3810,6 +3810,7 @@ load_plan = function(cwd)
   if not bound and (not S.selected or S.selected == "") then
     for _, a in ipairs(S.roster or {}) do if a.cwd == cwd then bound = a; break end end
   end
+  if S.workspace and S.workspace.cwd == cwd then bound = S.workspace end
   if bound and bound.plan and bound.plan ~= "" then
     for _, dir in ipairs(plandirs(cwd)) do
       local f = dir .. "/" .. bound.plan .. ".progress.json"
@@ -3934,7 +3935,7 @@ local function show_scratch(win, cwd)
     S.remote_cwd = cwd
   else
     S.remote_cwd = nil
-    if not root and not ctx and not plan and #(git_changes(cwd) or {}) == 0 then
+    if not S.workspace and not root and not ctx and not plan and #(git_changes(cwd) or {}) == 0 then
       root = true
       cwd = scope_root()
     end
@@ -4316,6 +4317,10 @@ local function default_session()
 end
 
 local function to_dashboard()
+  if S.workspace then
+    local w = S.workspace
+    return M.workspace(w.scope, w.id, w.cwd, w.plan, "dashboard", "")
+  end
   if scope == "personal" then
     local ed = target_editor_win()
     if not ed then return end
@@ -4411,6 +4416,99 @@ function M.follow_remote(cwd, path, force, line, needle_b64)
      and bn:sub(1, #plans) ~= plans and not bn:find("/%.plans/")
      and bn ~= ours then return "" end
   follow_edit(cwd, path, line, true, nil, snippet)
+  return ""
+end
+
+function M.workspace_cwd()
+  local w = S.workspace
+  if not w then return fn.getcwd() end
+  if fn.isdirectory(w.cwd) == 1 then return w.cwd end
+  vim.notify("Cockpit: " .. w.id .. " checkout missing: " .. w.cwd, vim.log.levels.WARN)
+  return nil
+end
+
+function M.workspace(workspace_scope, id, cwd, plan, view, latest)
+  local snacks = package.loaded["snacks"]
+  if snacks and snacks.picker then
+    for _, picker in ipairs(snacks.picker.get()) do picker:close() end
+  end
+  local ed = target_editor_win()
+  if not ed then return "" end
+  local previous = S.workspace
+  local buf = api.nvim_win_get_buf(ed)
+  local path = api.nvim_buf_get_name(buf)
+  S.workspace_editors = S.workspace_editors or {}
+  if previous and vim.bo[buf].buftype == "" and path:sub(1, #previous.cwd + 1) == previous.cwd .. "/"
+      and not path:find("/%.plans/") then
+    S.workspace_editors[previous.scope .. "/" .. previous.id] = {
+      buf = buf, view = api.nvim_win_call(ed, fn.winsaveview),
+    }
+  end
+  local same = previous and previous.scope == workspace_scope and previous.id == id
+  if previous and previous.cwd ~= cwd then
+    local pending = S.diff_jobs[previous.cwd]; if pending and pending.job then pcall(fn.jobstop, pending.job) end
+    S.diff_jobs[previous.cwd] = nil
+  end
+  S.workspace = { scope = workspace_scope, id = id, cwd = cwd, plan = plan }
+  S.selected = id
+  if fn.getcwd(ed) ~= cwd and fn.isdirectory(cwd) == 1 then
+    api.nvim_win_call(ed, function() vim.cmd.cd(fn.fnameescape(cwd)) end)
+  end
+  if view == "cycle" then
+    local dashboard = M.dashboard_snapshot().active
+    local on_plan = path:find("/%.plans/") or path:find("/notes/storage/plans/", 1, true)
+    view = same and (dashboard and "code" or (on_plan and "dashboard" or (plan ~= "" and "plan" or "dashboard"))) or "code"
+  end
+  S._follow_paused = view ~= "" and view ~= "dashboard"
+  S._follow_paused_at = os.time()
+  S._program_nav = true
+  local function open_file(file)
+    api.nvim_win_call(ed, function() vim.cmd.edit(fn.fnameescape(file)) end)
+    editor_gutter(ed, true)
+    if hide_banner then hide_banner() end
+  end
+  local function show_view()
+    if view == "plan" then
+      if plan == "" then vim.notify("Cockpit: " .. id .. " has no bound plan"); return end
+      local file = cwd .. "/.plans/" .. plan .. ".md"
+      if fn.filereadable(file) == 0 then file = fn.expand("~/personal/notes/storage/plans/") .. plan .. ".md" end
+      if fn.filereadable(file) == 0 then vim.notify("Cockpit: plan file missing: " .. plan); return end
+      open_file(file)
+      return
+    end
+    if view == "dashboard" or fn.isdirectory(cwd) == 0 then
+      show_scratch(ed, cwd)
+      if view == "diff" or view == "code" then M.workspace_cwd() end
+      return
+    end
+    local saved = S.workspace_editors[workspace_scope .. "/" .. id]
+    local restored = false
+    if view ~= "" and saved and api.nvim_buf_is_valid(saved.buf) then
+      local name = api.nvim_buf_get_name(saved.buf)
+      if name:sub(1, #cwd + 1) == cwd .. "/" and fn.filereadable(name) == 1 then
+        api.nvim_win_set_buf(ed, saved.buf)
+        api.nvim_win_call(ed, function() fn.winrestview(saved.view) end)
+        restored = true
+      end
+    end
+    if not restored and latest ~= "" and not latest:find("/%.plans/")
+        and not latest:find("/notes/storage/plans/", 1, true) and fn.filereadable(latest) == 1 then
+      open_file(latest)
+      if view == "" then M.follow_remote(cwd, latest, true) end
+      restored = true
+    end
+    if view == "diff" or (view == "code" and not restored) then
+      if not restored then api.nvim_win_set_buf(ed, api.nvim_create_buf(true, false)) end
+      api.nvim_set_current_win(ed)
+      vim.cmd.CockpitChanges()
+    elseif not restored then
+      show_scratch(ed, cwd)
+    end
+  end
+  local ok, err = pcall(show_view)
+  S._program_nav = nil
+  if not ok then vim.notify("Cockpit: " .. tostring(err), vim.log.levels.ERROR) end
+  pcall(function() require("cockpit.chin").refresh() end)
   return ""
 end
 
@@ -4609,65 +4707,96 @@ refresh_git_changes = function(cwd, path)
   if base == "HEAD" and fn.systemlist({ "git", "-C", cwd, "rev-parse", "-q", "--verify", "HEAD" })[1] == nil then
     base = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
   end
+  local previous = S.diff_jobs[cwd]
+  if previous and previous.job then pcall(fn.jobstop, previous.job) end
+  local request, output, untracked = {}, {}, {}
+  S.diff_jobs[cwd] = request
+  local function apply()
+    if S.diff_jobs[cwd] ~= request then return end
+    S.diff_jobs[cwd] = nil
+    local parsed = parse_git_diff(output)
+    for _, u in ipairs(untracked) do
+      if not parsed.bypath[u.path] then
+        local h = { old_l1 = 0, old_l2 = 0, l1 = 1, l2 = math.max(1, u.lines), add = u.lines, del = 0 }
+        local change = { path = u.path, add = u.lines, del = 0, hunks = { h } }
+        parsed.bypath[u.path] = change
+        parsed.files[#parsed.files + 1] = change
+      end
+    end
+    table.sort(parsed.files, function(a, b) return a.path < b.path end)
+    if path and S.gitdiff[cwd] then
+      local cache = S.gitdiff[cwd]
+      cache.bypath[path] = nil
+      for _, change in ipairs(parsed.files) do cache.bypath[change.path] = change end
+      cache.files = {}
+      for _, change in pairs(cache.bypath) do cache.files[#cache.files + 1] = change end
+      table.sort(cache.files, function(a, b) return a.path < b.path end)
+    else
+      parsed.at = os.time()
+      parsed.head = (fn.systemlist({ "git", "-C", cwd, "rev-parse", "HEAD" }) or {})[1]
+      S.gitdiff[cwd] = parsed
+    end
+    if S.selected and session_cwd(S.selected) == cwd then
+      if S.view == "changes" then render_changes() else render_chat(false) end
+    end
+    if refresh_dashboard and S.dash and S.dash.cwd == cwd then refresh_dashboard() end
+    pcall(function() require("cockpit.chin").refresh() end)
+  end
+  local function count_untracked(files)
+    local next_file, active = 1, 0
+    local function pump()
+      if S.diff_jobs[cwd] ~= request then return end
+      if next_file > #files and active == 0 then vim.schedule(apply); return end
+      while active < 24 and next_file <= #files do
+        local rel = files[next_file]
+        next_file, active = next_file + 1, active + 1
+        local lines, offset = 0, 0
+        local function complete(fd)
+          if fd then vim.uv.fs_close(fd) end
+          untracked[#untracked + 1] = { path = rel, lines = math.min(lines, 500) }
+          active = active - 1
+          pump()
+        end
+        vim.uv.fs_open(cwd .. "/" .. rel, "r", 438, function(err, fd)
+          if err then complete() return end
+          local function read_more()
+            vim.uv.fs_read(fd, 65536, offset, function(read_err, data)
+              if read_err or not data or data == "" or lines >= 500 then complete(fd) return end
+              offset = offset + #data
+              local _, n = data:gsub("\n", "")
+              lines = lines + n
+              read_more()
+            end)
+          end
+          read_more()
+        end)
+      end
+    end
+    pump()
+  end
   local args = { "git", "-C", cwd, "diff", "--no-color", "--no-ext-diff", "--unified=0", base }
   if path and path ~= "" then args[#args + 1] = "--"; args[#args + 1] = path end
-  local previous = S.diff_jobs[cwd]
-  if previous and previous > 0 then pcall(fn.jobstop, previous) end
-  S.diff_jobs[cwd] = nil
-  local output = {}
-  local job = fn.jobstart(args, {
+  request.job = fn.jobstart(args, {
     stdout_buffered = true,
     on_stdout = function(_, data)
       for _, line in ipairs(data or {}) do if line ~= "" then output[#output + 1] = line end end
     end,
-    on_exit = function(id, code)
-      if S.diff_jobs[cwd] ~= id then return end
-      -- git diff never lists untracked paths — synthesize them so a fresh project
-      -- shows its files as added instead of an empty CHANGES view.
-      local unt = fn.systemlist({ "git", "-C", cwd, "ls-files", "--others", "--exclude-standard" })
-      for _, f in ipairs(unt or {}) do
-        if f ~= "" and not f:match("^%.heidr%-pastes/") and not f:match("^agents/") then
-          local n = tonumber(fn.system({ "wc", "-l", cwd .. "/" .. f }):match("%d+") or "0") or 0
-          n = math.min(n, 500)
-          output[#output + 1] = "diff --git a/" .. f .. " b/" .. f
-          output[#output + 1] = "+++ b/" .. f
-          -- the parser counts adds only inside @@ hunks — synthesize a real one
-          output[#output + 1] = "@@ -0,0 +1," .. n .. " @@"
-          for _ = 1, n do output[#output + 1] = "+x" end
-        end
-      end
-      S.diff_jobs[cwd] = nil
-      if code ~= 0 then return end
-      vim.schedule(function()
-        local parsed = parse_git_diff(output)
-        if path and S.gitdiff[cwd] then
-          local cache = S.gitdiff[cwd]
-          cache.bypath[path] = nil
-          for _, change in ipairs(parsed.files) do cache.bypath[change.path] = change end
-          cache.files = {}
-          for _, change in pairs(cache.bypath) do cache.files[#cache.files + 1] = change end
-          table.sort(cache.files, function(a, b) return a.path < b.path end)
-        else
-          parsed.at = os.time()
-          -- Stamp the HEAD this diff describes, so git_summary can tell a mutagen-driven
-          -- HEAD change from a merely-aged cache entry.
-          parsed.head = (fn.systemlist({ "git", "-C", cwd, "rev-parse", "HEAD" }) or {})[1]
-          S.gitdiff[cwd] = parsed
-        end
-        if S.selected and session_cwd(S.selected) == cwd then
-          if S.view == "changes" then render_changes() else render_chat(false) end
-        end
-        -- the DASHBOARD's CHANGES card is gated on git_changes; without this it renders
-        -- once with a cold (empty) cache and never updates when the async diff lands —
-        -- why a freshly-opened session showed an empty dash despite a real diff. Keyed on
-        -- the dash's OWN cwd, not the selection: the cockpit rail renders dashboards for
-        -- sessions this nvim has never selected, and gating on S.selected skipped them all.
-        if refresh_dashboard and S.dash and S.dash.cwd == cwd then refresh_dashboard() end
-        pcall(function() require("cockpit.chin").refresh() end)
-      end)
+    on_exit = function(_, code)
+      if S.diff_jobs[cwd] ~= request then return end
+      if code ~= 0 then S.diff_jobs[cwd] = nil; return end
+      local files = {}
+      request.job = fn.jobstart({ "git", "-C", cwd, "ls-files", "--others", "--exclude-standard" }, {
+        stdout_buffered = true,
+        on_stdout = function(_, data)
+          for _, f in ipairs(data or {}) do
+            if f ~= "" and not f:match("^%.heidr%-pastes/") and not f:match("^agents/") then files[#files + 1] = f end
+          end
+        end,
+        on_exit = function() count_untracked(files) end,
+      })
     end,
   })
-  if job and job > 0 then S.diff_jobs[cwd] = job end
+  if not request.job or request.job <= 0 then S.diff_jobs[cwd] = nil end
 end
 
 git_changes = function(cwd)
