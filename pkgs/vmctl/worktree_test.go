@@ -42,7 +42,7 @@ func TestWorktreeRunsPortedFlowAndSpawnsAgent(t *testing.T) {
 name=${0##*/}; echo "$name|$*" >> "$VMCTL_LOG"
 case "$name|$*" in
   "ssh|"*"process-compose-wt-"*) printf '/remote/process-compose-wt-%d.yaml\n---VMCTL-CONFIG---\n    - WEB_PORT=%d\n    - VITE_GO_API_BASE_URL=http://127.0.0.1:%d\n' ;;
-  "ssh|"*" rev-parse HEAD"*) echo 0123456789abcdef0123456789abcdef01234567 ;;
+  "ssh|"*" rev-parse HEAD"*) echo 'Warning: Permanently added fake' >&2; echo 0123456789abcdef0123456789abcdef01234567 ;;
   "ssh|"*"playwright"*) exit 1 ;;
   "ssh|"*) echo 'Warning: Permanently added fake'; echo '  remote ok' ;;
   "git|"*" rev-parse HEAD") echo 0123456789abcdef0123456789abcdef01234567 ;;

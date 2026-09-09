@@ -369,6 +369,10 @@ func worktreeSSHResult(a app, script string) (string, error) {
 	return a.combined("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user+"@"+a.host, script)
 }
 
+func worktreeSSHOutput(a app, script string) (string, error) {
+	return a.output("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user+"@"+a.host, script)
+}
+
 func verifyWorktreeMirror(a app, vmwt, mirror string) error {
 	if !pathExists(filepath.Join(mirror, ".git")) {
 		return fmt.Errorf("%s is not a git checkout", mirror)
@@ -377,7 +381,7 @@ func verifyWorktreeMirror(a app, vmwt, mirror string) error {
 	if err != nil {
 		return fmt.Errorf("cannot read local mirror head: %w", err)
 	}
-	remote, err := worktreeSSHResult(a, "git -C '"+vmwt+"' rev-parse HEAD")
+	remote, err := worktreeSSHOutput(a, "git -C '"+vmwt+"' rev-parse HEAD")
 	if err != nil {
 		return fmt.Errorf("cannot read registered VM checkout head: %w", err)
 	}

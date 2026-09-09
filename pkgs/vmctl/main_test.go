@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -116,6 +117,67 @@ func TestPrepareRefusesDirtyIncompleteCheckout(t *testing.T) {
 	result := runEnv(t, home, path, extra, "sync", "--prepare", "EVERY-3315")
 	if result.err == nil || !strings.Contains(result.stderr, "local changes require explicit repair") || strings.Contains(readLog(t, log), "mutagen|sync create") {
 		t.Fatalf("result=%+v calls=%s", result, readLog(t, log))
+	}
+}
+
+func TestRepairIncompleteMirror(t *testing.T) {
+	home, path, local, head, object := repairFixture(t)
+	result := runEnv(t, home, path, []string{"VMHEAD=" + head}, "sync", "--repair", "image.png", filepath.Base(object), "19", "EVERY-3315")
+	if result.err != nil || strings.TrimSpace(runGit(t, local, "branch", "--show-current")) != "daphen/every-3315" || runGit(t, local, "status", "--porcelain") != "" {
+		t.Fatalf("result=%+v status=%s", result, runGit(t, local, "status", "--porcelain"))
+	}
+	bytes, _ := os.ReadFile(filepath.Join(local, "image.png"))
+	if string(bytes) != "verified png bytes\n" || !strings.Contains(result.stdout, "verified local LFS objects") || !pathExists(object) {
+		t.Fatalf("repair did not materialize verified LFS bytes: %q", bytes)
+	}
+}
+
+func TestRepairRequiresMutagenIgnoredPath(t *testing.T) {
+	home, path, local, head, object := repairFixture(t)
+	result := runEnv(t, home, path, []string{"VMHEAD=" + head}, "sync", "--repair", "extra.ts", filepath.Base(object), "19", "EVERY-3315")
+	if result.err == nil || !strings.Contains(result.stderr, "non-ignored LFS specification") || strings.TrimSpace(runGit(t, local, "branch", "--show-current")) != "" {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestRepairIncompleteMirrorRefusals(t *testing.T) {
+	cases := []struct {
+		name, want string
+		alter      func(string, string, string)
+	}{
+		{"unrelated", "unrelated or staged", func(_, local, _ string) { os.WriteFile(filepath.Join(local, "extra.ts"), []byte("changed\n"), 0o644) }},
+		{"staged", "unrelated or staged", func(_, local, _ string) {
+			os.WriteFile(filepath.Join(local, "staged.ts"), []byte("x\n"), 0o644)
+			runGit(t, local, "add", "staged.ts")
+		}},
+		{"dirty VM", "VM checkout is not clean", func(home, _, _ string) { os.WriteFile(filepath.Join(home, "vm-dirty"), []byte("1"), 0o644) }},
+		{"wrong ownership", "not owned", func(home, local, _ string) {
+			marker, _ := os.ReadFile(filepath.Join(local, ".git"))
+			gitdir := strings.TrimSpace(strings.TrimPrefix(string(marker), "gitdir: "))
+			os.MkdirAll(filepath.Join(home, "other.git"), 0o755)
+			os.WriteFile(filepath.Join(gitdir, "commondir"), []byte(filepath.Join(home, "other.git")+"\n"), 0o644)
+		}},
+		{"wrong head", "expected detached HEAD", func(home, _, _ string) { os.WriteFile(filepath.Join(home, "wrong-head"), []byte("1"), 0o644) }},
+		{"existing branch", "expected absent branch", func(_, local, _ string) { runGit(t, local, "branch", "daphen/every-3315") }},
+		{"missing LFS", "object missing", func(_, _, object string) { os.Remove(object) }},
+		{"bad LFS", "object is invalid", func(_, _, object string) { os.WriteFile(object, []byte("bad"), 0o644) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home, path, local, head, object := repairFixture(t)
+			tc.alter(home, local, object)
+			if pathExists(filepath.Join(home, "wrong-head")) {
+				head = strings.Repeat("4", 40)
+			}
+			result := runEnv(t, home, path, []string{"VMHEAD=" + head}, "sync", "--repair", "image.png", filepath.Base(object), "19", "EVERY-3315")
+			branch := ""
+			if tc.name != "wrong ownership" {
+				branch = strings.TrimSpace(runGit(t, local, "branch", "--show-current"))
+			}
+			if result.err == nil || !strings.Contains(result.stderr, tc.want) || branch != "" {
+				t.Fatalf("result=%+v branch=%q", result, branch)
+			}
+		})
 	}
 }
 
@@ -491,7 +553,7 @@ func TestFullSyncRetainsCheckedDependencySetup(t *testing.T) {
 	if result.err != nil {
 		t.Fatalf("result=%+v", result)
 	}
-	inOrder(t, readLog(t, log), "mutagen|sync flush", "direnv|exec "+local+" pnpm install --frozen-lockfile --prefer-offline", "direnv|exec "+local+" pnpm --dir web run paraglide:build")
+	inOrder(t, readLog(t, log), "mutagen|sync flush", "direnv|allow "+local, "direnv|exec "+local+" pnpm install --frozen-lockfile --prefer-offline", "direnv|exec "+local+" pnpm --dir web run paraglide:build")
 }
 
 func mirrorFixture(t *testing.T) (string, string, string) {
@@ -549,6 +611,41 @@ case "$name" in
  esac
 `
 	return fixture(t, body)
+}
+
+func repairFixture(t *testing.T) (string, string, string, string, string) {
+	t.Helper()
+	home, _ := filepath.EvalSymlinks(t.TempDir())
+	repo, local, bin := filepath.Join(home, "work/lovable"), filepath.Join(home, "work/lovable.daphen-every-3315"), filepath.Join(home, "bin")
+	os.MkdirAll(repo, 0o755)
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test")
+	runGit(t, repo, "lfs", "install", "--local")
+	payload := []byte("verified png bytes\n")
+	oid := fmt.Sprintf("%x", sha256.Sum256(payload))
+	os.WriteFile(filepath.Join(repo, ".gitattributes"), []byte("*.png filter=lfs diff=lfs merge=lfs -text\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "image.png"), payload, 0o644)
+	os.WriteFile(filepath.Join(repo, "extra.ts"), []byte("base\n"), 0o644)
+	runGit(t, repo, "add", ".")
+	object := filepath.Join(repo, ".git/lfs/objects", oid[:2], oid[2:4], oid)
+	runGit(t, repo, "commit", "-m", "fixture")
+	head := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+	runGit(t, repo, "worktree", "add", "--detach", local, head)
+	os.Remove(filepath.Join(local, "image.png"))
+	os.Mkdir(bin, 0o755)
+	for _, name := range []string{"git", "git-lfs"} {
+		target, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.Symlink(target, filepath.Join(bin, name))
+	}
+	ssh := "#!/bin/sh\ncase \"$*\" in *'branch --show-current'*) printf '%s\\n%s\\n' \"$VMHEAD\" daphen/every-3315;; *'status --porcelain'*) [ ! -f \"$HOME/vm-dirty\" ] || echo ' M remote.ts';; esac\n"
+	os.WriteFile(filepath.Join(bin, "ssh"), []byte(ssh), 0o755)
+	os.WriteFile(filepath.Join(bin, "mutagen"), []byte("#!/bin/sh\necho '[]'\n"), 0o755)
+	os.WriteFile(filepath.Join(bin, "wt"), []byte("#!/bin/sh\nexit 99\n"), 0o755)
+	return home, bin, local, head, object
 }
 
 func matchingSessionJSON(home string) string {

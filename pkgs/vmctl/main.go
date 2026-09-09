@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,12 +9,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
 var (
 	ticketPattern           = regexp.MustCompile(`(?i)^EVERY-[0-9]+$`)
 	explicitCheckoutPattern = regexp.MustCompile(`^lovable\.[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	lfsPointerPattern       = regexp.MustCompile(`^version https://git-lfs.github.com/spec/v1\noid sha256:([0-9a-f]{64})\nsize ([0-9]+)\n?$`)
 )
 
 type app struct {
@@ -72,8 +75,8 @@ func command(args []string, out, errOut io.Writer) error {
 }
 
 func syncCommand(a app, args []string) error {
-	align, prepare := false, false
-	remoteCwd := ""
+	align, prepare, repair := false, false, false
+	remoteCwd, repairPath, repairOID, repairSize := "", "", "", int64(0)
 	for len(args) > 0 {
 		switch args[0] {
 		case "--align":
@@ -82,6 +85,18 @@ func syncCommand(a app, args []string) error {
 		case "--prepare":
 			prepare = true
 			args = args[1:]
+		case "--repair":
+			if len(args) < 4 {
+				return fmt.Errorf("usage: vmctl sync --repair PATH LFS_SHA256 SIZE EVERY-N")
+			}
+			repair = true
+			repairPath, repairOID = args[1], args[2]
+			var err error
+			repairSize, err = strconv.ParseInt(args[3], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid repair size %q", args[3])
+			}
+			args = args[4:]
 		case "--remote-cwd":
 			if len(args) < 2 {
 				return fmt.Errorf("usage: vmctl sync [--prepare | --align] [--remote-cwd VM_CHECKOUT] EVERY-N")
@@ -93,8 +108,8 @@ func syncCommand(a app, args []string) error {
 		}
 	}
 parsed:
-	if len(args) != 1 || (align && prepare) {
-		return fmt.Errorf("usage: vmctl sync [--prepare | --align] [--remote-cwd VM_CHECKOUT] EVERY-N")
+	if len(args) != 1 || boolCount(align, prepare, repair) > 1 {
+		return fmt.Errorf("usage: vmctl sync [--prepare | --align | --repair PATH LFS_SHA256 SIZE] [--remote-cwd VM_CHECKOUT] EVERY-N")
 	}
 	ticket, err := parseTicket(args[0])
 	if err != nil {
@@ -103,7 +118,24 @@ parsed:
 	if align {
 		return a.align(ticket, args[0], remoteCwd)
 	}
+	if repair {
+		s, err := newSyncRun(a, ticket, args[0], remoteCwd)
+		if err != nil {
+			return err
+		}
+		return s.repairIncompleteCheckout(repairPath, repairOID, repairSize)
+	}
 	return a.sync(ticket, args[0], remoteCwd, prepare)
+}
+
+func boolCount(values ...bool) int {
+	count := 0
+	for _, value := range values {
+		if value {
+			count++
+		}
+	}
+	return count
 }
 
 func parseTicket(raw string) (string, error) {
@@ -158,6 +190,11 @@ func (a app) prepareMirrorDependencies(local string) error {
 	if !isFile(filepath.Join(local, "package.json")) {
 		return fmt.Errorf("mirror dependency setup refused: %s/package.json is missing", local)
 	}
+	allow := exec.Command("direnv", "allow", local)
+	allow.Stdout, allow.Stderr = a.out, a.err
+	if err := allow.Run(); err != nil {
+		return fmt.Errorf("direnv allow failed in %s: %w", local, err)
+	}
 	steps := []struct {
 		name string
 		args []string
@@ -178,9 +215,9 @@ func (a app) prepareMirrorDependencies(local string) error {
 }
 
 type syncRun struct {
-	a                              app
-	mutagen, wt, vmwt, local, repo string
-	name, vmhead, vmbranch         string
+	a                                      app
+	mutagen, wt, gitLFS, vmwt, local, repo string
+	name, vmhead, vmbranch                 string
 }
 
 func explicitSyncPaths(a app, ticket, remoteCwd string) (string, string, string, error) {
@@ -218,11 +255,10 @@ func newSyncRun(a app, ticket, raw, remoteCwd string) (syncRun, error) {
 	if s.wt, err = executable(a.home, "wt"); err != nil {
 		return syncRun{}, err
 	}
-	gitLFS, err := executable(a.home, "git-lfs")
-	if err != nil {
+	if s.gitLFS, err = executable(a.home, "git-lfs"); err != nil {
 		return syncRun{}, err
 	}
-	if err := a.quiet(nil, gitLFS, "version"); err != nil {
+	if err := a.quiet(nil, s.gitLFS, "version"); err != nil {
 		return syncRun{}, fmt.Errorf("git-lfs preflight failed: %w", err)
 	}
 	sshArgs := []string{"-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user + "@" + a.host,
@@ -422,6 +458,84 @@ type mutagenListing struct {
 	Status string `json:"status"`
 }
 
+func (s syncRun) repairIncompleteCheckout(path, expectedOID string, expectedSize int64) error {
+	if filepath.Clean(path) != path || filepath.IsAbs(path) || strings.HasPrefix(path, "../") || !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(expectedOID) || expectedSize < 0 || !ignoredByMutagen(path) {
+		return fmt.Errorf("refusing repair: invalid or non-ignored LFS specification")
+	}
+	remoteStatus, err := s.a.output("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", s.a.user+"@"+s.a.host, "git -C '"+s.vmwt+"' status --porcelain --untracked-files=all")
+	if err != nil || strings.TrimSpace(remoteStatus) != "" {
+		return fmt.Errorf("refusing repair: VM checkout is not clean")
+	}
+	if managed, err := s.managedSession(); err != nil {
+		return err
+	} else if managed {
+		return fmt.Errorf("refusing repair of managed mirror %s", s.local)
+	}
+	common, err := s.a.output("git", "-C", s.local, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	actualCommon, actualErr := filepath.EvalSymlinks(filepath.Clean(strings.TrimSpace(common)))
+	expectedCommon, expectedErr := filepath.EvalSymlinks(filepath.Join(s.repo, ".git"))
+	if err != nil || actualErr != nil || expectedErr != nil || actualCommon != expectedCommon {
+		return fmt.Errorf("refusing repair: checkout is not owned by %s (got %s)", s.repo, strings.TrimSpace(common))
+	}
+	common = actualCommon
+	if top, err := s.a.output("git", "-C", s.local, "rev-parse", "--show-toplevel"); err != nil || filepath.Clean(strings.TrimSpace(top)) != s.local {
+		return fmt.Errorf("refusing repair: checkout identity is not exact")
+	}
+	branch, _ := s.a.output("git", "-C", s.local, "branch", "--show-current")
+	head, err := s.a.output("git", "-C", s.local, "rev-parse", "HEAD")
+	if strings.TrimSpace(branch) != "" || err != nil || strings.TrimSpace(head) != s.vmhead {
+		return fmt.Errorf("refusing repair: expected detached HEAD %s", prefix(s.vmhead, 11))
+	}
+	if s.vmbranch == "" || s.a.quiet(nil, "git", "-C", s.repo, "show-ref", "--verify", "--quiet", "refs/heads/"+s.vmbranch) == nil {
+		return fmt.Errorf("refusing repair: expected absent branch %s", s.vmbranch)
+	}
+	status, err := s.a.output("git", "-C", s.local, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	entries := strings.Split(strings.TrimSuffix(status, "\x00"), "\x00")
+	if err != nil || len(entries) != 1 || entries[0] != " D "+path {
+		return fmt.Errorf("refusing repair: unrelated or staged changes exist")
+	}
+	pointer, err := s.a.output("git", "-C", s.local, "show", ":"+path)
+	match := lfsPointerPattern.FindStringSubmatch(pointer)
+	if err != nil || match == nil || match[1] != expectedOID || match[2] != strconv.FormatInt(expectedSize, 10) {
+		return fmt.Errorf("refusing repair: %s does not match the authorized LFS pointer", path)
+	}
+	object := filepath.Join(strings.TrimSpace(common), "lfs", "objects", expectedOID[:2], expectedOID[2:4], expectedOID)
+	file, err := os.Open(object)
+	if err != nil {
+		return fmt.Errorf("refusing repair: verified LFS object missing for %s", path)
+	}
+	hash := sha256.New()
+	written, copyErr := io.Copy(hash, file)
+	closeErr := file.Close()
+	if copyErr != nil || closeErr != nil || written != expectedSize || fmt.Sprintf("%x", hash.Sum(nil)) != expectedOID {
+		return fmt.Errorf("refusing repair: LFS object is invalid for %s", path)
+	}
+	args := []string{"checkout", "--", path}
+	if err := s.a.quietIn(s.local, nil, s.gitLFS, args...); err != nil {
+		return fmt.Errorf("LFS checkout failed for %s", s.local)
+	}
+	clean, err := s.a.output("git", "-C", s.local, "status", "--porcelain")
+	if err != nil || strings.TrimSpace(clean) != "" {
+		return fmt.Errorf("LFS checkout did not clean %s", s.local)
+	}
+	if err := s.a.quiet(nil, "git", "-C", s.local, "switch", "--create", s.vmbranch); err != nil {
+		return fmt.Errorf("branch attachment failed for %s", s.vmbranch)
+	}
+	s.a.say("repaired detached mirror on " + s.vmbranch + " from verified local LFS objects")
+	return nil
+}
+
+func ignoredByMutagen(path string) bool {
+	for _, pattern := range mutagenIgnores {
+		if !strings.HasPrefix(pattern, "!") && !strings.Contains(pattern, "/") {
+			if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s syncRun) requireCleanIncompleteCheckout() error {
 	top, err := s.a.output("git", "-C", s.local, "rev-parse", "--show-toplevel")
 	if err != nil || filepath.Clean(strings.TrimSpace(top)) != s.local {
@@ -590,8 +704,11 @@ func (a app) combined(name string, args ...string) (string, error) {
 	return string(value), err
 }
 func (a app) quiet(env []string, name string, args ...string) error {
+	return a.quietIn("", env, name, args...)
+}
+func (a app) quietIn(dir string, env []string, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
-	cmd.Env, cmd.Stdout, cmd.Stderr = commandEnv(env), io.Discard, io.Discard
+	cmd.Dir, cmd.Env, cmd.Stdout, cmd.Stderr = dir, commandEnv(env), io.Discard, io.Discard
 	return cmd.Run()
 }
 
