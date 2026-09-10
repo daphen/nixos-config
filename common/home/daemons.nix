@@ -5,9 +5,8 @@
 # would fire them on thinkpad and zenbook too.
 { pkgs, inputs, ... }:
 let
-  # One launch path for every local agentd scope: the wrapper pulls provider
-  # secrets keyring→env (see niri/scripts/launch-agentd) and execs the daemon —
-  # a unit restart can never again produce a keyless daemon.
+  # One launch path for every local agentd scope; the wrapper resolves provider
+  # secrets before exec, so a unit restart cannot produce a keyless daemon.
   mkAgentd = { scope, description, extraArgs }: {
     Unit = {
       Description = description;
@@ -15,7 +14,7 @@ let
     };
     Service = {
       Type = "simple";
-      Environment = "PATH=${pkgs.libsecret}/bin:/run/current-system/sw/bin";
+      Environment = "PATH=${pkgs.libsecret}/bin:${pkgs.fish}/bin:/run/current-system/sw/bin";
       ExecStart = "%h/.config/niri/scripts/launch-agentd ${scope} ${extraArgs}";
       Restart = "on-failure";
       RestartSec = "10s";
