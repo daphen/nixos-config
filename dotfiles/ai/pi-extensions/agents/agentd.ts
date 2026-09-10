@@ -195,6 +195,67 @@ function writeThenClose(sockPath: string, obj: { session?: unknown } & Record<st
   });
 }
 
+const turnReportRelays = new Map<string, net.Socket>();
+
+function writeWithTurnReportRelay(
+  remoteSock: string,
+  localSock: string,
+  obj: { session?: unknown } & Record<string, unknown>,
+  target: string,
+  driver: string,
+): Promise<void> {
+  const key = `${remoteSock}\n${target}\n${driver}`;
+  turnReportRelays.get(key)?.destroy();
+  return new Promise((resolve, reject) => {
+    const c = net.connect(remoteSock);
+    turnReportRelays.set(key, c);
+    let buf = "";
+    let delivered = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
+      if (turnReportRelays.get(key) === c) turnReportRelays.delete(key);
+      c.destroy();
+    };
+    const settle = (error?: Error) => {
+      if (delivered) return;
+      delivered = true;
+      if (timer) clearTimeout(timer);
+      if (error) { cleanup(); reject(error); }
+      else resolve();
+    };
+    c.on("connect", () => {
+      c.write(JSON.stringify(obj) + "\n", () => {
+        timer = setTimeout(() => settle(), 800);
+      });
+    });
+    c.on("data", (chunk: Buffer) => {
+      buf += chunk.toString("utf8");
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        let message: any;
+        try { message = JSON.parse(line); } catch { continue; }
+        if (message?.type === "error" && (!message.session || message.session === obj.session)) {
+          settle(new Error(`agentd refused: ${message.error ?? "unknown error"}`));
+          return;
+        }
+        if (message?.type !== "turn_report" || message.session !== target || message.driver !== driver) continue;
+        const prompt = String(message.prompt || "");
+        settle();
+        cleanup();
+        if (prompt) void writeThenClose(localSock, { type: "prompt", session: driver, message: prompt }, 800).catch(() => {});
+        return;
+      }
+    });
+    c.on("error", (error) => delivered ? cleanup() : settle(error));
+    c.on("close", () => {
+      if (turnReportRelays.get(key) === c) turnReportRelays.delete(key);
+      if (!delivered) settle(new Error("agentd connection closed before delivery"));
+    });
+  });
+}
+
 function requestAgentd(sockPath: string, obj: { session?: unknown } & Record<string, unknown>, expectedType: string, timeoutMs = 3000): Promise<any> {
   return new Promise((resolve, reject) => {
     const c = net.connect(sockPath);
@@ -345,8 +406,12 @@ export function promptMessage(sid: string, text: string, identity: Record<string
 export async function sendPrompt(ref: string, text: string, userApproved = false): Promise<Resolved> {
   const r = await resolveSession(ref);
   if (!r) throw new Error(`no agent session matching ${JSON.stringify(ref)}`);
-  const sid = r.session.id || r.session.name;
-  await writeThenClose(r.sockPath, promptMessage(sid, text, callerIdentity(await selfName()), userApproved), 800);
+  const self = await resolveSelf();
+  const from = String(self.session.name || self.session.id || "");
+  const sid = String(r.session.id || r.session.name || "");
+  const message = promptMessage(sid, text, callerIdentity(from), userApproved);
+  if (r.scope === self.scope) await writeThenClose(r.sockPath, message, 800);
+  else await writeWithTurnReportRelay(r.sockPath, self.sockPath, message, sid, from);
   return r;
 }
 

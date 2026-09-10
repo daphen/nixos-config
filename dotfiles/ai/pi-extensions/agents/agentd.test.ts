@@ -13,6 +13,7 @@ import {
   reportReviewFindings,
   resolveSession,
   scheduleSelf,
+  sendPrompt,
   spawnMessage,
   stopSelf,
   type Resolved,
@@ -129,6 +130,59 @@ describe("spawn profile payload", () => {
     expect(requests[1]).toMatchObject({ from: "worker", fromProfile: "lovable-worker", contextId: "ctx-1", outcome: "implemented" });
     for (const [key, value] of Object.entries(old)) value === undefined ? delete process.env[key === "runtime" ? "XDG_RUNTIME_DIR" : key === "profile" ? "HEIDR_AGENT_PROFILE" : key === "name" ? "HEIDR_AGENT_NAME" : key === "parent" ? "HEIDR_AGENT_PARENT" : "HEIDR_AGENT_CWD"] : process.env[key === "runtime" ? "XDG_RUNTIME_DIR" : key === "profile" ? "HEIDR_AGENT_PROFILE" : key === "name" ? "HEIDR_AGENT_NAME" : key === "parent" ? "HEIDR_AGENT_PARENT" : "HEIDR_AGENT_CWD"] = value;
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("cross-scope completion wakes the local sender exactly once", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-turn-report-"));
+    const localSock = path.join(dir, "agentd-lovable.sock");
+    const remoteSock = path.join(dir, "agentd-work.sock");
+    const localRequests: any[] = [];
+    const remoteRequests: any[] = [];
+    const local = net.createServer((client) => {
+      client.write(JSON.stringify({ type: "roster", sessions: [{ name: "orchestrator", cwd: "/local", profile: "lovable-orchestrator" }] }) + "\n");
+      client.on("data", (data) => localRequests.push(JSON.parse(data.toString())));
+    });
+    const remote = net.createServer((client) => {
+      client.write(JSON.stringify({ type: "roster", sessions: [{ name: "worker", cwd: "/remote", profile: "lovable-worker" }] }) + "\n");
+      client.on("data", (data) => {
+        const request = JSON.parse(data.toString());
+        remoteRequests.push(request);
+        client.write(JSON.stringify({ type: "turn_report", session: "other", driver: "orchestrator", prompt: "ignore" }) + "\n");
+        client.write(JSON.stringify({ type: "turn_report", session: "worker", driver: "orchestrator", prompt: "worker finished" }) + "\n");
+      });
+    });
+    await Promise.all([
+      new Promise<void>((resolve) => local.listen(localSock, resolve)),
+      new Promise<void>((resolve) => remote.listen(remoteSock, resolve)),
+    ]);
+    const old = {
+      runtime: process.env.XDG_RUNTIME_DIR,
+      name: process.env.COCKPIT_AGENT_NAME,
+      profile: process.env.COCKPIT_AGENT_PROFILE,
+      cwd: process.env.COCKPIT_AGENT_CWD,
+    };
+    process.env.XDG_RUNTIME_DIR = dir;
+    process.env.COCKPIT_AGENT_NAME = "orchestrator";
+    process.env.COCKPIT_AGENT_PROFILE = "lovable-orchestrator";
+    process.env.COCKPIT_AGENT_CWD = "/local";
+    await sendPrompt("worker", "do it");
+    await sendPrompt("orchestrator", "local message");
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(remoteRequests).toHaveLength(1);
+    expect(remoteRequests[0]).toMatchObject({ type: "prompt", session: "worker", from: "orchestrator" });
+    expect(localRequests).toEqual([
+      { type: "prompt", session: "orchestrator", message: "worker finished" },
+      expect.objectContaining({ type: "prompt", session: "orchestrator", message: "local message", from: "orchestrator" }),
+    ]);
+    for (const [key, value] of Object.entries(old)) {
+      const env = key === "runtime" ? "XDG_RUNTIME_DIR" : key === "name" ? "COCKPIT_AGENT_NAME" : key === "profile" ? "COCKPIT_AGENT_PROFILE" : "COCKPIT_AGENT_CWD";
+      value === undefined ? delete process.env[env] : process.env[env] = value;
+    }
+    await Promise.all([
+      new Promise<void>((resolve) => local.close(() => resolve())),
+      new Promise<void>((resolve) => remote.close(() => resolve())),
+    ]);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
