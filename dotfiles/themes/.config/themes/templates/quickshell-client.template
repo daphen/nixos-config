@@ -132,7 +132,15 @@ Singleton {
     readonly property int padding:   12
     readonly property int paddingSm: 6
     readonly property int fontSize:  14
-    readonly property string fontFamily: "{{typography.ui}}"
+    function resolveFontFamily(preferred) {
+        const available = Qt.fontFamilies()
+        const candidates = [preferred, "GeistMono Nerd Font", "DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono"]
+        for (const family of candidates) {
+            if (available.indexOf(family) >= 0) return family
+        }
+        return "monospace"
+    }
+    readonly property string fontFamily: resolveFontFamily("{{typography.ui}}")
     // 400 under NativeRendering ≈ the old 500 under distance fields
     readonly property int fontWeight: 400
 
