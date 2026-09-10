@@ -4,13 +4,21 @@ import agentsExtension, { buildAgentReviewArgs } from "./index.ts";
 describe("agent_review runtime contract bridge", () => {
   test("native schema exposes only reusable runtime contracts", () => {
     let review: any;
-    agentsExtension({ registerTool(tool: any) { if (tool.name === "agent_review") review = tool; } } as any);
+    agentsExtension({
+      registerTool(tool: any) { if (tool.name === "agent_review") review = tool; },
+      registerCommand() {},
+      on() {},
+    } as any);
     expect(review.parameters.properties.runtimeContract.enum).toEqual(["production", "exact-branch"]);
   });
 
   test("agent_whoami uses the launch identity instead of an ambiguous cwd", async () => {
     let whoami: any;
-    agentsExtension({ registerTool(tool: any) { if (tool.name === "agent_whoami") whoami = tool; } } as any);
+    agentsExtension({
+      registerTool(tool: any) { if (tool.name === "agent_whoami") whoami = tool; },
+      registerCommand() {},
+      on() {},
+    } as any);
     const previous = process.env.COCKPIT_AGENT_NAME;
     process.env.COCKPIT_AGENT_NAME = "exact-session-that-does-not-exist";
     const result = await whoami.execute();

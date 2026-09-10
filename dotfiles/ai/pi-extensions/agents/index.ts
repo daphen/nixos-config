@@ -17,6 +17,7 @@ import {
   steerSession,
   stopSelf,
 } from "./agentd.ts";
+import registerSessionTask from "./session-task.ts";
 
 // Native coordination tools for pi agents driven by Cockpit / agentd.
 // The desktop (niri pickers, nvim keybinds, cockpit scripts) uses the sibling
@@ -61,6 +62,8 @@ export function buildAgentReviewArgs(params: AgentReviewParams): { args?: string
 }
 
 export default function (pi: ExtensionAPI) {
+  registerSessionTask(pi);
+
   pi.registerTool({
     name: "agent_roster",
     label: "Agent roster",
