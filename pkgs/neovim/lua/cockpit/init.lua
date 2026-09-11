@@ -4,8 +4,8 @@
 --   • chat    (middle, scrolls)— the active session's transcript, markdown+TS
 --   • composer(bottom, grows)  — a real editable buffer with attachment chips
 --
--- Scope = one agentd instance = one socket. Set COCKPIT_SCOPE per niri workspace to
--- get independent rails (e.g. lovable vs personal).
+-- Persisted window mode selects scope; launch environment is only a fallback.
+-- QML work watches two daemons; this client uses agentd-lovable, not agentd-work.
 --
 -- Rail keys — roster:  j/k move · <CR> open · ]a/[a next needing you · n new
 --                      . cwd · x stop · a abort · <C-r> restart pi · z all · / filter · s search · r refresh · ? help · q close
@@ -139,13 +139,24 @@ local function progress_bar(done, total, width, fillhl, emptyhl)
   return s, { { 0, filled * 3, fillhl or "CockpitStream" }, { filled * 3, width * 3, emptyhl or "CockpitMuted" } }
 end
 
--- Scope resolution: an explicit COCKPIT_SCOPE wins (with HEIDR_SCOPE fallback); otherwise
--- derive from the focused niri workspace — the `lovable` workspace hosts lovable
--- work, everything else (and off-niri) is personal. So an nvim started anywhere on
--- the lovable workspace is a lovable rail, not just the cockpit's launch command.
+local mode_dir = fn.expand("~/.local/state/cockpit")
+local instance = vim.env.COCKPIT_INSTANCE
+local mode_name = "mode-" .. (instance and instance ~= "" and instance or "main")
+local mode_path = mode_dir .. "/" .. mode_name
+local function normalized_scope(value)
+  return (value == "work" or value == "lovable") and "lovable" or "personal"
+end
+local function persisted_scope()
+  local file = io.open(mode_path, "r")
+  if not file then return nil end
+  local value = vim.trim(file:read("*a")); file:close()
+  if value == "work" or value == "personal" then return normalized_scope(value) end
+end
 local function detect_scope()
+  local saved = persisted_scope()
+  if saved then return saved end
   local env = cockpit_env("SCOPE")
-  if env and env ~= "" then return env end
+  if env and env ~= "" then return normalized_scope(env) end
   local ok, out = pcall(vim.fn.system, { "niri", "msg", "--json", "workspaces" })
   if ok and type(out) == "string" and out ~= "" then
     local dok, wss = pcall(vim.json.decode, out)
@@ -158,6 +169,7 @@ local function detect_scope()
   return "personal"
 end
 local scope = detect_scope()
+local local_scope_state = {}
 -- Scopes are isolated agent worlds: one agentd daemon + socket + session set each.
 -- The rail only ever sees its own scope's sessions (it dials that scope's socket),
 -- so a lovable nvim and a personal nvim show disjoint rosters.
@@ -2314,6 +2326,7 @@ end
 -- unix socket. The daemon protocol is transport-agnostic NDJSON, so only the
 -- connect call differs — nvim still runs locally, only events cross the wire.
 local function remote_addr()
+  if persisted_scope() then return nil end
   local a = cockpit_env("AGENTD_ADDR")
   if not a or a == "" then return nil end
   local host, port = a:match("^(.-):(%d+)$")
@@ -2326,14 +2339,18 @@ try_connect = function(cb, tries)
   S.connecting = true
   local rhost, rport = remote_addr()
   local stream = rhost and uv.new_tcp() or uv.new_pipe(false)
+  S.pipe = stream
   local function on_conn(cerr)
+    if S.pipe ~= stream then return end
     if not cerr then
       S.connecting = false
       S.pipe = stream
       S.connected = true
       S.last_recv = os.time() -- fresh connection: don't flag it stale immediately
       S.ever_connected = true
-      stream:read_start(vim.schedule_wrap(on_read))
+      stream:read_start(vim.schedule_wrap(function(err, chunk)
+        if S.pipe == stream then on_read(err, chunk) end
+      end))
       -- flush anything queued while we were down so a daemon restart / socket
       -- drop is transparent: messages you sent mid-outage get delivered now,
       -- in order, instead of being silently lost.
@@ -2343,8 +2360,11 @@ try_connect = function(cb, tries)
           pcall(function() stream:write(vim.json.encode(m) .. "\n") end)
         end
       end
-      vim.schedule(function() render_roster() end)
-      if cb then vim.schedule(cb) end
+      vim.schedule(function()
+        if S.pipe ~= stream then return end
+        render_roster()
+        if cb then cb() end
+      end)
       return
     end
     pcall(function() stream:close() end)
@@ -2352,6 +2372,7 @@ try_connect = function(cb, tries)
     -- from here, and a reconnect after a drop means it's normally already up.
     if not rhost and tries == 0 and not S.ever_connected then
       vim.schedule(function()
+        if S.pipe ~= stream then return end
         -- Start it THROUGH SYSTEMD, never as a detached child. Launching the binary
         -- directly created a second daemon that bound the same socket outside the
         -- unit's cgroup, so `systemctl restart` replaced only one of them and the
@@ -2367,7 +2388,10 @@ try_connect = function(cb, tries)
     -- daemon restart still reconnects on its own without an nvim restart.
     local delay = (tries < 30) and 200 or 2000
     local tm = uv.new_timer()
-    tm:start(delay, 0, function() tm:close(); try_connect(cb, tries + 1) end)
+    tm:start(delay, 0, function()
+      tm:close()
+      if S.pipe == stream then try_connect(cb, tries + 1) end
+    end)
   end
   if rhost then
     stream:connect(rhost, rport, on_conn)
@@ -2422,8 +2446,11 @@ send = function(obj)
   -- write with an error callback: a failed write means the peer died without a
   -- read-side EOF (exactly the daemon-restart case) — self-heal instead of
   -- losing the message to a dead pipe forever.
-  S.pipe:write(vim.json.encode(obj) .. "\n", function(werr)
-    if werr then vim.schedule(function() enqueue(obj); drop_and_reconnect() end) end
+  local pipe = S.pipe
+  pipe:write(vim.json.encode(obj) .. "\n", function(werr)
+    if werr then vim.schedule(function()
+      if S.pipe == pipe then enqueue(obj); drop_and_reconnect() end
+    end) end
   end)
 end
 
@@ -4427,7 +4454,38 @@ function M.workspace_cwd()
   return nil
 end
 
+local function sync_scope()
+  local next_scope = persisted_scope()
+  if not next_scope then
+    if uv.fs_stat(mode_path) then return end
+    next_scope = detect_scope()
+  end
+  if next_scope == scope then return end
+  local dash = M.dashboard_snapshot().active and S.dash or nil
+  local_scope_state[scope] = { drafts = S.drafts, outbox = S.outbox }
+  local saved = local_scope_state[next_scope] or {}
+  S.drafts, S.outbox = saved.drafts or {}, saved.outbox or {}
+  local pipe = S.pipe
+  S.pipe, S.connected, S.connecting, S.readbuf = nil, false, false, ""
+  if pipe and not pipe:is_closing() then pipe:close() end
+  scope = next_scope
+  S.selected, S.workspace, S.dash, S._follow, S.cockpit_ctx = nil, nil, nil, nil, nil
+  for _, key in ipairs({ "roster", "sources", "chat", "pending", "stream", "stream_since", "lastdur", "edited", "idle_since", "folds", "plan", "devenv", "orphans", "nav_hist", "displayed", "awaiting", "turn_active" }) do
+    S[key] = {}
+  end
+  S.focus, S.nav_idx, S.autopened = 1, 0, false
+  if dash and api.nvim_win_is_valid(dash.win) then
+    api.nvim_win_call(dash.win, function() vim.cmd.cd(fn.fnameescape(scope_root())) end)
+    show_scratch(dash.win, scope_root())
+  end
+  render_roster()
+  connect(function() send({ type = "list_sources" }) end)
+  pcall(function() require("cockpit.chin").refresh() end)
+end
+
 function M.workspace(workspace_scope, id, cwd, plan, view, latest)
+  sync_scope()
+  if persisted_scope() and normalized_scope(workspace_scope) ~= scope then return "" end
   local snacks = package.loaded["snacks"]
   if snacks and snacks.picker then
     for _, picker in ipairs(snacks.picker.get()) do picker:close() end
@@ -6130,13 +6188,21 @@ function M.setup(opts)
   target_editor_win()
   -- Embedded cockpit (TermView env): the QML chin renders the statusline; feed it.
   if cockpit_env("COCKPIT") == "1" then pcall(function() require("cockpit.chin").setup() end) end
-  if opts.scope then scope = opts.scope end
+  scope = persisted_scope() or (opts.scope and normalized_scope(opts.scope)) or scope
   if opts.scopes then ROOTS = opts.scopes end
   S.ns = api.nvim_create_namespace("agent_nvim")
   S.composer_ns = api.nvim_create_namespace("agent_nvim_composer")
   S.chip_ns = api.nvim_create_namespace("agent_nvim_chips")
   S.pad_ns = api.nvim_create_namespace("agent_nvim_chatpad")
   set_hl()
+  fn.mkdir(mode_dir, "p")
+  local mode_watch = uv.new_fs_event()
+  mode_watch:start(mode_dir, {}, vim.schedule_wrap(function(err, name)
+    if not err and (not name or name == mode_name) then sync_scope() end
+  end))
+  api.nvim_create_autocmd("VimLeavePre", { once = true, callback = function()
+    mode_watch:stop(); mode_watch:close()
+  end })
   vim.defer_fn(set_hl, 200) -- win over markview's own group setup on load
   api.nvim_create_autocmd("ColorScheme", {
     callback = function() set_hl(); vim.defer_fn(set_hl, 120) end,
@@ -6336,7 +6402,6 @@ function M.setup(opts)
   -- etc. get a clean editor with no rail. `nvim` vs `cockpit-rail` are the two explicit
   -- entry points; the rail no longer hijacks every nvim (which also stopped N stray
   -- nvims each polling devenv). The rail is still one keypress away: <leader>a.
-  -- Scope is auto-detected independently (COCKPIT_SCOPE / niri workspace).
   -- Force either way with setup({ autostart = true|false }).
   local autostart = opts.autostart
   if autostart == nil then autostart = cockpit_env("OPEN") ~= nil end
