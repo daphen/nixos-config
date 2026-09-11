@@ -335,7 +335,7 @@ PanelWindow {
         Qt.callLater(() => cycleFilm(direction))
     }
 
-    function focusFilmMatch() {
+    function focusTypedMatch() {
         if (!showFilmstrip) return
         const q = query.trim().toLowerCase()
         if (!q) { filmFocused = true; return }
@@ -345,7 +345,10 @@ PanelWindow {
             const tab = filmTabs[i]
             const value = String(tab.title || "") + " " + String(tab.url || "")
             const score = scoreMatch(q, value.toLowerCase())
-            if (score > bestTabScore) { bestTabScore = score; bestTabIndex = i }
+            if (score > bestTabScore) {
+                bestTabScore = score
+                bestTabIndex = i
+            }
         }
         let bestResultIndex = -1
         let bestResultScore = 0
@@ -360,12 +363,9 @@ PanelWindow {
                 bestResultIndex = i
             }
         }
-        if (bestResultIndex >= 0) selectedIndex = bestResultIndex
-        filmFocused = bestTabIndex >= 0
-        if (!filmFocused) return
-        filmIndex = bestTabIndex
-        const entry = filmEntry(bestTabIndex)
-        if (entry && entry.tabId !== previewTabId) previewTab(entry)
+        filmFocused = bestTabIndex >= 0 && bestTabScore >= bestResultScore
+        if (filmFocused) filmIndex = bestTabIndex
+        else if (bestResultIndex >= 0) selectedIndex = bestResultIndex
     }
 
     function tabContentKey(tabs) {
@@ -438,7 +438,7 @@ PanelWindow {
     }
     onQueryChanged: {
         selectedIndex = firstSelectable(); list.positionViewAtBeginning()
-        Qt.callLater(focusFilmMatch)
+        Qt.callLater(focusTypedMatch)
         if (historyWanted()) histDebounce.restart()
     }
     onFilterTabChanged: {
@@ -757,7 +757,7 @@ PanelWindow {
 
     onEntriesChanged: {
         if (selectedIndex >= entries.length) selectedIndex = firstSelectable()
-        Qt.callLater(focusFilmMatch)
+        Qt.callLater(focusTypedMatch)
         if (preservingCloseScroll) {
             Qt.callLater(() => Qt.callLater(() => {
                 const minY = list.originY
