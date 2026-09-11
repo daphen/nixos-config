@@ -378,6 +378,11 @@ blur {
 spawn-sh-at-startup "dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE"
 
 spawn-at-startup "qs"
+spawn-at-startup "qs" "-n" "-p" "/home/daphen/.config/quickshell/wallpaper"
+// Mutagen has no user unit (this build has no `daemon register`), so after a reboot
+// its daemon stays down and every VM worktree mirror silently stops syncing until
+// some mutagen command happens to run. Start it with the session.
+spawn-at-startup "mutagen" "daemon" "start"
 
 // Native Slack client daemon — RETIRED: lovable-dev (enterprise) signs out any
 // third-party token client on connect, so Slack now runs in the official app
