@@ -48,6 +48,70 @@ func TestPrepareMissingMirrorUsesWorktrunkAndNoEnvironment(t *testing.T) {
 	}
 }
 
+func TestPrepareRefreshesComparisonBaseBeforeReportingReady(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		home, path, log := mirrorFixture(t)
+		makeGitMarker(t, filepath.Join(home, "work/lovable.daphen-every-3315"))
+		extra := []string{"VMHEAD=4444444444444444444444444444444444444444", "VMBRANCH=daphen/every-3315", "MUTAGEN_MODE=matching"}
+		if fail {
+			extra = append(extra, "FAIL_TRUNK=yes")
+		}
+		result := runEnv(t, home, path, extra, "sync", "--prepare", "EVERY-3315")
+		calls := readLog(t, log)
+		if fail {
+			if result.err == nil || !strings.Contains(result.stderr, "could not refresh origin/main") || strings.Contains(calls, "mutagen|sync flush") || strings.Contains(result.stdout, "prepared files") {
+				t.Fatalf("stale base reported ready: result=%+v calls=%s", result, calls)
+			}
+		} else {
+			if result.err != nil {
+				t.Fatalf("result=%+v", result)
+			}
+			inOrder(t, calls, "fetch --quiet --no-tags origin refs/heads/main:refs/remotes/origin/main", "fetch --quiet --no-tags ssh://", "mutagen|sync flush")
+		}
+	}
+}
+
+func TestPrepareExcludesMergedMainChangesFromTicketDiff(t *testing.T) {
+	home, path, _ := mirrorFixture(t)
+	repo := filepath.Join(home, "work/lovable")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.name", "Test")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "commit", "--allow-empty", "-m", "old main")
+	old := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+	for _, file := range []string{"unrelated.txt", "ticket.txt"} {
+		if file == "ticket.txt" {
+			runGit(t, repo, "switch", "-c", "daphen/every-3315")
+		}
+		if err := os.WriteFile(filepath.Join(repo, file), []byte(file), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runGit(t, repo, "add", file)
+		runGit(t, repo, "commit", "-m", file)
+	}
+	runGit(t, repo, "remote", "add", "origin", ".")
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", old)
+	if got := runGit(t, repo, "diff", "--name-only", "origin/main...HEAD"); !strings.Contains(got, "unrelated.txt") {
+		t.Fatalf("fixture did not reproduce stale-base pollution: %s", got)
+	}
+	makeGitMarker(t, filepath.Join(home, "work/lovable.daphen-every-3315"))
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+	result := runEnv(t, home, path, []string{"VMHEAD=" + head, "VMBRANCH=daphen/every-3315", "MUTAGEN_MODE=matching", "VMCTL_REAL_GIT=" + realGit}, "sync", "--prepare", "EVERY-3315")
+	if result.err != nil {
+		t.Fatalf("result=%+v", result)
+	}
+	if got := strings.TrimSpace(runGit(t, repo, "diff", "--name-only", "origin/main...HEAD")); got != "ticket.txt" {
+		t.Fatalf("prepared comparison includes non-ticket changes: %s", got)
+	}
+}
+
 func TestInitialSeedAppliesVMDeletionBeforeTwoWayCreation(t *testing.T) {
 	home, path, log := mirrorFixture(t)
 	extra := []string{"VMHEAD=2222222222222222222222222222222222222222", "VMBRANCH=daphen/every-3315", "SEED_DELETE=yes"}
@@ -372,7 +436,8 @@ func TestRealLifecycleCreatesSeedsAlignsAndReusesCanonicalMirror(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	runGit(t, "", "init", "-q", repo)
+	runGit(t, "", "init", "-q", "-b", "main", repo)
+	runGit(t, repo, "remote", "add", "origin", ".")
 	runGit(t, repo, "config", "user.email", "vmctl@test")
 	runGit(t, repo, "config", "user.name", "vmctl test")
 	for name, content := range map[string]string{"kept.ts": "base\n", "removed.ts": "remove\n"} {
@@ -446,7 +511,8 @@ func TestAlignCleanVMAdvanceRefreshesIndexWithRealGit(t *testing.T) {
 	if err := os.Symlink(gitPath, filepath.Join(bin, "git")); err != nil {
 		t.Fatal(err)
 	}
-	runGit(t, "", "init", "-q", repo)
+	runGit(t, "", "init", "-q", "-b", "main", repo)
+	runGit(t, repo, "remote", "add", "origin", ".")
 	runGit(t, repo, "config", "user.email", "vmctl@test")
 	runGit(t, repo, "config", "user.name", "vmctl test")
 	if err := os.WriteFile(filepath.Join(repo, "kept.ts"), []byte("base\n"), 0o644); err != nil {
@@ -621,6 +687,7 @@ case "$name" in
    esac ;;
  git)
    case "$*" in
+     *"fetch --quiet --no-tags origin refs/heads/main:refs/remotes/origin/main"*) [ "${FAIL_TRUNK-}" != yes ] || exit 1; [ -z "${VMCTL_REAL_GIT-}" ] || exec "$VMCTL_REAL_GIT" "$@" ;;
      *"rev-parse FETCH_HEAD"*) echo "${VMHEAD}" ;;
      *"rev-parse HEAD"*) echo "${LOCALHEAD-${VMHEAD}}" ;;
      *"rev-parse --show-toplevel"*) if [ -s "$HOME/wt-path" ]; then while IFS= read -r root; do echo "$root"; done < "$HOME/wt-path"; else echo "$HOME/work/lovable.daphen-every-3315"; fi ;;

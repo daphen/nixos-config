@@ -420,6 +420,9 @@ func (s syncRun) fetchVMBranch() error {
 	if s.vmbranch == "" {
 		return nil
 	}
+	if s.a.quiet([]string{"GIT_TERMINAL_PROMPT=0"}, "git", "-C", s.repo, "fetch", "--quiet", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main") != nil {
+		return fmt.Errorf("could not refresh origin/main; refusing a stale ticket comparison base")
+	}
 	sshEnv := []string{"GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=25"}
 	url := "ssh://" + s.a.user + "@" + s.a.host + "/home/" + s.a.user + "/src/lovable"
 	if s.a.quiet(sshEnv, "git", "-C", s.repo, "fetch", "--quiet", "--no-tags", url, s.vmbranch) != nil {
