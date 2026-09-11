@@ -339,6 +339,17 @@ PanelWindow {
         if (!showFilmstrip) return
         const q = query.trim().toLowerCase()
         if (!q) { filmFocused = true; return }
+        let bestTabIndex = -1
+        let bestTabScore = 0
+        for (let i = 0; i < filmTabs.length; i++) {
+            const tab = filmTabs[i]
+            const value = String(tab.title || "") + " " + String(tab.url || "")
+            const score = scoreMatch(q, value.toLowerCase())
+            if (score > bestTabScore) {
+                bestTabScore = score
+                bestTabIndex = i
+            }
+        }
         let bestResultIndex = -1
         let bestResultScore = 0
         for (let i = 0; i < entries.length; i++) {
@@ -352,8 +363,9 @@ PanelWindow {
                 bestResultIndex = i
             }
         }
-        if (bestResultIndex >= 0) selectedIndex = bestResultIndex
-        filmFocused = false
+        filmFocused = bestTabIndex >= 0 && bestTabScore >= bestResultScore
+        if (filmFocused) filmIndex = bestTabIndex
+        else if (bestResultIndex >= 0) selectedIndex = bestResultIndex
     }
 
     function tabContentKey(tabs) {
