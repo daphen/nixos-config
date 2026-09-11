@@ -81,7 +81,9 @@ machines where it is absent.
 - If the vault is absent (for example a lovbox), use the notes-memory MCP.
 - Before recalling notes locally, run `notes-cli -pull`, then search/read the
   vault. Without a local vault, use notes-memory search.
-- For ongoing projects, proactively pull then search before answering.
+- For ongoing projects, pull/search when needed facts are not already verified
+  in this conversation. Pull at most once per turn and suppress its file
+  listing.
 
 The old `~/.claude/projects/-home-daphen/memory/` store is deprecated.
 
@@ -97,6 +99,14 @@ blocked and waiting, keep driving diagnosis and verification until only the
 running operation itself remains. Fix and rerun ordinary failures instead of
 stopping at status. Never end on a bare status: name exactly one next action
 unless the task is complete, then say nothing remains.
+
+Use the smallest context that answers the question: targeted searches, bounded
+file ranges, and short transcript tails. Reuse verified facts for status
+answers; do not reload unchanged plans/docs or repeat a broad audit without new
+evidence. Batch routine inter-agent findings; send immediately only when the
+recipient's action, scope, permission, or safety changes. Never turn each
+observation into a new worker prompt. These limits do not replace validation of
+changed code.
 
 Shape every response for an ADHD reader:
 

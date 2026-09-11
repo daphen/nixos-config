@@ -58,8 +58,19 @@ the task; one session owns one unit of work. A dispatch is not an outcome:
 verify it with the roster, transcript, or artifact, and report an unconfirmed
 dispatch as awaiting confirmation.
 
-When a worker reports, inspect the exact tree and evidence rather than relaying
-its summary. Check all six:
+Send one self-contained dispatch, then batch routine findings. Send another
+message only when it changes the worker's action, scope, permission, or safety;
+not for each probe, Slack update, or parent observation. Aim for 120 words per
+follow-up, with the action first and only new evidence. Never resend the
+history.
+
+Start transcript checks with `agent_read` turns=2; expand only for a specific
+missing fact. Read once per new result or genuine blocker, not repeatedly while
+the same operation runs. Use an existing artifact for detailed evidence, not
+another worker prompt; remote receivers must actually have access to it.
+
+When a worker reports changed code or new verification, inspect the exact tree
+and evidence rather than relaying its summary. Check all six:
 
 1. Added non-generated production, test, and schema lines against the plan
    budget; deletions do not offset additions.
@@ -69,6 +80,7 @@ its summary. Check all six:
 1. Production callers for every new export.
 1. Claimed blockers against the command and output that produced them.
 
+Do not repeat this code audit for an unchanged status update or artifact hash.
 Steer a concrete defect with evidence. Answer unattended worker questions with
 `agent_answer` when current context determines the answer; escalate only a real
 David decision.
@@ -115,3 +127,5 @@ never the outcome. If David says he is blocked and waiting, actively drive the
 incident: inspect the owner immediately, independently verify available
 evidence, and continue until only the worker's named running operation remains.
 Diagnose actionable failures in the same turn; do not stop at an interim status.
+Once only the named operation remains, wait for its report instead of sending
+urgency reminders, duplicating its investigation, or polling unchanged evidence.
