@@ -1778,7 +1778,8 @@ function rail_focus_mark(on)
 end
 local function rail_focused()
   local ok, l = pcall(fn.readfile, RAIL_FOCUS_FILE)
-  local pid = ok and l[1] and tonumber(vim.trim(l[1]))
+  if not ok then return false end
+  local pid = l[1] and tonumber(vim.trim(l[1]))
   return pid ~= nil and fn.isdirectory("/proc/" .. pid) == 1
 end
 
@@ -4834,14 +4835,21 @@ refresh_git_changes = function(cwd, path)
   end
   local args = { "git", "-C", cwd, "diff", "--no-color", "--no-ext-diff", "--unified=0", base }
   if path and path ~= "" then args[#args + 1] = "--"; args[#args + 1] = path end
+  local partial = ""
   request.job = fn.jobstart(args, {
-    stdout_buffered = true,
     on_stdout = function(_, data)
-      for _, line in ipairs(data or {}) do if line ~= "" then output[#output + 1] = line end end
+      if not data or #data == 0 then return end
+      data[1] = partial .. data[1]
+      partial = data[#data]
+      for index = 1, #data - 1 do
+        local line = data[index]
+        if line ~= "" then output[#output + 1] = line end
+      end
     end,
     on_exit = function(_, code)
       if S.diff_jobs[cwd] ~= request then return end
       if code ~= 0 then S.diff_jobs[cwd] = nil; return end
+      if partial ~= "" then output[#output + 1] = partial end
       local files = {}
       request.job = fn.jobstart({ "git", "-C", cwd, "ls-files", "--others", "--exclude-standard" }, {
         stdout_buffered = true,
