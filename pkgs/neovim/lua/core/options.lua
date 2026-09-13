@@ -50,6 +50,13 @@ opt.ignorecase = true
 opt.smartcase = true
 
 vim.opt.undofile = true
+local instance = vim.env.COCKPIT_INSTANCE
+if instance and instance ~= "" then
+	local shared = vim.fn.stdpath("state") .. "/undo"
+	local directory = shared .. "/cockpit-" .. instance
+	vim.fn.mkdir(directory, "p", 448)
+	vim.opt.undodir = { directory .. "//", shared .. "//" }
+end
 
 -- Cursor settings
 opt.guicursor = "n-c-sm:block," .. "i-ci:ver25," .. "v-ve:hor20," .. "r-cr-o:hor20"
