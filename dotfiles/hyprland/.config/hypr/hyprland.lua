@@ -16,6 +16,7 @@ local PAN_GAIN = 2.5
 
 local state = {
     camera = { x = 0, y = 0 },
+    canvas = { zoom = 1, x = 0, y = 0 },
     rows = { {}, {}, {} },
     panning = false,
     sizes = {},
@@ -23,6 +24,10 @@ local state = {
     overview = false,
     gesture_serial = 0,
 }
+
+local function is_canvas_workspace(workspace)
+    return workspace and workspace.tiled_layout == "lua:canvas"
+end
 
 local function target_id(target)
     local window = target.window
@@ -190,6 +195,10 @@ local function center(ctx, id)
 end
 
 local function recalculate(ctx)
+    if CAMERA_V2 and state.overview and state.panning then
+        return
+    end
+
     local targets = sync(ctx)
     for row, items in ipairs(state.rows) do
         for column, id in ipairs(items) do
@@ -199,11 +208,14 @@ local function recalculate(ctx)
 end
 
 local function set_canvas_camera(zoom, offset_x, offset_y)
+    state.canvas.zoom = zoom
+    state.canvas.x = offset_x or 0
+    state.canvas.y = offset_y or 0
     if CAMERA_V2 then
         hl.config({ experimental = {
             canvas_zoom = zoom,
-            canvas_offset_x = offset_x,
-            canvas_offset_y = offset_y,
+            canvas_offset_x = state.canvas.x,
+            canvas_offset_y = state.canvas.y,
         } })
     elseif CAMERA_MODE then
         hl.config({ experimental = { canvas_zoom = zoom } })
@@ -394,6 +406,13 @@ hl.layout.register("canvas", {
             state.camera.x = state.camera.x + dx
             state.camera.y = state.camera.y + dy
             if state.panning then
+                if CAMERA_V2 and state.overview then
+                    set_canvas_camera(
+                        state.canvas.zoom,
+                        state.canvas.x - dx * state.canvas.zoom,
+                        state.canvas.y - dy * state.canvas.zoom
+                    )
+                end
                 focus_center(ctx)
             end
         elseif command == "center" then
@@ -422,7 +441,7 @@ hl.layout.register("canvas", {
 })
 
 hl.on("window.active", function(window)
-    if not window then
+    if not window or not is_canvas_workspace(window.workspace) then
         return
     end
     if state.overview and not state.panning then
@@ -597,6 +616,12 @@ if REAL_MODE then
         no_blur = true,
         opaque = true,
     })
+    hl.window_rule({
+        name = "opaque-quickshell-workspaces",
+        match = { class = "^org\\.quickshell$", title = "^(cockpit-qs|dsqrd)" },
+        no_blur = true,
+        opaque = true,
+    })
     hl.layer_rule({
         name = "palette-rounding",
         match = { namespace = "^palette-daemon$" },
@@ -758,6 +783,9 @@ if REAL_MODE and not DECK_MODE then
 end
 
 local function pan(dx, dy)
+    if not is_canvas_workspace(hl.get_active_workspace()) then
+        return
+    end
     hl.dispatch(hl.dsp.layout(string.format("pan %.6f %.6f", dx * PAN_GAIN, dy * PAN_GAIN)))
 end
 
@@ -770,7 +798,7 @@ hl.gesture({
             state.gesture_serial = state.gesture_serial + 1
             local serial = state.gesture_serial
             hl.timer(function()
-                if state.panning and state.gesture_serial == serial and not state.overview then
+                if state.panning and state.gesture_serial == serial and not state.overview and is_canvas_workspace(hl.get_active_workspace()) then
                     hl.dispatch(hl.dsp.layout("overview"))
                 end
             end, { timeout = 280, type = "oneshot" })
@@ -782,10 +810,12 @@ hl.gesture({
         finish = function()
             state.panning = false
             state.gesture_serial = state.gesture_serial + 1
-            if state.overview then
-                hl.dispatch(hl.dsp.layout("overview"))
+            if is_canvas_workspace(hl.get_active_workspace()) then
+                if state.overview then
+                    hl.dispatch(hl.dsp.layout("overview"))
+                end
+                hl.dispatch(hl.dsp.layout("center"))
             end
-            hl.dispatch(hl.dsp.layout("center"))
         end,
     },
 })

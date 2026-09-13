@@ -183,6 +183,86 @@ index ff5db2ed3b3bf9e4f21d4863ac039bd246ab06aa..aba4bc7819b62816e58f64808f4a1110
          Vector2D               surfaceLocalAt(const Vector2D& pos, PHLWINDOW window, SP<CWLSurfaceResource> surface) const;
          SP<CWLSurfaceResource> layerPopupSurfaceAt(const Vector2D& pos, PHLMONITOR monitor, Vector2D* surfaceCoords, PHLLS* layerFound) const;
          SP<CWLSurfaceResource> layerSurfaceAt(const Vector2D& pos, std::vector<PHLLSREF>* layerSurfaces, Vector2D* surfaceCoords, PHLLS* layerFound,
+diff --git a/src/desktop/view/window/Window.cpp b/src/desktop/view/window/Window.cpp
+index 3c64c28725e41f96930bbc2c8beb193a1942c51f..83f4ab3a10a7f7512fefbe23f4106b4935e1f883 100644
+--- a/src/desktop/view/window/Window.cpp
++++ b/src/desktop/view/window/Window.cpp
+@@ -1057,6 +1057,10 @@ void CWindow::setContentType(NContentType::eContentType contentType) {
+     m_wlSurface->resource()->m_contentType->m_value = contentType;
+ }
+ 
++uint64_t CWindow::renderContentSerial() const {
++    return m_renderContentSerial;
++}
++
+ void CWindow::deactivateGroupMembers() {
+     if (!m_grouping->group())
+         return;
+@@ -1779,6 +1783,8 @@ void CWindow::commitWindow(bool initialCommit) {
+ 
+     // damageSurface consumes damage, so snapshot it for the tearing check below
+     const bool HADDAMAGE = !wlSurface()->resource()->m_current.damage.empty() || !wlSurface()->resource()->m_current.bufferDamage.empty();
++    if (HADDAMAGE)
++        ++m_renderContentSerial;
+ 
+     g_pHyprRenderer->damageSurface(wlSurface()->resource(), m_realPosition->goal().x, m_realPosition->goal().y, 1.0 / m_backend->surfaceScale());
+ 
+diff --git a/src/desktop/view/window/Window.hpp b/src/desktop/view/window/Window.hpp
+index b231affdf339ebf1345f520c8e778d875abc6270..47cdc21b01d8f9e5e8534e35c74884f644078181 100644
+--- a/src/desktop/view/window/Window.hpp
++++ b/src/desktop/view/window/Window.hpp
+@@ -230,6 +230,7 @@ namespace Desktop::View {
+         void                       sendWindowSize(bool force = false);
+         NContentType::eContentType getContentType();
+         void                       setContentType(NContentType::eContentType contentType);
++        uint64_t                   renderContentSerial() const;
+         void                       deactivateGroupMembers();
+         bool                       isNotResponding();
+         bool                       priorityFocus();
+@@ -274,9 +275,10 @@ namespace Desktop::View {
+         void         unmanagedSetGeometry(const CBox& box);
+         virtual void onInputBlockStateUpdated(bool blocked) override;
+         // For hidden windows and stuff
+-        bool        m_hidden    = false;
+-        bool        m_suspended = false;
+-        bool        m_isMapped  = false;
++        bool        m_hidden              = false;
++        bool        m_suspended           = false;
++        bool        m_isMapped            = false;
++        uint64_t    m_renderContentSerial = 0;
+         std::string m_lastWorkspaceAddress;
+         std::string m_lastWorkspaceType;
+         bool        m_lastWorkspaceSpecial = false;
+diff --git a/src/helpers/MiscFunctions.cpp b/src/helpers/MiscFunctions.cpp
+index 299d2199cec36326c23abf902cf5a9c84e0e11cf..706e3dae8fafb13c3da4f4b4f3e07153fdfb1d5b 100644
+--- a/src/helpers/MiscFunctions.cpp
++++ b/src/helpers/MiscFunctions.cpp
+@@ -473,8 +473,11 @@ bool truthy(const std::string& str) {
+         return sc<char>(std::tolower(ch));
+     });
+ 
++    const auto startsWith = [&](auto prefix) {
++        return std::ranges::equal(str_view | std::views::take(prefix.size()), prefix);
++    };
+     return [&](auto&&... prefixes) -> bool {
+-        return (... || std::ranges::starts_with(str_view, prefixes));
++        return (... || startsWith(prefixes));
+     }("true"sv, "yes"sv, "on"sv);
+     // clang-format on
+ }
+diff --git a/src/ipc/s1/S1.cpp b/src/ipc/s1/S1.cpp
+index 76f2e9b59e95b7d6ae470555d60189f4bc33b6ce..6c0bed5d083ac4a143187cc6c20ba41476471bb5 100644
+--- a/src/ipc/s1/S1.cpp
++++ b/src/ipc/s1/S1.cpp
+@@ -145,7 +145,7 @@ SResponse CSocket1::dispatchBatch(std::string request, pid_t pid) {
+             if (i < request.size() && (request[i + 1] == '\\' || request[i + 1] == ';'))
+                 ++i;
+             else
+-                LOG(Log::ERR, "Malformed socket1 request: invalid escape sequence {} at position {}, using it verbatim", request.subview(i, 2), i);
++                LOG(Log::ERR, "Malformed socket1 request: invalid escape sequence {} at position {}, using it verbatim", request.substr(i, 2), i);
+         }
+         parsedCommand << request[i];
+     }
 diff --git a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager.cpp
 index 6b00560276bd5e1ea85452cd8434749ea8aa0dc9..37e9565097c4e100ad8db903c859af08b0b2e8f1 100644
 --- a/src/managers/input/InputManager.cpp
@@ -436,10 +516,29 @@ index f8187852ad2fb6a1febbb75028934e783c1528cc..579cdb3635aad53128c204dfd6a61202
          // for fading in the wallpaper because it doesn't happen instantly (it's loaded async)
          PHLANIMVAR<float> m_backgroundOpacity;
 diff --git a/src/render/ElementRenderer.cpp b/src/render/ElementRenderer.cpp
-index 6982d67cc16648c04db6d358f2ce3bbad63266ce..e9baa65493291442364aa1bae8afff39177886d2 100644
+index 6982d67cc16648c04db6d358f2ce3bbad63266ce..a8aab874a864f9cf92dc2e21d252f4382cee32be 100644
 --- a/src/render/ElementRenderer.cpp
 +++ b/src/render/ElementRenderer.cpp
-@@ -283,7 +283,7 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
+@@ -4,6 +4,7 @@
+ #include "../desktop/view/window/Window.hpp"
+ #include "../desktop/view/window/WindowEffectsController.hpp"
+ #include "../desktop/view/window/WindowPresentation.hpp"
++#include "../desktop/state/FocusState.hpp"
+ #include "render/pass/ClearPassElement.hpp"
+ #include "render/transformer/TransformerList.hpp"
+ #include <hyprutils/memory/SharedPtr.hpp>
+@@ -15,6 +16,10 @@
+ 
+ using namespace Render;
+ 
++void IElementRenderer::clearCanvasWindowCache() {
++    m_canvasWindowCaptures.clear();
++}
++
+ void IElementRenderer::drawElement(WP<IPassElement> element, const CRegion& damage) {
+     if (!element)
+         return;
+@@ -283,7 +288,7 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
      auto    cancelRender = false;
      CRegion clipRegion;
  
@@ -448,7 +547,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..e9baa65493291442364aa1bae8afff39
          clipRegion = element->visibleRegion(cancelRender);
          if (cancelRender) {
              element->discard();
-@@ -295,9 +295,9 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
+@@ -295,9 +300,9 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
          if (m_renderData.renderingTransformedSource)
              return m_renderData.damage.copy();
  
@@ -460,7 +559,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..e9baa65493291442364aa1bae8afff39
      };
  
      // check for fractional scale surfaces misaligning the buffer size
-@@ -424,7 +424,8 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
+@@ -424,7 +429,8 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
  
  void IElementRenderer::preDrawSurface(WP<CSurfacePassElement> element, const CRegion& damage) {
      auto& m_renderData              = g_pHyprRenderer->m_renderData;
@@ -470,7 +569,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..e9baa65493291442364aa1bae8afff39
      m_renderData.useNearestNeighbor = element->m_data.useNearestNeighbor;
      m_renderData.currentWindow      = element->m_data.pWindow;
  
-@@ -444,8 +445,10 @@ void IElementRenderer::preDrawSurface(WP<CSurfacePassElement> element, const CRe
+@@ -444,8 +450,10 @@ void IElementRenderer::preDrawSurface(WP<CSurfacePassElement> element, const CRe
  
  void IElementRenderer::drawTex(WP<CTexPassElement> element, const CRegion& damage) {
      auto& m_renderData = g_pHyprRenderer->m_renderData;
@@ -482,12 +581,14 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..e9baa65493291442364aa1bae8afff39
  
      m_renderData.surface = element->m_data.surface;
  
-@@ -685,8 +688,14 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -685,20 +693,47 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
          }
      }
  
 -    const double CANVASPADDING = 1.0 / pMonitor->m_scale;
 -    CBox         SOURCECANVAS  = pixelBoxForLogical(plan.sourceBox.copy().expand(CANVASPADDING), pMonitor->m_scale);
+-    auto         fb            = pMonitor->resources()->getUnusedWorkBuffer(SOURCECANVAS.size());
+-    auto         matteFB       = element->m_data.blur ? pMonitor->resources()->getUnusedWorkBuffer(SOURCECANVAS.size()) : nullptr;
 +    double       captureFactor = HASRENDERMODIFIERS && PWINDOW && !PWINDOW->effects().hasActiveTransformers() ?
 +        std::clamp<double>(renderData.renderModif.combinedScale(), 0.25, 1.0) :
 +        1.0;
@@ -496,10 +597,34 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..e9baa65493291442364aa1bae8afff39
 +    const CBox   CAPTUREBOX    = plan.sourceBox.copy().expand(CANVASPADDING);
 +    CBox         outputCanvas  = pixelBoxForLogical(CAPTUREBOX, pMonitor->m_scale);
 +    CBox         SOURCECANVAS  = pixelBoxForLogical(CAPTUREBOX, CAPTURESCALE);
-     auto         fb            = pMonitor->resources()->getUnusedWorkBuffer(SOURCECANVAS.size());
-     auto         matteFB       = element->m_data.blur ? pMonitor->resources()->getUnusedWorkBuffer(SOURCECANVAS.size()) : nullptr;
++
++    std::erase_if(m_canvasWindowCaptures, [](const auto& item) { return !item.second.window.lock(); });
++    const auto CACHEKEY = PWINDOW ? rc<uintptr_t>(PWINDOW.get()) : 0;
++    const bool FOCUSED  = PWINDOW && Desktop::focusState()->window() == PWINDOW;
++    bool       cacheable = HASRENDERMODIFIERS && PWINDOW && !PWINDOW->effects().hasActiveTransformers() && plan.stages.empty() && !element->m_data.blur;
++    auto       cached    = cacheable ? m_canvasWindowCaptures.find(CACHEKEY) : m_canvasWindowCaptures.end();
++    const bool useCached = cached != m_canvasWindowCaptures.end() && cached->second.framebuffer && cached->second.size == plan.sourceBox.size() &&
++        cached->second.contentSerial == PWINDOW->renderContentSerial() && cached->second.focused == FOCUSED;
++
++    SP<IFramebuffer> fb;
++    if (useCached)
++        fb = cached->second.framebuffer;
++    else {
++        if (cached != m_canvasWindowCaptures.end())
++            m_canvasWindowCaptures.erase(cached);
++        fb = pMonitor->resources()->getUnusedWorkBuffer(SOURCECANVAS.size());
++    }
++    auto matteFB = element->m_data.blur ? pMonitor->resources()->getUnusedWorkBuffer(SOURCECANVAS.size()) : nullptr;
      if (!fb || (element->m_data.blur && !matteFB)) {
-@@ -699,6 +708,8 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+         fb.reset();
+         matteFB.reset();
++        if (CACHEKEY)
++            m_canvasWindowCaptures.erase(CACHEKEY);
+ 
++        cacheable       = false;
+         applyTransformers = false;
+         motionBlur        = {};
+         plan              = {};
          plan.sourceBox    = MONITORBOX;
          plan.outputBox    = MONITORBOX;
          SOURCECANVAS      = {0, 0, pMonitor->m_transformedSize.x, pMonitor->m_transformedSize.y};
@@ -508,7 +633,18 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..e9baa65493291442364aa1bae8afff39
          fb                = pMonitor->resources()->getUnusedWorkBuffer();
          matteFB           = element->m_data.blur ? pMonitor->resources()->getUnusedWorkBuffer() : nullptr;
          if (!fb || (element->m_data.blur && !matteFB)) {
-@@ -739,6 +750,8 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -725,7 +760,9 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+     };
+ 
+     SWindowTransformBuffer last;
+-    {
++    if (useCached)
++        last = {.framebuffer = fb, .box = SOURCECANVAS};
++    else {
+         auto guard = g_pHyprRenderer->bindTempFB(fb);
+ 
+         renderData.currentWindow = element->m_data.window;
+@@ -739,6 +776,8 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
          g_pHyprRenderer->draw(CClearPassElement::SClearData{CHyprColor(0, 0, 0, 0)});
  
          renderData.renderModif = {};
@@ -517,7 +653,22 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..e9baa65493291442364aa1bae8afff39
          renderData.renderModif.modifs.emplace_back(std::make_pair<>(SRenderModifData::eRenderModifType::RMOD_TYPE_TRANSLATE, CANVASTRANSLATION));
          renderData.noSimplify                 = true;
          renderData.renderingTransformedSource = true;
-@@ -766,6 +779,8 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -746,6 +785,14 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+ 
+         renderData.renderModif = {};
+         last                   = transformWindowFB({.framebuffer = fb, .box = SOURCECANVAS});
++        if (cacheable && last.success && last.framebuffer)
++            m_canvasWindowCaptures[CACHEKEY] = {
++                .window        = PWINDOW,
++                .framebuffer   = last.framebuffer,
++                .size          = plan.sourceBox.size(),
++                .contentSerial = PWINDOW->renderContentSerial(),
++                .focused       = FOCUSED,
++            };
+     }
+ 
+     SP<IFramebuffer>     blurAlphaMatteFB;
+@@ -766,6 +813,8 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
              g_pHyprRenderer->draw(CClearPassElement::SClearData{CHyprColor(0, 0, 0, 1)});
  
              renderData.renderModif = {};
@@ -526,7 +677,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..e9baa65493291442364aa1bae8afff39
              renderData.renderModif.modifs.emplace_back(std::make_pair<>(SRenderModifData::eRenderModifType::RMOD_TYPE_TRANSLATE, CANVASTRANSLATION));
  
              g_pHyprRenderer->draw(
-@@ -798,7 +813,7 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -798,7 +847,7 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
      if (!last.success || last.box != EXPECTEDOUTPUT)
          motionBlur = {};
  
@@ -535,8 +686,71 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..e9baa65493291442364aa1bae8afff39
      if (motionBlur.enabled) {
          motionBlur.previous.scale(pMonitor->m_scale);
          motionBlur.current.scale(pMonitor->m_scale);
+@@ -834,6 +883,24 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+ 
+     (void)blurAlphaMatteFB;
+     g_pHyprRenderer->draw(data, drawDamage);
++
++    if (cacheable && FOCUSED) {
++        static auto PACTIVECOL = CConfigValue<Config::IComplexConfigValue>("general:col.active_border");
++
++        CBox focusBox = element->m_data.blurBox.copy().expand(2);
++        g_pHyprRenderer->draw(
++            CBorderPassElement::SBorderData{
++                .box           = focusBox,
++                .grad1         = *sc<Config::CGradientValueData*>(PACTIVECOL.ptr()),
++                .a             = 1.F,
++                .round         = element->m_data.blurRound + 2,
++                .borderSize    = 5,
++                .outerRound    = element->m_data.blurRound + 7,
++                .roundingPower = element->m_data.blurRoundingPower,
++                .window        = PWINDOW,
++            },
++            drawDamage);
++    }
+ }
+ 
+ void IElementRenderer::drawCustom(WP<IPassElement> element, const CRegion& damage) {
+diff --git a/src/render/ElementRenderer.hpp b/src/render/ElementRenderer.hpp
+index 6028e21a494ed05b138edf984d9c454641b59ab2..1b3d0c877da2c2c01f3800cde12af29c6459766a 100644
+--- a/src/render/ElementRenderer.hpp
++++ b/src/render/ElementRenderer.hpp
+@@ -13,6 +13,8 @@
+ #include "./pass/InnerGlowPassElement.hpp"
+ #include "./pass/TransformedWindowPassElement.hpp"
+ #include <hyprutils/math/Region.hpp>
++#include <cstdint>
++#include <unordered_map>
+ 
+ namespace Render {
+     class IElementRenderer {
+@@ -21,6 +23,7 @@ namespace Render {
+         virtual ~IElementRenderer() = default;
+ 
+         void drawElement(WP<IPassElement> element, const CRegion& damage);
++        void clearCanvasWindowCache();
+ 
+       protected:
+         virtual void draw(WP<CBorderPassElement> element, const CRegion& damage)    = 0;
+@@ -34,6 +37,16 @@ namespace Render {
+         virtual void draw(WP<CTextureMatteElement> element, const CRegion& damage)  = 0;
+ 
+       private:
++        struct SCanvasWindowCapture {
++            PHLWINDOWREF            window;
++            SP<IFramebuffer>        framebuffer;
++            Vector2D                size;
++            uint64_t                contentSerial = 0;
++            bool                    focused       = false;
++        };
++
++        std::unordered_map<uintptr_t, SCanvasWindowCapture> m_canvasWindowCaptures;
++
+         void calculateUVForSurface(PHLWINDOW, SP<CWLSurfaceResource>, PHLMONITOR pMonitor, bool main = false, const Vector2D& projSize = {}, const Vector2D& projSizeUnscaled = {},
+                                    bool fixMisalignedFSV1 = false);
+ 
 diff --git a/src/render/Renderer.cpp b/src/render/Renderer.cpp
-index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..11c1ca951cc9a27eaab760f2d0283e053c901201 100644
+index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..6a4ef9a17e04ac749f6c733d101e2d4c825d68ab 100644
 --- a/src/render/Renderer.cpp
 +++ b/src/render/Renderer.cpp
 @@ -85,6 +85,15 @@ extern "C" {
@@ -567,7 +781,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..11c1ca951cc9a27eaab760f2d0283e05
          return false;
  
      if (!pWindow->m_workspace)
-@@ -646,7 +658,7 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
+@@ -646,10 +658,10 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
      // render window decorations first, if not fullscreen full
      if (mode == RENDER_PASS_ALL || mode == RENDER_PASS_MAIN) {
  
@@ -575,7 +789,11 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..11c1ca951cc9a27eaab760f2d0283e05
 +        const bool      TRANSFORMEDWINDOW = m_forceWindowTransformPass || pWindow->effects().hasActiveTransformers();
          UP<CRenderPass> transformedPass;
          UP<CScopeGuard> passRedirect;
-         const bool      windowBlur         = renderdata.blur;
+-        const bool      windowBlur         = renderdata.blur;
++        const bool      windowBlur         = renderdata.blur && !m_forceWindowTransformPass;
+         const bool      windowBlurUsesLive = windowBlur && !shouldUseNewBlurOptimizations(nullptr, pWindow);
+         const auto      backdropScope      = makeShared<SBackdropScope>();
+ 
 @@ -1102,7 +1114,8 @@ void IHyprRenderer::renderSessionLockSurface(WP<SSessionLockSurface> pSurface, P
          &renderdata);
  }
@@ -647,12 +865,14 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..11c1ca951cc9a27eaab760f2d0283e05
      const auto presentationMode =
          shouldTear ? Aquamarine::eOutputPresentationMode::AQ_OUTPUT_PRESENTATION_IMMEDIATE : Aquamarine::eOutputPresentationMode::AQ_OUTPUT_PRESENTATION_VSYNC;
      if (pMonitor->m_output->state->state().presentationMode != presentationMode)
-@@ -2210,9 +2242,12 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2210,9 +2242,14 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
          return;
      }
  
 +    const auto CANVAS_ZOOM   = canvasZoom(pMonitor);
 +    const bool RENDER_CANVAS = !pMonitor->isMirror() && (CANVAS_ZOOM < 1.F || pMonitor->m_canvasZoom->goal() < 1.F);
++    if (!RENDER_CANVAS)
++        elementRenderer()->clearCanvasWindowCache();
 +
      // if we have no tracking or full tracking, invalidate the entire monitor
 -    if (*PDAMAGETRACKINGMODE == DAMAGE_TRACKING_NONE || *PDAMAGETRACKINGMODE == DAMAGE_TRACKING_MONITOR || pMonitor->m_forceFullFrames > 0 || damageBlinkCleanup > 0 ||
@@ -662,7 +882,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..11c1ca951cc9a27eaab760f2d0283e05
          damage = {0, 0, sc<int>(pMonitor->m_transformedSize.x) * 10, sc<int>(pMonitor->m_transformedSize.y) * 10};
  
      finalDamage = damage;
-@@ -2230,7 +2265,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2230,7 +2267,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
  
      bool renderCursor = true;
  
@@ -671,7 +891,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..11c1ca951cc9a27eaab760f2d0283e05
          renderWindow(pMonitor->m_solitaryClient.lock(), pMonitor, NOW, false, RENDER_PASS_MAIN /* solitary = no popups */);
      else if (!finalDamage.empty()) {
          if (pMonitor->isMirror()) {
-@@ -2241,7 +2276,13 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2241,7 +2278,13 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
              renderCursor = false;
          } else {
              CBox renderBox = {0, 0, sc<int>(pMonitor->m_transformedSize.x), sc<int>(pMonitor->m_transformedSize.y)};
@@ -686,7 +906,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..11c1ca951cc9a27eaab760f2d0283e05
              renderLockscreen(pMonitor, NOW, renderBox);
  
              // render IME even above the lockscreen - allow the user to use it to potentially input stuff on it.
-@@ -2799,7 +2840,7 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2799,7 +2842,7 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
              if (!m->m_output)
                  continue;
  
@@ -695,7 +915,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..11c1ca951cc9a27eaab760f2d0283e05
                  m->scheduleFrame(Aquamarine::IOutput::AQ_SCHEDULE_NEEDS_FRAME);
          }
      }
-@@ -2820,8 +2861,12 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2820,8 +2863,12 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
      for (auto const& m : State::monitorState()->monitors()) {
          if (!m->m_output)
              continue;
@@ -709,7 +929,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..11c1ca951cc9a27eaab760f2d0283e05
  
          damageBoxForEach.set(damageBox);
          damageBoxForEach.translate({-m->m_position.x, -m->m_position.y}).scale(m->m_scale);
-@@ -2846,6 +2891,10 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
+@@ -2846,6 +2893,10 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
  
      for (auto const& m : State::monitorState()->monitors()) {
          if (forceFull || shouldRenderWindow(pWindow, m)) { // only damage if window is rendered on monitor
