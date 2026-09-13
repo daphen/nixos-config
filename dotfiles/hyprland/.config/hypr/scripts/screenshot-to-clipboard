@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Freeze the focused output first, then crop in satty (Enter/Ctrl+C = copy + exit).
+
+SCREENSHOT_DIR="/tmp"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+SCREENSHOT_FILE="$SCREENSHOT_DIR/screenshot-$TIMESTAMP.png"
+LATEST_LINK="$SCREENSHOT_DIR/latest-screenshot.png"
+
+  OUTPUT=$(hyprctl -j monitors | jq -r '.[] | select(.focused).name')
+
+# Log keypress→window latency of every run to /tmp/screenshot-timing.log
+T0=$(date +%s%3N)
+(
+  for _ in $(seq 1 200); do
+    if hyprctl -j clients | jq -e 'any(.[]; .class=="com.gabm.satty")' >/dev/null 2>&1; then
+      echo "$(date '+%F %T') window_after=$(( $(date +%s%3N) - T0 ))ms" >> /tmp/screenshot-timing.log
+      exit
+    fi
+    sleep 0.05
+  done
+  echo "$(date '+%F %T') window_after=TIMEOUT(10s)" >> /tmp/screenshot-timing.log
+) &
+
+# -l 0 skips PNG compression (~4x faster encode) and the pipe lets satty's
+# GTK init run concurrently with the capture. GSK's default vulkan backend
+# stalls seconds on NVIDIA init; ngl starts fast AND keeps GPU-quality
+# scaling of the 4K preview (cairo was fast but blurry).
+# Behavior + vim keybinds + palette live in the satty config (dotfiles/satty).
+# GDK_DISABLE=dmabuf: GTK's dmabuf probe opens every DRM device, waking the
+# suspended NVIDIA dGPU (~2.5s stall after idle). Satty needs no dmabuf.
+export SCREENSHOT_FILE  # satty-copy tees the crop here on Enter/Ctrl+C
+if grim -l 0 ${OUTPUT:+-o "$OUTPUT"} - | GSK_RENDERER=gl GDK_DISABLE=dmabuf satty \
+        --config "$HOME/nixos/dotfiles/satty/.config/satty/config.toml" \
+        --filename - \
+        --output-filename "$SCREENSHOT_FILE" \
+   && [ -s "$SCREENSHOT_FILE" ]; then
+    ln -sf "$SCREENSHOT_FILE" "$LATEST_LINK"
+    # The app name maps to the camera glyph in the island
+    notify-send -a "Screenshot" "Screenshot" "Copied to clipboard"
+else
+    exit 0  # cancelled in satty (or capture failed and satty already errored)
+fi
+
+# Keep last 100 — the clipboard picker matches these files' timestamps
+# to label entries "screenshot" vs "image"
+ls -t "$SCREENSHOT_DIR"/screenshot-*.png 2>/dev/null | tail -n +101 | xargs -r rm

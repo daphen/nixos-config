@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly CONFIG="$ROOT/canvas.lua"
+
+if [[ ${1:-} == "--check" ]]; then
+  exec nix run --no-write-lock-file "path:$ROOT" -- --verify-config --config "$CONFIG"
+fi
+
+if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
+  printf 'A running Wayland session is required for nested Hyprland.\n' >&2
+  exit 1
+fi
+
+state_dir="$(mktemp -d --tmpdir hyprland-canvas.XXXXXX)"
+cleanup() {
+  rm -rf -- "$state_dir"
+}
+trap cleanup EXIT INT TERM
+
+export XDG_STATE_HOME="$state_dir/state"
+export HYPRLAND_TRACE=0
+
+nix shell --no-write-lock-file "path:$ROOT" --command start-hyprland -- --config "$CONFIG"

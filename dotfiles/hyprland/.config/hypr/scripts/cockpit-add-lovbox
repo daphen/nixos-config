@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# cockpit-add-lovbox <name> [project-url-or-claim] — a REMOTE cockpit context:
+# provision/label the sandbox (ws-createlovbox --provision-only), open the
+# Lovable project as a work-browser tab when a URL is given, then add the
+# context — every kitty tab lands in the sandbox via lovssh.
+set -euo pipefail
+
+name=${1:?usage: cockpit-add-lovbox <name> [project-url-or-claim]}
+target=${2:-}
+
+here=$(dirname "$(readlink -f "$0")")
+"$here/ws-createlovbox" --provision-only "$name" ${target:+"$target"}
+
+case "$target" in
+    http*) "$here/browser-dispatch" --profile=work "$target" >/dev/null 2>&1 || true ;;
+esac
+
+exec "$here/cockpit-add" "$name"

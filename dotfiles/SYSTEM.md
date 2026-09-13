@@ -76,6 +76,9 @@ that defines a package or the system → rebuild.**
 - `shell.qml` — root. Uses `Variants { model: Quickshell.screens }` so bar +
   NotificationOverlay reconcile across monitor docks/undocks (don't use
   imperative `Component.onCompleted` for per-screen surfaces).
+- `wallpaper/shell.qml` — separate Quickshell instance owning the background
+  surfaces, so reloading bar, picker, or notification QML cannot flash the
+  compositor backdrop.
 - `modules/qmldir` — registers every component.
 - `modules/Bar.qml` — top-of-screen bar. Leftmost = `wpmPill`, middle =
   `Minimap`, rightmost = `worktreePill`. Mid bar = leftGroup (DateText, Weather,
@@ -143,6 +146,18 @@ These scripts launch `/home/daphen/personal/ai-cockpit/run-qs.sh`. The desktop
 Quickshell tree remains responsible for the bar, notifications, and global
 pickers only.
 
+## Hyprland canvas
+
+`~/nixos/dotfiles/hyprland/.config/hypr/` is the canonical Hyprland desktop:
+`hyprland.lua` owns the canvas layout and compositor configuration, while
+`scripts/` contains Hyprland-only ports of the desktop launchers. It must not
+source or execute files under `.config/niri`; shared behavior is copied only
+when it has an independent Hyprland entrypoint.
+
+Home Manager maps this tree to `~/.config/hypr/`. The TTY test launcher remains
+at `~/hypr-real`, but it loads the canonical config directly so an unactivated
+Home Manager generation cannot make tests use stale files.
+
 ## Notifications
 
 - `Notifications.qml` registers `NotificationServer`
@@ -181,16 +196,17 @@ VIA layout backup: `~/nixos/dotfiles/via/charybdis-mini-via.json`.
 
 ## Daemons running on this machine
 
-| Daemon           | Purpose                                                | Started by                              |
-| ---------------- | ------------------------------------------------------ | --------------------------------------- |
-| `niri`           | Compositor                                             | systemd graphical-session               |
-| `quickshell`     | Bar / notifications / pickers                          | niri spawn-at-startup                   |
-| `palette-daemon` | Cmd-palette overlay                                    | systemd-user (graphical-session.target) |
-| `wpm-daemon`     | Bar WPM counter                                        | systemd-user (graphical-session.target) |
-| `kanata`         | Key remap                                              | NixOS system service                    |
-| `mako`           | (removed; replaced by Quickshell's NotificationServer) | —                                       |
-| `blueman-applet` | (removed; deduped bluetooth notifs)                    | —                                       |
-| `ws-tracker`     | Active workspace pointer                               | systemd-user                            |
+| Daemon                   | Purpose                                                | Started by                              |
+| ------------------------ | ------------------------------------------------------ | --------------------------------------- |
+| `niri`                   | Compositor                                             | systemd graphical-session               |
+| `quickshell`             | Bar / notifications / pickers                          | niri spawn-at-startup                   |
+| `quickshell` (wallpaper) | Isolated wallpaper surfaces                            | niri spawn-at-startup                   |
+| `palette-daemon`         | Cmd-palette overlay                                    | systemd-user (graphical-session.target) |
+| `wpm-daemon`             | Bar WPM counter                                        | systemd-user (graphical-session.target) |
+| `kanata`                 | Key remap                                              | NixOS system service                    |
+| `mako`                   | (removed; replaced by Quickshell's NotificationServer) | —                                       |
+| `blueman-applet`         | (removed; deduped bluetooth notifs)                    | —                                       |
+| `ws-tracker`             | Active workspace pointer                               | systemd-user                            |
 
 ## plan-ticket workflow
 

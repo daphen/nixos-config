@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# xdg-desktop-portal-termfilechooser wrapper: yazi in a floating kitty.
+# Args: multiple directory save path out (per contrib/yazi-wrapper.sh)
+#
+# Save mode UX (keymap in dotfiles/yazi/.config/yazi-chooser):
+# Enter = save under the suggested name in the current dir;
+# Ctrl+Enter = save AS the hovered file (overwrite); q/Q = cancel.
+
+multiple="$1" directory="$2" save="$3" path="$4" out="$5"
+
+DBG=/tmp/yazi-chooser-debug.log
+echo "=== $(date '+%T') multiple=$multiple directory=$directory save=$save path=$path out=$out" >> "$DBG"
+
+cmd=(yazi --chooser-file="$out")
+chooser_cfg=""
+
+if [ "$save" = "1" ] && [ -n "$path" ]; then
+    # The backend pre-creates the placeholder filled with instruction text —
+    # truncate it so previews/saves never see that junk.
+    mkdir -p "$(dirname "$path")"
+    : > "$path"
+    cmd+=(--cwd-file="$out.cwd")
+    chooser_cfg="$HOME/nixos/dotfiles/yazi/.config/yazi-chooser"
+elif [ "$directory" = "1" ]; then
+    cmd+=(--cwd-file="$out.1")
+fi
+[ -n "$path" ] && cmd+=("$path")
+
+if [ -n "$chooser_cfg" ]; then
+    YAZI_SAVE_NAME="$(basename "${path%_}")" YAZI_CONFIG_HOME="$chooser_cfg" kitty --class=file-chooser --title "Save file" -- "${cmd[@]}"
+else
+    kitty --class=file-chooser --title "Select file" -- "${cmd[@]}"
+fi
+
+if [ "$save" = "1" ] && [ -n "$path" ]; then
+    echo "post-yazi: out=[$(cat "$out" 2>/dev/null)] cwd=[$(cat "$out.cwd" 2>/dev/null)]" >> "$DBG"
+    # No explicit pick but yazi exited via Enter/plain quit (cwd written):
+    # save under the suggested name wherever the user navigated.
+    # q/Q (--no-cwd-file) writes neither → cancel.
+    if [ ! -s "$out" ] && [ -s "$out.cwd" ]; then
+        dir=$(head -n1 "$out.cwd")
+        if [ -d "$dir" ]; then
+            # Drop the backend's anti-overwrite "_" marker, then dodge a real
+            # collision with a familiar " (n)" suffix instead of a bare "_".
+            base=$(basename "$path"); base=${base%_}
+            target="$dir/$base"
+            if [ -e "$target" ]; then
+                stem=${base%.*}; ext=${base##*.}
+                if [ "$stem" = "$base" ]; then ext=""; else ext=".$ext"; fi
+                n=1; while [ -e "$dir/$stem ($n)$ext" ]; do n=$((n + 1)); done
+                target="$dir/$stem ($n)$ext"
+            fi
+            # backend rejects nonexistent picks — materialize the target
+            touch "$target"
+            printf '%s' "$target" > "$out"
+        fi
+    fi
+    rm -f "$out.cwd"
+    # Placeholder is junk unless it's the chosen target
+    chosen=$(head -n1 "$out" 2>/dev/null)
+    [ "$chosen" = "$path" ] || rm -f -- "$path"
+    echo "final: out=[$(cat "$out" 2>/dev/null)]" >> "$DBG"
+fi
+
+# Directory mode: plain quit-in-dir writes nothing to $out — promote the cwd
+if [ "$directory" = "1" ]; then
+    [ ! -s "$out" ] && [ -s "$out.1" ] && mv "$out.1" "$out"
+    rm -f "$out.1"
+fi

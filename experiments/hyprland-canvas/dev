@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly STATE="${HYPRLAND_CANVAS_DEV_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/hyprland-canvas-dev}"
+readonly SOURCE="$STATE/source"
+readonly BUILD="$STATE/build"
+readonly VALIDATED="$STATE/validated"
+readonly PATCH="$ROOT/whole-canvas-camera.patch"
+readonly CONFIG="$(readlink -f -- "$ROOT/../../dotfiles/hyprland/.config/hypr/hyprland.lua")"
+readonly BLOCKING_BUILD_PID=669935
+
+usage() {
+  cat <<'EOF'
+Usage: ./dev bootstrap | build | export | sync [--force] | status
+
+  bootstrap    Create the pinned editable source, apply the shipping patch,
+               configure Ninja, compile once, verify the config, and publish it.
+  build        Incrementally compile edits, verify the config, and atomically
+               refresh the validated package for `run-login --dev`.
+  export       Replace whole-canvas-camera.patch with the editable source diff.
+  sync         Reapply the shipping patch to a clean editable source.
+  status       Show the pin, source changes, and validated binary.
+EOF
+}
+
+enter_dev_shell() {
+  if [[ ${HYPRLAND_CANVAS_DEV_SHELL:-} != 1 ]]; then
+    exec nix develop --no-write-lock-file "path:$ROOT" --command "$0" "$@"
+  fi
+}
+
+require_bootstrapped() {
+  if [[ ! -d $SOURCE/.git || ! -f $STATE/pinned-revision ]]; then
+    printf 'Not bootstrapped. Run: %s bootstrap\n' "$0" >&2
+    exit 1
+  fi
+  if [[ $(<"$STATE/pinned-revision") != "$HYPRLAND_PINNED_REV" ]]; then
+    printf 'The dev source pin differs from flake.lock; move %s aside and bootstrap again.\n' "$STATE" >&2
+    exit 1
+  fi
+}
+
+refuse_while_bounded_build_runs() {
+  local command
+  command="$(ps -p "$BLOCKING_BUILD_PID" -o args= 2>/dev/null || true)"
+  if [[ $command == *"nix build"*"experiments/hyprland-canvas"* ]]; then
+    printf 'Refusing to compile while bounded Nix build PID %s is active.\n' "$BLOCKING_BUILD_PID" >&2
+    exit 1
+  fi
+}
+
+configure() {
+  # shellcheck disable=SC2206
+  local flags=( $HYPRLAND_CMAKE_FLAGS )
+  cmake -S "$SOURCE" -B "$BUILD" -G Ninja \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_INSTALL_PREFIX="$VALIDATED" \
+    "${flags[@]}"
+}
+
+publish_validated() {
+  local next="$STATE/validated.next"
+  rm -rf -- "$next"
+  if ! DESTDIR="$next" cmake --install "$BUILD" >"$STATE/install.log" 2>&1; then
+    cat "$STATE/install.log" >&2
+    return 1
+  fi
+  local installed="$next$VALIDATED"
+  [[ -x $installed/bin/Hyprland && -x $installed/bin/start-hyprland ]]
+  "$installed/bin/Hyprland" --verify-config --config "$CONFIG"
+  rm -rf -- "$VALIDATED"
+  mv -- "$installed" "$VALIDATED"
+  rm -rf -- "$next"
+  printf 'Validated dev package: %s\n' "$VALIDATED"
+}
+
+bootstrap() {
+  refuse_while_bounded_build_runs
+  if [[ -e $SOURCE || -e $BUILD || -e $VALIDATED ]]; then
+    printf 'Dev state already exists at %s; use build, or move it aside to re-bootstrap.\n' "$STATE" >&2
+    exit 1
+  fi
+
+  mkdir -p -- "$SOURCE"
+  cp -a -- "$HYPRLAND_PINNED_SOURCE/." "$SOURCE/"
+  chmod -R u+w -- "$SOURCE"
+  git -C "$SOURCE" init -q
+  git -C "$SOURCE" config user.name hyprland-canvas-dev
+  git -C "$SOURCE" config user.email hyprland-canvas-dev@localhost
+  git -C "$SOURCE" add -A
+  GIT_AUTHOR_DATE=2000-01-01T00:00:00Z GIT_COMMITTER_DATE=2000-01-01T00:00:00Z \
+    git -C "$SOURCE" commit -qm "Pinned Hyprland $HYPRLAND_PINNED_REV"
+  git -C "$SOURCE" tag dev-base
+  printf '%s\n' "$HYPRLAND_PINNED_REV" > "$STATE/pinned-revision"
+  git -C "$SOURCE" apply "$PATCH"
+  configure
+  cmake --build "$BUILD" --parallel "${HYPRLAND_BUILD_JOBS:-2}"
+  publish_validated
+}
+
+build() {
+  refuse_while_bounded_build_runs
+  require_bootstrapped
+  [[ -f $BUILD/build.ninja ]] || configure
+  cmake --build "$BUILD" --parallel "${HYPRLAND_BUILD_JOBS:-2}"
+  publish_validated
+}
+
+export_patch() {
+  require_bootstrapped
+  if [[ -n $(git -C "$SOURCE" diff --cached --name-only) ]]; then
+    printf 'The source index has staged changes; unstage them before export.\n' >&2
+    exit 1
+  fi
+  if [[ -n $(git -C "$SOURCE" ls-files --others --exclude-standard) ]]; then
+    printf 'Untracked source files cannot be exported; add or remove them first.\n' >&2
+    exit 1
+  fi
+  git -C "$SOURCE" diff --check dev-base --
+  local next="$PATCH.next"
+  LC_ALL=C git -C "$SOURCE" diff --binary --full-index dev-base -- > "$next"
+  if [[ ! -s $next ]]; then
+    rm -f -- "$next"
+    printf 'Refusing to replace the shipping patch with an empty diff.\n' >&2
+    exit 1
+  fi
+  git -C "$SOURCE" apply --check --reverse "$next"
+  mv -- "$next" "$PATCH"
+  printf 'Exported canonical patch: %s\n' "$PATCH"
+}
+
+sync_patch() {
+  require_bootstrapped
+  if [[ ${1:-} != --force && -n $(git -C "$SOURCE" status --porcelain) ]]; then
+    printf 'Editable source has changes. Export them, or rerun sync --force to discard them.\n' >&2
+    exit 1
+  fi
+  git -C "$SOURCE" reset --hard -q dev-base
+  git -C "$SOURCE" clean -fdq
+  git -C "$SOURCE" apply "$PATCH"
+  printf 'Synced editable source from %s\n' "$PATCH"
+}
+
+status() {
+  printf 'Pinned revision: %s\n' "${HYPRLAND_PINNED_REV:-unavailable}"
+  printf 'State directory: %s\n' "$STATE"
+  if [[ -d $SOURCE/.git ]]; then
+    git -C "$SOURCE" status --short
+  else
+    printf 'Source: not bootstrapped\n'
+  fi
+  if [[ -x $VALIDATED/bin/Hyprland ]]; then
+    printf 'Validated binary: %s\n' "$VALIDATED/bin/Hyprland"
+  else
+    printf 'Validated binary: none\n'
+  fi
+}
+
+command="${1:-}"
+shift || true
+case "$command" in
+  bootstrap|build|export|sync|status) enter_dev_shell "$command" "$@" ;;
+  -h|--help|help|'') usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+case "$command" in
+  bootstrap) bootstrap ;;
+  build) build ;;
+  export) export_patch ;;
+  sync) sync_patch "$@" ;;
+  status) status ;;
+esac

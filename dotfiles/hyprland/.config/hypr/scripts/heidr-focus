@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Super+h/l "smart-splits" bridge: when the Cockpit is focused, move its
+# internal pane focus (nvim <-> rail) first; only fall through to Hyprland
+# window focus at the pane edges (or when the cockpit isn't focused at all).
+set -u
+dir="${1:-right}"
+LOG=/tmp/cockpit-rail-focus.log
+
+compositor_focus() {
+  if [ "$dir" = left ]; then "$(dirname -- "$0")/hypr-dispatch" layoutmsg "focus h"
+  else "$(dirname -- "$0")/hypr-dispatch" layoutmsg "focus l"; fi
+}
+
+title="$(hyprctl -j activewindow 2>/dev/null | jq -r '.title // empty')"
+res=""
+matched=no
+case "$title" in
+  *[Hh]eidr*|cockpit-qs*)
+    matched=yes
+    fn="focusRight"; [ "$dir" = left ] && fn="focusLeft"
+    res="$("$(dirname "$0")/cockpit-ipc" "$fn" 2>/dev/null)"
+    res="${res//[$'\t\r\n ']/}"   # trim any whitespace
+    ;;
+esac
+printf '%s dir=%s matched=%s res=[%s] title=%s\n' "$(date +%T)" "$dir" "$matched" "$res" "$title" >> "$LOG"
+
+if [ "$res" = consumed ]; then exit 0; fi
+compositor_focus

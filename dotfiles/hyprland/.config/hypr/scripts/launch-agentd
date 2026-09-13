@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# The ONE local agentd launch path: pull provider secrets into the environment,
+# then exec agentd. The existing fish secret is the locked-keyring fallback.
+set -euo pipefail
+scope="${1:?usage: launch-agentd <scope> [agentd args…]}"; shift || true
+st=$(command -v secret-tool || echo /run/current-system/sw/bin/secret-tool)
+OPENAI_API_KEY=$(timeout 10 "$st" lookup service agentd secret openai-api-key || true)
+SLACK_MCP_CLIENT_SECRET=$(timeout 10 "$st" lookup service agentd secret slack-mcp || true)
+if [ -z "$OPENAI_API_KEY" ]; then
+    fish_bin=$(command -v fish || true)
+    if [ -n "$fish_bin" ] && [ -r "$HOME/.config/fish/secrets.fish" ]; then
+        OPENAI_API_KEY=$("$fish_bin" -c 'source ~/.config/fish/secrets.fish; printf "%s" "$OPENAI_API_KEY"')
+    fi
+fi
+[ -n "$OPENAI_API_KEY" ] || { echo "launch-agentd: no openai key available" >&2; exit 1; }
+export OPENAI_API_KEY SLACK_MCP_CLIENT_SECRET
+exec "$HOME/.local/bin/agentd" --scope "$scope" "$@"

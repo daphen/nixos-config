@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Respond to a kitty OSC-notify notification (Claude Code et al).
+#
+# With an explicit notification id ($1) act on that one; otherwise the
+# topmost kitty notification. Focus its Cockpit context or matching terminal,
+# then dismiss the notification.
+set -e
+
+id="${1:-}"
+if [ -n "$id" ]; then
+    data=$(qs ipc call notifications list 2>/dev/null \
+        | jq -c --argjson id "$id" 'map(select(.id == $id)) | .[0] // empty' 2>/dev/null)
+else
+    data=$(qs ipc call notifications list 2>/dev/null \
+        | jq -c 'map(select(.app_name == "kitty")) | .[0] // empty' 2>/dev/null)
+fi
+
+if [ -z "$data" ] || [ "$data" = "null" ]; then
+    exit 0
+fi
+
+kitty_id=$(printf '%s' "$data" | jq -r '.id // empty')
+summary=$(printf '%s' "$data" | jq -r '.summary // empty')
+ctx=$(printf '%s' "$data" | jq -r '.hints["cockpit-context"] // empty')
+if [ -z "$ctx" ]; then
+    # "Claude · <label>" — the label is the context name (or the old
+    # lovable.daphen-<name> form; strip that prefix if present).
+    ctx=$(printf '%s' "$summary" | sed -n 's/^Claude · //p' | sed 's|^lovable\.daphen-||')
+fi
+
+# Cockpit context: the shared agent window shows one tab at a time, so a bare
+# window focus can land on the wrong session — switch the whole cockpit first.
+if [ -n "$ctx" ] && [ -S ${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-agent ] \
+    && kitty @ --to unix:${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-agent ls 2>/dev/null \
+        | jq -e --arg t "$ctx" 'any(.[].tabs[]; .title == $t)' >/dev/null; then
+    "$(dirname "$0")/cockpit-switch" "$ctx" >/dev/null 2>&1 || true
+    awin=$(hyprctl -j clients | jq -r '[.[]|select(.class=="cockpit-agent")][0].address // empty')
+    [ -n "$awin" ] && "$(dirname -- "$0")/hypr-dispatch" focuswindow "address:$awin" >/dev/null 2>&1 || true
+else
+    target=$(hyprctl -j clients | jq -r --arg ctx "$ctx" '
+        [.[] | select(.class == "claude" and (($ctx == "") or ((.title // "") | contains($ctx))))]
+        | sort_by(.focusHistoryID) | .[0].address // empty')
+    [ -n "$target" ] && "$(dirname -- "$0")/hypr-dispatch" focuswindow "address:$target" >/dev/null 2>&1 || true
+fi
+
+[ -n "$kitty_id" ] && qs ipc call notifications dismiss "$kitty_id" >/dev/null 2>&1 || true

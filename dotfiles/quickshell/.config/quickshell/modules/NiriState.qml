@@ -17,9 +17,29 @@ Singleton {
     property var windows: ({})
     property string activeStack: ""
     property int version: 0
+    readonly property bool isHyprland: (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "").length > 0
+    readonly property var hyprland: hyprlandLoader.item
 
     signal paletteGesture(string phase, real progress, real velocity, bool open)
     signal paletteTabCycle(int direction, bool commit)
+
+    Loader {
+        id: hyprlandLoader
+        active: state.isHyprland
+        source: "HyprlandBackend.qml"
+        onLoaded: state.version += 1
+    }
+
+    Connections {
+        target: state.hyprland
+        function onVersionChanged() { state.version += 1 }
+        function onPaletteGesture(phase, progress, velocity, open) {
+            state.paletteGesture(phase, progress, velocity, open)
+        }
+        function onPaletteTabCycle(direction, commit) {
+            state.paletteTabCycle(direction, commit)
+        }
+    }
 
     readonly property var relevantEvents: [
         "WorkspacesChanged",
@@ -46,14 +66,16 @@ Singleton {
     Process {
         id: eventStream
         command: ["niri", "msg", "--json", "event-stream"]
-        running: true
+        running: !state.isHyprland
 
         stdout: SplitParser {
             splitMarker: "\n"
             onRead: line => state._handleEventLine(line)
         }
 
-        onExited: (exitCode, exitStatus) => restartTimer.start()
+        onExited: (exitCode, exitStatus) => {
+            if (!state.isHyprland) restartTimer.start()
+        }
     }
 
     Timer {
@@ -143,6 +165,7 @@ Singleton {
     }
 
     function minimapEntries(output) {
+        if (hyprland) return hyprland.minimapEntries(output)
         const _ = version
         const out = []
         const groups = visibleWorkspaces(output)
@@ -174,6 +197,7 @@ Singleton {
     }
 
     function focusedAppId() {
+        if (hyprland) return hyprland.focusedAppId()
         const _ = version
         for (const id in windows) {
             if (windows[id].is_focused) return windows[id].app_id || ""
@@ -182,6 +206,7 @@ Singleton {
     }
 
     function focusedWorkspaceName() {
+        if (hyprland) return hyprland.focusedWorkspaceName()
         const _ = version
         for (const id in workspaces) {
             if (workspaces[id].is_focused) return workspaces[id].name || ""
@@ -193,6 +218,7 @@ Singleton {
     // unlike focusedWorkspaceName() which is global (per-screen bars must not
     // mirror the other monitor's badge).
     function activeWorkspaceName(output) {
+        if (hyprland) return hyprland.activeWorkspaceName(output)
         const _ = version
         for (const id in workspaces) {
             const ws = workspaces[id]
@@ -202,6 +228,7 @@ Singleton {
     }
 
     function focusedTitle() {
+        if (hyprland) return hyprland.focusedTitle()
         const _ = version
         for (const id in windows) {
             if (windows[id].is_focused) return windows[id].title || ""
@@ -210,6 +237,7 @@ Singleton {
     }
 
     function focusedWindowId() {
+        if (hyprland) return hyprland.focusedWindowId()
         const _ = version
         for (const id in windows) {
             if (windows[id].is_focused) return windows[id].id
@@ -224,6 +252,7 @@ Singleton {
     // doesn't report a position (tiled windows need the patched niri;
     // floating report it on any version); the dot stays hidden until non-null.
     function focusedWindowGeom() {
+        if (hyprland) return hyprland.focusedWindowGeom()
         const _ = version
         for (const id in windows) {
             const w = windows[id]
@@ -246,10 +275,12 @@ Singleton {
     // Same test against an arbitrary geometry, so a caller holding a frozen box
     // (e.g. while a layer-shell picker owns focus) still reads fullscreen right.
     function isFullscreenGeom(g, outputHeight) {
+        if (hyprland) return hyprland.isFullscreenGeom(g, outputHeight)
         return !!(g && outputHeight && g.y <= 1 && g.h >= outputHeight - 1)
     }
 
     function focusedIsFullscreen(outputHeight) {
+        if (hyprland) return hyprland.focusedIsFullscreen(outputHeight)
         if (!outputHeight) return false
         const g = focusedWindowGeom()
         if (g) return isFullscreenGeom(g, outputHeight)
@@ -262,6 +293,7 @@ Singleton {
     }
 
     function outputIsFullscreen(outputName, outputHeight) {
+        if (hyprland) return hyprland.outputIsFullscreen(outputName, outputHeight)
         if (!outputName || !outputHeight) return false
         const _ = version
         for (const id in workspaces) {
@@ -280,6 +312,7 @@ Singleton {
     }
 
     function focusedOutput() {
+        if (hyprland) return hyprland.focusedOutput()
         const _ = version
         for (const id in workspaces) {
             if (workspaces[id].is_focused) return workspaces[id].output || ""
@@ -288,6 +321,7 @@ Singleton {
     }
 
     function visibleWorkspaces(output) {
+        if (hyprland) return hyprland.visibleWorkspaces(output)
         const _ = version
         const result = []
         const wsWindows = {}

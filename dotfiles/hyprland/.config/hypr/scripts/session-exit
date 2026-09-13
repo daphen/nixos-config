@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -u
+
+"$(dirname -- "$0")/quickshell-session-stop"
+systemctl --user stop nixos-fake-graphical-session.target
+"$(dirname -- "$0")/hypr-dispatch" exit

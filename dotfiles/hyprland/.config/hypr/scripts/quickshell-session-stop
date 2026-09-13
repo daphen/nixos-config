@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -u
+
+selection=()
+[[ ${1:-} == --any-display ]] && selection=(--any-display)
+
+state="$HOME/.local/state/cockpit"
+for instance in work personal; do
+    qs kill "${selection[@]}" -p "$state/instance-$instance-shell" >/dev/null 2>&1 || true
+done
+
+for _ in {1..20}; do
+    sockets=("${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"/cockpit-nvim-{work,personal}.sock)
+    [[ ! -e "${sockets[0]}" && ! -e "${sockets[1]}" ]] && break
+    sleep 0.1
+done
+
+qs kill "${selection[@]}" >/dev/null 2>&1 || true
+qs kill "${selection[@]}" -p "$HOME/.config/quickshell/wallpaper" >/dev/null 2>&1 || true

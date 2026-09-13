@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+# Toggle floating notes terminal
+
+NOTES_CLASS="notes-scratchpad"
+NOTES_DIR="$HOME/personal/notes/storage"
+
+# Check if notes window exists
+    address=$(hyprctl -j clients | jq -r --arg cls "$NOTES_CLASS" '[.[] | select(.class == $cls)][0].address // empty')
+    focused=$(hyprctl -j activewindow | jq -r '.address // empty')
+    if [[ -n "$address" && "$address" == "$focused" ]]; then
+        "$(dirname -- "$0")/hypr-dispatch" closewindow "address:$address"
+        exit 0
+    elif [[ -n "$address" ]]; then
+        "$(dirname -- "$0")/hypr-dispatch" focuswindow "address:$address"
+        exit 0
+    fi
+
+# Spawn new notes terminal
+mkdir -p "$NOTES_DIR"
+# Pull latest notes before opening
+kitty --class "$NOTES_CLASS" --directory "$NOTES_DIR" fish -c "notes pull && notes edit || nvim ."

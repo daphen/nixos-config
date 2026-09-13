@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# agentd's reap hook for LOCAL scopes: a session ending is the moment its per-ticket
+# infrastructure becomes garbage. Killing the session in the roster (x) used to stop
+# the agent and leave its mutagen sync and devenv stack running forever — four days
+# of that cost 18h of clickhouse CPU and 30h of mutagen CPU.
+# Called as: cockpit-slice-reap --worktree <cwd> --session <name>
+set -uo pipefail
+wt=""; session=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --worktree) wt="${2:-}"; shift 2 ;;
+    --session)  session="${2:-}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -n "$wt" ] || exit 0
+
+# Never reap the primary checkout's stack — it is not per-ticket.
+case "$wt" in "$HOME/work/lovable") exit 0 ;; esac
+
+ticket=$(printf '%s' "$wt" | grep -oE 'every-[0-9]+' | head -1)
+
+# Another session may still be working this worktree (a worker plus its watcher);
+# only the LAST one out turns off the lights.
+for s in /run/user/1000/agentd-*.sock; do
+  [ -S "$s" ] || continue
+  if AGENTD_SOCK="$s" agent roster 2>/dev/null | awk -v w="$wt" -v me="$session" '$NF==w && $4!=me {found=1} END{exit !found}'; then
+    exit 0
+  fi
+done
+
+if [ -n "$ticket" ]; then
+  for name in "vmwt-$ticket" "wt-$ticket"; do
+    mutagen sync terminate "$name" >/dev/null 2>&1 && logger -t cockpit-slice-reap "terminated sync $name"
+  done
+fi
+
+# devenv stack rooted in this worktree
+pgrep -f process-compose 2>/dev/null | while read -r p; do
+  [ "$(readlink "/proc/$p/cwd" 2>/dev/null)" = "$wt" ] || continue
+  kill "$p" 2>/dev/null && logger -t cockpit-slice-reap "stopped devenv stack $p in $wt"
+done

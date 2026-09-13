@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Launch the native QML Discord client. The packaged dsqrd-client wrapper ensures
+# the dsqrd daemon is running (it serves data + live gateway events), then opens
+# the Quickshell UI pointed at dsqrd's socket. jump-or-exec focuses an
+# existing window instead of calling this when one is already open.
+export QML2_IMPORT_PATH="$HOME/.local/share/qml"
+export DSQRD_MESSAGE_ACTION="$HOME/personal/qstns/dsqrd-message-action"
+# Route Qt file dialogs (Save-as for attachment downloads) through the
+# xdg portal, where termfilechooser serves them as yazi-in-kitty.
+export QT_QPA_PLATFORMTHEME=xdgdesktopportal
+export PATH="$HOME/.local/bin:/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
+
+# Replace a stale daemon (python process): match by cmdline via pgrep -f,
+# compare the store path it runs from against the current profile.
+KILLED=""
+CUR_STORE=$(dirname "$(dirname "$(readlink -f "$(command -v dsqrd)")")")
+for pid in $(pgrep -f "dsqrd" 2>/dev/null); do
+    cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || continue
+    # daemon runs as `python3 .../share/dsqrd/dsqrd.py` — match broadly,
+    # exclude the UI, this script, and unrelated hits
+    case "$cmdline" in *quickshell*|*launch-discord*|*pgrep*) continue ;; esac
+    case "$cmdline" in *dsqrd*) ;; *) continue ;; esac
+    if [ -n "$CUR_STORE" ] && [ "${cmdline#*"$CUR_STORE"}" = "$cmdline" ]; then
+        kill "$pid" 2>/dev/null && KILLED="$KILLED $pid"
+    fi
+done
+
+# Wait for the killed daemon to actually exit — the wrapper below checks for a
+# running daemon, and a dying process would make it skip the restart, leaving
+# the UI with no daemon at all.
+for pid in $KILLED; do
+    for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+    # still up after 5s of SIGTERM patience — force it, a half-dead daemon
+    # makes the wrapper below skip the restart and the UI comes up empty
+    kill -9 "$pid" 2>/dev/null || true
+done
+
+# Reap windowless dsqrd UI orphans before launching. A failed config load leaves
+# quickshell alive without mapping a window; jump-or-exec then can't focus
+# it, so each launch piled up another. Scoped to dsqrd by its store UI path.
+    WIN_PIDS=" $(hyprctl -j clients 2>/dev/null | jq -r '.[].pid' | tr "\n" " ") "
+for p in /proc/[0-9]*; do
+    exe=$(readlink "$p/exe" 2>/dev/null) || continue
+    case "$exe" in *quickshell*) ;; *) continue ;; esac
+    case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in *share/dsqrd/ui*) ;; *) continue ;; esac
+    pid=${p#/proc/}
+    case "$WIN_PIDS" in *" $pid "*) ;; *) kill "$pid" 2>/dev/null ;; esac
+done
+
+exec dsqrd-client

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export COCKPIT_INSTANCE="new-$(date +%Y%m%d-%H%M%S)-$$"
+export COCKPIT_SCOPE=personal
+exec "$HOME/personal/ai-cockpit/run-qs.sh"

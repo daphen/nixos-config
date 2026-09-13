@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# qs ipc to the running cockpit-qs instance (dev run-qs.sh OR installed Super+y).
+#   cockpit-ipc <fn> [args…]   → qs ipc -i <instance> call cockpit <fn> …
+#
+# Resolve by INSTANCE ID, not config path. Every relaunch leaves its registry dir
+# behind under by-id/, so one config path can map to several instances (mostly dead);
+# `qs ipc -p <path>` then picks one at random and blocks on a dead socket, which
+# silently wedges whichever keybind called us — the symptom is "Ctrl+l stopped
+# working". Probing `call cockpit pane` per id is self-validating: only a live Cockpit
+# answers it, so dead entries and the bar both fail fast.
+set -uo pipefail
+
+# Candidate ids come from quickshell itself, not from `ls -t | head -12`: dead registry
+# dirs accumulate (66 of them by 2026-08-27) and pushed the one LIVE cockpit out of the
+# newest-12 window, so Super+T and Ctrl+l silently resolved nothing.
+live_ids() {
+  local ids
+  ids=$(qs list -a --json 2>/dev/null | python3 -c 'import json,sys
+try:
+    print("\n".join(i["id"] for i in json.load(sys.stdin) if i.get("pid") and i.get("id")))
+except Exception: pass' 2>/dev/null)
+  # Empty is a real possibility (json shape change, no live instances): fall back to the
+  # directory scan, but wide enough that dead dirs cannot bury a live one.
+  [ -n "$ids" ] || ids=$(ls -1t "${reg}" 2>/dev/null | head -40)
+  printf '%s\n' "$ids"
+}
+
+reg="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell/by-id"
+nvim_sock="${COCKPIT_NVIM_SOCK:-${HEIDR_NVIM_SOCK:-}}"
+
+# `qs ipc` exits 0 even when it prints "Target not found." — so the exit status alone
+# accepts ANY live instance, including the bar, and the focus call then no-ops. Judge
+# by the reply: a real Cockpit answers pane with nvim|rail.
+probe_id() {
+  local out
+  out=$(timeout 2 qs ipc -i "$1" call cockpit pane 2>&1) || return 1
+  case "$out" in nvim|rail) return 0;; *) return 1;; esac
+}
+
+# Reap ONLY dirs whose instance is actually DEAD (connect failure/timeout).
+# A live NON-cockpit instance (the bar, mlqs, …) answers "Target not found" on
+# stderr with exit 0 — the first reaper treated that as dead and rm -rf'd the
+# registry dirs of every live sibling, unlinking their ipc sockets and making
+# qs client commands abort in LogManager::init. Alive-but-not-ours = skip, keep.
+probe() { # probe <id> <fn> -> stdout or failure (+reap only if dead)
+  local out rc
+  out=$(timeout 2 qs ipc -i "$1" call cockpit "$2" 2>&1); rc=$?
+  # A TIMEOUT (124) is not death — a busy cockpit answers late. Reaping on it deleted
+  # the registry dir of a LIVE cockpit, which is what made Ctrl+l "break" the cockpit:
+  # anything that then checked `qs list` for liveness concluded nothing was running
+  # (2026-08-27). Only a definitive connect failure reaps.
+  if [ "$rc" -eq 124 ]; then return 1; fi
+  if [ "$rc" -ne 0 ]; then rm -rf "${reg:?}/$1"; return 1; fi
+  case "$out" in
+    *"not found"*|"") return 1;;
+  esac
+  printf '%s\n' "$out"
+}
+resolve_id() {
+  local i t focused="$1" fallback=""
+  # Parent binding wins outright: a caller inside a cockpit's nvim passes that nvim's
+  # socket (cockpit-cross), which exactly one instance owns — no Hyprland, no title heuristics.
+  if [ -n "$nvim_sock" ]; then
+    for i in $(live_ids); do
+      t=$(probe "$i" nvimSock) || continue
+      if [ "$t" = "$nvim_sock" ]; then echo "$i"; return 0; fi
+    done
+  fi
+  # With per-mode cockpits (work + private simultaneously), the instance you mean is
+  # the one whose window is FOCUSED — match its title to each instance's `title` fn.
+  # Fallback: newest live instance, the pre-multi behavior.
+  for i in $(live_ids); do
+    t=$(probe "$i" title) || continue
+    case "$t" in cockpit-qs*) ;; *) continue;; esac
+    [ -z "$fallback" ] && fallback="$i"
+    if [ -n "${focused:-}" ] && [ "$t" = "$focused" ]; then echo "$i"; return 0; fi
+  done
+  [ -n "$fallback" ] && { echo "$fallback"; return 0; }
+  return 1
+}
+
+# Cache the winning id. Probing before EVERY call cost two round-trips per keypress
+# (~100ms for what a single call does in ~40), and every relaunch adds another dead
+# by-id dir to walk. A stale cache costs one failed call, not a wedged keybind — and the
+# reply is validated the same way, so a dead id or the bar can never be mistaken for Cockpit.
+if [ -n "$nvim_sock" ]; then
+  cache="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cockpit-ipc.$(basename "$nvim_sock").id"
+else
+  cache="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cockpit-ipc.id"
+fi
+
+call_id() {   # call_id <id> <fn> [args…] — echoes the reply, non-zero if not a live cockpit
+  local i="$1"; shift
+  local out
+  out=$(timeout 5 qs ipc -i "$i" call cockpit "$@" 2>&1) || return 1
+  case "$out" in *"not found"*|"") return 1;; esac
+  printf '%s\n' "$out"
+}
+
+nwin=0; focused=""
+if [ -z "$nvim_sock" ]; then
+  # Without a parent socket, window focus chooses the target.
+  active=$(hyprctl -j activewindow 2>/dev/null | jq -r '.address // empty')
+  if out=$(hyprctl -j clients 2>/dev/null | ACTIVE="$active" python3 -c '
+import json, os, sys
+ws = json.load(sys.stdin)
+hs = [w for w in ws if str(w.get("title") or "").startswith("cockpit-qs")]
+foc = next((str(w.get("title") or "") for w in ws if w.get("address") == os.environ.get("ACTIVE")), "")
+print(len(hs), foc)' 2>/dev/null); then
+    nwin="${out%% *}"; focused="${out#* }"
+  fi
+fi
+# A socket-keyed cache is already bound to one Cockpit. Without a parent socket,
+# short-circuit only when one Cockpit window exists because focus chooses the target.
+if { [ -n "$nvim_sock" ] || [ "${nwin:-0}" -le 1 ]; } && [ -r "$cache" ]; then
+  cid=$(cat "$cache" 2>/dev/null || true)
+  if [ -n "${cid:-}" ] && call_id "$cid" "$@"; then exit 0; fi
+fi
+
+id=$(resolve_id "$focused") || { echo "cockpit-ipc: no live cockpit instance" >&2; exit 1; }
+printf '%s' "$id" > "$cache" 2>/dev/null || true
+call_id "$id" "$@"

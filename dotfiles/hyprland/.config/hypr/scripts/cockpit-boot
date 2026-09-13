@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+instance="${1:?usage: cockpit-boot work|personal}"
+case "$instance" in
+  work) default_scope=lovable ;;
+  personal) default_scope=personal ;;
+  *) echo "cockpit-boot: expected work or personal" >&2; exit 2 ;;
+esac
+
+runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+for link in "$runtime"/quickshell/by-pid/*; do
+  [ -L "$link" ] || continue
+  pid="${link##*/}"
+  [ -d "/proc/$pid" ] && continue
+  target=$(readlink "$link")
+  rm -f -- "$link"
+  case "$target" in "$runtime"/quickshell/by-id/*) rm -rf -- "$target";; esac
+done
+
+export COCKPIT_INSTANCE="$instance"
+mode_file="$HOME/.local/state/cockpit/mode-$instance"
+if [ ! -r "$mode_file" ]; then
+  export COCKPIT_SCOPE="$default_scope"
+fi
+
+exec "$HOME/personal/ai-cockpit/run-qs.sh"

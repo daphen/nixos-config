@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+before=$(hyprctl -j activewindow | jq -r '.address // empty')
+"$(dirname -- "$0")/hypr-dispatch" layoutmsg "focus k" >/dev/null
+after=$(hyprctl -j activewindow | jq -r '.address // empty')
+if [[ -n "$before" && "$after" == "$before" ]]; then
+    "$(dirname -- "$0")/hypr-dispatch" focusmonitor u >/dev/null
+fi

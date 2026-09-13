@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# cockpit-remove <context> — tear down a cockpit context: close its tab in every
+# cockpit window, deregister it from the contexts state, and remove its worktree
+# (wt keeps a dirty/unmerged tree rather than losing work). NEVER touches "main".
+# The rail stops the pi session separately (send {type:stop}); this handles the
+# window/worktree side. Destructive — callers must confirm first.
+set -euo pipefail
+
+ctx=${1:?usage: cockpit-remove <context>}
+[ "$ctx" = "main" ] && { echo "cockpit-remove: refusing to remove 'main'" >&2; exit 1; }
+
+RT="${XDG_RUNTIME_DIR:-/tmp}"
+CTX_FILE="$HOME/.local/state/cockpit/contexts"
+
+# 1) close the context's tab in each cockpit window
+for w in nvim devenv agent; do
+  sock="$RT/kitty-cockpit-$w"
+  [ -S "$sock" ] && kitty @ --to "unix:$sock" close-tab --match "title:^${ctx}\$" >/dev/null 2>&1 || true
+done
+
+# 2) deregister from the contexts state (atomic rename)
+if [ -f "$CTX_FILE" ]; then
+  grep -vxF "$ctx" "$CTX_FILE" > "$CTX_FILE.tmp" 2>/dev/null || true
+  mv "$CTX_FILE.tmp" "$CTX_FILE" 2>/dev/null || rm -f "$CTX_FILE.tmp"
+fi
+
+# 3) remove the worktree (+ branch if merged). wt refuses when the tree is dirty
+#    or the branch isn't merged, so unshipped work is never silently deleted.
+if wt remove "daphen/$ctx" 2>&1; then
+  echo "cockpit-remove: torn down $ctx"
+else
+  echo "cockpit-remove: closed tabs + deregistered $ctx, but 'wt remove daphen/$ctx' declined (dirty/unmerged?) — worktree kept" >&2
+  exit 2
+fi

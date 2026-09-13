@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# cockpit-switch <context> — point every cockpit window at <context>: focus its
+# tab in each window, record it as active, then run the config's post-switch
+# hook. Every leg is a socket write; no window is moved and nothing animates.
+set -euo pipefail
+
+CONFIG="${COCKPIT_CONFIG:-$HOME/.config/cockpit/config}"
+[ -r "$CONFIG" ] || { echo "cockpit: no config at $CONFIG" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$CONFIG"
+: "${COCKPIT_WINDOWS:?config must set COCKPIT_WINDOWS}"
+COCKPIT_STATE_DIR="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}"
+
+win_sock() { printf '%s/kitty-cockpit-%s' "${XDG_RUNTIME_DIR:-/tmp}" "$1"; }
+
+name=${1:?usage: cockpit-switch <context>}
+dir=$(cockpit_context_dir "$name")
+
+# Which windows to focus-tab. Defaults to all cockpit windows; a caller may pass
+# a subset via COCKPIT_SWITCH_WINDOWS (e.g. the nvim rail syncs only the `devenv`
+# tab + the active marker, staying in the rail it's already driving).
+read -ra _switch_windows <<< "${COCKPIT_SWITCH_WINDOWS:-${COCKPIT_WINDOWS[*]}}"
+
+# Concurrent, not sequential: the legs are independent, and each `kitty @` pays
+# ~30ms of client startup — serialized, three of them eat the whole budget.
+for w in "${_switch_windows[@]}"; do
+    sock=$(win_sock "$w")
+    [ -S "$sock" ] || continue
+    kitty @ --to "unix:$sock" focus-tab --match "title:^${name}\$" >/dev/null 2>&1 &
+done
+wait
+
+# Sole writer of `active`, via atomic rename — readers (bar, picker) never see
+# a torn file.
+mkdir -p "$COCKPIT_STATE_DIR/seen"
+# Read-tracking: leaving a context means you saw everything it said up to
+# now; the seen-stamp mtime is what awaiting-you is measured against.
+prev=$(cat "$COCKPIT_STATE_DIR/active" 2>/dev/null || true)
+[ -n "$prev" ] && touch "$COCKPIT_STATE_DIR/seen/$prev"
+touch "$COCKPIT_STATE_DIR/seen/$name"
+printf '%s\n' "$name" > "$COCKPIT_STATE_DIR/.active.tmp"
+mv -f "$COCKPIT_STATE_DIR/.active.tmp" "$COCKPIT_STATE_DIR/active"
+
+# MRU order for the picker: newest first, deduped.
+recent="$COCKPIT_STATE_DIR/recent"
+{ printf '%s\n' "$name"; grep -vxF "$name" "$recent" 2>/dev/null || true; } > "$recent.tmp"
+mv -f "$recent.tmp" "$recent"
+
+# Off the hot path: the tab fan-out above IS the switch, and a hook that talks
+# to another daemon must not push it past its latency budget.
+if declare -F cockpit_post_switch >/dev/null; then
+    { cockpit_post_switch "$name" "$dir" >/dev/null 2>&1 || true; } &
+fi

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# RETIRED — agentd scopes are systemd user units now (see launch-agentd + daemons.nix).
+# Kept as a shim for one prove-out day so stale callers keep working.
+scope="${1:?usage: launch-agentd-scope <chat|personal>}"
+exec systemctl --user start "agentd-$scope"

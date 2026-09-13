@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+ctl="$(command -v desktopctl || true)"
+[[ -n "$ctl" ]] || ctl="/etc/profiles/per-user/${USER:-${LOGNAME:-daphen}}/bin/desktopctl"
+exec "$ctl" jump-or-exec "$@"

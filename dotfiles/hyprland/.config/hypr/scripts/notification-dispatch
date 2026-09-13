@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+ctl="$(command -v desktopctl || true)"
+[[ -n "$ctl" ]] || ctl="/etc/profiles/per-user/${USER:-${LOGNAME:-daphen}}/bin/desktopctl"
+NIRI_SCRIPTS_DIR="$dir" exec "$ctl" notification-dispatch "$@"

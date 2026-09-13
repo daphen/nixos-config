@@ -1,0 +1,14 @@
+#!/usr/bin/env fish
+# Sync notes and send notification
+
+set -l message $argv[1]
+if test -z "$message"
+    set message "Synced"
+end
+
+notes push >/dev/null 2>&1
+if test $status -eq 0
+    notify-send -i document-save "Notes" "✓ $message"
+else
+    notify-send -u critical -i dialog-error "Notes" "✗ Sync failed"
+end

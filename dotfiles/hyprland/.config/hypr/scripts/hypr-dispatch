@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+action=${1:?usage: hypr-dispatch ACTION [ARGS...]}
+shift
+json() { python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"; }
+
+case "$action" in
+    focuswindow)
+        selector=${1:?focuswindow requires a selector}
+        code="hl.dispatch(hl.dsp.focus({ window = $(json "$selector") }))"
+        ;;
+    closewindow)
+        selector=${1:?closewindow requires a selector}
+        code="hl.dispatch(hl.dsp.window.close({ window = $(json "$selector") }))"
+        ;;
+    layoutmsg)
+        message=${1:?layoutmsg requires a message}
+        code="hl.dispatch(hl.dsp.layout($(json "$message")))"
+        ;;
+    focusmonitor)
+        monitor=${1:?focusmonitor requires a monitor}
+        code="hl.dispatch(hl.dsp.focus({ monitor = $(json "$monitor") }))"
+        ;;
+    moveworkspacetomonitor)
+        workspace=${1:?moveworkspacetomonitor requires a workspace}
+        monitor=${2:?moveworkspacetomonitor requires a monitor}
+        code="hl.dispatch(hl.dsp.workspace.move({ workspace = $(json "$workspace"), monitor = $(json "$monitor") }))"
+        ;;
+    exit)
+        code='hl.dispatch(hl.dsp.exit())'
+        ;;
+    *)
+        echo "hypr-dispatch: unsupported action: $action" >&2
+        exit 2
+        ;;
+esac
+
+exec hyprctl eval "$code"

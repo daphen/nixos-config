@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Launch or focus the personal-profile browser window. Stateless: resolves
+# the window live by app-id on every press (window-id caches go stale when
+# ids are recycled across browser restarts, and once cross-focused profiles).
+
+set -u
+
+source "$(dirname "$0")/browser-config.sh"
+
+    target=$(hyprctl -j clients | jq -r --arg cls "$BROWSER_CLASS_PERSONAL" \
+        '[.[] | select(.class == $cls)] | sort_by(.focusHistoryID) | .[0].address // empty')
+    if [[ -n "$target" ]]; then
+        exec "$(dirname -- "$0")/hypr-dispatch" focuswindow "address:$target"
+    fi
+    exec "$BROWSER_BIN" \
+        "${BROWSER_FLAGS[@]}" \
+        --user-data-dir="$BROWSER_USER_DATA_PERSONAL" \
+        --profile-directory="$BROWSER_PROFILE" \
+        --class="$BROWSER_CLASS_PERSONAL"

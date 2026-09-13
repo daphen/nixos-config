@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -u
+
+export QML2_IMPORT_PATH="$HOME/.local/share/qml${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
+export QML_IMPORT_PATH="$QML2_IMPORT_PATH"
+export QT_QPA_PLATFORM=wayland
+
+for _ in {1..100}; do
+    if [[ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/${WAYLAND_DISPLAY:-wayland-1}" ]] \
+        && hyprctl -j monitors 2>/dev/null | jq -e 'length > 0' >/dev/null; then
+        break
+    fi
+    sleep 0.1
+done
+
+qs -n -p "$HOME/.config/quickshell/wallpaper" &
+exec qs -n

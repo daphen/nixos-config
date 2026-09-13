@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Toggle a screen recording. Usage:
+#   record-toggle           — region (slurp), if no recording is active; else stop
+#   record-toggle screen    — active monitor; else stop
+#
+# Saves to ~/Videos/Recordings/. Sends a notification + copies the path
+# to the clipboard when stopped.
+set -u
+
+# Debounce: a held keybind (or double-tap) fired start->stop->start, which read
+# as "the region selector over and over with nothing recorded".
+STAMP="${XDG_RUNTIME_DIR:-/tmp}/record-toggle.stamp"
+now=$(date +%s%N)
+last=$(cat "$STAMP" 2>/dev/null || echo 0)
+printf '%s' "$now" > "$STAMP"
+[ $(( (now - last) / 1000000 )) -lt 1000 ] && exit 0
+
+OUT_DIR="$HOME/Videos/Recordings"
+mkdir -p "$OUT_DIR"
+
+if pgrep -x wf-recorder >/dev/null; then
+    pkill -INT -x wf-recorder
+    sleep 0.3
+    latest=$(ls -t "$OUT_DIR"/*.mp4 2>/dev/null | head -1)
+    if [ -n "$latest" ]; then
+        printf '%s' "$latest" | wl-copy
+        notify-send -a "screen-recorder" "Recording stopped" "$latest (path copied)"
+    else
+        notify-send -a "screen-recorder" "Recording stopped"
+    fi
+    exit 0
+fi
+
+mode="${1:-region}"
+out="$OUT_DIR/$(date +%F-%H%M%S).mp4"
+
+# Match the focused output's actual refresh rate. wf-recorder defaults
+# to 60fps, which duplicates frames on a 120Hz laptop screen.
+    read -r out_name fps <<<"$(hyprctl -j monitors 2>/dev/null \
+        | jq -r '.[] | select(.focused) | [.name, (.refreshRate | round)] | @tsv')"
+fps="${fps:-60}"
+
+# Hardware-encode via VAAPI (AMD Radeon 890M). Software x264 can't keep up at
+# the panel's 120fps and drops frames — playback looks choppy. Offloading the
+# encode to the GPU records smoothly at full refresh.
+# Resolve the amdgpu render node at runtime — the renderD12* ordering isn't
+# stable across boots/rebuilds (the nvidia dGPU can grab renderD128), and
+# VAAPI h264 dies instantly on the nvidia node.
+vaapi_dev=""
+for n in /dev/dri/renderD*; do
+    if grep -qx 'DRIVER=amdgpu' "/sys/class/drm/$(basename "$n")/device/uevent" 2>/dev/null; then
+        vaapi_dev="$n"
+        break
+    fi
+done
+HW=(-c h264_vaapi -d "${vaapi_dev:-/dev/dri/renderD128}")
+
+case "$mode" in
+    region)
+        geom=$(slurp) || { notify-send -a "screen-recorder" "Recording cancelled" "no region selected (drag to select)"; exit 1; }
+        case "$geom" in *" 0x"*|*"x0") notify-send -a "screen-recorder" "Recording cancelled" "empty region — drag, don't click"; exit 1;; esac
+        notify-send -a "screen-recorder" "Recording region (${fps}fps)" "Same shortcut to stop."
+        exec wf-recorder "${HW[@]}" -g "$geom" -r "$fps" -f "$out"
+        ;;
+    screen)
+        notify-send -a "screen-recorder" "Recording screen${out_name:+ ($out_name)} (${fps}fps)" "Same shortcut to stop."
+        if [ -n "$out_name" ]; then
+            exec wf-recorder "${HW[@]}" -o "$out_name" -r "$fps" -f "$out"
+        else
+            exec wf-recorder "${HW[@]}" -r "$fps" -f "$out"
+        fi
+        ;;
+    *)
+        echo "usage: record-toggle [region|screen]" >&2
+        exit 2
+        ;;
+esac

@@ -45,6 +45,11 @@ in {
     "kanata".source = link "${dotfiles}/kanata/.config/kanata";
     "niri/config.kdl".source = link "${dotfiles}/niri/.config/niri/config.kdl";
     "niri/scripts".source = link "${dotfiles}/niri/.config/niri/scripts";
+    "hypr/hyprland.lua" = {
+      source = link "${dotfiles}/hyprland/.config/hypr/hyprland.lua";
+      force = true;
+    };
+    "hypr/scripts".source = link "${dotfiles}/hyprland/.config/hypr/scripts";
     # Instance config for the cockpit engine (niri/scripts/cockpit-open|add|switch).
     # The scripts are generic; everything Lovable-specific lives in this one file.
     "cockpit".source = link "${dotfiles}/niri/.config/cockpit";

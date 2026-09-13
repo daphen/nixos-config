@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Launch spotify_player. The 0.23/0.24.0-era token re-inject hack is gone:
+# Spotify's 2026-06 refresh-token rotation policy makes replaying a saved
+# token fatal (revokes the grant). 0.24.1 (overlay in flake.nix) handles
+# rotation itself; on 0.24.0 a corrupted cache just means re-auth on launch.
+exec spotify_player

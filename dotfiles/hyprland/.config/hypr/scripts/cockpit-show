@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+instance="${1:-personal}"
+case "$instance" in
+  work|personal) ;;
+  *) echo "cockpit-show: expected work or personal" >&2; exit 2 ;;
+esac
+
+  wid=$(hyprctl -j clients 2>/dev/null | jq -r --arg prefix "cockpit-qs · $instance ·" '
+    [.[] | select((.title // "") | startswith($prefix))]
+    | sort_by(.focusHistoryID) | .[0].address // empty')
+  if [ -n "$wid" ]; then
+    exec "$(dirname -- "$0")/hypr-dispatch" focuswindow "address:$wid"
+  fi
+
+exec "${HYPR_SCRIPTS:-$HOME/.config/hypr/scripts}/cockpit-boot" "$instance"

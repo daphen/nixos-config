@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+monitor=$(hyprctl -j monitors | jq -c '.[] | select(.focused)')
+output=$(jq -r '.name // empty' <<< "$monitor")
+monitor_id=$(jq -r '.id // empty' <<< "$monitor")
+
+target=$(hyprctl -j clients | jq -r --argjson monitor "$monitor_id" '
+    [.[] | select((.class == "browser-personal" or .class == "browser-work") and .monitor == $monitor)]
+    | sort_by(.focusHistoryID) | .[0].address // empty')
+
+if [[ -n "$target" ]]; then
+    current=$(hyprctl -j activewindow | jq -r '.address // empty')
+    if [[ "$current" != "$target" ]]; then
+        "$(dirname -- "$0")/hypr-dispatch" focuswindow "address:$target" >/dev/null
+        for _ in {1..20}; do
+            [[ $(hyprctl -j activewindow | jq -r '.address // empty') == "$target" ]] && break
+            sleep 0.01
+        done
+    fi
+fi
+
+exec qs ipc call -- palette toggleOn "$output"

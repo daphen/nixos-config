@@ -6,8 +6,6 @@ import "modules"
 ShellRoot {
     id: root
 
-    Loader { source: "modules/Wallpaper.qml" }
-
     // Per-screen surfaces — Variants reconciles when monitors come and
     // go, so undocking doesn't leave an orphan layer-shell window from
     // the disconnected screen (which niri then framed as a regular

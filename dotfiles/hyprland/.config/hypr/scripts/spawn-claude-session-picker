@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+ctl="$(command -v sessionctl || true)"
+[[ -n "$ctl" ]] || ctl="/etc/profiles/per-user/${USER:-${LOGNAME:-daphen}}/bin/sessionctl"
+exec "$ctl" picker "$@"

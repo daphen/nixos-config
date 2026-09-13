@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = os.environ["HOME"]
+RECENCY_FILE = Path(HOME) / ".local/state/wt-stacks/ws/recency"
+DEVENV_TITLE_RE = re.compile(r"^process-compose: proart/lovable\.daphen-")
+BROWSER_CLASSES = {"browser-work", "helium-work"}
+ROLES = ("browser", "claude", "devenv", "term")
+
+
+def hypr_json(command: str):
+    out = subprocess.run(
+        ["hyprctl", "-j", command], capture_output=True, text=True, timeout=2
+    )
+    return json.loads(out.stdout) if out.stdout.strip() else None
+
+
+def proc_children(pid: int) -> list[int]:
+    try:
+        with open(f"/proc/{pid}/task/{pid}/children") as file:
+            return [int(value) for value in file.read().split() if value.isdigit()]
+    except OSError:
+        return []
+
+
+def runs_proc(pid: int | None, name: str) -> bool:
+    if not pid:
+        return False
+    seen: set[int] = set()
+    stack = [pid]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        try:
+            with open(f"/proc/{current}/comm") as file:
+                if file.read().strip() == name:
+                    return True
+        except OSError:
+            continue
+        stack.extend(proc_children(current))
+    return False
+
+
+def inactive_lovable_workspaces(workspaces: list[dict]) -> set[int]:
+    names = {workspace.get("name") for workspace in workspaces}
+    try:
+        recency = [name for name in json.loads(RECENCY_FILE.read_text()) if isinstance(name, str)]
+    except Exception:
+        recency = []
+    partner = next(
+        (name for name in recency if name != "lovable-main" and name.startswith("lovable-") and name in names),
+        "",
+    )
+    couple = {"lovable-main", partner}
+    return {
+        workspace["id"]
+        for workspace in workspaces
+        if (workspace.get("name") or "").startswith("lovable-")
+        and workspace.get("name") not in {"lovable", *couple}
+    }
+
+
+def is_claude(window: dict) -> bool:
+    cls = window.get("class") or ""
+    return cls == "claude" or (cls == "kitty" and runs_proc(window.get("pid"), "claude"))
+
+
+def is_devenv(window: dict) -> bool:
+    return bool(DEVENV_TITLE_RE.match(window.get("title") or ""))
+
+
+def matches(window: dict, role: str) -> bool:
+    cls = window.get("class") or ""
+    if role == "browser":
+        return cls in BROWSER_CLASSES
+    if role == "claude":
+        return is_claude(window)
+    if role == "devenv":
+        return is_devenv(window)
+    if role == "term":
+        return cls == "kitty" and not is_claude(window) and not is_devenv(window) and not runs_proc(window.get("pid"), "yazi")
+    return False
+
+
+def fallback(role: str) -> None:
+    scripts = Path(os.environ.get("HYPR_SCRIPTS", Path(HOME) / ".config/hypr/scripts"))
+    if role == "browser":
+        os.execv(str(scripts / "browser-work"), [str(scripts / "browser-work")])
+    elif role == "claude":
+        os.execv(str(scripts / "spawn-terminal-with-claude"), [str(scripts / "spawn-terminal-with-claude")])
+    elif role == "term":
+        subprocess.Popen(
+            ["setsid", "kitty"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or sys.argv[1] not in ROLES:
+        print(f"Usage: {Path(sys.argv[0]).name} <{'|'.join(ROLES)}>", file=sys.stderr)
+        return 2
+    role = sys.argv[1]
+    windows = hypr_json("clients") or []
+    workspaces = hypr_json("workspaces") or []
+    excluded = inactive_lovable_workspaces(workspaces)
+    candidates = [window for window in windows if matches(window, role) and (window.get("workspace") or {}).get("id") not in excluded]
+    if not candidates:
+        fallback(role)
+        return 0
+
+    active = hypr_json("activewindow") or {}
+    ordered = sorted(candidates, key=lambda window: int(window.get("address", "0"), 16))
+    focused_index = next((index for index, window in enumerate(ordered) if window.get("address") == active.get("address")), None)
+    if focused_index is None:
+        target = min(candidates, key=lambda window: window.get("focusHistoryID", 999999))
+    else:
+        target = ordered[(focused_index + 1) % len(ordered)]
+    subprocess.run(
+        ["hyprctl", "dispatch", "focuswindow", f"address:{target['address']}"],
+        check=False,
+        timeout=2,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

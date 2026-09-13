@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# cockpit-toggle — flip to the previously used context (vim ctrl-o style):
+# line 2 of the MRU file cockpit-switch maintains. Focuses the cockpit
+# workspace first so the flip is visible from anywhere.
+set -euo pipefail
+
+CONFIG="${COCKPIT_CONFIG:-$HOME/.config/cockpit/config}"
+[ -r "$CONFIG" ] || { echo "cockpit: no config at $CONFIG" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$CONFIG"
+COCKPIT_STATE_DIR="${COCKPIT_STATE_DIR:-$HOME/.local/state/cockpit}"
+
+# Live contexts = the agent kitty's current tabs. The MRU can name a context
+# whose tabs were closed (Ctrl+W); skip those and land on the newest still-live
+# one that isn't where we are, falling back to main.
+sock="${XDG_RUNTIME_DIR:-/tmp}/kitty-cockpit-${COCKPIT_WINDOWS[0]}"
+mapfile -t live < <(kitty @ --to "unix:$sock" ls 2>/dev/null | jq -r '.[].tabs[].title')
+is_live() { local t; for t in "${live[@]}"; do [ "$t" = "$1" ] && return 0; done; return 1; }
+
+active=$(cat "$COCKPIT_STATE_DIR/active" 2>/dev/null || true)
+target=""
+while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    [ "$c" = "$active" ] && continue
+    if is_live "$c"; then target=$c; break; fi
+done < "$COCKPIT_STATE_DIR/recent" 2>/dev/null
+
+# Nothing recent still open → main, if it exists as a context.
+[ -z "$target" ] && is_live main && target=main
+[ -n "$target" ] || exit 0
+
+    address=$(hyprctl -j clients | jq -r '
+        [.[] | select((.title // "") | startswith("cockpit-qs"))]
+        | sort_by(.focusHistoryID) | .[0].address // empty')
+    [ -n "$address" ] && "$(dirname -- "$0")/hypr-dispatch" focuswindow "address:$address" >/dev/null 2>&1 || true
+# Switch the devenv (+ agent) tab and the active marker, but NOT the nvim window
+# — the rail is one control surface and follows the active context on its own
+# (matches CockpitState.switchTo / Super+T). Switching nvim would yank you to a
+# per-context nvim, which is the "toggles neovim windows" bug.
+exec env COCKPIT_SWITCH_WINDOWS='devenv agent' \
+    "$(dirname "$(readlink -f "$0")")/cockpit-switch" "$target"

@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+publish=false
+activate=false
+check=false
+apps=()
+for arg in "$@"; do
+    case "$arg" in
+        --publish) publish=true ;;
+        --activate) activate=true ;;
+        --check) check=true ;;
+        dsqrd|mlqs) apps+=("$arg") ;;
+        *) echo "usage: deploy-quickshell-apps [--check] [--publish] [--activate] dsqrd|mlqs..." >&2; exit 2 ;;
+    esac
+done
+((${#apps[@]})) || apps=(dsqrd mlqs)
+
+home=${HOME:?}
+nixos="$home/nixos"
+state="$home/.local/state/app-builds"
+bin="$home/.local/bin"
+mkdir -p "$state" "$bin"
+
+declare -A revisions daemon_paths client_paths
+for app in "${apps[@]}"; do
+    repo="$home/personal/$app"
+    [[ -d "$repo/.git" ]] || { echo "$app: missing repo $repo" >&2; exit 1; }
+    [[ -z $(git -C "$repo" status --porcelain) ]] || { echo "$app: working tree is dirty" >&2; exit 1; }
+    head=$(git -C "$repo" rev-parse HEAD)
+    main=$(git -C "$repo" ls-remote origin refs/heads/main | awk '{print $1}')
+    if [[ "$main" != "$head" ]]; then
+        if ! $publish; then
+            echo "$app: HEAD $head is not remote main $main; rerun with --publish after review" >&2
+            exit 1
+        fi
+        git -C "$repo" merge-base --is-ancestor "$main" "$head" || {
+            echo "$app: remote main cannot fast-forward to HEAD" >&2; exit 1;
+        }
+        git -C "$repo" push origin "$head:refs/heads/main"
+    fi
+    revisions[$app]=$head
+    echo "$app: source ${head:0:7}"
+done
+
+if $check; then
+    for app in "${apps[@]}"; do
+        echo "$app: remote main matches ${revisions[$app]:0:7}"
+    done
+    exit 0
+fi
+
+for app in "${apps[@]}"; do
+    repo="$home/personal/$app"
+    mapfile -t outputs < <(cd "$repo" && nix build ".#$app" ".#$app-client" --no-link --print-out-paths)
+    daemon="" client=""
+    for output in "${outputs[@]}"; do
+        case "$(basename "$output")" in
+            *-"$app"-client) client=$output ;;
+            *-"$app"-[0-9]*) daemon=$output ;;
+        esac
+    done
+    [[ -n "$daemon" && -n "$client" ]] || { echo "$app: could not identify build outputs" >&2; exit 1; }
+    ln -sfn "$daemon" "$state/$app-daemon"
+    ln -sfn "$client" "$state/$app-client"
+    ln -sfn "$state/$app-daemon/bin/$app" "$bin/$app"
+    ln -sfn "$state/$app-client/bin/$app-client" "$bin/$app-client"
+    daemon_paths[$app]=$daemon
+    client_paths[$app]=$client
+    echo "$app: rooted $(basename "$daemon")"
+done
+
+if $activate; then
+    [[ -z $(git -C "$nixos" status --porcelain -- flake.nix flake.lock) ]] || {
+        echo "nixos: flake inputs already dirty; refusing activation" >&2; exit 1;
+    }
+    (cd "$nixos" && nix flake update "${apps[@]}" && nix flake archive >/dev/null)
+    /run/wrappers/bin/sudo nixos-rebuild switch --flake "$nixos#proart"
+fi
+
+python3 - "${apps[@]}" <<'PY'
+import os, signal, sys, time
+apps = set(sys.argv[1:])
+targets = []
+for entry in os.listdir('/proc'):
+    if not entry.isdigit():
+        continue
+    try:
+        comm = open(f'/proc/{entry}/comm').read().strip()
+        cmd = open(f'/proc/{entry}/cmdline', 'rb').read().replace(b'\0', b' ').decode(errors='replace')
+    except OSError:
+        continue
+    for app in apps:
+        daemon = app == 'mlqs' and comm == 'mlqs' or app == 'dsqrd' and f'/share/{app}/dsqrd.py' in cmd
+        ui = 'quickshell' in comm and f'/share/{app}/ui' in cmd
+        if daemon or ui:
+            targets.append(int(entry))
+for pid in targets:
+    try: os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError: pass
+end = time.time() + 5
+while targets and time.time() < end:
+    targets = [pid for pid in targets if os.path.exists(f'/proc/{pid}')]
+    time.sleep(.1)
+for pid in targets:
+    try: os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError: pass
+PY
+
+for app in "${apps[@]}"; do
+    rm -f "$XDG_RUNTIME_DIR/$app.sock"
+    setsid -f "$bin/$app" >"/tmp/$app-daemon.log" 2>&1
+done
+
+python3 - "${apps[@]}" <<'PY'
+import os, socket, sys, time
+for app in sys.argv[1:]:
+    path = f'{os.environ["XDG_RUNTIME_DIR"]}/{app}.sock'
+    end = time.time() + 20
+    while time.time() < end:
+        sock = socket.socket(socket.AF_UNIX)
+        sock.settimeout(.3)
+        try:
+            sock.connect(path)
+            sock.close()
+            break
+        except OSError:
+            sock.close()
+            time.sleep(.2)
+    else:
+        raise SystemExit(f'{app}: daemon socket did not become ready')
+PY
+
+for app in "${apps[@]}"; do
+    setsid -f env QML2_IMPORT_PATH="$home/.local/share/qml" QT_QPA_PLATFORMTHEME=xdgdesktopportal \
+        "$bin/$app-client" >"/tmp/$app-ui.log" 2>&1
+done
+sleep 4
+
+python3 - "${apps[@]}" <<'PY'
+import json, os, socket, sys, time
+for app in sys.argv[1:]:
+    sock = socket.socket(socket.AF_UNIX)
+    sock.settimeout(.35)
+    sock.connect(f'{os.environ["XDG_RUNTIME_DIR"]}/{app}.sock')
+    end = time.time() + 3
+    buf = b''
+    updates = []
+    auth = []
+    while time.time() < end:
+        try:
+            chunk = sock.recv(65536)
+        except socket.timeout:
+            continue
+        if not chunk:
+            break
+        buf += chunk
+        while b'\n' in buf:
+            line, buf = buf.split(b'\n', 1)
+            try: event = json.loads(line)
+            except Exception: continue
+            if event.get('type') == 'updateAvailable': updates.append(event)
+            if event.get('type') == 'auth': auth.append(event.get('state'))
+    sock.close()
+    if updates:
+        raise SystemExit(f'{app}: update still reported: {updates}')
+    if app == 'dsqrd' and 'signedIn' not in auth:
+        raise SystemExit('dsqrd: signed-in state not confirmed')
+    print(f'{app}: current, socket verified')
+PY
