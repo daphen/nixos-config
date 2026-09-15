@@ -299,11 +299,13 @@ export default function (pi: ExtensionAPI) {
     description:
       "Start a NEW agent session in an existing directory (a fresh roster item). Choose the relationship: default = a CHILD in your spawn lineage (renders indented under you; you can agent_send/steer it afterward); detached=true = an INDEPENDENT top-level session (roster root, no parent — hand the task over fully in the seed prompt, because you cannot message it afterward unless you are the orchestrator). Children inherit the caller's profile server-side unless profile is supplied; the only permitted transition is lovable-worker to lovable-watcher. Does NOT create worktrees — pass a real dir.",
     promptSnippet: "agent_spawn: start a new agent session in a dir",
+    promptGuidelines: ["When the user requests a model, pass its exact provider/model ID to agent_spawn. Session names do not select models; do not silently substitute the default. Verify the running model before claiming the request was honored."],
     parameters: Type.Object({
       dir: Type.String({ description: "existing directory to run the session in" }),
       prompt: Type.Optional(Type.String({ description: "seed prompt delivered on spawn" })),
       name: Type.Optional(Type.String({ description: "session name (default: dir basename)" })),
       scope: Type.Optional(Type.String({ description: "agentd scope (default: caller's scope, then inferred from dir)" })),
+      model: Type.Optional(Type.String({ pattern: "^\\S+/\\S+$", description: "Explicit provider/model ID requested by the user, e.g. openai/gpt-6-astra. Omit only to use the profile/daemon default." })),
       profile: Type.Optional(StringEnum(["lovable-orchestrator", "lovable-worker", "lovable-reviewer", "lovable-watcher", "coding", "chat"] as const, { description: "validated profile; omit to inherit server-side" })),
       oneshot: Type.Optional(Type.Boolean({ description: "ephemeral: run the seed once then exit" })),
       detached: Type.Optional(Type.Boolean({ description: "true = independent top-level session (no lineage, not messageable by you afterward); omit/false = child in your lineage" })),
@@ -314,6 +316,7 @@ export default function (pi: ExtensionAPI) {
           prompt: params.prompt,
           name: params.name,
           scope: params.scope,
+          model: params.model,
           profile: params.profile,
           oneshot: params.oneshot,
           detached: params.detached,
@@ -323,7 +326,7 @@ export default function (pi: ExtensionAPI) {
             (params.prompt ? " + seeded prompt" : "") +
             (params.oneshot ? " [oneshot]" : "") +
             (params.detached ? " [detached: top-level, not in your lineage — you cannot message it]" : "") +
-            ` · profile ${params.profile ?? "inherited"}.`,
+            ` · profile ${params.profile ?? "inherited"}; requested model ${params.model ?? "profile/daemon default"} (runtime not yet verified).`,
         );
       } catch (e) {
         return say(String((e as Error).message ?? e));

@@ -12,6 +12,11 @@ For work started elsewhere, use these small routers when the paths exist:
 Confirm before claiming a paid sandbox or fetching/branching a PR. Never remove,
 close, or tear down a context unless the user names that exact context.
 
+When a user requests a session model, pass its explicit provider/model ID and
+verify the running model. Names and prompt text do not select models. If the
+current tool cannot set it, use the supported launcher or report the limitation;
+never silently substitute a default.
+
 Remote receivers cannot read local paths, environment, or desktop state. Inline
 the needed content, or ask before transferring material too large to include.
 

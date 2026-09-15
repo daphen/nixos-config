@@ -444,6 +444,7 @@ export interface SpawnOpts {
   name?: string;
   scope?: string;
   profile?: string;
+  model?: string;
   detached?: boolean;
 }
 
@@ -452,6 +453,7 @@ export function spawnMessage(name: string, dir: string, opts: SpawnOpts, from = 
   if (opts.prompt) msg.prompt = opts.prompt;
   if (opts.oneshot) msg.oneshot = true;
   if (opts.profile) msg.profile = opts.profile;
+  if (opts.model) msg.model = opts.model;
   if (from) msg.from = from;
   return msg;
 }
