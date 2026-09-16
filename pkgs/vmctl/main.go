@@ -57,8 +57,9 @@ func command(args []string, out, errOut io.Writer) error {
 	case "worktree":
 		teardown := len(args) == 3 && args[1] == "--teardown"
 		scriptTag := len(args) == 3 && args[1] == "--script-tag"
-		if len(args) != 2 && !teardown && !scriptTag {
-			return fmt.Errorf("usage: vmctl worktree [--teardown | --script-tag] EVERY-N")
+		startApp := scriptTag || (len(args) == 3 && args[1] == "--app")
+		if len(args) != 2 && !teardown && !startApp {
+			return fmt.Errorf("usage: vmctl worktree [--teardown | --app | --script-tag] EVERY-N")
 		}
 		raw := args[len(args)-1]
 		ticket, err := parseTicket(raw)
@@ -68,7 +69,7 @@ func command(args []string, out, errOut io.Writer) error {
 		if teardown {
 			return teardownWorktreeTunnel(a, ticket)
 		}
-		return runWorktree(a, ticket, raw, scriptTag)
+		return runWorktree(a, ticket, raw, startApp, scriptTag)
 	default:
 		return fmt.Errorf("usage: vmctl <sync|worktree|cockpit> [arguments]")
 	}

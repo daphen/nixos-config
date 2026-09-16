@@ -36,6 +36,31 @@ func TestWorktreeRestartMarkerStopsBeforeCommands(t *testing.T) {
 	}
 }
 
+func TestWorktreeDefaultPreparesSourceAndWorkerOnly(t *testing.T) {
+	home, path, log := worktreeFixture(t, matchingTunnelScript(0, 0))
+	makeWorktreeMirror(t, home, "lovable.daphen-every-55")
+	messages := make(chan map[string]any, 1)
+	listener, done := worktreeSocket(t, home, `{"sessions":[]}`, messages)
+	defer listener.Close()
+	result := runWorktreeBinary(t, home, path, "EVERY-55")
+	if result.err != nil || !strings.Contains(result.stdout, "app startup not requested") || !strings.Contains(result.stdout, "source mirror ready") {
+		t.Fatalf("result=%+v", result)
+	}
+	<-done
+	if message := <-messages; message["type"] != "spawn" || message["profile"] != "lovable-worker" {
+		t.Fatalf("spawn=%v", message)
+	}
+	calls := readLog(t, log)
+	if !strings.Contains(calls, "vm-sync|--prepare EVERY-55") {
+		t.Fatalf("source-only preparation missing: %s", calls)
+	}
+	for _, forbidden := range []string{"tmux", "devenv wt", "process-compose-wt-", "systemd-run|", "systemctl|", "direnv", "pnpm install"} {
+		if strings.Contains(calls, forbidden) {
+			t.Fatalf("default startup ran %s: %s", forbidden, calls)
+		}
+	}
+}
+
 func TestWorktreeRunsPortedFlowAndSpawnsAgent(t *testing.T) {
 	web, api := freePort(t), freePort(t)
 	script := fmt.Sprintf(`
@@ -71,7 +96,7 @@ esac
 		_, _, stopHTTP := worktreeHTTPAt(t, web, api, http.StatusOK, http.StatusOK)
 		stopReady <- stopHTTP
 	}()
-	result := runWorktreeBinary(t, home, path, "EvErY-44")
+	result := runWorktreeBinaryArgs(t, home, path, "--app", "EvErY-44")
 	stop := <-stopReady
 	defer stop()
 	if result.err != nil {
@@ -86,7 +111,7 @@ esac
 	for _, want := range []string{
 		"worktree /home/tester/src/lovable-every-44 on daphen/every-44",
 		"boot devenv wt in tmux session wt-every-44", "  sync-complete",
-		"mirror current and dependencies ready", "✗ playwright override failed (non-fatal)",
+		"source mirror ready", "✗ playwright override failed (non-fatal)",
 		"spawned 'every-44' with the plan seed", "agent ready: select 'every-44' in the rail",
 		fmt.Sprintf("HTTP ready — testable URL: http://localhost:%d/", web),
 	} {
@@ -99,7 +124,7 @@ esac
 	}
 	calls := readLog(t, log)
 	inOrder(t, calls, "ssh|-o StrictHostKeyChecking=no", "git worktree add", "ssh|-o StrictHostKeyChecking=no", "tmux new-session",
-		"vm-sync|EvErY-44", "git|-C "+mirror+" rev-parse HEAD")
+		"vm-sync|--prepare EvErY-44", "git|-C "+mirror+" rev-parse HEAD")
 	for _, want := range []string{"nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous", "@playwright/mcp@latest", "PLAYWRIGHT_BROWSERS_PATH", "grep -qx '.pi/'", fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", web, web), fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", api, api)} {
 		if !strings.Contains(calls, want) {
 			t.Errorf("calls missing %q:\n%s", want, calls)
@@ -170,13 +195,13 @@ esac
 	roster := fmt.Sprintf(`{"sessions":[{"name":"every-46","profile":"lovable-worker","cwd":%q}]}`, remote)
 	listener, done := worktreeAgentSocket(t, home, roster, `{"type":"text","text":"history"}`, messages)
 	defer listener.Close()
-	result := runWorktreeBinary(t, home, path, "EVERY-46")
+	result := runWorktreeBinaryArgs(t, home, path, "--app", "EVERY-46")
 	<-done
 	if result.err != nil || !strings.Contains(result.stdout, "registered checkout: "+remote) || !strings.Contains(result.stdout, "HTTP ready") {
 		t.Fatalf("result=%+v", result)
 	}
 	calls := readLog(t, log)
-	if strings.Contains(calls, "git worktree add") || strings.Contains(calls, "systemd-run|") || !strings.Contains(calls, "vm-sync|--remote-cwd "+remote+" EVERY-46") {
+	if strings.Contains(calls, "git worktree add") || strings.Contains(calls, "systemd-run|") || !strings.Contains(calls, "vm-sync|--prepare --remote-cwd "+remote+" EVERY-46") {
 		t.Fatalf("wrong repeated-start flow:\n%s", calls)
 	}
 }
@@ -205,7 +230,7 @@ esac
 	listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, messages)
 	defer listener.Close()
 	result := runWorktreeBinary(t, home, path, "EVERY-52")
-	if result.err == nil || !strings.Contains(result.stdout, "install-failed") || !strings.Contains(result.stdout, "mirror not current or dependencies not ready") || !strings.Contains(result.stdout, "new agent was not spawned") {
+	if result.err == nil || !strings.Contains(result.stdout, "install-failed") || !strings.Contains(result.stdout, "source mirror not ready") || !strings.Contains(result.stdout, "new agent was not spawned") {
 		t.Fatalf("result=%+v", result)
 	}
 	if strings.Contains(readLog(t, log), "process-compose-wt-") {
@@ -221,7 +246,7 @@ esac
 func TestWorktreeRejectsScriptAsset500AfterEarlierAnchor(t *testing.T) {
 	web, api, stop := worktreeHTTPAt(t, 0, 0, http.StatusOK, http.StatusInternalServerError)
 	defer stop()
-	script := matchingTunnelScript(web, api) + fmt.Sprintf(`
+	script := strings.ReplaceAll(matchingTunnelScript(web, api), " tester@test-host", " -L 127.0.0.1:8001:127.0.0.1:8001 tester@test-host") + fmt.Sprintf(`
 case "${0##*/}|$*" in
   "ssh|"*"process-compose-wt-"*) printf '/remote/config.yaml\n---VMCTL-CONFIG---\n- WEB_PORT=%d\n- VITE_GO_API_BASE_URL=http://127.0.0.1:%d\n' ;;
 esac
@@ -230,7 +255,7 @@ esac
 	makeWorktreeMirror(t, home, "lovable.daphen-every-48")
 	listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, make(chan map[string]any, 1))
 	defer listener.Close()
-	result := runWorktreeBinary(t, home, path, "EVERY-48")
+	result := runWorktreeBinaryArgs(t, home, path, "--script-tag", "EVERY-48")
 	if result.err == nil || !strings.Contains(result.stdout, fmt.Sprintf("client asset http://localhost:%d/src/main.tsx returned HTTP 500", web)) || strings.Contains(result.stdout, "HTTP ready —") {
 		t.Fatalf("result=%+v", result)
 	}
@@ -256,7 +281,7 @@ esac
 	makeWorktreeMirror(t, home, "lovable.daphen-every-49")
 	listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, make(chan map[string]any, 1))
 	defer listener.Close()
-	result := runWorktreeBinary(t, home, path, "EVERY-49")
+	result := runWorktreeBinaryArgs(t, home, path, "--app", "EVERY-49")
 	if result.err == nil || !strings.Contains(result.stdout, fmt.Sprintf("local loopback port %d is already in use", web)) || strings.Contains(readLog(t, log), "systemd-run|") {
 		t.Fatalf("result=%+v calls=%s", result, readLog(t, log))
 	}

@@ -53,6 +53,15 @@ until explicitly revised:
 
 ## Dispatch and lifecycle
 
+`vm-wt EVERY-N` prepares the VM checkout, source mirror, and worker only; it does
+not start the app or install project dependencies locally. When an app is needed,
+run `vm-wt --app EVERY-N` from the laptop to reuse the canonical VM startup,
+loopback tunnel, and HTTP checks. Use `--script-tag` only when that runtime is
+explicitly needed. The existing worker owns VM dependencies, builds, logs,
+diagnostics and tests inside its registered checkout using the repository's
+existing devenv commands. Never reconstruct these with ad-hoc SSH or run project
+setup in the local mirror; existing auth, sandbox and restart approvals still apply.
+
 Run `agent_roster` before dispatching. Reuse the one session that already owns
 the task; one session owns one unit of work. A dispatch is not an outcome:
 verify it with the roster, transcript, or artifact, and report an unconfirmed

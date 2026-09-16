@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-func runWorktree(a app, ticket, raw string, scriptTag bool) error {
+func runWorktree(a app, ticket, raw string, startApp, scriptTag bool) error {
 	runtime := envDefault("XDG_RUNTIME_DIR", "/tmp")
 	sock := filepath.Join(runtime, "agentd-work.sock")
 	if !isSocket(sock) {
@@ -57,22 +57,25 @@ func runWorktree(a app, ticket, raw string, scriptTag bool) error {
 	}
 	mirror := worktreeMirror(a, ticket, vmwt)
 
-	worktreeSay(a, "boot devenv wt in tmux session wt-"+ticket+" …")
-	boot := "export PATH=$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH\n" +
-		"if tmux has-session -t 'wt-" + ticket + "' 2>/dev/null; then " +
-		"[ \"$(tmux display-message -p -t 'wt-" + ticket + "' '#{session_path}')\" = '" + vmwt + "' ] || { echo 'tmux wt-" + ticket + " belongs to another checkout' >&2; exit 19; }; " +
-		"echo '  tmux wt-" + ticket + " already running'\n" +
-		"else tmux new-session -d -s 'wt-" + ticket + "' -c '" + vmwt + "' " +
-		"'export PATH=$HOME/src/lovable/bin:$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH; nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous 2>&1 | tee ~/wt-" + ticket + ".log'; " +
-		"echo '  started (logs: ~/wt-" + ticket + ".log on the VM, or tmux attach -t wt-" + ticket + ")'; fi"
-	if text, err := worktreeSSHResult(a, boot); err != nil {
-		return fmt.Errorf("remote dev startup failed for %s: %s", vmwt, strings.TrimSpace(text))
+	if startApp {
+		worktreeSay(a, "boot devenv wt in tmux session wt-"+ticket+" …")
+		boot := "export PATH=$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH\n" +
+			"if tmux has-session -t 'wt-" + ticket + "' 2>/dev/null; then " +
+			"[ \"$(tmux display-message -p -t 'wt-" + ticket + "' '#{session_path}')\" = '" + vmwt + "' ] || { echo 'tmux wt-" + ticket + " belongs to another checkout' >&2; exit 19; }; " +
+			"echo '  tmux wt-" + ticket + " already running'\n" +
+			"else tmux new-session -d -s 'wt-" + ticket + "' -c '" + vmwt + "' " +
+			"'export PATH=$HOME/src/lovable/bin:$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH; nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous 2>&1 | tee ~/wt-" + ticket + ".log'; " +
+			"echo '  started (logs: ~/wt-" + ticket + ".log on the VM, or tmux attach -t wt-" + ticket + ")'; fi"
+		if text, err := worktreeSSHResult(a, boot); err != nil {
+			return fmt.Errorf("remote dev startup failed for %s: %s", vmwt, strings.TrimSpace(text))
+		}
+
 	}
 
 	worktreeSay(a, "local worktree + sync via vm-sync …")
-	syncArgs := []string{raw}
+	syncArgs := []string{"--prepare", raw}
 	if vmwt != repo+"-"+ticket {
-		syncArgs = []string{"--remote-cwd", vmwt, raw}
+		syncArgs = []string{"--prepare", "--remote-cwd", vmwt, raw}
 	}
 	text, syncErr := a.combined(filepath.Join(a.home, ".local", "bin", "vm-sync"), syncArgs...)
 	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
@@ -85,12 +88,12 @@ func runWorktree(a app, ticket, raw string, scriptTag bool) error {
 		mirrorErr = verifyWorktreeMirror(a, vmwt, mirror)
 	}
 	if mirrorErr == nil {
-		worktreeSay(a, "mirror current and dependencies ready: "+mirror)
+		worktreeSay(a, "source mirror ready: "+mirror)
 	} else {
-		worktreeSay(a, "✗ mirror not current or dependencies not ready: "+mirrorErr.Error())
+		worktreeSay(a, "✗ source mirror not ready: "+mirrorErr.Error())
 		worktreeSay(a, "  retry: vm-sync "+strings.Join(syncArgs, " "))
 		if existing == nil {
-			worktreeSay(a, "new agent was not spawned; VM runtime was left running")
+			worktreeSay(a, "new agent was not spawned; existing VM state was preserved")
 			return silentError{}
 		}
 	}
@@ -112,6 +115,11 @@ func runWorktree(a app, ticket, raw string, scriptTag bool) error {
 			return silentError{}
 		}
 		worktreeSay(a, "routing the registered runtime despite the independent mirror failure")
+	}
+
+	if !startApp {
+		worktreeSay(a, "worker/source ready; app startup not requested (vm-wt --app "+strings.ToUpper(raw)+")")
+		return nil
 	}
 
 	ports, err := discoverWorktreePorts(a, vmwt)
