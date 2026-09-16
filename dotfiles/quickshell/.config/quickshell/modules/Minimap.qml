@@ -44,8 +44,10 @@ Item {
         }
         for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
             const group = groups[groupIndex]
+            const stackedPair = groups.length === 2 && groups[0].ws.id === groups[1].ws.id
             const row = groups.length === 1
                 ? Math.floor(root.rows / 2)
+                : stackedPair ? groupIndex
                 : Math.round(groupIndex * (root.rows - 1) / (groups.length - 1))
             for (const window of group.windows) {
                 if (positions.length >= 256) break
