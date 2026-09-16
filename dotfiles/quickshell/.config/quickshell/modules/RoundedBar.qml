@@ -84,6 +84,28 @@ PanelWindow {
             activities.push(...(root.activities || []))
         return activities
     }
+    readonly property var metricTooltipTarget: weatherHover.hovered ? weatherMetric
+        : cpuHover.hovered ? cpuMetric
+        : memoryHover.hovered ? memoryMetric
+        : networkHover.hovered ? networkMetric
+        : audioHover.hovered ? audioMetric
+        : batteryHover.hovered ? batteryMetric
+        : null
+    readonly property string metricTooltipText: metricTooltipTarget === weatherMetric
+        ? Qt.formatDate(tooltipClock.date, "dddd, MMMM d")
+        : metricTooltipTarget === cpuMetric ? cpuMetric.usage + "%"
+        : metricTooltipTarget === memoryMetric ? memoryMetric.percentage + "%"
+        : metricTooltipTarget === networkMetric ? networkMetric.label
+        : metricTooltipTarget === audioMetric
+            ? Math.round((audioMetric.muted ? 0 : audioMetric.volume) * 100) + "%"
+        : metricTooltipTarget === batteryMetric
+            ? Math.round(batteryMetric.percentage) + "% · "
+                + (batteryMetric.powerDraw >= 0.05
+                    ? batteryMetric.powerDraw.toFixed(1) + " W"
+                    : batteryMetric.onBattery ? "0.0 W" : "on AC")
+        : ""
+
+    SystemClock { id: tooltipClock; precision: SystemClock.Minutes }
     readonly property real activePickerHeight: Math.max(
         launcherPicker.open ? launcherPicker.implicitHeight : 0,
         reviewCreatePicker.open ? reviewCreatePicker.implicitHeight : 0,
@@ -215,9 +237,18 @@ PanelWindow {
             }
 
             Modules.DateText {}
-            Modules.Weather {}
-            Modules.Cpu {}
-            Modules.Memory {}
+            Modules.Weather {
+                id: weatherMetric
+                HoverHandler { id: weatherHover }
+            }
+            Modules.Cpu {
+                id: cpuMetric
+                HoverHandler { id: cpuHover }
+            }
+            Modules.Memory {
+                id: memoryMetric
+                HoverHandler { id: memoryHover }
+            }
 
             Lib.Crossfade {
                 id: activitySwap
@@ -276,9 +307,18 @@ PanelWindow {
 
             Modules.Inbox {}
             Modules.Dnd {}
-            Modules.Network {}
-            Modules.Audio {}
-            Modules.Battery {}
+            Modules.Network {
+                id: networkMetric
+                HoverHandler { id: networkHover }
+            }
+            Modules.Audio {
+                id: audioMetric
+                HoverHandler { id: audioHover }
+            }
+            Modules.Battery {
+                id: batteryMetric
+                HoverHandler { id: batteryHover }
+            }
             Modules.Clock {}
 
             Row {
@@ -365,6 +405,61 @@ PanelWindow {
             }
             Modules.AgentAskPicker { id: agentAskPicker; anchors.fill: parent }
             Modules.CockpitPicker { id: cockpitPicker; anchors.fill: parent }
+        }
+    }
+
+    Rectangle {
+        id: metricTooltip
+        readonly property bool targetInRightGroup: bar.metricTooltipTarget === networkMetric
+            || bar.metricTooltipTarget === audioMetric
+            || bar.metricTooltipTarget === batteryMetric
+        readonly property real targetCenterX: bar.metricTooltipTarget
+            ? capsule.x + (targetInRightGroup ? rightGroup.x : leftGroup.x)
+                + bar.metricTooltipTarget.x + bar.metricTooltipTarget.width / 2
+            : retainedCenterX
+        property real retainedCenterX: 0
+        property string retainedText: ""
+        onTargetCenterXChanged: {
+            if (bar.metricTooltipTarget !== null) retainedCenterX = targetCenterX
+        }
+        Connections {
+            target: bar
+            function onMetricTooltipTextChanged() {
+                if (bar.metricTooltipText.length > 0)
+                    metricTooltip.retainedText = bar.metricTooltipText
+            }
+        }
+        visible: bar.metricTooltipTarget !== null || opacity > 0
+        opacity: bar.metricTooltipTarget !== null ? 1 : 0
+        x: Math.max(12, Math.min(bar.width - width - 12, retainedCenterX - width / 2))
+        y: capsule.y + Modules.Theme.barHeight + (bar.metricTooltipTarget !== null ? 2 : -3)
+        width: metricTooltipLabel.implicitWidth + 20
+        height: 30
+        radius: 10
+        color: Modules.Theme.surface2
+        border.width: 1
+        border.color: Modules.Theme.hairline
+        z: 10
+
+        Behavior on opacity {
+            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+        }
+        Behavior on y {
+            NumberAnimation {
+                duration: Lib.Motion.med
+                easing.type: Lib.Motion.easeEmphasized
+                easing.bezierCurve: Lib.Motion.curveEmphasized
+            }
+        }
+
+        Text {
+            id: metricTooltipLabel
+            anchors.centerIn: parent
+            text: metricTooltip.retainedText
+            color: Modules.Theme.fg
+            font.family: Modules.Theme.fontFamily
+            font.pixelSize: Modules.Theme.fontSize - 1
+            font.weight: Modules.Theme.fontWeight
         }
     }
 

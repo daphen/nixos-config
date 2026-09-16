@@ -9,6 +9,8 @@ Item {
 
     readonly property var battery: UPower.displayDevice
     readonly property real percentage: battery ? battery.percentage * 100 : 0
+    readonly property real powerDraw: battery ? Math.abs(battery.changeRate) : 0
+    readonly property bool onBattery: UPower.onBattery
     // Don't name this `state` — Item.state is a built-in string property and
     // shadowing it makes the enum comparison below silently fail.
     readonly property int chargeState: battery ? battery.state : 0
