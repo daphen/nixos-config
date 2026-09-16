@@ -16,7 +16,7 @@ PanelWindow {
 
     screen: {
         const _ = NiriState.version
-        const output = NiriState.focusedOutput()
+        const output = PaletteState.targetOutput || NiriState.focusedOutput()
         const screens = Quickshell.screens
         for (let i = 0; i < screens.length; i++)
             if (screens[i].name === output) return screens[i]
@@ -915,6 +915,9 @@ PanelWindow {
             if (sid == null) return
             const focused = (PaletteState.chin || []).find(w => w.focused)
             if (focused && focused.id !== sid) root.scopedWindowId = null
+        }
+        function onTabCycleRequested(direction, commit) {
+            root.handlePaletteTabCycle(direction, commit)
         }
         function onSaveResult(result) {
             markToast.show(result === "ok" ? "saved to Synced ✓"

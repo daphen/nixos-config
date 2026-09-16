@@ -5,9 +5,10 @@ monitor=$(hyprctl -j monitors | jq -c '.[] | select(.focused)')
 output=$(jq -r '.name // empty' <<< "$monitor")
 monitor_id=$(jq -r '.id // empty' <<< "$monitor")
 
-target=$(hyprctl -j clients | jq -r --argjson monitor "$monitor_id" '
+target_row=$(hyprctl -j clients | jq -r --argjson monitor "$monitor_id" '
     [.[] | select((.class == "browser-personal" or .class == "browser-work") and .monitor == $monitor)]
-    | sort_by(.focusHistoryID) | .[0].address // empty')
+    | sort_by(.focusHistoryID) | .[0] | [.address, .class] | @tsv')
+IFS=$'\t' read -r target target_class <<< "$target_row"
 
 if [[ -n "$target" ]]; then
     current=$(hyprctl -j activewindow | jq -r '.address // empty')
@@ -18,6 +19,8 @@ if [[ -n "$target" ]]; then
             sleep 0.01
         done
     fi
+    qs ipc call -- palette focusProfile "${target_class#browser-}"
+    sleep 0.05
 fi
 
 exec qs ipc call -- palette toggleOn "$output"

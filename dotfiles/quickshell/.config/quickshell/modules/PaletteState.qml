@@ -13,6 +13,7 @@ Singleton {
 
     property bool open: false
     property bool daemonConnected: false
+    property string targetOutput: ""
 
     property string profile: ""
     property var tabs: []
@@ -30,6 +31,11 @@ Singleton {
     property int _histReq: 0
 
     function toggle() { open = !open }
+    function toggleOn(output) {
+        if (!open) targetOutput = output || ""
+        open = !open
+    }
+    function focusProfile(profile) { send({ cmd: "focus-profile", profile: profile }) }
     function show()   { open = true }
     function hide()   { open = false }
 
@@ -49,6 +55,7 @@ Singleton {
 
     // Result of a save-synced roundtrip: "ok" | "dupe" | "fail".
     signal saveResult(string result)
+    signal tabCycleRequested(int direction, bool commit)
     function searchHistory(query) {
         _histReq++
         send({ cmd: "history-search", reqId: _histReq, query: query || "" })
@@ -115,7 +122,13 @@ Singleton {
     IpcHandler {
         target: "palette"
         function toggle() { root.toggle() }
+        function toggleOn(output: string) { root.toggleOn(output) }
+        function focusProfile(profile: string) { root.focusProfile(profile) }
         function show()   { root.show() }
         function hide()   { root.hide() }
+        function tabCycle(direction: int, commit: bool, output: string) {
+            if (!root.open && output) root.targetOutput = output
+            root.tabCycleRequested(direction, commit)
+        }
     }
 }
