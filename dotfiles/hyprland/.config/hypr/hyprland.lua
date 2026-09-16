@@ -645,27 +645,22 @@ for _, direction in ipairs({ "h", "j", "k", "l" }) do
 end
 
 local palette_tab_cycle_active = false
-local palette_tab_cycle_profile = ""
 local palette_tab_cycle_output = ""
 local function palette_tab_cycle(direction)
     return function()
         local window = hl.get_active_window()
         if not palette_tab_cycle_active then
-            local class = window and window.class or ""
-            palette_tab_cycle_profile = class == "browser-work" and "work" or "personal"
             palette_tab_cycle_output = window and window.monitor and window.monitor.name or ""
         end
         palette_tab_cycle_active = true
-        hl.exec_cmd(string.format(
-            "qs ipc call -- palette focusProfile %q; sleep 0.05; qs ipc call -- palette tabCycle %d false %q",
-            palette_tab_cycle_profile, direction, palette_tab_cycle_output))
+        hl.exec_cmd(string.format("qs ipc call -- palette tabCycle %d false %q",
+            direction, palette_tab_cycle_output))
     end
 end
 
 local function finish_palette_tab_cycle()
     if not palette_tab_cycle_active then return end
     palette_tab_cycle_active = false
-    palette_tab_cycle_profile = ""
     palette_tab_cycle_output = ""
     hl.exec_cmd("qs ipc call -- palette tabCycle 0 true ''")
 end
@@ -683,6 +678,10 @@ local function set_palette_tab_bindings(window)
     local class = window and window.class or ""
     local enabled = class == "browser-personal" or class == "browser-work"
     for _, binding in ipairs(palette_tab_bindings) do binding:set_enabled(enabled) end
+    if enabled then
+        local profile = class == "browser-work" and "work" or "personal"
+        hl.exec_cmd(string.format("qs ipc call -- palette focusProfile %q", profile))
+    end
 end
 
 set_palette_tab_bindings(hl.get_active_window())
