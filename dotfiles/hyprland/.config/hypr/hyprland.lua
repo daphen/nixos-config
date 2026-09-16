@@ -661,7 +661,7 @@ local function palette_tab_cycle(direction)
                 "qs ipc call -- palette focusProfile %q; sleep 0.05; qs ipc call -- palette tabCycle %d false %q",
                 palette_tab_cycle_profile, direction, palette_tab_cycle_output))
         else
-            hl.dispatch(hl.dsp.pass("activewindow"))
+            hl.dispatch(hl.dsp.pass({ window = "activewindow" }))
         end
     end
 end
