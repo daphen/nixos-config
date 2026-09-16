@@ -673,9 +673,11 @@ end
 local palette_tab_bindings = {
     hl.bind("CTRL + h", palette_tab_cycle(-1), { repeating = true }),
     hl.bind("CTRL + l", palette_tab_cycle(1), { repeating = true }),
-    hl.bind("CTRL + Control_L", finish_palette_tab_cycle, { release = true, non_consuming = true }),
-    hl.bind("CTRL + Control_R", finish_palette_tab_cycle, { release = true, non_consuming = true }),
 }
+
+hl.on("input.keyboard.key", function(keycode, _, state)
+    if state == 0 and (keycode == 37 or keycode == 105) then finish_palette_tab_cycle() end
+end)
 
 local function set_palette_tab_bindings(window)
     local class = window and window.class or ""
