@@ -644,6 +644,48 @@ for _, direction in ipairs({ "h", "j", "k", "l" }) do
     hl.bind("SUPER + CTRL + " .. direction, hl.dsp.layout("resize " .. direction))
 end
 
+local palette_tab_cycle_active = false
+local palette_tab_cycle_profile = ""
+local palette_tab_cycle_output = ""
+local function palette_tab_cycle(direction)
+    return function()
+        local window = hl.get_active_window()
+        if not palette_tab_cycle_active then
+            local class = window and window.class or ""
+            palette_tab_cycle_profile = class == "browser-work" and "work" or "personal"
+            palette_tab_cycle_output = window and window.monitor and window.monitor.name or ""
+        end
+        palette_tab_cycle_active = true
+        hl.exec_cmd(string.format(
+            "qs ipc call -- palette focusProfile %q; sleep 0.05; qs ipc call -- palette tabCycle %d false %q",
+            palette_tab_cycle_profile, direction, palette_tab_cycle_output))
+    end
+end
+
+local function finish_palette_tab_cycle()
+    if not palette_tab_cycle_active then return end
+    palette_tab_cycle_active = false
+    palette_tab_cycle_profile = ""
+    palette_tab_cycle_output = ""
+    hl.exec_cmd("qs ipc call -- palette tabCycle 0 true ''")
+end
+
+local palette_tab_bindings = {
+    hl.bind("CTRL + h", palette_tab_cycle(-1), { repeating = true }),
+    hl.bind("CTRL + l", palette_tab_cycle(1), { repeating = true }),
+    hl.bind("CTRL + Control_L", finish_palette_tab_cycle, { release = true, non_consuming = true }),
+    hl.bind("CTRL + Control_R", finish_palette_tab_cycle, { release = true, non_consuming = true }),
+}
+
+local function set_palette_tab_bindings(window)
+    local class = window and window.class or ""
+    local enabled = class == "browser-personal" or class == "browser-work"
+    for _, binding in ipairs(palette_tab_bindings) do binding:set_enabled(enabled) end
+end
+
+set_palette_tab_bindings(hl.get_active_window())
+hl.on("window.active", set_palette_tab_bindings)
+
 hl.bind("ALT + CTRL + h", hl.dsp.layout("pan -120 0"), { repeating = true })
 hl.bind("ALT + CTRL + l", hl.dsp.layout("pan 120 0"), { repeating = true })
 hl.bind("ALT + CTRL + k", hl.dsp.layout("pan 0 -120"), { repeating = true })
