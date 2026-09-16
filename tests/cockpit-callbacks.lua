@@ -26,7 +26,9 @@ vim.cmd.cd(root)
 local cockpit = require("cockpit")
 cockpit.setup({ autostart = false })
 local errors, original_notify = {}, vim.notify
+local approval_processed = false
 vim.notify = function(message, level, opts)
+  if tostring(message):find("approval sequence complete", 1, true) then approval_processed = true end
   if level == vim.log.levels.ERROR then errors[#errors + 1] = tostring(message) end
   original_notify(message, level, opts)
 end
@@ -56,6 +58,12 @@ for _, case in ipairs(cases) do
     check(vim.wait(1000, function() return fn.filereadable(home .. "/notified") == 1 and #fn.readfile(home .. "/notified") > before end, 10), case .. " marker permits notification without callback error")
   end
 end
+cockpit.workspace("personal", "selected", root, "", "code", root .. "/code.txt")
+local cursor = vim.o.guicursor
+client:write(vim.json.encode({ type = "extension_ui_request", session = "selected", method = "confirm", id = "selected-ask", title = "Question" }) .. "\n"
+  .. vim.json.encode({ type = "extension_ui_request", session = "selected", method = "notify", message = "approval sequence complete" }) .. "\n")
+check(vim.wait(1000, function() return approval_processed end, 10), "selected-session approval was processed")
+check(vim.o.guicursor == cursor and vim.api.nvim_buf_get_name(0) == root .. "/code.txt", "QML approval must not hide the editor cursor or steal its buffer")
 cockpit.git_summary(root)
 check(vim.wait(3000, function() local s = cockpit.git_summary(root); return s and s.add == 1 and s.del == 1 end, 10), "split Git hunk header preserves exact addition/deletion counts")
 check(#errors == 0, "scheduled callback errors: " .. table.concat(errors, "\n"))

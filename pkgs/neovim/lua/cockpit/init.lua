@@ -799,6 +799,7 @@ local function prompt_mode()
 end
 
 apply_prompt_mode = function()
+  if not (S.composerwin and api.nvim_win_is_valid(S.composerwin)) then return end
   local pm = prompt_mode()
   if sync_approval_keys then sync_approval_keys() end -- (un)bind y/n/number for `choose`
   if S.composerwin and api.nvim_win_is_valid(S.composerwin) then
