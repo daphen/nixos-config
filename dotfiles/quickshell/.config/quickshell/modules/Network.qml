@@ -11,7 +11,7 @@ Item {
     property string label: "Disconnected"
     property int strength: 0
 
-    implicitWidth: row.implicitWidth + Theme.modulePadH * 2
+    implicitWidth: indicator.implicitWidth + Theme.modulePadH * 2
     implicitHeight: parent ? parent.height : Theme.barHeight
 
     Process {
@@ -50,29 +50,14 @@ Item {
         onTriggered: proc.running = true
     }
 
-    Row {
-        id: row
+    ProgressRingIcon {
+        id: indicator
         anchors.centerIn: parent
-        spacing: 6
-
-        Lib.Icon {
-            // custom thick-stroke wifi fan, arcs by signal strength
-            name: root.kind === "eth" ? "plug-2"
+        progress: root.kind === "eth" ? 1 : root.kind === "wifi" ? root.strength / 100 : 0
+        iconName: root.kind === "eth" ? "plug-2"
                 : root.strength > 66 ? "wifi-3"
                 : root.strength > 33 ? "wifi-2" : "wifi-1"
-            color: Theme.fg
-            // signal fan occupies a corner of its grid — biggest optical bump
-            width: 17; height: 17
-            anchors.verticalCenter: parent.verticalCenter
-        }
-        Text {
-            text: root.label
-            color: Theme.fg
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
-            font.weight: Theme.fontWeight
-            font.hintingPreference: Font.PreferFullHinting
-            anchors.verticalCenter: parent.verticalCenter
-        }
+        iconSize: 16
     }
+
 }
