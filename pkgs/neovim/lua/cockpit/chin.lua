@@ -26,6 +26,11 @@ local function repo_root(dir)
 	return r
 end
 local function refresh_diff(done)
+	local cockpit = package.loaded["cockpit"]
+	if cockpit and cockpit.dashboard_snapshot and cockpit.dashboard_snapshot().active then
+		if done then done() end
+		return
+	end
 	if diff_refreshing then return end
 	diff_refreshing = true
 	local cwd = vim.fn.getcwd()
@@ -118,6 +123,7 @@ local function gather()
 			if fr ~= "" then git_cwd = fr end
 		end
 		shared_diff = m.git_summary and m.git_summary(git_cwd) or nil
+		if dashboard.active and not shared_diff then shared_diff = { add = 0, del = 0 } end
 	end)
 	-- SESSION-scoped only: the plan-nvim statusline fallback reported the
 	-- last-opened plan BUFFER regardless of session (inline-user-bash showing
