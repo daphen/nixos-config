@@ -14,7 +14,7 @@ let
     };
     Service = {
       Type = "simple";
-      Environment = "PATH=${pkgs.libsecret}/bin:${pkgs.fish}/bin:/run/current-system/sw/bin";
+      Environment = "PATH=${pkgs.libsecret}/bin:${pkgs.fish}/bin:/etc/profiles/per-user/daphen/bin:/run/current-system/sw/bin";
       ExecStart = "%h/.config/niri/scripts/launch-agentd ${scope} ${extraArgs}";
       Restart = "on-failure";
       RestartSec = "10s";

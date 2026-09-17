@@ -60,6 +60,9 @@ opencode/.config/opencode/opencode.json
 # prompt themes are tracked (dev-env ships them to sandboxes).
 claude/.claude/*
 !claude/.claude/themes/
+!claude/.claude/hooks/
+claude/.claude/hooks/*
+!claude/.claude/hooks/notify-with-context.sh
 # Personal skills travel to sandboxes via #dev-env (see pkgs/daphen-env).
 # Workflow instructions only — no credentials. PUBLIC, so keep it that way.
 !claude/.claude/skills/

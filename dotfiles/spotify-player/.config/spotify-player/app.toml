@@ -1,5 +1,5 @@
 theme = "custom"
-client_id = "d420a117a32841c2b3474932e49fb54b"
+client_id = "e2b6523f85ef463099d6c108a26964f8"
 client_port = 24915
 login_redirect_uri = "http://127.0.0.1:8989/login"
 playback_format = """

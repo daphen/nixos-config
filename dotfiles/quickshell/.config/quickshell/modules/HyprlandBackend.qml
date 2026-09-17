@@ -55,7 +55,7 @@ Item {
     Connections {
         target: Hyprland
         function onRawEvent(event) {
-            const relevant = ["openwindow", "closewindow", "movewindow", "workspace", "focusedmon", "createworkspace", "destroyworkspace", "activewindow", "activewindowv2"]
+            const relevant = ["openwindow", "closewindow", "movewindow", "workspace", "focusedmon", "createworkspace", "destroyworkspace", "activewindow", "activewindowv2", "fullscreen"]
             if (!event || relevant.indexOf(event.name) < 0) return
             if (canvasQuery.running) state.refreshAgain = true
             else refreshTimer.restart()
@@ -117,7 +117,8 @@ Item {
                 is_focused: window.activated === true,
                 is_floating: object.floating === true,
                 workspace_id: workspace.id,
-                fullscreen: Number(object.fullscreen || 0) !== 0,
+                fullscreen: Number(object.fullscreen || 0) === 2
+                    || Number(object.fullscreenClient || 0) === 2,
                 layout: {
                     pos_in_scrolling_layout: [column + 1, row + 1],
                     canvas_row: row,
@@ -292,19 +293,37 @@ Item {
 
     function windowIsFullscreen(window) {
         const object = objectFor(window)
-        return Number(object.fullscreen || 0) !== 0
-            || Number(object.fullscreenClient || 0) !== 0
+        return Number(object.fullscreen || 0) === 2
+            || Number(object.fullscreenClient || 0) === 2
     }
 
     function focusedIsFullscreen(outputHeight) {
-        return !!(Hyprland.focusedWorkspace && Hyprland.focusedWorkspace.hasFullscreen)
+        const workspace = Hyprland.focusedWorkspace
+        const windows = workspace && workspace.toplevels ? workspace.toplevels.values : []
+        for (const window of windows)
+            if (window.activated) return windowIsFullscreen(window)
+        return false
     }
 
     function outputIsFullscreen(outputName, outputHeight) {
+        const _ = version
+        if (canvasSnapshot) {
+            const monitors = {}
+            for (const monitor of (canvasSnapshot.monitors || [])) monitors[monitor.id] = monitor
+            for (const client of (canvasSnapshot.clients || [])) {
+                const monitor = monitors[client.monitor]
+                if (monitor && monitor.name === outputName && Number(client.focusHistoryID) === 0)
+                    return Number(client.fullscreen || 0) === 2
+                        || Number(client.fullscreenClient || 0) === 2
+            }
+            return false
+        }
         const workspaces = Hyprland.workspaces.values || []
         for (const workspace of workspaces) {
-            if (workspace.active && outputForWorkspace(workspace) === outputName)
-                return workspace.hasFullscreen === true
+            if (!workspace.active || outputForWorkspace(workspace) !== outputName) continue
+            const windows = workspace.toplevels ? workspace.toplevels.values : []
+            for (const window of windows)
+                if (window.activated) return windowIsFullscreen(window)
         }
         return false
     }

@@ -314,13 +314,6 @@ Item {
         id: notch
         anchors.fill: parent
         opacity: root.open ? 1.0 : 0.0
-        Behavior on opacity {
-            NumberAnimation {
-                duration: 190
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: [0.26, 0.08, 0.25, 1.0, 1.0, 1.0]
-            }
-        }
 
         readonly property string sans: Theme.fontFamily
 
@@ -340,7 +333,7 @@ Item {
                     anchors.topMargin: 14
                     anchors.bottomMargin: 6
                     radius: 15
-                    color: Theme.surface2
+                    color: Theme.surface0
                     border.width: 1
                     border.color: Theme.hairline
                 }
@@ -625,7 +618,7 @@ Item {
                         anchors.leftMargin: 14
                         anchors.rightMargin: 14
                         radius: 13
-                        color: rowItem.index === root.selectedIndex ? Theme.itemCursor
+                        color: rowItem.index === root.selectedIndex ? Theme.bg
                              : rowHover.hovered ? Theme.itemHover
                              : "transparent"
                     }
@@ -977,7 +970,7 @@ Item {
                     anchors.margins: 14
                     anchors.topMargin: 12
                     radius: 13
-                    color: Theme.surface2
+                    color: Theme.surface0
                     border.color: Theme.hairline
                     border.width: 1
                     Image {
@@ -1023,7 +1016,7 @@ Item {
                     anchors.leftMargin: 1
                     anchors.rightMargin: 1
                     anchors.bottomMargin: 1
-                    color: Theme.surface2
+                    color: Theme.surface0
                     bottomLeftRadius: 23
                     bottomRightRadius: 23
                 }

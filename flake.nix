@@ -85,6 +85,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    jovian.url = "github:Jovian-Experiments/Jovian-NixOS/1d3ea3cb0aa757316468105748f514fdb92b669d";
+
+    hyprland-canvas.url = "path:./experiments/hyprland-canvas";
+
     # Pinned nixpkgs for iwd 3.12 (fixes repeated SIGSEGV in build_ciphers_common during roaming)
     nixpkgs-iwd.url = "github:nixos/nixpkgs/34c521aa2928ec0f0b376f60d33816fe768ea60d";
 
@@ -202,43 +206,69 @@
         };
 
 
-      # Shared modules used by all machines
+      workstationOverlayModule = {
+        nixpkgs.overlays = [
+          iwdOverlay
+          widevineOverlay
+          asusctlOverlay
+          appsOverlay
+          neovimOverlay
+          inputs.quickshell.overlays.default
+        ];
+      };
+
+      homeManagerModule = desktopProfile: {
+        home-manager = {
+          useGlobalPkgs = true;
+          useUserPackages = true;
+          backupFileExtension = "backup";
+          users.daphen = import ./common/home;
+          extraSpecialArgs = {
+            inherit inputs desktopProfile;
+            nvimLocal = nvimPkgs.neovimLocal;
+            nvimBaked = nvimPkgs.neovim;
+          };
+        };
+      };
+
       commonModules = [
-        # Apply overlays
-        { nixpkgs.overlays = [ iwdOverlay widevineOverlay asusctlOverlay appsOverlay neovimOverlay inputs.quickshell.overlays.default ]; }
-
-        # Niri flake module (sets up dbus, portals, polkit, etc.)
+        workstationOverlayModule
         niri-flake.nixosModules.niri
-
-        # System modules
         ./common/niri.nix
         ./common/audio.nix
         ./common/bluetooth.nix
         ./common/ancs4linux.nix
         ./common/networking.nix
-
-        # Home Manager integration
         home-manager.nixosModules.home-manager
-        {
-          home-manager = {
-            useGlobalPkgs = true;
-            useUserPackages = true;
-            backupFileExtension = "backup";
-            users.daphen = import ./common/home;
-            extraSpecialArgs = {
-              inherit inputs;
-              nvimLocal = nvimPkgs.neovimLocal;
-              nvimBaked = nvimPkgs.neovim;
-            };
-          };
-        }
+        (homeManagerModule "workstation")
       ];
 
-      # Helper to build a machine configuration
       mkHost = machineModule: nixpkgs.lib.nixosSystem {
         inherit system;
         specialArgs = { inherit inputs; };
         modules = commonModules ++ [ machineModule ];
+      };
+
+      mkSteamDeck = inputs.jovian.inputs.nixpkgs.lib.nixosSystem {
+        inherit system;
+        specialArgs = { inherit inputs; };
+        modules = [
+          {
+            nixpkgs.overlays = [
+              inputs.jovian.overlays.default
+              inputs.quickshell.overlays.default
+              (_: prev: {
+                mangohud = prev.mangohud.overrideAttrs (old: {
+                  patches = inputs.jovian.inputs.nixpkgs.lib.unique old.patches;
+                });
+              })
+            ];
+          }
+          inputs.jovian.nixosModules.default
+          home-manager.nixosModules.home-manager
+          (homeManagerModule "deck")
+          ./machines/steamdeck
+        ];
       };
 
       # Ephemeral dev-env (`nix run github:daphen/nixos-config#dev-env`) for remote
@@ -262,6 +292,7 @@
       nixosConfigurations = {
         thinkpad = mkHost ./machines/thinkpad;
         proart   = mkHost ./machines/proart;
+        steamdeck = mkSteamDeck;
         # zenbook  = mkHost ./machines/zenbook;
       };
 

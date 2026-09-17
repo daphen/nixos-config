@@ -68,7 +68,11 @@ publish_validated() {
   fi
   local installed="$next$VALIDATED"
   [[ -x $installed/bin/Hyprland && -x $installed/bin/start-hyprland ]]
-  "$installed/bin/Hyprland" --verify-config --config "$CONFIG"
+  env -u WAYLAND_DISPLAY -u DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
+    HYPR_CANVAS_REAL=1 HYPR_CANVAS_PROFILE=workstation \
+    HYPR_SCRIPTS="$(dirname -- "$CONFIG")/scripts/" \
+    AQ_DRM_DEVICES="$(readlink -f /dev/dri/by-path/pci-0000:65:00.0-card)" \
+    "$installed/bin/Hyprland" --verify-config --config "$CONFIG"
   rm -rf -- "$VALIDATED"
   mv -- "$installed" "$VALIDATED"
   rm -rf -- "$next"

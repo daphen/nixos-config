@@ -133,6 +133,26 @@ in
     wantedBy = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
     serviceConfig = { Type = "oneshot"; ExecStart = "${pkgs.util-linux}/bin/rfkill block all"; };
   };
+  systemd.services.supergfxd-resume = {
+    description = "Restore Integrated GPU power state after resume";
+    after = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" "nvidia-resume.service" ];
+    wantedBy = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];
+    path = [ pkgs.supergfxctl pkgs.systemd ];
+    serviceConfig.Type = "oneshot";
+    script = ''
+      set -eu
+      mode="$(supergfxctl --get)"
+      [ "$mode" = Integrated ] || exit 0
+      pending="$(supergfxctl --pend-mode)"
+      [ "$pending" = Unknown ] || exit 0
+      power="$(supergfxctl --status)"
+      [ "$power" != off ] || exit 0
+      # Intentional resume restarts must not exhaust supergfxd's two-start limit.
+      systemctl reset-failed supergfxd.service
+      systemctl try-restart supergfxd.service
+    '';
+  };
+
   systemd.services.bluetooth-resume = {
     description = "Unblock Bluetooth and WiFi after resume";
     after = [ "systemd-suspend.service" "systemd-suspend-then-hibernate.service" "systemd-hibernate.service" ];

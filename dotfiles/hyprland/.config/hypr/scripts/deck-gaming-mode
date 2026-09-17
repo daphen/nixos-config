@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec 9>"${XDG_RUNTIME_DIR:?}/deck-gaming-mode.lock"
+flock 9
+workspace=$(hyprctl -j activeworkspace | jq -er '.name')
+profile() {
+    local path="/etc/inputplumber/profiles/hyprland-$1.yaml"
+    if [[ $(inputplumber device 0 profile path) != "Current profile path: '$path'" ]]; then
+        inputplumber device 0 profile load "$path"
+    fi
+}
+dispatch() {
+    local result
+    result=$(hyprctl dispatch "$1")
+    [[ $result == ok ]]
+}
+focus() { dispatch "hl.dsp.focus({workspace=\"$1\"})"; }
+
+case ${1:-enter} in
+    sync)
+        if [[ $workspace == gaming ]]; then profile gaming; else profile canvas; fi
+        exit 0
+        ;;
+    tap)
+        if [[ $workspace == gaming ]]; then
+            exec busctl call org.shadowblip.InputPlumber \
+                /org/shadowblip/InputPlumber/CompositeDevice0 \
+                org.shadowblip.Input.CompositeDevice SendButtonChord \
+                as 1 Gamepad:Button:Guide
+        fi
+        ;;
+    return)
+        [[ $workspace == gaming ]] || exit 0
+        if ! profile canvas; then profile gaming; exit 1; fi
+        if ! focus previous; then
+            profile gaming
+            exit 1
+        fi
+        exit 0
+        ;;
+    enter) ;;
+    *) echo 'Usage: deck-gaming-mode [enter|tap|return|sync]' >&2; exit 2 ;;
+esac
+
+if [[ $workspace != gaming ]]; then
+    if ! profile gaming; then profile canvas; exit 1; fi
+    if ! focus name:gaming; then
+        profile canvas
+        exit 1
+    fi
+fi
+# Dispatch asynchronously so Steam's lifetime cannot hold the transition lock.
+if ! dispatch 'hl.dsp.exec_cmd("steam steam://open/bigpicture")'; then
+    if [[ $workspace != gaming ]]; then
+        profile canvas
+        focus previous
+    fi
+    exit 1
+fi

@@ -1,6 +1,8 @@
 # Universal routing and safety
 
-Use `wt` (Worktrunk), never raw `git worktree`, for worktree operations.
+Use `wt` (Worktrunk), never raw `git worktree`, for worktree operations. The
+canonical `vm-wt` launcher is the sole exception: it uses stock Git remotely so
+launching a ticket does not require Worktrunk on the VM.
 
 Project context comes from `AGENTS.md` files loaded from the working directory.
 For work started elsewhere, use these small routers when the paths exist:
@@ -91,6 +93,29 @@ machines where it is absent.
   listing.
 
 The old `~/.claude/projects/-home-daphen/memory/` store is deprecated.
+
+# Heavyweight build-loop discipline
+
+For local native, system, desktop, or other heavyweight compiled projects,
+default to the lightest warm incremental path. Before compiling, identify the
+existing build command, cache directory, and expected invalidation scope. This
+section does not apply to normal application tests, package scripts, CI checks,
+or Lovable product work unless that project's own instructions say so.
+
+- Reuse a compatible persistent build directory; never create a disposable
+  per-session or `mktemp` build tree for iterative heavyweight compilation.
+- For isolated heavyweight work, use a stable cache keyed to the worktree or
+  ticket and keep source and build ownership in that one context. Never
+  duplicate the source into a second build root.
+- Do not bootstrap, clean, reconfigure, or launch a broad/full heavyweight
+  rebuild when a warm incremental path exists. If no compatible cache exists,
+  explain the expected cost and get explicit approval before starting it.
+- Treat changes to widely imported native headers, toolchains, and build flags
+  as broad invalidations. State that cost before making the change and prefer
+  the smallest production seam that avoids it.
+- After a heavyweight build, report whether it was warm incremental, cold
+  bootstrap, or broad invalidation; do not call a dependency-wide rebuild
+  “small.”
 
 # Execution and output
 

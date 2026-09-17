@@ -54,6 +54,10 @@ PanelWindow {
         if (!Modules.AgentAskState.inputOpen) return
         for (const state of exclusivePickerStates) state.open = false
     }
+    function dismissPickers() {
+        for (const state of exclusivePickerStates) state.open = false
+        Modules.AgentAskState.inputOpen = false
+    }
 
     Instantiator {
         model: bar.exclusivePickerStates
@@ -178,7 +182,7 @@ PanelWindow {
             anchors.fill: parent
             anchors.margins: 1
             radius: Math.max(0, capsule.radius - 1)
-            color: Modules.Theme.notch
+            color: Lib.Theme.bgDim
         }
 
         Row {
@@ -236,7 +240,6 @@ PanelWindow {
                 }
             }
 
-            Modules.DateText {}
             Modules.Weather {
                 id: weatherMetric
                 HoverHandler { id: weatherHover }
@@ -305,7 +308,6 @@ PanelWindow {
             }
             spacing: 8
 
-            Modules.Inbox {}
             Modules.Dnd {}
             Modules.Network {
                 id: networkMetric

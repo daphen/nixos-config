@@ -38,25 +38,25 @@ Picker {
 
     // clipse can't tell a screenshot from a pasted image, but both niri's
     // built-in screenshots (~/Pictures/Screenshots) and the selection script
-    // (/tmp/screenshot-*) leave a datestamped file. Scan their mtimes on open;
-    // an image whose recorded time matches one (±4s) was screenshotted.
-    property var shotTimes: []
+    // (/tmp/screenshot-*) leave a datestamped file. Cache their mtimes outside
+    // the open path; an image recorded within ±4s was screenshotted.
+    property var shotEpochs: ({})
     Process {
         id: shotScan
-        running: root.open
         command: ["bash", "-c",
             "stat -c %Y \"$HOME\"/Pictures/Screenshots/*.png /tmp/screenshot-*.png 2>/dev/null"]
         stdout: StdioCollector {
             onStreamFinished: {
-                const out = []
+                const out = {}
                 for (const l of (this.text || "").split("\n")) {
                     const n = parseInt(l.trim())
-                    if (!isNaN(n)) out.push(n)
+                    if (!isNaN(n)) out[n] = true
                 }
-                root.shotTimes = out
+                root.shotEpochs = out
             }
         }
     }
+    Component.onCompleted: shotScan.running = true
     function _recEpoch(rec) {
         const s = String(rec || "")
         if (s.length < 19) return 0
@@ -64,9 +64,9 @@ Picker {
                         +s.slice(11, 13), +s.slice(14, 16), +s.slice(17, 19)).getTime() / 1000
     }
     function _isShot(rec) {
-        const t = root._recEpoch(rec)
-        for (let i = 0; i < shotTimes.length; i++)
-            if (Math.abs(shotTimes[i] - t) <= 4) return true
+        const t = Math.round(root._recEpoch(rec))
+        for (let offset = -4; offset <= 4; offset++)
+            if (shotEpochs[t + offset]) return true
         return false
     }
 
@@ -92,7 +92,10 @@ Picker {
         id: histFile
         path: Quickshell.env("HOME") + "/.config/clipse/clipboard_history.json"
         watchChanges: true
-        onFileChanged: reload()
+        onFileChanged: {
+            reload()
+            shotScan.running = true
+        }
         property var entries: []
         onLoaded: {
             try {

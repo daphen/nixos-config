@@ -1,0 +1,173 @@
+{
+  "before": {
+    "active": {
+      "address": "0x564b70304430",
+      "mapped": true,
+      "hidden": false,
+      "visible": true,
+      "acceptsInput": true,
+      "at": [
+        -862,
+        482
+      ],
+      "size": [
+        428,
+        428
+      ],
+      "workspace": {
+        "address": "1",
+        "type": "numbered",
+        "name": "1"
+      },
+      "floating": false,
+      "monitor": 0,
+      "class": "popup-parent-fixture",
+      "title": "Canvas 2.1",
+      "initialClass": "popup-parent-fixture",
+      "initialTitle": "Canvas 2.1",
+      "pid": 318581,
+      "xwayland": false,
+      "pinned": false,
+      "pinFullscreened": false,
+      "fullscreen": 0,
+      "fullscreenClient": 0,
+      "fullscreenHandler": "default",
+      "allowedOverFullscreen": true,
+      "grouped": [],
+      "tags": [],
+      "swallowing": "0x0",
+      "focusHistoryID": 0,
+      "inhibitingIdle": false,
+      "xdgTag": "",
+      "xdgDescription": "",
+      "contentType": "none",
+      "tearingHint": false,
+      "stableId": "18000003"
+    },
+    "image": {
+      "center_rgb": [
+        0,
+        255,
+        0
+      ],
+      "orange_pixels": 0,
+      "dimensions": [
+        1296,
+        720
+      ]
+    }
+  },
+  "after": {
+    "active": {
+      "address": "0x564b70412c10",
+      "mapped": true,
+      "hidden": false,
+      "visible": true,
+      "acceptsInput": true,
+      "at": [
+        -752,
+        20
+      ],
+      "size": [
+        640,
+        440
+      ],
+      "workspace": {
+        "address": "1",
+        "type": "numbered",
+        "name": "1"
+      },
+      "floating": true,
+      "monitor": 0,
+      "class": "file-chooser",
+      "title": "File dialog fixture",
+      "initialClass": "file-chooser",
+      "initialTitle": "File dialog fixture",
+      "pid": 318628,
+      "xwayland": false,
+      "pinned": false,
+      "pinFullscreened": false,
+      "fullscreen": 0,
+      "fullscreenClient": 0,
+      "fullscreenHandler": "default",
+      "allowedOverFullscreen": true,
+      "grouped": [],
+      "tags": [],
+      "swallowing": "0x0",
+      "focusHistoryID": 0,
+      "inhibitingIdle": false,
+      "xdgTag": "",
+      "xdgDescription": "",
+      "contentType": "none",
+      "tearingHint": false,
+      "stableId": "18000004"
+    },
+    "image": {
+      "center_rgb": [
+        255,
+        128,
+        0
+      ],
+      "orange_pixels": 585067,
+      "dimensions": [
+        1296,
+        720
+      ]
+    }
+  },
+  "overview": {
+    "center_rgb": [
+      255,
+      128,
+      0
+    ],
+    "orange_pixels": 591510,
+    "dimensions": [
+      1296,
+      720
+    ]
+  },
+  "inputs": {
+    "normal": {
+      "click": [
+        320.1484375,
+        220.0
+      ],
+      "keys": [
+        104,
+        106,
+        107,
+        108
+      ],
+      "scroll": true
+    },
+    "overview": {
+      "click": [
+        320.1484375,
+        220.0
+      ],
+      "keys": [
+        104,
+        106,
+        107,
+        108
+      ],
+      "scroll": true
+    },
+    "after_overview": {
+      "click": [
+        320.1484375,
+        220.0
+      ],
+      "keys": [
+        104,
+        106,
+        107,
+        108
+      ],
+      "scroll": true
+    }
+  },
+  "config_sha256": "5edcd962416bba775246256779289ba2af72bc82328fea3b4613021f8a628671",
+  "binary_sha256": "a20311bb91741579da608abad6384df2c1b555422f9c0b860ea35ea5b2eec460"
+}

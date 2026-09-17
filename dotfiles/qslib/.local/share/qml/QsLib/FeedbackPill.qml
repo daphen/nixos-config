@@ -28,12 +28,8 @@ Rectangle {
             width: 8; height: 8; radius: 4
             color: Theme.cursor
             anchors.verticalCenter: parent.verticalCenter
-            SequentialAnimation on opacity {
-                running: pill.visible
-                loops: Animation.Infinite
-                NumberAnimation { from: 1; to: 0.25; duration: Motion.pulse }
-                NumberAnimation { from: 0.25; to: 1; duration: Motion.pulse }
-            }
+            readonly property real pulsePhase: (OrbClock.now % (Motion.pulse * 2)) / (Motion.pulse * 2)
+            opacity: pill.visible ? 0.625 + 0.375 * Math.cos(pulsePhase * 2 * Math.PI) : 1
         }
         Text {
             id: label

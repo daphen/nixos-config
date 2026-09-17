@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+scripts="$HOME/.config/niri/scripts"
+exec >>/tmp/niri-start-session-apps.log 2>&1
+
+has_window() {
+    local app_id=$1 title=$2
+    niri msg --json windows | jq -e --arg app_id "$app_id" --arg title "$title" '
+        any(.[]; .app_id == $app_id and ($title == "" or ((.title // "") | test($title))))
+    ' >/dev/null
+}
+
+start_and_wait() {
+    local label=$1 app_id=$2 title=$3
+    shift 3
+    printf '[startup] starting %s\n' "$label"
+    "$@" &
+    for _ in $(seq 1 450); do
+        has_window "$app_id" "$title" && {
+            printf '[startup] ready: %s\n' "$label"
+            return 0
+        }
+        sleep 0.2
+    done
+    printf '[startup] timed out waiting for %s\n' "$label" >&2
+    return 1
+}
+
+start_and_wait "work browser" browser-work "" "$scripts/browser-work"
+start_and_wait "work cockpit" org.quickshell '^cockpit-qs · .* · work$' "$scripts/cockpit-boot" work
+start_and_wait "personal browser" browser-personal "" "$scripts/browser-personal"
+start_and_wait "private cockpit" org.quickshell '^cockpit-qs · .* · personal$' "$scripts/cockpit-boot" personal
+start_and_wait "Discord" org.quickshell '^dsqrd$' "$scripts/niri-jump-or-exec" title:dsqrd "$scripts/launch-discord-client"
+start_and_wait "Slack" Slack "" "$scripts/niri-jump-or-exec" Slack slack
+start_and_wait "mail" org.quickshell '^mlqs$' "$scripts/niri-jump-or-exec" --here title:mlqs "$scripts/launch-mail-client"

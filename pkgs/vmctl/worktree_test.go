@@ -123,12 +123,111 @@ esac
 		t.Errorf("host warning leaked: %s", result.stdout)
 	}
 	calls := readLog(t, log)
-	inOrder(t, calls, "ssh|-o StrictHostKeyChecking=no", "git worktree add", "ssh|-o StrictHostKeyChecking=no", "tmux new-session",
+	var tunnelCall string
+	for _, call := range strings.Split(calls, "\n") {
+		if strings.HasPrefix(call, "systemd-run|") {
+			tunnelCall = call
+		}
+	}
+	if !strings.Contains(tunnelCall, "/run/current-system/sw/bin/ssh -N -o AddressFamily=any -o BatchMode=yes -o ConnectTimeout=25") {
+		t.Errorf("persistent tunnel missing address-family override or ConnectTimeout:\n%s", tunnelCall)
+	}
+	inOrder(t, calls, "ssh|-o StrictHostKeyChecking=no", "git -C '/home/tester/src/lovable' worktree add", "ssh|-o StrictHostKeyChecking=no", "tmux new-session",
 		"vm-sync|--prepare EvErY-44", "git|-C "+mirror+" rev-parse HEAD")
-	for _, want := range []string{"nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous", "@playwright/mcp@latest", "PLAYWRIGHT_BROWSERS_PATH", "grep -qx '.pi/'", fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", web, web), fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", api, api)} {
+	for _, want := range []string{"show-ref --verify --quiet 'refs/heads/daphen/every-44'", "worktree add '/home/tester/src/lovable-every-44' 'daphen/every-44'", "worktree add -b 'daphen/every-44' '/home/tester/src/lovable-every-44' origin/main", "nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous", `"@playwright/mcp@0.0.80"`, `"--executable-path", "/nix/store/4zn3d0v19mhpw5k3mn5l684v4y79na7k-chromium-143.0.7499.169/bin/chromium"`, `"env": { "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1" }`, "grep -qx '.pi/'", fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", web, web), fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", api, api)} {
 		if !strings.Contains(calls, want) {
 			t.Errorf("calls missing %q:\n%s", want, calls)
 		}
+	}
+	for _, stale := range []string{"WORKTRUNK_WORKTREE_PATH", "wt -C '/home/tester/src/lovable'", "@playwright/mcp@latest", "PLAYWRIGHT_BROWSERS_PATH", "6n74mm97b8f8gfra77hiz9q4ffiianpy-playwright-browsers"} {
+		if strings.Contains(calls, stale) {
+			t.Errorf("calls contain stale Playwright value %q:\n%s", stale, calls)
+		}
+	}
+}
+
+func TestWorktreeSurfacesCheckoutAndBootFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name, match, diagnostic, want, forbidden string
+	}{
+		{"checkout", " worktree add", "worktree disk full", "worktree disk full", "tmux new-session"},
+		{"checkout empty output", "show-ref --verify", "", "exit status 7", "tmux new-session"},
+		{"boot", "tmux new-session", "tmux rejected cwd", "tmux rejected cwd", "vm-sync|"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			script := `
+name=${0##*/}; echo "$name|$*" >> "$VMCTL_LOG"
+case "$name|$*" in
+  "ssh|"*"` + tc.match + `"*) echo '` + tc.diagnostic + `' >&2; exit 7 ;;
+esac
+`
+			home, path, log := worktreeFixture(t, script)
+			listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, nil)
+			defer listener.Close()
+			result := runWorktreeBinaryArgs(t, home, path, "--app", "EVERY-54")
+			calls := readLog(t, log)
+			if result.err == nil || !strings.Contains(result.stderr, tc.want) || strings.Contains(calls, tc.forbidden) {
+				t.Fatalf("result=%+v calls=%s", result, calls)
+			}
+		})
+	}
+}
+
+func TestWorktreeSetupHandlesNewBranchExistingBranchAndCheckout(t *testing.T) {
+	home, path, log := worktreeFixture(t, `
+name=${0##*/}; echo "$name|$*" >> "$VMCTL_LOG"
+[ "$name" = vm-sync ] && exit 9
+exit 0
+`)
+	listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, nil)
+	defer listener.Close()
+	_ = runWorktreeBinary(t, home, path, "EVERY-55")
+	calls := readLog(t, log)
+	start, end := strings.Index(calls, "if [ -d '"), strings.Index(calls, "\nvm-sync|")
+	if start < 0 || end < start {
+		t.Fatalf("setup shell not captured:\n%s", calls)
+	}
+	remote, gitLog := filepath.Join(home, "remote", "lovable"), filepath.Join(home, "git.log")
+	setup := strings.ReplaceAll(calls[start:end], "/home/tester/src/lovable", remote)
+	git := `#!/bin/sh
+printf '%s\n' "$*" >> "$GIT_LOG"
+case "$*" in
+  *"show-ref"*) [ "${BRANCH_EXISTS:-}" = yes ] ;;
+  *"worktree add"*) mkdir -p "$REMOTE_WT"; [ "${FAIL_ADD:-}" != true ] || { echo partial-checkout-failure >&2; exit 7; } ;;
+esac
+`
+	_ = os.WriteFile(filepath.Join(path, "git"), []byte(git), 0o755)
+	for _, tc := range []struct {
+		name, branch, want string
+		checkout, fail     bool
+	}{
+		{"existing checkout", "", "", true, false},
+		{"new branch", "", "worktree add -b daphen/every-55 ", false, false},
+		{"existing branch", "yes", "worktree add " + remote + "-every-55 daphen/every-55", false, false},
+		{"partial checkout failure", "", "", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_ = os.RemoveAll(remote + "-every-55")
+			if tc.checkout {
+				_ = os.MkdirAll(remote+"-every-55", 0o755)
+			}
+			cmd := exec.Command("/bin/sh", "-c", setup)
+			cmd.Env = append(os.Environ(), "PATH="+path+":"+os.Getenv("PATH"), "GIT_LOG="+gitLog, "REMOTE_WT="+remote+"-every-55", "BRANCH_EXISTS="+tc.branch, fmt.Sprintf("FAIL_ADD=%t", tc.fail))
+			output, err := cmd.CombinedOutput()
+			if tc.fail {
+				if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 7 || !strings.Contains(string(output), "partial-checkout-failure") || !pathExists(remote+"-every-55") {
+					t.Fatalf("partial checkout failure lost: err=%v output=%s", err, output)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("setup failed: %v: %s", err, output)
+			}
+			got, _ := os.ReadFile(gitLog)
+			if tc.want == "" && len(got) != 0 || tc.want != "" && !strings.Contains(string(got), tc.want) {
+				t.Fatalf("git calls=%q want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -214,6 +313,40 @@ func TestWorktreeRefusesRegisteredWrongCwdBeforeRemoteCommands(t *testing.T) {
 	result := runWorktreeBinary(t, home, path, "EVERY-47")
 	if result.err == nil || !strings.Contains(result.stderr, "registered cwd") || readLog(t, log) != "" {
 		t.Fatalf("result=%+v calls=%q", result, readLog(t, log))
+	}
+}
+
+func TestWorktreeMirrorHeadIgnoresSSHWarningAndPreservesSSHFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name, remoteResult, want string
+	}{
+		{"warning with matching head", "echo 'Warning: Permanently added fake' >&2; echo 0123456789abcdef0123456789abcdef01234567", "source mirror ready"},
+		{"failure diagnostic", "echo 'remote git diagnostic' >&2; exit 7", "remote git diagnostic"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			script := `
+name=${0##*/}; echo "$name|$*" >> "$VMCTL_LOG"
+case "$name|$*" in
+  "ssh|"*" rev-parse HEAD"*) ` + tc.remoteResult + ` ;;
+  "git|"*" rev-parse HEAD") echo 0123456789abcdef0123456789abcdef01234567 ;;
+  "vm-sync|"*) exit 0 ;;
+esac
+`
+			home, path, log := worktreeFixture(t, script)
+			makeWorktreeMirror(t, home, "lovable.daphen-every-53")
+			listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, make(chan map[string]any, 1))
+			defer listener.Close()
+			result := runWorktreeBinary(t, home, path, "EVERY-53")
+			if !strings.Contains(result.stdout, tc.want) {
+				t.Fatalf("result=%+v calls=%s", result, readLog(t, log))
+			}
+			if tc.name == "warning with matching head" && strings.Contains(result.stdout, "Warning: Permanently") {
+				t.Fatalf("SSH warning contaminated the parsed head: %s", result.stdout)
+			}
+			if tc.name == "failure diagnostic" && strings.Contains(readLog(t, log), "process-compose-wt-") {
+				t.Fatalf("HTTP readiness ran after mirror verification failure:\n%s", readLog(t, log))
+			}
+		})
 	}
 }
 

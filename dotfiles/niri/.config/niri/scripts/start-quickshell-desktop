@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export QML2_IMPORT_PATH="$HOME/.local/share/qml${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
+export QML_IMPORT_PATH="$QML2_IMPORT_PATH"
+export QT_QPA_PLATFORM=wayland
+
+for _ in {1..100}; do
+    if niri msg --json outputs 2>/dev/null | jq -e 'length > 0' >/dev/null; then
+        qs -n -p "$HOME/.config/quickshell/wallpaper" &
+        exec qs -n
+    fi
+    sleep 0.1
+done
+
+printf 'Niri did not publish an output within 10 seconds\n' >&2
+exit 1

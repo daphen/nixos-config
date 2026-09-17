@@ -139,11 +139,11 @@ Singleton {
     readonly property color hairlineSoft: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha * 0.6)
     readonly property color dimmedFg: Qt.rgba(fg.r, fg.g, fg.b, dimmedFgAlpha)
 
-    readonly property int barHeight:     44
-    readonly property int notchMinWidth: 1200
+    readonly property int barHeight:     48
+    readonly property int notchMinWidth: 950
     readonly property int notchRadius:   14
     readonly property int notchPadH:     10
-    readonly property int notchInnerGap: 80
+    readonly property int notchInnerGap: 5
     readonly property int modulePadH:    5
     readonly property int modulePadV:    2
     readonly property int radius:        12

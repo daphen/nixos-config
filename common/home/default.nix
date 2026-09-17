@@ -1,7 +1,9 @@
 # Home Manager Configuration
-{ config, pkgs, inputs, ... }:
+{ config, lib, pkgs, inputs, desktopProfile ? "workstation", ... }:
 let
   gsettingsSchemaDir = "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}/glib-2.0/schemas";
+  isDeck = desktopProfile == "deck";
+  desktopScripts = "${config.home.homeDirectory}/.config/${if isDeck then "hypr" else "niri"}/scripts";
 in
 {
   home.username = "daphen";
@@ -11,18 +13,48 @@ in
   programs.home-manager.enable = true;
 
   imports = [
+    ./theme-system.nix
+    inputs.worktrunk.homeModules.default
+  ] ++ lib.optionals (!isDeck) [
     ./symlinks.nix
     ./programs.nix
-    ./theme-system.nix
     ./daemons.nix
     ./niri-scripts.nix
-    inputs.worktrunk.homeModules.default
   ];
+
+  xdg.configFile = lib.mkIf isDeck (let
+    dotfiles = "${config.home.homeDirectory}/nixos/dotfiles";
+    link = config.lib.file.mkOutOfStoreSymlink;
+  in {
+    "fish/config.fish".source = link "${dotfiles}/fish/.config/fish/config.fish";
+    "fish/functions".source = link "${dotfiles}/fish/.config/fish/functions";
+    "fish/conf.d".source = link "${dotfiles}/fish/.config/fish/conf.d";
+    "fish/fish_plugins".source = link "${dotfiles}/fish/.config/fish/fish_plugins";
+    "fish/completions".source = link "${dotfiles}/fish/.config/fish/completions";
+    "kitty".source = link "${dotfiles}/kitty/.config/kitty";
+    "git/personal".source = link "${dotfiles}/git/.config/git/personal";
+    "git/work".source = link "${dotfiles}/git/.config/git/work";
+    "git/ignore".source = link "${dotfiles}/git/.config/git/ignore";
+    "hypr/hyprland.lua".source = link "${dotfiles}/hyprland/.config/hypr/hyprland.lua";
+    "hypr/scripts".source = link "${dotfiles}/hyprland/.config/hypr/scripts";
+    "quickshell".source = link "${dotfiles}/quickshell/.config/quickshell";
+    "themes".source = link "${dotfiles}/themes/.config/themes";
+    "starship.toml".source = link "${dotfiles}/starship/.config/starship/starship.toml";
+  });
+
+  home.file = lib.mkIf isDeck (let
+    dotfiles = "${config.home.homeDirectory}/nixos/dotfiles";
+    link = config.lib.file.mkOutOfStoreSymlink;
+  in {
+    ".gitconfig".source = link "${dotfiles}/git/.gitconfig";
+    ".gitignore_global".source = link "${dotfiles}/git/.gitignore_global";
+    ".local/share/qml/QsLib".source = link "${dotfiles}/qslib/.local/share/qml/QsLib";
+  });
 
   home.sessionVariables = {
     EDITOR = "nvim";
     VISUAL = "nvim";
-    BROWSER = "browser-dispatch";
+    BROWSER = if isDeck then "${desktopScripts}/browser-dispatch" else "browser-dispatch";
     TERMINAL = "kitty";
     # Lets glib find the gnome-desktop schema so xdg-desktop-portal-gtk
     # can read color-scheme; Chromium's "Device" mode reads from there.
@@ -64,7 +96,7 @@ in
   xdg.desktopEntries.google-chrome = {
     name = "Google Chrome";
     comment = "Access the Internet";
-    exec = "${config.home.homeDirectory}/.config/niri/scripts/chromium-launch %U";
+    exec = "${desktopScripts}/chromium-launch %U";
     icon = "google-chrome";
     terminal = false;
     type = "Application";
@@ -76,7 +108,7 @@ in
   xdg.desktopEntries.browser-dispatch = {
     name = "Browser Dispatch";
     comment = "Routes URLs to the correct browser profile (personal or work)";
-    exec = "${config.home.homeDirectory}/.config/niri/scripts/browser-dispatch %u";
+    exec = "${desktopScripts}/browser-dispatch %u";
     terminal = false;
     type = "Application";
     categories = [ "Network" "WebBrowser" ];
@@ -87,7 +119,7 @@ in
   xdg.desktopEntries.restart-wifi = {
     name = "Restart Wi-Fi";
     comment = "Deactivate and reconnect the active Wi-Fi connection";
-    exec = "${config.home.homeDirectory}/.config/niri/scripts/restart-wifi";
+    exec = "${desktopScripts}/restart-wifi";
     icon = "network-wireless";
     terminal = false;
     type = "Application";

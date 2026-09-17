@@ -136,6 +136,35 @@ func TestGenerateUsesSpecificThenGenericTemplatesAndMasksFailures(t *testing.T) 
 	}
 }
 
+func TestHyprlandThemeLiveApply(t *testing.T) {
+	f := setup(t)
+	log := filepath.Join(f.root, "hyprctl.log")
+	f.mock("hyprctl", "printf '%s\\n' \"$HYPRLAND_INSTANCE_SIGNATURE\" \"$@\" >> '"+log+"'")
+	t.Setenv("HYPRLAND_INSTANCE_SIGNATURE", "theme-test-instance")
+	for _, theme := range []struct{ mode, color string }{{"dark", "#FF570D"}, {"light", "#0000F2"}} {
+		want := "return { experimental = { canvas_focus_color = \"" + theme.color + "\" } }\n"
+		f.write(filepath.Join("dotfiles/themes/.config/themes/generated/hyprland", theme.mode+".theme"), want)
+		if out, err := f.run("apply", theme.mode); err != nil {
+			t.Fatalf("apply: %v: %s", err, out)
+		}
+		if got := mustRead(t, filepath.Join(f.home, ".config/hypr/theme.lua")); got != want {
+			t.Fatalf("%s theme: got %q, want %q", theme.mode, got, want)
+		}
+	}
+	commands := mustRead(t, log)
+	want := "theme-test-instance\neval\nhl.config(dofile(\"" + filepath.Join(f.home, ".config/hypr/theme.lua") + "\"))\n"
+	if commands != want+want {
+		t.Fatalf("expected targeted live config updates, got %q", commands)
+	}
+	t.Setenv("HYPRLAND_INSTANCE_SIGNATURE", "")
+	if out, err := f.run("apply", "dark"); err != nil {
+		t.Fatalf("offline apply: %v: %s", err, out)
+	}
+	if got := mustRead(t, log); got != commands {
+		t.Fatalf("offline apply contacted a compositor: %q", got)
+	}
+}
+
 func TestApplyCoversEveryAdapterAndContinuesAfterFailures(t *testing.T) {
 	f := setup(t)
 	tools := []string{"nvim", "fish", "tmux", "fzf", "tide", "spotify-player", "opencode", "process-compose", "btop", "claude-code", "chromium-palette", "newtab", "starship", "clipse", "yazi", "yazi-tmtheme", "quickshell", "quickshell-client", "kitty", "pi", "swaylock", "gtk", "kvantum", "unknown"}

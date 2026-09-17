@@ -40,6 +40,7 @@ def log(msg: str) -> None:
 def roster() -> dict | None:
     """Live sessions from agentd, by name. Prefers the unix socket, falls back to TCP."""
     for kind, target in (("unix", SOCK), ("tcp", TCP)):
+        s = None
         try:
             if kind == "unix":
                 if not os.path.exists(target):
@@ -60,8 +61,12 @@ def roster() -> dict | None:
             if b"\n" not in buf:
                 continue
             data = json.loads(buf.split(b"\n", 1)[0])
-            return {x.get("name"): x for x in data.get("sessions", []) if x.get("name")}
+            sessions = data.get("sessions") if isinstance(data, dict) else None
+            if not isinstance(sessions, list):
+                continue
+            return {x.get("name"): x for x in sessions if x.get("name")}
         except Exception:
+            if s is not None: s.close()
             continue
     return None
 
@@ -159,7 +164,7 @@ def reap_one(worktree_path: str, session: str) -> int:
     # a breath, then confirm the session really is gone before killing a 6GB slice.
     time.sleep(int(os.environ.get("SLICE_HOOK_DELAY", "20")))
     live = roster()
-    if not live:
+    if live is None:
         log("hook: agentd roster unavailable — refusing to reap blind")
         return 0
     ok, why = owner_dormant(worktree, live)
@@ -191,7 +196,7 @@ def main() -> int:
         return reap_one(wt, sess or session_name_for(os.path.basename(wt.rstrip("/"))))
 
     live = roster()
-    if not live:
+    if live is None:
         log("agentd roster unavailable — refusing to reap blind")
         return 0
     running = slice_dirs()

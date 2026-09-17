@@ -29,7 +29,21 @@ start_unit() {
 # with a virtual keyboard appearing and vanishing continuously — doubled keys and
 # stalls. Seen 2026-09-10, the first boot after this charybdis rule was added:
 # 156 charybdis starts in one boot with the keyboard unplugged.
-charybdis_present() { ls /dev/input/by-id/ 2>/dev/null | grep -qiE "charybdis"; }
+# Match the same source kanata matches on (the evdev NAME in
+# /proc/bus/input/devices), not just the by-id symlink, so the check cannot
+# disagree with linux-dev-names-include. USB enumeration can lag niri's
+# spawn-at-startup, so give it a few seconds before concluding it is absent.
+charybdis_present() {
+  local i
+  for i in 1 2 3 4 5 6; do
+    if grep -qiE "charybdis" /proc/bus/input/devices 2>/dev/null \
+       || ls /dev/input/by-id/ 2>/dev/null | grep -qiE "charybdis"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
 
 start_unit kanata-session.service "$HOME/.config/kanata/kanata.kbd"
 if charybdis_present; then

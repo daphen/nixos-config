@@ -1,0 +1,522 @@
+{
+  "initial_geometry": {
+    "Canvas 1.1": [
+      -1717,
+      26,
+      730,
+      428
+    ],
+    "Canvas 1.2": [
+      -959,
+      26,
+      730,
+      428
+    ],
+    "Canvas 1.3": [
+      -201,
+      26,
+      644,
+      428
+    ],
+    "Canvas 2.1": [
+      -1566,
+      482,
+      514,
+      428
+    ],
+    "Canvas 2.2": [
+      -1024,
+      482,
+      558,
+      428
+    ],
+    "Canvas 2.3": [
+      -438,
+      482,
+      730,
+      428
+    ]
+  },
+  "probes": [
+    {
+      "source": "Canvas 1.3",
+      "direction": "h",
+      "routed_monitor": "WAYLAND-1",
+      "after": "Canvas 1.2"
+    },
+    {
+      "source": "Canvas 1.3",
+      "direction": "j",
+      "routed_monitor": "WAYLAND-1",
+      "after": "Canvas 2.3"
+    },
+    {
+      "source": "Canvas 1.3",
+      "direction": "k",
+      "routed_monitor": "WAYLAND-1",
+      "after": "Canvas 1.3"
+    },
+    {
+      "source": "Canvas 2.3",
+      "direction": "h",
+      "routed_monitor": "WAYLAND-1",
+      "after": "Canvas 2.2"
+    },
+    {
+      "source": "Canvas 2.3",
+      "direction": "j",
+      "routed_monitor": "WAYLAND-1",
+      "after": "Canvas 2.3"
+    },
+    {
+      "source": "Canvas 2.3",
+      "direction": "k",
+      "routed_monitor": "WAYLAND-1",
+      "after": "Canvas 1.3"
+    }
+  ],
+  "moves": [
+    {
+      "source": "Canvas 1.3",
+      "direction": "h",
+      "routed_monitor": "WAYLAND-1",
+      "changed": true,
+      "active": "Canvas 1.3"
+    },
+    {
+      "source": "Canvas 1.3",
+      "direction": "j",
+      "routed_monitor": "WAYLAND-1",
+      "changed": true,
+      "active": "Canvas 1.3"
+    },
+    {
+      "source": "Canvas 2.3",
+      "direction": "h",
+      "routed_monitor": "WAYLAND-1",
+      "changed": true,
+      "active": "Canvas 2.3"
+    },
+    {
+      "source": "Canvas 2.3",
+      "direction": "k",
+      "routed_monitor": "WAYLAND-1",
+      "changed": true,
+      "active": "Canvas 2.3"
+    }
+  ],
+  "monitors": [
+    {
+      "id": 0,
+      "name": "WAYLAND-1",
+      "description": "",
+      "make": "",
+      "model": "",
+      "serial": "",
+      "width": 1296,
+      "height": 720,
+      "physicalWidth": 0,
+      "physicalHeight": 0,
+      "refreshRate": 60.0,
+      "x": -853,
+      "y": 0,
+      "activeWorkspace": {
+        "address": "1",
+        "type": "numbered",
+        "name": "1"
+      },
+      "specialWorkspace": {
+        "address": "",
+        "type": "",
+        "name": ""
+      },
+      "reserved": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "scale": 1.5,
+      "transform": 0,
+      "focused": true,
+      "dpmsStatus": true,
+      "vrr": false,
+      "solitary": "0",
+      "solitaryBlockedBy": [
+        "NOTIFICATION",
+        "WINDOWED",
+        "CANDIDATE"
+      ],
+      "activelyTearing": false,
+      "tearingBlockedBy": [
+        "NOT_TORN",
+        "USER",
+        "SUPPORT",
+        "CANDIDATE"
+      ],
+      "directScanoutTo": "0",
+      "directScanoutBlockedBy": [
+        "USER",
+        "CANDIDATE"
+      ],
+      "disabled": true,
+      "currentFormat": "XRGB8888",
+      "mirrorOf": "none",
+      "availableModes": [],
+      "colorManagementPreset": "srgb",
+      "sdrBrightness": 1,
+      "sdrSaturation": 1,
+      "sdrMinLuminance": 0.2,
+      "sdrMaxLuminance": 80,
+      "hardwareCursorsInUse": true,
+      "hardwareDetails": {
+        "backend": "wayland",
+        "hdr": false,
+        "chroma": false,
+        "bt2020": false,
+        "vrrCapable": false
+      }
+    },
+    {
+      "id": 1,
+      "name": "HEADLESS-1",
+      "description": "",
+      "make": "",
+      "model": "",
+      "serial": "",
+      "width": 1920,
+      "height": 1080,
+      "physicalWidth": 0,
+      "physicalHeight": 0,
+      "refreshRate": 60.0,
+      "x": 0,
+      "y": 0,
+      "activeWorkspace": {
+        "address": "2",
+        "type": "numbered",
+        "name": "2"
+      },
+      "specialWorkspace": {
+        "address": "",
+        "type": "",
+        "name": ""
+      },
+      "reserved": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "scale": 1.6,
+      "transform": 0,
+      "focused": false,
+      "dpmsStatus": true,
+      "vrr": false,
+      "solitary": "0",
+      "solitaryBlockedBy": [
+        "NOTIFICATION",
+        "WINDOWED",
+        "CANDIDATE"
+      ],
+      "activelyTearing": false,
+      "tearingBlockedBy": [
+        "NOT_TORN",
+        "USER",
+        "SUPPORT",
+        "CANDIDATE"
+      ],
+      "directScanoutTo": "0",
+      "directScanoutBlockedBy": [
+        "USER",
+        "CANDIDATE"
+      ],
+      "disabled": true,
+      "currentFormat": "XRGB8888",
+      "mirrorOf": "none",
+      "availableModes": [
+        "1920x1080@60.00Hz"
+      ],
+      "colorManagementPreset": "srgb",
+      "sdrBrightness": 1,
+      "sdrSaturation": 1,
+      "sdrMinLuminance": 0.2,
+      "sdrMaxLuminance": 80,
+      "hardwareCursorsInUse": true,
+      "hardwareDetails": {
+        "backend": "headless",
+        "hdr": false,
+        "chroma": false,
+        "bt2020": false,
+        "vrrCapable": false
+      }
+    }
+  ],
+  "clients": [
+    {
+      "address": "0x555dd2967450",
+      "mapped": true,
+      "hidden": false,
+      "visible": true,
+      "acceptsInput": true,
+      "at": [
+        -1761,
+        26
+      ],
+      "size": [
+        731,
+        428
+      ],
+      "workspace": {
+        "address": "1",
+        "type": "numbered",
+        "name": "1"
+      },
+      "floating": false,
+      "monitor": 0,
+      "class": "right-edge-fixture",
+      "title": "Canvas 1.1",
+      "initialClass": "right-edge-fixture",
+      "initialTitle": "Canvas 1.1",
+      "pid": 317702,
+      "xwayland": false,
+      "pinned": false,
+      "pinFullscreened": false,
+      "fullscreen": 0,
+      "fullscreenClient": 0,
+      "fullscreenHandler": "default",
+      "allowedOverFullscreen": true,
+      "grouped": [],
+      "tags": [],
+      "swallowing": "0x0",
+      "focusHistoryID": 5,
+      "inhibitingIdle": false,
+      "xdgTag": "",
+      "xdgDescription": "",
+      "contentType": "none",
+      "tearingHint": false,
+      "stableId": "18000002"
+    },
+    {
+      "address": "0x555dd2a41630",
+      "mapped": true,
+      "hidden": false,
+      "visible": true,
+      "acceptsInput": true,
+      "at": [
+        -1002,
+        26
+      ],
+      "size": [
+        730,
+        428
+      ],
+      "workspace": {
+        "address": "1",
+        "type": "numbered",
+        "name": "1"
+      },
+      "floating": false,
+      "monitor": 0,
+      "class": "right-edge-fixture",
+      "title": "Canvas 1.2",
+      "initialClass": "right-edge-fixture",
+      "initialTitle": "Canvas 1.2",
+      "pid": 317719,
+      "xwayland": false,
+      "pinned": false,
+      "pinFullscreened": false,
+      "fullscreen": 0,
+      "fullscreenClient": 0,
+      "fullscreenHandler": "default",
+      "allowedOverFullscreen": true,
+      "grouped": [],
+      "tags": [],
+      "swallowing": "0x0",
+      "focusHistoryID": 3,
+      "inhibitingIdle": false,
+      "xdgTag": "",
+      "xdgDescription": "",
+      "contentType": "none",
+      "tearingHint": false,
+      "stableId": "18000003"
+    },
+    {
+      "address": "0x555dd298c2b0",
+      "mapped": true,
+      "hidden": false,
+      "visible": true,
+      "acceptsInput": true,
+      "at": [
+        -981,
+        482
+      ],
+      "size": [
+        644,
+        428
+      ],
+      "workspace": {
+        "address": "1",
+        "type": "numbered",
+        "name": "1"
+      },
+      "floating": false,
+      "monitor": 0,
+      "class": "browser-work",
+      "title": "Canvas 1.3",
+      "initialClass": "browser-work",
+      "initialTitle": "Canvas 1.3",
+      "pid": 317731,
+      "xwayland": false,
+      "pinned": false,
+      "pinFullscreened": false,
+      "fullscreen": 0,
+      "fullscreenClient": 0,
+      "fullscreenHandler": "default",
+      "allowedOverFullscreen": true,
+      "grouped": [],
+      "tags": [],
+      "swallowing": "0x0",
+      "focusHistoryID": 1,
+      "inhibitingIdle": false,
+      "xdgTag": "",
+      "xdgDescription": "",
+      "contentType": "none",
+      "tearingHint": false,
+      "stableId": "18000004"
+    },
+    {
+      "address": "0x555dd29a9dd0",
+      "mapped": true,
+      "hidden": false,
+      "visible": true,
+      "acceptsInput": true,
+      "at": [
+        -1523,
+        482
+      ],
+      "size": [
+        514,
+        428
+      ],
+      "workspace": {
+        "address": "1",
+        "type": "numbered",
+        "name": "1"
+      },
+      "floating": false,
+      "monitor": 0,
+      "class": "right-edge-fixture",
+      "title": "Canvas 2.1",
+      "initialClass": "right-edge-fixture",
+      "initialTitle": "Canvas 2.1",
+      "pid": 317748,
+      "xwayland": false,
+      "pinned": false,
+      "pinFullscreened": false,
+      "fullscreen": 0,
+      "fullscreenClient": 0,
+      "fullscreenHandler": "default",
+      "allowedOverFullscreen": true,
+      "grouped": [],
+      "tags": [],
+      "swallowing": "0x0",
+      "focusHistoryID": 4,
+      "inhibitingIdle": false,
+      "xdgTag": "",
+      "xdgDescription": "",
+      "contentType": "none",
+      "tearingHint": false,
+      "stableId": "18000005"
+    },
+    {
+      "address": "0x555dd2aeeab0",
+      "mapped": true,
+      "hidden": false,
+      "visible": true,
+      "acceptsInput": true,
+      "at": [
+        -309,
+        482
+      ],
+      "size": [
+        558,
+        428
+      ],
+      "workspace": {
+        "address": "1",
+        "type": "numbered",
+        "name": "1"
+      },
+      "floating": false,
+      "monitor": 0,
+      "class": "right-edge-fixture",
+      "title": "Canvas 2.2",
+      "initialClass": "right-edge-fixture",
+      "initialTitle": "Canvas 2.2",
+      "pid": 317774,
+      "xwayland": false,
+      "pinned": false,
+      "pinFullscreened": false,
+      "fullscreen": 0,
+      "fullscreenClient": 0,
+      "fullscreenHandler": "default",
+      "allowedOverFullscreen": true,
+      "grouped": [],
+      "tags": [],
+      "swallowing": "0x0",
+      "focusHistoryID": 2,
+      "inhibitingIdle": false,
+      "xdgTag": "",
+      "xdgDescription": "",
+      "contentType": "none",
+      "tearingHint": false,
+      "stableId": "18000006"
+    },
+    {
+      "address": "0x555dd2b1c3a0",
+      "mapped": true,
+      "hidden": false,
+      "visible": true,
+      "acceptsInput": true,
+      "at": [
+        -244,
+        26
+      ],
+      "size": [
+        731,
+        428
+      ],
+      "workspace": {
+        "address": "1",
+        "type": "numbered",
+        "name": "1"
+      },
+      "floating": false,
+      "monitor": 0,
+      "class": "browser-work",
+      "title": "Canvas 2.3",
+      "initialClass": "browser-work",
+      "initialTitle": "Canvas 2.3",
+      "pid": 317783,
+      "xwayland": false,
+      "pinned": false,
+      "pinFullscreened": false,
+      "fullscreen": 0,
+      "fullscreenClient": 0,
+      "fullscreenHandler": "default",
+      "allowedOverFullscreen": true,
+      "grouped": [],
+      "tags": [],
+      "swallowing": "0x0",
+      "focusHistoryID": 0,
+      "inhibitingIdle": false,
+      "xdgTag": "",
+      "xdgDescription": "",
+      "contentType": "none",
+      "tearingHint": false,
+      "stableId": "18000007"
+    }
+  ],
+  "config_sha256": "5edcd962416bba775246256779289ba2af72bc82328fea3b4613021f8a628671",
+  "binary_sha256": "a20311bb91741579da608abad6384df2c1b555422f9c0b860ea35ea5b2eec460"
+}

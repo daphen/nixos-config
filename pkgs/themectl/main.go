@@ -180,6 +180,13 @@ func (m *manager) apply(tool, mode string) {
 		bestEffort(copyFile(generated, dst))
 	}
 	switch tool {
+	case "hyprland":
+		target := filepath.Join(m.home, ".config/hypr/theme.lua")
+		copyTo(target)
+		if os.Getenv("HYPRLAND_INSTANCE_SIGNATURE") != "" && has("hyprctl") {
+			m.runQuiet("hyprctl", "eval", fmt.Sprintf("hl.config(dofile(%q))", target))
+		}
+		m.success("Applied Hyprland canvas theme")
 	case "nvim":
 		if target, label := m.target(tool); target != "" {
 			copyTo(filepath.Join(target, "colors", "custom-theme-"+mode+".lua"))

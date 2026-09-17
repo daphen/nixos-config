@@ -886,6 +886,7 @@ end
 --------------------------------------------------------------------------------
 render_roster = function()
   if not (S.buf and api.nvim_buf_is_valid(S.buf) and S.ns) then return end
+  if S.nvim_focused then rail_focus_mark(true) end
 
   -- Source of truth for "is the roster the focused pane": the ACTUAL current window,
   -- recomputed every render. The enter/leave autocmds used to set S.roster_active,
@@ -1764,12 +1765,12 @@ end
 -- Shared cross-instance focus marker. Every cockpit tab is its own nvim on the
 -- same agentd, so focus must be a GLOBAL fact, not a per-instance flag — else a
 -- background tab toasts while you sit in the focused one. On focus we write this
--- pid; on blur/exit we clear it iff it's still ours. rail_focused() reports whether
+-- pid plus selected session; on blur/exit we clear it iff it's still ours. rail_focused() reports whether
 -- ANY live rail holds it (a dead pid — crashed nvim — is ignored, self-healing).
 local RAIL_FOCUS_FILE = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/agent-rail-focused"
 function rail_focus_mark(on)
   if on then
-    pcall(fn.writefile, { tostring(fn.getpid()) }, RAIL_FOCUS_FILE)
+    pcall(fn.writefile, { tostring(fn.getpid()), S.selected or "" }, RAIL_FOCUS_FILE)
   else
     local ok, l = pcall(fn.readfile, RAIL_FOCUS_FILE)
     if ok and l[1] and vim.trim(l[1]) == tostring(fn.getpid()) then
@@ -1777,21 +1778,20 @@ function rail_focus_mark(on)
     end
   end
 end
-local function rail_focused()
+local function rail_focused(session)
   local ok, l = pcall(fn.readfile, RAIL_FOCUS_FILE)
   if not ok then return false end
   local pid = l[1] and tonumber(vim.trim(l[1]))
+  local selected = l[2] and vim.trim(l[2]) or ""
   return pid ~= nil and fn.isdirectory("/proc/" .. pid) == 1
+    and (selected == "" or not session or selected == session)
 end
 
 local function desktop_notify(session, body, urgency)
-  if not session or session == S.selected then return end
-  -- ANY rail focused (this instance or another) → you're at the cockpit and the
-  -- roster already shows the change, so a desktop toast is pure noise. The shared
-  -- marker makes a background instance stay quiet while another holds focus — that
-  -- cross-instance case was the spam. Toasts only fire once every rail is blurred
-  -- (you've tabbed to the browser/slack), which is exactly when you'd want a ping.
-  if rail_focused() then return end
+  if not session then return end
+  -- The selected session in the focused rail is already visible. Other sessions
+  -- still notify, including one selected in a rail that is currently blurred.
+  if rail_focused(session) then return end
   -- Cross-instance dedup for the tabbed-away case: with no rail focused, EVERY
   -- instance would fire for the same event. Claim a short per-session lease (mtime
   -- on a shared file); if another instance claimed it in the last 10s, stand down.
@@ -4769,12 +4769,13 @@ refresh_git_changes = function(cwd, path)
   end
   local previous = S.diff_jobs[cwd]
   if previous and previous.job then pcall(fn.jobstop, previous.job) end
-  local request, output, untracked = {}, {}, {}
+  local request, output, untracked = { files = 0, too_large = false }, {}, {}
+  local max_files = cwd:match("/work/lovable%.daphen%-every%-%d+$") and 200 or math.huge
   S.diff_jobs[cwd] = request
   local function apply()
     if S.diff_jobs[cwd] ~= request then return end
     S.diff_jobs[cwd] = nil
-    local parsed = parse_git_diff(output)
+    local parsed = request.too_large and { files = {}, bypath = {}, unready = true } or parse_git_diff(output)
     for _, u in ipairs(untracked) do
       if not parsed.bypath[u.path] then
         local h = { old_l1 = 0, old_l2 = 0, l1 = 1, l2 = math.max(1, u.lines), add = u.lines, del = 0 }
@@ -4844,11 +4845,16 @@ refresh_git_changes = function(cwd, path)
       partial = data[#data]
       for index = 1, #data - 1 do
         local line = data[index]
+        if line:match("^diff %-%-git ") then
+          request.files = request.files + 1
+          if request.files > max_files then request.too_large = true; pcall(fn.jobstop, request.job); return end
+        end
         if line ~= "" then output[#output + 1] = line end
       end
     end,
     on_exit = function(_, code)
       if S.diff_jobs[cwd] ~= request then return end
+      if request.too_large then vim.schedule(apply); return end
       if code ~= 0 then S.diff_jobs[cwd] = nil; return end
       if partial ~= "" then output[#output + 1] = partial end
       local files = {}
@@ -4856,10 +4862,13 @@ refresh_git_changes = function(cwd, path)
         stdout_buffered = true,
         on_stdout = function(_, data)
           for _, f in ipairs(data or {}) do
-            if f ~= "" and not f:match("^%.heidr%-pastes/") and not f:match("^agents/") then files[#files + 1] = f end
+            if f ~= "" and not f:match("^%.heidr%-pastes/") and not f:match("^agents/") then
+              files[#files + 1] = f
+              if request.files + #files > max_files then request.too_large = true; break end
+            end
           end
         end,
-        on_exit = function() count_untracked(files) end,
+        on_exit = function() if request.too_large then apply() else count_untracked(files) end end,
       })
     end,
   })
@@ -6046,11 +6055,8 @@ function M.open()
 
   -- Track terminal focus so desktop_notify stays silent while you're in nvim (the
   -- roster already shows the change) and only toasts once you've tabbed away.
-  -- SHARED across instances: every cockpit tab is a separate nvim all wired to the
-  -- same agentd, so a per-instance flag let a BACKGROUND tab toast while you sat in
-  -- the focused one. rail_focus_mark writes this nvim's pid to a shared file on
-  -- focus (clears it on blur/exit); desktop_notify suppresses while ANY live rail
-  -- holds it. So "a rail is focused" is global, not per-window.
+  -- Shared across instances: record this nvim and its selected session on focus;
+  -- notification senders suppress only that session until the rail loses focus.
   S.nvim_focused = true
   rail_focus_mark(true)
   local fgrp = api.nvim_create_augroup("CockpitRailFocus", { clear = true })
