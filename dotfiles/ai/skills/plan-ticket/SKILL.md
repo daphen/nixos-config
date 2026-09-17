@@ -160,12 +160,14 @@ conversing with the agent. Your job here is the best full draft you can produce.
    the template is not a gate. Derive N from the surface area you just listed; if you
    cannot estimate it, the plan is not specific enough to implement yet.
 
-6. **Open it in neovim** so the user drives the rest from there: run
-   `~/.local/bin/plan-open "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" <plandir>/<key>.md`.
-   `plan-open` deterministically runs `mdformat --wrap 80` first and refuses to continue
-   if formatting fails. It then pops the plan up in an nvim window, or no-ops if one's already in the
-   repo or there's no GUI). The lifecycle keybinds in that nvim dispatch `--finalize`/
-   `--go`/`--reconcile` back to THIS agent session (via wt-send, which routes to the pi rail session or a claude TUI), so keep it open.
+6. **Open it in the bound Cockpit Neovim.** Format the newly written artifact with
+   `mdformat --wrap 80`, then use `open_in_nvim` when available. A "Requested"
+   receipt is not proof that the file is visible: verify the bound editor or use
+   `~/.local/bin/plan-open <repo> <plandir>/<key>.md`, which checks the existing
+   rail-session/Neovim binding and confirms the visible buffer. Never choose an
+   editor by cwd or launch a new terminal. If no bound editor is reachable, report
+   that and the artifact path instead of claiming it opened. Opening an existing
+   plan must not format or write it. Its lifecycle keys dispatch back to this session.
 7. **STOP.** Print only a one-line pointer to the artifact path. The user manages it
    from there in neovim — editing steps, resolving decisions, approving. Do not
    iterate on the plan in chat. `--go` runs only after the plan is approved

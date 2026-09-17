@@ -1,105 +1,73 @@
 #!/usr/bin/env python3
+"""Open a plan in the existing Cockpit binding; never create another terminal.
+
+The repo argument is retained for callers, not used to guess an editor.
 """
-plan-open <repo> <planfile>
-
-Open a plan artifact in neovim so the user can drive the lifecycle from there.
-Called by the plan-ticket skill after it writes the plan, so kicking off
-`/plan-ticket` in any claude session pops the plan up in nvim.
-
-Idempotent: if an nvim is already running under <repo> (e.g. the worktree
-stack's pane, which auto-opens the plan itself), do nothing. Otherwise spawn a
-kitty window with nvim editing the plan, cwd'd to <repo> so the plugin's
-dispatch targets that repo's claude.
-
-Formats the plan to 80 columns before any GUI checks. Then exits successfully
-when kitty is unavailable (lovbox SSH, headless), because there is no editor to open.
-"""
-from __future__ import annotations
-import glob
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 
-def nvim_running_in(repo: str) -> bool:
-    for sock in glob.glob("/tmp/kitty-*") + glob.glob(os.environ.get("XDG_RUNTIME_DIR", "/nonexistent") + "/kitty-*"):
-        # The cockpit's single nvim serves every worktree context via tabs, so its
-        # process cwd won't match the ticket's worktree — but its plan-nvim plugin
-        # opens the plan itself. Match on the cockpit socket, not cwd, or plan-open
-        # spawns a redundant second nvim beside it (looks like a stray split).
-        is_cockpit_nvim = sock.endswith("kitty-cockpit-nvim")
+def run(args, timeout=3):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "command failed")
+    return result.stdout.strip()
+
+
+def binding():
+    wanted_socket = os.environ.get("COCKPIT_NVIM_SOCK") or os.environ.get("HEIDR_NVIM_SOCK")
+    session = os.environ.get("COCKPIT_AGENT_NAME") or os.environ.get("HEIDR_AGENT_NAME")
+    if not wanted_socket and not session:
+        raise RuntimeError("no Cockpit binding supplied; use open_in_nvim from the agent or COCKPIT_NVIM_SOCK from Neovim")
+    matches = []
+    for instance in json.loads(run(["qs", "list", "-a", "--json"])):
+        if not instance.get("pid") or not instance.get("id"):
+            continue
+        prefix = ["qs", "ipc", "-i", instance["id"], "call", "cockpit"]
         try:
-            out = subprocess.run(
-                ["kitten", "@", "--to", f"unix:{sock}", "ls"],
-                capture_output=True, text=True, timeout=1.5,
-            )
-            data = json.loads(out.stdout) if out.stdout.strip() else None
-        except Exception:
-            continue
-        if not data:
-            continue
-        for ow in data:
-            for tab in ow.get("tabs", []):
-                for w in tab.get("windows", []):
-                    for fp in w.get("foreground_processes", []):
-                        cmd = fp.get("cmdline") or []
-                        if not cmd:
-                            continue
-                        if Path(cmd[0]).name in ("nvim", "vim") \
-                                and (is_cockpit_nvim or (fp.get("cwd", "") or "").startswith(repo)):
-                            return True
-    return False
-
-
-def cockpit_nvim_alive() -> bool:
-    # Cockpit embeds nvim behind a per-instance socket, so the kitty scan cannot see it.
-    import socket
-    run = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
-    for pattern in ("/cockpit-nvim-*.sock", "/heidr-nvim-*.sock"):
-        for sock in glob.glob(run + pattern):
-            try:
-                s = socket.socket(socket.AF_UNIX)
-                s.settimeout(0.3)
-                s.connect(sock)
-                s.close()
-                return True
-            except Exception:
+            if not wanted_socket:
+                state = json.loads(run(prefix + ["railState"]))
+                if state.get("sel") != session:
+                    continue
+            sock = run(prefix + ["nvimSock"])
+            if not sock.startswith("/") or (wanted_socket and sock != wanted_socket):
                 continue
-    return False
+            matches.append((prefix, sock))
+        except (RuntimeError, ValueError, subprocess.TimeoutExpired):
+            continue
+    if len(matches) != 1:
+        raise RuntimeError(f"expected one Cockpit showing this session, found {len(matches)}; no editor changed")
+    return matches[0]
 
 
-def main() -> int:
-    if len(sys.argv) < 3:
+def main():
+    if len(sys.argv) != 3:
         print("usage: plan-open <repo> <planfile>", file=sys.stderr)
         return 2
-    repo = str(Path(sys.argv[1]).expanduser().resolve())
-    plan = str(Path(sys.argv[2]).expanduser().resolve())
-    if not Path(plan).is_file():
-        print(f"plan-open: plan not found: {plan}", file=sys.stderr)
+    try:
+        plan = str(Path(sys.argv[2]).expanduser().resolve())
+        if not Path(plan).is_file():
+            raise RuntimeError(f"plan not found: {plan}")
+        prefix, sock = binding()
+        lua = "vim.cmd.CockpitEdit(" + json.dumps(plan) + "); return vim.api.nvim_buf_get_name(0)"
+        expression = "luaeval(" + json.dumps("(function() " + lua + " end)()") + ")"
+        opened = run(["nvim", "--server", sock, "--remote-expr", expression])
+        if opened != plan:
+            raise RuntimeError(f"editor did not open the requested plan; it still shows {opened!r}")
+        focus = run(prefix + ["focusLeft"])
+        if focus not in ("passed", "consumed"):
+            raise RuntimeError(f"could not focus the bound editor: {focus}")
+        current = run(["nvim", "--server", sock, "--remote-expr", "luaeval('vim.api.nvim_buf_get_name(0)')"])
+        if current != plan:
+            raise RuntimeError("the requested plan is no longer the visible Neovim buffer")
+        print(f"Opened {plan} in {sock}")
+        return 0
+    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+        print(f"plan-open: {error}", file=sys.stderr)
         return 1
-    formatter = shutil.which("mdformat")
-    if not formatter:
-        print("plan-open: mdformat is required", file=sys.stderr)
-        return 1
-    formatted = subprocess.run([formatter, "--wrap", "80", plan])
-    if formatted.returncode != 0:
-        print(f"plan-open: formatting failed: {plan}", file=sys.stderr)
-        return formatted.returncode
-    if not shutil.which("kitty"):
-        return 0  # no GUI here (e.g. lovbox) — nothing to open
-    if cockpit_nvim_alive():
-        return 0  # a heidr nvim pane is up — it renders the plan itself
-    if nvim_running_in(repo):
-        return 0  # an nvim is already in the repo — it opens the plan itself
-    subprocess.Popen(
-        ["setsid", "kitty", "--working-directory", repo, "-e", "nvim", plan],
-        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL, start_new_session=True,
-    )
-    return 0
 
 
 if __name__ == "__main__":
