@@ -3952,7 +3952,8 @@ local function show_scratch(win, cwd)
   local ticket = (S.selected or ""):match("%a+%-%d+")
     or fn.fnamemodify(cwd or "", ":t"):match("%a+%-%d+")
   local ctx = cockpit_ctx_registered(cwd)
-  local root = ctx == "main" or (scope == "personal" and cwd == scope_root())
+  local root = (S.workspace and S.workspace.profile == "lovable-orchestrator")
+    or ctx == "main" or (scope == "personal" and cwd == scope_root())
   local plan = load_plan(cwd)
   -- A session dash for a path with nothing to show renders as a blank page, so fall
   -- back to the scope home view. But a REMOTE session's cwd (a VM path that does not
@@ -4348,7 +4349,7 @@ end
 local function to_dashboard()
   if S.workspace then
     local w = S.workspace
-    return M.workspace(w.scope, w.id, w.cwd, w.plan, "dashboard", "")
+    return M.workspace(w.scope, w.id, w.cwd, w.plan, "dashboard", "", w.profile)
   end
   if scope == "personal" then
     local ed = target_editor_win()
@@ -4485,7 +4486,7 @@ local function sync_scope()
   pcall(function() require("cockpit.chin").refresh() end)
 end
 
-function M.workspace(workspace_scope, id, cwd, plan, view, latest)
+function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile)
   sync_scope()
   if persisted_scope() and normalized_scope(workspace_scope) ~= scope then return "" end
   local snacks = package.loaded["snacks"]
@@ -4509,7 +4510,7 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest)
     local pending = S.diff_jobs[previous.cwd]; if pending and pending.job then pcall(fn.jobstop, pending.job) end
     S.diff_jobs[previous.cwd] = nil
   end
-  S.workspace = { scope = workspace_scope, id = id, cwd = cwd, plan = plan }
+  S.workspace = { scope = workspace_scope, id = id, cwd = cwd, plan = plan, profile = profile }
   S.selected = id
   if fn.getcwd(ed) ~= cwd and fn.isdirectory(cwd) == 1 then
     api.nvim_win_call(ed, function() vim.cmd.cd(fn.fnameescape(cwd)) end)
