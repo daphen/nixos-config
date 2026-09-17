@@ -528,7 +528,49 @@ end
 
 -- Multi-line compose float (styled). on_submit(text) fires on send; cancel
 -- discards. Type in insert; <C-s> sends; <Esc> to normal then <CR> sends, q cancels.
+local active_window_session
+local function cockpit_config()
+	local instance = vim.env.COCKPIT_INSTANCE or vim.env.HEIDR_INSTANCE
+	if not instance then return end
+	return instance == "main" and vim.fn.expand("~/personal/ai-cockpit/qs-shell")
+		or vim.fn.expand("~/.local/state/cockpit/instance-" .. instance .. "-shell")
+end
+local function rail_context(payload)
+	local config = cockpit_config()
+	if not config then return false end
+	local session, scopes = active_window_session()
+	if not session then vim.notify("No selected Cockpit session", vim.log.levels.WARN); return true, false end
+	payload.session, payload.mode = session, scopes == "lovable,work" and "work" or "personal"
+	local file = vim.fn.tempname()
+	payload.id = file
+	vim.fn.writefile({ vim.json.encode(payload) }, file)
+	local result = vim.system({ "qs", "-p", config, "ipc", "call", "cockpit", "editorContext", file }, { text = true }):wait(1500)
+	vim.fn.delete(file)
+	local accepted = result.code == 0 and vim.trim(result.stdout or "") == "accepted"
+	if not accepted then vim.notify("Cockpit: " .. vim.trim(result.stderr or result.stdout or "context handoff failed"), vim.log.levels.WARN) end
+	return true, accepted
+end
+
+local rail_compose
+function M.submit_compose(file)
+	local payload = vim.json.decode(table.concat(vim.fn.readfile(file), "\n"))
+	vim.fn.delete(file)
+	if not rail_compose or payload.id ~= rail_compose.id then return false end
+	local text = vim.trim(payload.text or "")
+	if text == "" then return false end
+	local submit = rail_compose.submit
+	rail_compose = nil
+	submit(text)
+	return "sent"
+end
+
 local function compose(title, on_submit)
+	local payload = { kind = "compose", title = title }
+	local handled, accepted = rail_context(payload)
+	if handled then
+		if accepted then rail_compose = { id = payload.id, submit = on_submit } end
+		return
+	end
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].filetype = "markdown"
@@ -714,22 +756,15 @@ function M.ask()
 	ask_at(vim.api.nvim_win_get_cursor(0)[1], "ask the agent")
 end
 
-local function active_window_session()
-	local instance = vim.env.COCKPIT_INSTANCE or vim.env.HEIDR_INSTANCE
-	if not instance then return nil end
-	local config = instance == "main"
-		and vim.fn.expand("~/personal/ai-cockpit/qs-shell")
-		or vim.fn.expand("~/.local/state/cockpit/instance-" .. instance .. "-shell")
+active_window_session = function()
+	local config = cockpit_config()
+	if not config then return nil end
 	local result = vim.system({ "qs", "-p", config, "ipc", "call", "cockpit", "railState" },
 		{ text = true }):wait(1000)
 	if result.code ~= 0 then return nil end
 	local ok, state = pcall(vim.json.decode, vim.trim(result.stdout or ""))
 	if not ok or not state.sel or state.sel == "" then return nil end
-	local mode = "personal"
-	local ok_mode, lines = pcall(vim.fn.readfile,
-		vim.fn.expand("~/.local/state/cockpit/mode-" .. instance))
-	if ok_mode and lines[1] then mode = vim.trim(lines[1]) end
-	return state.sel, mode == "work" and "lovable,work" or "personal"
+	return state.sel, state.scopeMode == "work" and "lovable,work" or "personal"
 end
 
 -- Visual variant: the x-mode map presses <Esc> first, so '> holds the selection end.
@@ -737,6 +772,15 @@ end
 -- text. Chat-only — the selection travels as context in the prompt, nothing
 -- is inserted inline and the agent is told not to write anywhere.
 function M.ask_visual()
+	if cockpit_config() then
+		local first, last = vim.fn.getpos("'<"), vim.fn.getpos("'>")
+		local text = table.concat(vim.fn.getregion(first, last, { type = vim.fn.visualmode(), exclusive = vim.o.selection == "exclusive" }), "\n")
+		local file = vim.api.nvim_buf_get_name(0)
+		vim.cmd("normal! gv")
+		rail_context({ kind = "code", path = file ~= "" and file or "[scratch]", l1 = first[2], l2 = last[2], lang = vim.bo.filetype, text = text,
+			fromPlan = file:match("/%.plans/.*%.md$") ~= nil or file:match("/notes/storage/plans/.*%.md$") ~= nil })
+		return
+	end
 	local l1, l2 = vim.fn.line("'<"), vim.fn.line("'>")
 	local sel = table.concat(vim.api.nvim_buf_get_lines(0, l1 - 1, l2, false), "\n")
 	local abs = vim.api.nvim_buf_get_name(0)
@@ -1007,12 +1051,12 @@ end
 -- Dispatch /plan-ticket --go to the repo's agent. Confirms first — this one writes
 -- code. cwd is moved to the repo root so progress paths resolve and the surface-area
 -- watcher catches the agent's edits.
-function M.go()
+function M.go(approved)
 	if not resolve_plan_path() then
 		vim.notify("plan: no plan found for this repo", vim.log.levels.INFO)
 		return
 	end
-	if vim.fn.confirm("Dispatch /plan-ticket --go? The agent will implement the plan.", "&Yes\n&No", 2) ~= 1 then
+	if approved ~= true and vim.fn.confirm("Dispatch /plan-ticket --go? The agent will implement the plan.", "&Yes\n&No", 2) ~= 1 then
 		return
 	end
 	local ticket = vim.fn.fnamemodify(state.plan_path, ":t:r")
@@ -1068,9 +1112,13 @@ end
 -- <C-p>: the plan menu — ordered lifecycle picker. Each step shows its state
 -- (✓ done · → next · locked with the reason), so --go can't be run before
 -- --finalize by accident. This picker is the plugin's ONE interface.
-function M.menu()
+function M.menu(choice, expected_path)
 	if not resolve_plan_path() then
 		vim.notify("plan: no plan found for this repo", vim.log.levels.INFO)
+		return
+	end
+	if expected_path and expected_path ~= state.plan_path then
+		vim.notify("plan changed; reopen the menu", vim.log.levels.WARN)
 		return
 	end
 	-- read_status needs the plan buffer text; read from disk when not loaded
@@ -1141,15 +1189,24 @@ function M.menu()
 		local mark = e.done and "✓ " or e.next_ and "→ " or e.lock and "· " or "  "
 		labels[#labels + 1] = mark .. e.label .. (e.lock and ("   (" .. e.lock .. ")") or "")
 	end
-	vim.ui.select(labels, { prompt = "Plan · " .. key .. " · " .. (phase or status) }, function(_, idx)
-		if not idx then return end
+	local function run(idx)
 		local e = entries[idx]
-		if e.lock then
-			vim.notify("plan: " .. e.lock, vim.log.levels.WARN)
-			return
-		end
+		if not e then return end
+		if e.lock then vim.notify("plan: " .. e.lock, vim.log.levels.WARN); return end
 		e.run()
-	end)
+	end
+	if choice == "confirm-go" then
+		if not entries[3].lock then M.go(true) else vim.notify("plan: " .. entries[3].lock, vim.log.levels.WARN) end
+		return
+	end
+	if choice == 3 and cockpit_config() and not entries[3].lock then
+		rail_context({ kind = "menu", title = "Implement " .. key .. "? The agent will change code.", labels = { "Yes, implement", "Cancel" }, actions = { "confirm-go", "cancel" }, path = state.plan_path })
+		return
+	end
+	if choice then run(choice); return end
+	local title = "Plan · " .. key .. " · " .. (phase or status)
+	if rail_context({ kind = "menu", title = title, labels = labels, path = state.plan_path }) then return end
+	vim.ui.select(labels, { prompt = title }, function(_, idx) if idx then run(idx) end end)
 end
 
 -- Jump to the first unresolved decision and open its resolve picker.
