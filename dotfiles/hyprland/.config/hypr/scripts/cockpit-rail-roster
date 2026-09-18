@@ -31,10 +31,10 @@ active = json.loads(os.environ["ACTIVE"])
 address = active.get("address")
 foc = next((w for w in ws if w.get("address") == address), None)
 print(str(foc.get("title") or "") if foc else "")
-print((foc.get("workspace") or {}).get("name", "") if foc else "")
-for w in sorted(ws, key=lambda w: w["focusHistoryID"]):
+print((foc.get("workspace") or {}).get("id", "") if foc else "")
+for w in ws:
     if str(w.get("title") or "").startswith("cockpit-qs"):
-        print("%s\t%s\t%s" % (w["address"], (w.get("workspace") or {}).get("name", ""), w.get("title")))' 2>/dev/null) || exit 0
+        print("%s\t%s\t%s" % (w["address"], (w.get("workspace") or {}).get("id", ""), w.get("title")))' 2>/dev/null) || exit 0
 focused=$(printf '%s\n' "$out" | sed -n 1p)
 focws=$(printf '%s\n' "$out" | sed -n 2p)
 

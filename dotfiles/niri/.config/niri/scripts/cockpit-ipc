@@ -37,20 +37,10 @@ probe_id() {
   case "$out" in nvim|rail) return 0;; *) return 1;; esac
 }
 
-# Reap ONLY dirs whose instance is actually DEAD (connect failure/timeout).
-# A live NON-cockpit instance (the bar, mlqs, …) answers "Target not found" on
-# stderr with exit 0 — the first reaper treated that as dead and rm -rf'd the
-# registry dirs of every live sibling, unlinking their ipc sockets and making
-# qs client commands abort in LogManager::init. Alive-but-not-ours = skip, keep.
-probe() { # probe <id> <fn> -> stdout or failure (+reap only if dead)
-  local out rc
-  out=$(timeout 2 qs ipc -i "$1" call cockpit "$2" 2>&1); rc=$?
-  # A TIMEOUT (124) is not death — a busy cockpit answers late. Reaping on it deleted
-  # the registry dir of a LIVE cockpit, which is what made Ctrl+l "break" the cockpit:
-  # anything that then checked `qs list` for liveness concluded nothing was running
-  # (2026-08-27). Only a definitive connect failure reaps.
-  if [ "$rc" -eq 124 ]; then return 1; fi
-  if [ "$rc" -ne 0 ]; then rm -rf "${reg:?}/$1"; return 1; fi
+# Display mismatch and connection failures do not prove an instance is dead.
+probe() {
+  local out
+  out=$(timeout 2 qs ipc -i "$1" call cockpit "$2" 2>&1) || return 1
   case "$out" in
     *"not found"*|"") return 1;;
   esac
