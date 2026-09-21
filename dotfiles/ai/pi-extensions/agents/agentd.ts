@@ -115,7 +115,9 @@ export interface Resolved {
 // Match a free-form ref against every scope's roster. Exact id/name wins; then a
 // cwd-path relationship; then a substring on name/cwd or an id prefix.
 export async function resolveSession(ref: string): Promise<Resolved | null> {
-  const abs = expandPath(ref);
+  const explicitPath = path.isAbsolute(ref) || ref === "~" || ref.startsWith("~/") ||
+    ref === "." || ref === ".." || ref.startsWith("./") || ref.startsWith("../") || fs.existsSync(ref);
+  const abs = explicitPath ? expandPath(ref) : null;
   let byCwd: Resolved | null = null;
   let bySub: Resolved | null = null;
   for (const s of scopeSocks()) {
@@ -441,24 +443,15 @@ function turnsFromEntries(entries: any[], n: number): Array<{ role: string; text
   return turns.slice(-n);
 }
 
-// Read local sessions directly so the existing fast path remains unchanged.
-export function readTurns(cwd: string, n = 6): TurnRead | null {
-  const enc = "--" + cwd.replace(/^\/+|\/+$/g, "").replace(/\//g, "-") + "--";
-  const dir = path.join(HOME, ".pi", "agent", "sessions", enc);
-  let files: string[];
+export function readTurns(file: string, n = 6): TurnRead | null {
+  let contents: string;
   try {
-    files = fs
-      .readdirSync(dir)
-      .filter((file) => file.endsWith(".jsonl"))
-      .map((file) => path.join(dir, file))
-      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+    contents = fs.readFileSync(file, "utf8");
   } catch {
     return null;
   }
-  if (files.length === 0) return null;
-  const file = files[0];
   const entries: any[] = [];
-  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+  for (const line of contents.split("\n")) {
     if (!line.trim()) continue;
     try {
       entries.push(JSON.parse(line));
@@ -472,13 +465,13 @@ export function isLocalSessionCwd(cwd: string, home = HOME): boolean {
   return relative === "" || (relative !== ".." && !relative.startsWith(".." + path.sep));
 }
 
-export function readRemoteTurns(resolved: Resolved, n = 6, timeoutMs = 30000): Promise<TurnRead | null> {
+function requestPi(resolved: Resolved, command: "get_state" | "get_entries", timeoutMs = 30000): Promise<any> {
   const sid = String(resolved.session.id || resolved.session.name || "");
   return new Promise((resolve, reject) => {
     const client = net.connect(resolved.sockPath);
     let buffer = "";
     let done = false;
-    const finish = (value: TurnRead | null, error?: Error) => {
+    const finish = (value: any, error?: Error) => {
       if (done) return;
       done = true;
       clearTimeout(timer);
@@ -487,7 +480,7 @@ export function readRemoteTurns(resolved: Resolved, n = 6, timeoutMs = 30000): P
       else resolve(value);
     };
     const timer = setTimeout(() => finish(null, new Error(`agent_read timed out for ${sid}`)), timeoutMs);
-    client.on("connect", () => client.write(JSON.stringify({ type: "get_entries", session: sid }) + "\n"));
+    client.on("connect", () => client.write(JSON.stringify({ type: command, session: sid }) + "\n"));
     client.on("data", (chunk: Buffer) => {
       buffer += chunk.toString("utf8");
       let newline: number;
@@ -504,30 +497,28 @@ export function readRemoteTurns(resolved: Resolved, n = 6, timeoutMs = 30000): P
           finish(null, new Error(`agentd refused: ${event.error ?? "unknown error"}`));
           return;
         }
-        if (event?.type === "response" && event.command === "get_entries" && (!event.session || event.session === sid)) {
-          const entries = Array.isArray(event.data?.entries) ? event.data.entries : [];
-          finish({ file: "agentd:get_entries", turns: turnsFromEntries(entries, n) });
+        if (event?.type === "response" && event.command === command && (!event.session || event.session === sid)) {
+          finish(event);
           return;
         }
       }
     });
     client.on("error", (error) => finish(null, error));
     client.on("close", () => {
-      if (!done) finish(null, new Error(`agentd closed before returning entries for ${sid}`));
+      if (!done) finish(null, new Error(`agentd closed before returning ${command} for ${sid}`));
     });
   });
 }
 
-interface ReadSessionDeps {
-  local: (cwd: string, n: number) => TurnRead | null;
-  remote: (resolved: Resolved, n: number) => Promise<TurnRead | null>;
+export async function readRemoteTurns(resolved: Resolved, n = 6, timeoutMs = 30000): Promise<TurnRead | null> {
+  const response = await requestPi(resolved, "get_entries", timeoutMs);
+  const entries = Array.isArray(response.data?.entries) ? response.data.entries : [];
+  return { file: "agentd:get_entries", turns: turnsFromEntries(entries, n) };
 }
 
-export function readSessionTurns(
-  resolved: Resolved,
-  n = 6,
-  deps: ReadSessionDeps = { local: readTurns, remote: readRemoteTurns },
-): Promise<TurnRead | null> {
-  if (isLocalSessionCwd(resolved.cwd)) return Promise.resolve(deps.local(resolved.cwd, n));
-  return deps.remote(resolved, n);
+export async function readSessionTurns(resolved: Resolved, n = 6): Promise<TurnRead | null> {
+  if (!isLocalSessionCwd(resolved.cwd)) return readRemoteTurns(resolved, n);
+  const state = await requestPi(resolved, "get_state");
+  const file = typeof state.data?.sessionFile === "string" ? state.data.sessionFile : "";
+  return file ? readTurns(file, n) : null;
 }

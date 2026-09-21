@@ -8,7 +8,6 @@ import {
   dispositionReviewFindings,
   promptMessage,
   readRemoteTurns,
-  readSessionTurns,
   readTurns,
   reportReviewFindings,
   scheduleSelf,
@@ -46,20 +45,6 @@ describe("spawn profile payload", () => {
     });
   });
 
-  test("remote sessions use agentd entries without a local transcript lookup", async () => {
-    const resolved: Resolved = {
-      session: { name: "every-2741" }, scope: "work", sockPath: "/run/agentd-work.sock",
-      cwd: "/home/remote/src/lovable-every-2741",
-    };
-    let localCalls = 0;
-    const result = await readSessionTurns(resolved, 2, {
-      local: () => { localCalls++; throw new Error("must not read local session storage"); },
-      remote: async () => ({ file: "agentd:get_entries", turns: [{ role: "assistant", text: "b3698679c5c" }] }),
-    });
-    expect(localCalls).toBe(0);
-    expect(result?.turns[0]?.text).toBe("b3698679c5c");
-  });
-
   test("remote read requests get_entries from the resolved agentd socket", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-read-socket-"));
     const socket = path.join(dir, "agentd.sock");
@@ -82,19 +67,16 @@ describe("spawn profile payload", () => {
   });
 
   test("local session JSONL reads remain unchanged", () => {
-    const cwd = fs.mkdtempSync(path.join(os.homedir(), ".cache/agent-read-local-"));
-    const encoded = "--" + cwd.replace(/^\/+|\/+$/g, "").replace(/\//g, "-") + "--";
-    const sessionDir = path.join(os.homedir(), ".pi/agent/sessions", encoded);
-    fs.mkdirSync(sessionDir, { recursive: true });
-    fs.writeFileSync(path.join(sessionDir, "local.jsonl"), [
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-read-local-"));
+    const file = path.join(dir, "local.jsonl");
+    fs.writeFileSync(file, [
       JSON.stringify({ message: { role: "user", content: "question" } }),
       JSON.stringify({ message: { role: "assistant", content: [{ type: "text", text: "answer" }] } }),
     ].join("\n"));
-    expect(readTurns(cwd, 2)?.turns).toEqual([
+    expect(readTurns(file, 2)?.turns).toEqual([
       { role: "user", text: "question" }, { role: "assistant", text: "answer" },
     ]);
-    fs.rmSync(cwd, { recursive: true, force: true });
-    fs.rmSync(sessionDir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   test("typed remediation tools send authenticated structured payloads", async () => {
