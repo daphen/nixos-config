@@ -63,7 +63,7 @@ func runWorktree(a app, ticket, raw string, startApp, scriptTag bool) error {
 			"if tmux has-session -t 'wt-" + ticket + "' 2>/dev/null; then " +
 			"[ \"$(tmux display-message -p -t 'wt-" + ticket + "' '#{session_path}')\" = '" + vmwt + "' ] || { echo 'tmux wt-" + ticket + " belongs to another checkout' >&2; exit 19; }; " +
 			"echo '  tmux wt-" + ticket + " already running'\n" +
-			"else tmux new-session -d -s 'wt-" + ticket + "' -c '" + vmwt + "' " +
+			"else tmux new-session -d -s 'wt-" + ticket + "' -e \"NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-/etc/ssl/certs/ca-certificates.crt}\" -c '" + vmwt + "' " +
 			"'export PATH=$HOME/src/lovable/bin:$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH; nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous 2>&1 | tee ~/wt-" + ticket + ".log'; " +
 			"echo '  started (logs: ~/wt-" + ticket + ".log on the VM, or tmux attach -t wt-" + ticket + ")'; fi"
 		if text, err := worktreeSSHResult(a, boot); err != nil {

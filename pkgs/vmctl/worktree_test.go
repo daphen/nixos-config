@@ -14,6 +14,49 @@ import (
 	"time"
 )
 
+func TestWorktreePassesCABundleToNewTmuxSession(t *testing.T) {
+	for _, supplied := range []string{"", "/trusted/custom CA's.pem"} {
+		t.Run(supplied, func(t *testing.T) {
+			t.Setenv("NODE_EXTRA_CA_CERTS", supplied)
+			home, path, _ := worktreeFixture(t, `
+case "$*" in
+  *"tmux new-session"*) eval "script=\${$#}"; /bin/sh -c "$script"; exit 23 ;;
+esac
+`)
+			tmux := `#!/bin/sh
+case "$1" in
+  has-session) exit 1 ;;
+  new-session)
+    ca=not-forwarded
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = -e ]; then shift; case "$1" in NODE_EXTRA_CA_CERTS=*) ca=${1#*=} ;; esac; fi
+      shift
+    done
+    printf '%s' "$ca" > "$HOME/launch-ca"
+    exit 23 ;;
+esac
+`
+			if err := os.WriteFile(filepath.Join(path, "tmux"), []byte(tmux), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, nil)
+			defer listener.Close()
+			result := runWorktreeBinaryArgs(t, home, path, "--app", "EVERY-44")
+			if result.err == nil || !strings.Contains(result.stderr, "remote dev startup failed") {
+				t.Fatalf("fixture must stop after capturing tmux startup: %+v", result)
+			}
+			got, err := os.ReadFile(filepath.Join(home, "launch-ca"))
+			want := supplied
+			if want == "" {
+				want = "/etc/ssl/certs/ca-certificates.crt"
+			}
+			if err != nil || string(got) != want {
+				t.Fatalf("tmux CA=%q, want %q: %v", got, want, err)
+			}
+		})
+	}
+}
+
 func TestWorktreeRequiresCockpitSocket(t *testing.T) {
 	home, path, log := worktreeFixture(t, "")
 	result := runWorktreeBinary(t, home, path, "EVERY-42")
