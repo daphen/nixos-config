@@ -729,7 +729,7 @@ func (s syncRun) requireReadyMutagen() error {
 
 var mutagenIgnores = []string{
 	".git", "node_modules", ".devenv", ".direnv", ".wrangler", ".envrc.local", ".env.local", ".env", "*.sqlite", "*.sqlite-shm", "*.sqlite-wal",
-	".next", ".turbo", "target", "dist", "__pycache__", ".venv", "/bazel-*", "*.log", "*.png", "*.jpg",
+	".next", ".turbo", "target", "dist", "__pycache__", ".venv", "/bazel-*", "/.bazel-user-root", "*.log", "*.png", "*.jpg",
 	"*.jpeg", "*.gif", "*.webp", "*.ico", "*.icns", "*.pdf", "*.mp4", "*.woff", "*.woff2", "*.ttf", "!.heidr-pastes/**",
 }
 

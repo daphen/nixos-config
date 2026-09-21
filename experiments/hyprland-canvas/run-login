@@ -51,11 +51,6 @@ if (( REAL_MODE )); then
 fi
 
 runtime_path=()
-if [[ -e $PACKAGE_LINK ]]; then
-  while IFS= read -r dependency; do
-    runtime_path+=("$dependency/bin")
-  done < <(nix-store -q --references "$(readlink -f -- "$PACKAGE_LINK")" | grep -- '-hyprland-guiutils-' || true)
-fi
 
 if (( DEV_MODE )); then
   if [[ ! -x $DEV_PACKAGE/bin/Hyprland || ! -x $DEV_PACKAGE/bin/start-hyprland ]]; then
@@ -73,6 +68,10 @@ else
     --no-write-lock-file path:./experiments/hyprland-canvas --no-link --print-out-paths | tail -n 1)"
 fi
 
+guiutils="$(cd "$REPO_ROOT" && nice -n 15 ionice -c3 nix build --cores 2 --max-jobs 1 \
+  --no-write-lock-file path:./experiments/hyprland-canvas#guiutils --no-link --print-out-paths | tail -n 1)"
+runtime_path+=("$guiutils/bin")
+
 restore_niri() {
   printf '\nRestoring Niri...\n'
   systemctl --user start niri.service
@@ -82,16 +81,27 @@ trap restore_niri EXIT
 printf 'Stopping Niri and starting the real-seat canvas. Alt+Escape exits.\n'
 "$HYPR_CONFIG_ROOT/scripts/quickshell-session-stop" --any-display
 systemctl --user stop niri.service
+pkill -TERM -f "$HOME/.config/niri/scripts/start-session-apps" 2>/dev/null || true
 unset WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE
 export AQ_DRM_DEVICES="$gpu"
 export PATH="$CANVAS_BIN:$package/bin${runtime_path:+:$(IFS=:; printf '%s' "${runtime_path[*]}")}:$PATH"
 export HYPR_CANVAS_REAL="$REAL_MODE"
-export HYPR_CANVAS_CAMERA=1
-export HYPR_CANVAS_CAMERA_V2=1
 export HYPR_SCRIPTS="$HYPR_CONFIG_ROOT/scripts/"
 
-if (( DEV_MODE )); then
-  "$package/bin/start-hyprland" --path "$package/bin/Hyprland" -- --config "$CONFIG" 2>&1 | tee "$LOG"
-else
-  "$package/bin/start-hyprland" -- --config "$CONFIG" 2>&1 | tee "$LOG"
-fi
+while true; do
+  status=0
+  if (( DEV_MODE )); then
+    "$package/bin/start-hyprland" --path "$package/bin/Hyprland" -- --config "$CONFIG" 2>&1 | tee "$LOG" || status=$?
+  else
+    "$package/bin/start-hyprland" -- --config "$CONFIG" 2>&1 | tee "$LOG" || status=$?
+  fi
+
+  if (( status != 0 )); then
+    exit "$status"
+  fi
+
+  printf '\nRestart Hyprland? [Y/n] '
+  if ! read -r answer || [[ ${answer,,} == n || ${answer,,} == no ]]; then
+    break
+  fi
+done

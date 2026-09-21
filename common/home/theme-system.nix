@@ -16,8 +16,7 @@ in {
     if [ -f "$HOME/.config/themes/theme-manager.sh" ]; then
       mode="$(cat "$HOME/.config/theme_mode" 2>/dev/null || echo dark)"
       echo "Regenerating themes for $mode mode..."
-      ${themectl}/bin/themectl generate "$mode" || true
-      ${themectl}/bin/themectl apply "$mode" || true
+      ${themectl}/bin/themectl switch "$mode" || true
     fi
   '';
 }

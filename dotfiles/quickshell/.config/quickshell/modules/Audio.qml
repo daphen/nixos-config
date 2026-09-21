@@ -18,7 +18,7 @@ Item {
             || d.indexOf("bluetooth") >= 0 || d.indexOf("airpods") >= 0
     }
 
-    implicitWidth: visible ? row.implicitWidth + Theme.modulePadH * 2 : 0
+    implicitWidth: visible ? indicator.implicitWidth + Theme.modulePadH * 2 : 0
     implicitHeight: parent ? parent.height : Theme.barHeight
     visible: sink !== null
 
@@ -27,25 +27,14 @@ Item {
         objects: [sink]
     }
 
-    Row {
-        id: row
+    ProgressRingIcon {
+        id: indicator
         anchors.centerIn: parent
-        spacing: 6
-
-        Lib.Icon {
-            name: root.bluetooth ? "headphones" : (muted || volume <= 0.33) ? "volume" : "volume-up"
-            color: muted ? Theme.red : Theme.fg
-            width: 15; height: 15
-            anchors.verticalCenter: parent.verticalCenter
-        }
-        Text {
-            text: Math.round(volume * 100) + "%"
-            color: Theme.fg
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
-            font.weight: Theme.fontWeight
-            font.hintingPreference: Font.PreferFullHinting
-            anchors.verticalCenter: parent.verticalCenter
-        }
+        progress: root.muted ? 0 : Math.min(1, root.volume)
+        iconName: root.bluetooth ? "headphones" : (root.muted || root.volume <= 0.33) ? "volume" : "volume-up"
+        iconColor: root.muted ? Theme.red : Theme.fg
+        ringColor: root.muted ? Theme.red : Theme.fg
+        iconSize: 14
+        iconVerticalOffset: root.bluetooth ? 1 : 0
     }
 }

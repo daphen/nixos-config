@@ -4768,12 +4768,13 @@ refresh_git_changes = function(cwd, path)
   end
   local previous = S.diff_jobs[cwd]
   if previous and previous.job then pcall(fn.jobstop, previous.job) end
-  local request, output, untracked = {}, {}, {}
+  local request, output, untracked = { files = 0, too_large = false }, {}, {}
+  local max_files = cwd:match("/work/lovable%.daphen%-every%-%d+$") and 200 or math.huge
   S.diff_jobs[cwd] = request
   local function apply()
     if S.diff_jobs[cwd] ~= request then return end
     S.diff_jobs[cwd] = nil
-    local parsed = parse_git_diff(output)
+    local parsed = request.too_large and { files = {}, bypath = {}, unready = true } or parse_git_diff(output)
     for _, u in ipairs(untracked) do
       if not parsed.bypath[u.path] then
         local h = { old_l1 = 0, old_l2 = 0, l1 = 1, l2 = math.max(1, u.lines), add = u.lines, del = 0 }
@@ -4843,11 +4844,16 @@ refresh_git_changes = function(cwd, path)
       partial = data[#data]
       for index = 1, #data - 1 do
         local line = data[index]
+        if line:match("^diff %-%-git ") then
+          request.files = request.files + 1
+          if request.files > max_files then request.too_large = true; pcall(fn.jobstop, request.job); return end
+        end
         if line ~= "" then output[#output + 1] = line end
       end
     end,
     on_exit = function(_, code)
       if S.diff_jobs[cwd] ~= request then return end
+      if request.too_large then vim.schedule(apply); return end
       if code ~= 0 then S.diff_jobs[cwd] = nil; return end
       if partial ~= "" then output[#output + 1] = partial end
       local files = {}
@@ -4855,10 +4861,13 @@ refresh_git_changes = function(cwd, path)
         stdout_buffered = true,
         on_stdout = function(_, data)
           for _, f in ipairs(data or {}) do
-            if f ~= "" and not f:match("^%.heidr%-pastes/") and not f:match("^agents/") then files[#files + 1] = f end
+            if f ~= "" and not f:match("^%.heidr%-pastes/") and not f:match("^agents/") then
+              files[#files + 1] = f
+              if request.files + #files > max_files then request.too_large = true; break end
+            end
           end
         end,
-        on_exit = function() count_untracked(files) end,
+        on_exit = function() if request.too_large then apply() else count_untracked(files) end end,
       })
     end,
   })

@@ -41,7 +41,8 @@ Item {
         return grid
     }
 
-    property real _t: 0
+    readonly property real _cycleMs: Math.max(1, interval * frames.length)
+    readonly property real _t: running ? (OrbClock.now % _cycleMs) / _cycleMs : 0
     readonly property int _fi: Math.min(frames.length - 1, Math.floor(_t * frames.length))
     readonly property var _grid: _decode(frames[_fi])
 
@@ -64,10 +65,4 @@ Item {
         }
     }
 
-    NumberAnimation on _t {
-        running: sp.running
-        from: 0; to: 1
-        duration: Math.max(1, sp.interval * sp.frames.length)
-        loops: Animation.Infinite
-    }
 }

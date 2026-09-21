@@ -3,6 +3,7 @@ return {
 	lazy = false,
 	after = function()
 		require("markview").setup({
+			html = { enable = false },
 			-- Give inline [text](url) links a visible affordance: a 󰌷 icon + underlined
 			-- link colour, so a link reads AS a link (before this it rendered as plain
 			-- concealed text and you couldn't tell). Applies in chat + plans.

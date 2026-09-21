@@ -156,7 +156,7 @@ PanelWindow {
             anchors.fill: parent
             anchors.margins: 1
             radius: Math.max(0, capsule.radius - 1)
-            color: Modules.Theme.notch
+            color: Lib.Theme.bgDim
         }
 
         Row {
@@ -214,7 +214,6 @@ PanelWindow {
                 }
             }
 
-            Modules.DateText {}
             Modules.Weather {}
             Modules.Cpu {}
             Modules.Memory {}
@@ -274,7 +273,6 @@ PanelWindow {
             }
             spacing: 8
 
-            Modules.Inbox {}
             Modules.Dnd {}
             Modules.Network {}
             Modules.Audio {}

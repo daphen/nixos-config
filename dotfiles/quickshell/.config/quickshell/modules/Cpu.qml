@@ -13,7 +13,7 @@ Item {
     property real prevTotal: 0
     property real prevIdle: 0
 
-    implicitWidth: row.implicitWidth + Theme.modulePadH * 2
+    implicitWidth: indicator.implicitWidth + Theme.modulePadH * 2
     implicitHeight: parent ? parent.height : Theme.barHeight
 
     Behavior on implicitWidth {
@@ -64,26 +64,11 @@ Item {
         onTriggered: proc.running = true
     }
 
-    Row {
-        id: row
+    ProgressRingIcon {
+        id: indicator
         anchors.centerIn: parent
-        spacing: 6
-
-        Lib.Icon {
-            name: "chip"
-            color: Theme.fg
-            // the chip's drawn body is compact in its grid — largest bump
-            width: 18; height: 18
-            anchors.verticalCenter: parent.verticalCenter
-        }
-        Text {
-            text: root.usage + "%"
-            color: Theme.fg
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
-            font.weight: Theme.fontWeight
-            font.hintingPreference: Font.PreferFullHinting
-            anchors.verticalCenter: parent.verticalCenter
-        }
+        progress: root.usage / 100
+        iconName: "chip"
+        iconSize: 17
     }
 }

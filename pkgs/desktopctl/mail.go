@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net"
 	"os"
 	"os/exec"
@@ -51,7 +52,7 @@ func runMail() error {
 	for _, pid := range uis {
 		seen[pid] = true
 	}
-	windows, _ := niriWindows()
+	windows, _ := mailWindows()
 	for _, window := range windows {
 		if window.Title == "mlqs" && window.PID != 0 && !seen[window.PID] {
 			uis = append(uis, window.PID)
@@ -77,7 +78,7 @@ func runMail() error {
 			return nil
 		}
 	} else {
-		windows, _ = niriWindows()
+		windows, _ = mailWindows()
 	}
 	windowPIDs := make(map[int]bool)
 	for _, window := range windows {
@@ -211,10 +212,30 @@ func mailSummon() error {
 	return err
 }
 
+func mailWindows() ([]niriWindow, error) {
+	if !usingHyprland() {
+		return niriWindows()
+	}
+
+	data, _ := commandOutput("hyprctl", "-j", "clients")
+	var clients []struct {
+		Title string `json:"title"`
+		PID   int    `json:"pid"`
+	}
+	if err := json.Unmarshal(data, &clients); err != nil {
+		return nil, err
+	}
+	windows := make([]niriWindow, 0, len(clients))
+	for _, client := range clients {
+		windows = append(windows, niriWindow{Title: client.Title, PID: client.PID})
+	}
+	return windows, nil
+}
+
 func mailWaitForWindow(title string) ([]niriWindow, bool) {
 	var windows []niriWindow
 	for range 12 {
-		windows, _ = niriWindows()
+		windows, _ = mailWindows()
 		for _, window := range windows {
 			if window.Title == title {
 				return windows, true
@@ -222,7 +243,7 @@ func mailWaitForWindow(title string) ([]niriWindow, bool) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	windows, _ = niriWindows()
+	windows, _ = mailWindows()
 	return windows, false
 }
 

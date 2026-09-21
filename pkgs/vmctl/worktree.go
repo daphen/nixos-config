@@ -48,10 +48,17 @@ func runWorktree(a app, ticket, raw string, scriptTag bool) error {
 	} else {
 		branch := "daphen/" + ticket
 		worktreeSay(a, "worktree "+vmwt+" on "+branch+" …")
-		if _, err := worktreeSSHResult(a, "export PATH=$HOME/.nix-profile/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH\n"+
-			"cd '"+repo+"'\n"+
-			"if [ -d '"+vmwt+"' ]; then echo '  exists — reusing'\n"+
-			"else git fetch --quiet origin main 2>/dev/null || true; git worktree add '"+vmwt+"' -b '"+branch+"' origin/main 2>&1 | tail -1; fi"); err != nil {
+		setup := "export PATH=$HOME/.nix-profile/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$PATH\n" +
+			"if [ -d '" + vmwt + "' ]; then echo '  exists — reusing'\n" +
+			"else git -C '" + repo + "' fetch --quiet origin main && export WORKTRUNK_WORKTREE_PATH='" + vmwt + "' && " +
+			"if git -C '" + repo + "' show-ref --verify --quiet 'refs/heads/" + branch + "'; then " +
+			"wt -C '" + repo + "' switch '" + branch + "' --no-verify --no-cd -y; " +
+			"else wt -C '" + repo + "' switch --create '" + branch + "' --base origin/main --no-verify --no-cd -y; fi; fi || exit $?\n" +
+			"test -d '" + vmwt + "' || { echo 'checkout was not created at " + vmwt + "' >&2; exit 1; }"
+		if text, err := worktreeSSHResult(a, setup); err != nil {
+			if diagnostic := strings.TrimSpace(text); diagnostic != "" {
+				return fmt.Errorf("remote worktree setup failed: %w: %s", err, diagnostic)
+			}
 			return fmt.Errorf("remote worktree setup failed: %w", err)
 		}
 	}
@@ -63,7 +70,7 @@ func runWorktree(a app, ticket, raw string, scriptTag bool) error {
 		"[ \"$(tmux display-message -p -t 'wt-" + ticket + "' '#{session_path}')\" = '" + vmwt + "' ] || { echo 'tmux wt-" + ticket + " belongs to another checkout' >&2; exit 19; }; " +
 		"echo '  tmux wt-" + ticket + " already running'\n" +
 		"else tmux new-session -d -s 'wt-" + ticket + "' -c '" + vmwt + "' " +
-		"'export PATH=$HOME/src/lovable/bin:$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH; nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous 2>&1 | tee ~/wt-" + ticket + ".log'; " +
+		"'export PATH=$HOME/src/lovable/bin:$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH; nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous 2>&1 | tee ~/wt-" + ticket + ".log' && " +
 		"echo '  started (logs: ~/wt-" + ticket + ".log on the VM, or tmux attach -t wt-" + ticket + ")'; fi"
 	if text, err := worktreeSSHResult(a, boot); err != nil {
 		return fmt.Errorf("remote dev startup failed for %s: %s", vmwt, strings.TrimSpace(text))
@@ -256,7 +263,7 @@ func ensureWorktreeTunnel(a app, ticket string, ports worktreePorts, scriptTag b
 	}
 	ssh := "/run/current-system/sw/bin/ssh"
 	args := []string{"--user", "--unit=" + strings.TrimSuffix(unit, ".service"), "--collect", "--property=Restart=on-failure", "--property=RestartSec=2s", ssh,
-		"-N", "-o", "BatchMode=yes", "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4", "-o", "StrictHostKeyChecking=yes"}
+		"-N", "-o", "BatchMode=yes", "-o", "ConnectTimeout=25", "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4", "-o", "StrictHostKeyChecking=yes"}
 	for _, port := range forwards {
 		args = append(args, "-L", fmt.Sprintf("127.0.0.1:%d:127.0.0.1:%d", port, port))
 	}
@@ -370,7 +377,16 @@ func worktreeSSHResult(a app, script string) (string, error) {
 }
 
 func worktreeSSHOutput(a app, script string) (string, error) {
-	return a.output("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user+"@"+a.host, script)
+	var stdout, stderr strings.Builder
+	cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user+"@"+a.host, script)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		if diagnostic := strings.TrimSpace(stderr.String()); diagnostic != "" {
+			return stdout.String(), fmt.Errorf("%w: %s", err, diagnostic)
+		}
+		return stdout.String(), err
+	}
+	return stdout.String(), nil
 }
 
 func verifyWorktreeMirror(a app, vmwt, mirror string) error {
@@ -397,8 +413,8 @@ func playwrightCommand(vmwt string) string {
   "mcpServers": {
     "playwright": {
       "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest", "--headless", "--browser", "chromium"],
-      "env": { "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1", "PLAYWRIGHT_BROWSERS_PATH": "/nix/store/6n74mm97b8f8gfra77hiz9q4ffiianpy-playwright-browsers" },
+      "args": ["-y", "@playwright/mcp@0.0.80", "--headless", "--browser", "chromium", "--executable-path", "/nix/store/4zn3d0v19mhpw5k3mn5l684v4y79na7k-chromium-143.0.7499.169/bin/chromium"],
+      "env": { "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1" },
       "lifecycle": "lazy"
     }
   }

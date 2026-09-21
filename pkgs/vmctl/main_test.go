@@ -147,8 +147,9 @@ func TestSuccessfulEmptyMutagenListCreatesSession(t *testing.T) {
 	home, path, log := mirrorFixture(t)
 	extra := []string{"VMHEAD=2222222222222222222222222222222222222222", "VMBRANCH=daphen/every-3315", "MUTAGEN_MODE=empty-success"}
 	result := runEnv(t, home, path, extra, "sync", "--prepare", "EVERY-3315")
-	if result.err != nil || !strings.Contains(readLog(t, log), "mutagen|sync create") {
-		t.Fatalf("result=%+v calls=%s", result, readLog(t, log))
+	calls := readLog(t, log)
+	if result.err != nil || !strings.Contains(calls, "mutagen|sync create") || !strings.Contains(calls, "--ignore=/.bazel-user-root") {
+		t.Fatalf("result=%+v calls=%s", result, calls)
 	}
 }
 

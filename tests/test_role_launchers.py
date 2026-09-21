@@ -106,6 +106,37 @@ class VmSliceReaperOwnershipTests(unittest.TestCase):
 
 
 class LauncherPayloadTests(unittest.TestCase):
+    def test_cockpit_app_refuses_stale_remote_port_before_opening_browser(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td); runtime = tmp / "run"; runtime.mkdir()
+            listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            listener.bind(("127.0.0.1", 0)); listener.listen(2)
+            port = listener.getsockname()[1]
+            sessions = [{"name": "every-2447", "cwd": "/vm/src/lovable-every-2447", "webPort": port}]
+            fake = FakeAgentd(runtime / "agentd-work.sock", sessions); fake.start()
+
+            def dead_forward():
+                for _ in range(2):
+                    conn, _ = listener.accept(); conn.close()
+                listener.close()
+
+            forward = threading.Thread(target=dead_forward, daemon=True); forward.start()
+            scripts = tmp / ".config/niri/scripts"; scripts.mkdir(parents=True)
+            browser_log = tmp / "browser.log"
+            dispatch = scripts / "browser-dispatch"
+            dispatch.write_text(f"#!/bin/sh\necho \"$*\" >> {browser_log}\n")
+            dispatch.chmod(0o755)
+            env = os.environ | {"HOME": td, "XDG_RUNTIME_DIR": str(runtime)}
+            result = subprocess.run(
+                [ROOT / "dotfiles/niri/.config/niri/scripts/cockpit-app", "every-2447"],
+                env=env, check=False, capture_output=True, text=True, timeout=10,
+            )
+            fake.join(); forward.join(2)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("advertises port", result.stderr)
+            self.assertIn("VM app is not serving HTTP", result.stderr)
+            self.assertFalse(browser_log.exists())
+
     def test_vm_wt_spawns_worker_with_plan_seed(self):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td); runtime = tmp / "run"; runtime.mkdir()

@@ -247,7 +247,7 @@ layout {
         off
 
         // How many logical pixels the ring extends out from the windows.
-        width 4
+        width 2
 
         // Colors can be set in a variety of ways:
         // - CSS named colors: "red"
@@ -284,7 +284,7 @@ layout {
         // The settings are the same as for the focus ring.
         // If you enable the border, you probably want to disable the focus ring.
 
-        width 4
+        width 2
         active-color "#6F6F6E"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
@@ -349,7 +349,7 @@ layout {
     struts {
         left 0
         right 0
-        top -8
+        top -6
         bottom 0
     }
 }
@@ -377,8 +377,7 @@ blur {
 // (browsers, agentd keys) after the 2026-08-24 crash reboot.
 spawn-sh-at-startup "dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE"
 
-spawn-at-startup "qs"
-spawn-at-startup "qs" "-n" "-p" "/home/daphen/.config/quickshell/wallpaper"
+spawn-at-startup "/home/daphen/.config/niri/scripts/start-quickshell-desktop"
 // Mutagen has no user unit (this build has no `daemon register`), so after a reboot
 // its daemon stays down and every VM worktree mirror silently stops syncing until
 // some mutagen command happens to run. Start it with the session.
@@ -409,10 +408,8 @@ spawn-sh-at-startup "/home/daphen/.config/niri/scripts/niri-hotplug-handler >> /
 workspace "lovable"
 
 
-// Two stable Cockpit instances restore their own Personal/Work selection.
-// Their mode and placement are independent of whichever workspace starts niri.
-spawn-sh-at-startup "$HOME/.config/niri/scripts/cockpit-boot work"
-spawn-sh-at-startup "$HOME/.config/niri/scripts/cockpit-boot personal"
+// Map the primary session apps in deterministic left-to-right order.
+spawn-sh-at-startup "$HOME/.config/niri/scripts/start-session-apps"
 
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
@@ -774,10 +771,9 @@ binds {
     // Open the notification-center picker (active + recently-dismissed);
     // pick one to jump to its window/app.
     Super+i hotkey-overlay-title="Notifications" { spawn-sh "$HOME/.config/niri/scripts/inbox-jump"; }
-    // Super+Ctrl+g: resume an existing claude session (fzf picker)
+    // Super+Ctrl+g: resume an existing agent session (fzf picker)
     Super+Ctrl+g hotkey-overlay-title="Resume Agent Session" { spawn-sh "kitty --class lovable_picker $HOME/.config/niri/scripts/spawn-claude-session-picker"; }
     Super+Shift+g hotkey-overlay-title="Chat" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here title:qstns $HOME/personal/qstns/run.sh"; }
-    Super+Shift+f hotkey-overlay-title="Fork Agent Session" { spawn-sh "$HOME/.config/niri/scripts/fork-claude-session"; }
     Super+r hotkey-overlay-title="Create PR review" { spawn "qs" "ipc" "call" "review-create" "toggle"; }
     // Super+G — jump to the cockpit's nvim window (hosts the agent rail).
     // Super+D — cycle through every kitty window (plain + cockpit agent/nvim/
@@ -972,7 +968,6 @@ binds {
     Super+Ctrl+Shift+B hotkey-overlay-title="Cycle Bar Theme" { spawn-sh "$HOME/.config/niri/scripts/waybar-theme --cycle"; }  // Cycle waybar theme
     Super+Ctrl+P hotkey-overlay-title="ASUS Performance Profile" { spawn "qs" "ipc" "call" "asus-profile" "toggle"; }  // Switch ASUS performance profile
     Super+Ctrl+A hotkey-overlay-title="Headphones" { spawn "/home/daphen/.config/niri/scripts/toggle-headphones"; }  // Toggle whichever headphones are on (Px8 or AirPods)
-    Super+Ctrl+R hotkey-overlay-title="Rename Agent Session" { spawn "/home/daphen/.config/niri/scripts/claude-rename"; }  // Rename focused Claude session via QS prompt
 
     // Dismiss all notifications
     Super+Escape hotkey-overlay-title="Dismiss Notifications" { spawn "qs" "ipc" "call" "notifications" "dismissAll"; }

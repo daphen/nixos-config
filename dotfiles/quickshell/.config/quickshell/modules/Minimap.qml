@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import "."
 
 Item {
@@ -167,12 +168,32 @@ Item {
         }
 
         Rectangle {
+            id: activeDot
             anchors.centerIn: parent
             width: 4
             height: 4
             radius: 2
             color: Theme.cursor
+            opacity: NotificationJumpPickerState.needsAttention ? pulseOpacity
+                : NotificationJumpPickerState.total > 0 ? 0.35 : 1
+            property real pulseOpacity: 1
             Behavior on color { ColorAnimation { duration: 110 } }
+
+            SequentialAnimation on pulseOpacity {
+                running: NotificationJumpPickerState.needsAttention
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.3; duration: 650; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 1; duration: 650; easing.type: Easing.InOutSine }
+            }
+        }
+
+        MouseArea {
+            anchors.centerIn: parent
+            width: 20
+            height: 20
+            enabled: NotificationJumpPickerState.total > 0
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/inbox-jump"])
         }
     }
 }

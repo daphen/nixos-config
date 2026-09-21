@@ -134,6 +134,25 @@ func (m *mailDesktop) run(t *testing.T) []byte {
 	return result
 }
 
+func TestMailWindowsUsesHyprlandClients(t *testing.T) {
+	dir := t.TempDir()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeExecutable(t, filepath.Join(dir, "hyprctl"), "#!"+bash+"\nprintf '%s' '[{\"title\":\"mlqs\",\"pid\":321}]'\n")
+	t.Setenv("PATH", dir)
+	t.Setenv("HYPRLAND_INSTANCE_SIGNATURE", "test")
+
+	windows, err := mailWindows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(windows) != 1 || windows[0].Title != "mlqs" || windows[0].PID != 321 {
+		t.Fatalf("windows = %#v", windows)
+	}
+}
+
 func TestMailColdLaunchReapsOnlyOwnedFixtures(t *testing.T) {
 	m := newMailDesktop(t)
 	currentUI := filepath.Join(m.home, ".local/share/mlqs/ui")

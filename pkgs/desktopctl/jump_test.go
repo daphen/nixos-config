@@ -105,6 +105,41 @@ func cleanState(t *testing.T, selector string) {
 	}
 }
 
+func TestJumpHyprlandFocusesByAddress(t *testing.T) {
+	selector := uniqueSelector(t, "hypr")
+	cleanState(t, selector)
+	dir := t.TempDir()
+	log := filepath.Join(dir, "actions")
+	shell, err := exec.LookPath("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeExecutable(t, filepath.Join(dir, "hyprctl"), "#!"+shell+"\n"+`printf '%s\n' "$*" >> "$FAKE_ACTION_LOG"
+if [[ "$*" == "-j clients" ]]; then
+  printf '[{"address":"0x1","class":"'"$FAKE_CLASS"'","focusHistoryID":0},{"address":"0x2","class":"'"$FAKE_CLASS"'","focusHistoryID":1}]'
+elif [[ "$*" == "-j activewindow" ]]; then
+  printf '{"address":"0x1"}'
+fi
+`)
+	cmd := exec.Command(testBinary, "niri-jump-or-exec", selector, "unused")
+	cmd.Env = append(os.Environ(),
+		"PATH="+dir,
+		"HYPRLAND_INSTANCE_SIGNATURE=test",
+		"FAKE_ACTION_LOG="+log,
+		"FAKE_CLASS="+selector,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("run failed: %v: %s", err, output)
+	}
+	data, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(data), "eval hl.dispatch(hl.dsp.focus({ window = \"address:0x2\" }))\n") {
+		t.Fatalf("actions:\n%s", data)
+	}
+}
+
 func TestJumpMatchingAndFocusedCycle(t *testing.T) {
 	for _, test := range []struct {
 		name     string

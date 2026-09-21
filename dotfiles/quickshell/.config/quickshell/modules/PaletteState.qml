@@ -13,6 +13,7 @@ Singleton {
 
     property bool open: false
     property bool daemonConnected: false
+    property string targetOutput: ""
 
     property string profile: ""
     property var tabs: []
@@ -20,6 +21,7 @@ Singleton {
     property var quickmarks: []
     property var currentTabId: null
     property bool mediaPlaying: false
+    property var tabMediaPlaying: ({})
     // Bumped on every state push so bindings recompute.
     property int gen: 0
 
@@ -30,6 +32,10 @@ Singleton {
     property int _histReq: 0
 
     function toggle() { open = !open }
+    function toggleOn(output) {
+        if (!open) targetOutput = output || ""
+        open = !open
+    }
     function show()   { open = true }
     function hide()   { open = false }
 
@@ -43,12 +49,15 @@ Singleton {
     function quickmarkAdd(name, url)      { send({ cmd: "quickmark-add", name: name, url: url }) }
     function closeTab(tabId)              { send({ cmd: "close-tab", tabId: tabId }) }
     function playPauseMedia()             { send({ cmd: "play-pause-media" }) }
+    function toggleTabMedia(tabId)        { send({ cmd: "toggle-tab-media", tabId: tabId }) }
+    function clearTabMediaState()         { tabMediaPlaying = ({}) }
     function requestMediaStatus()         { send({ cmd: "media-status" }) }
     function saveSynced()                 { send({ cmd: "save-synced" }) }
     function refresh()                    { send({ cmd: "refresh" }) }
 
     // Result of a save-synced roundtrip: "ok" | "dupe" | "fail".
     signal saveResult(string result)
+    signal tabCycleRequested(int direction, bool commit)
     function searchHistory(query) {
         _histReq++
         send({ cmd: "history-search", reqId: _histReq, query: query || "" })
@@ -71,6 +80,12 @@ Singleton {
         }
         if (m.type === "media-state") {
             root.mediaPlaying = m.playing === true
+            return
+        }
+        if (m.type === "tab-media-state") {
+            const next = Object.assign({}, root.tabMediaPlaying)
+            next[String(m.tabId)] = m.playing === true
+            root.tabMediaPlaying = next
             return
         }
         if (m.type !== "state") return
@@ -115,7 +130,12 @@ Singleton {
     IpcHandler {
         target: "palette"
         function toggle() { root.toggle() }
+        function toggleOn(output: string) { root.toggleOn(output) }
         function show()   { root.show() }
         function hide()   { root.hide() }
+        function tabCycle(direction: int, commit: bool, output: string) {
+            if (!root.open && output) root.targetOutput = output
+            root.tabCycleRequested(direction, commit)
+        }
     }
 }

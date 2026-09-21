@@ -2,27 +2,26 @@
 local hl = hl
 
 local REAL_MODE = os.getenv("HYPR_CANVAS_REAL") == "1"
-local CAMERA_MODE = os.getenv("HYPR_CANVAS_CAMERA") == "1"
-local CAMERA_V2 = os.getenv("HYPR_CANVAS_CAMERA_V2") == "1"
 local PROFILE = os.getenv("HYPR_CANVAS_PROFILE") or "workstation"
 local DECK_MODE = PROFILE == "deck"
 local SCRIPTS = os.getenv("HYPR_SCRIPTS") or "/home/daphen/.config/hypr/scripts/"
 local ROW_COUNT = 3
 local GAP = 24
 local TILE_WIDTH = 0.9
-local TILE_HEIGHT = 0.9
-local ROW_HEIGHT = TILE_HEIGHT
-local PAN_GAIN = 2.5
+local PAN_GAIN = 8.0
 
 local state = {
     camera = { x = 0, y = 0 },
-    canvas = { zoom = 1, x = 0, y = 0 },
     rows = { {}, {}, {} },
-    panning = false,
+    row_offsets = { 0, 0, 0 },
+    row_center = nil,
     sizes = {},
+    fullscreen = {},
+    widened = {},
+    recenter = nil,
+    focused_row = nil,
+    viewport = nil,
     windows = {},
-    overview = false,
-    gesture_serial = 0,
 }
 
 local function is_canvas_workspace(workspace)
@@ -77,13 +76,30 @@ local function fixture_row(target)
 end
 
 local geometry
+local fullscreen_geometry
+local align_rows
+
+local function default_height(ctx)
+    return (ctx.area.h - GAP * 2) / ctx.area.h
+end
+
+fullscreen_geometry = function(ctx)
+    local viewport = state.viewport or ctx.area
+    return {
+        size = {
+            w = viewport.w / ctx.area.w,
+            h = viewport.h / ctx.area.h,
+        },
+        viewport = viewport,
+    }
+end
 
 local function initial_size(ctx, target)
     local window = target.window
     local class = window and window.class or ""
     local title = window and window.title or ""
     local width = 0.5
-    local height = TILE_HEIGHT
+    local height = default_height(ctx)
 
     if class:match("^(kitty|claude|lovable_deps|lovable_devenv|browser%-work|spotify_player|vesktop|Slack)$")
         or (class == "org.quickshell" and title:match("^(slqs|dsqrd)$")) then
@@ -106,7 +122,21 @@ local function sync(ctx)
         present[id] = true
         targets[id] = target
         if target.window then
+            local monitor = target.window.monitor
+            local mode = monitor and monitor.mode
             state.windows[id] = tostring(target.window.address)
+            if mode then
+                state.viewport = { x = monitor.x, y = monitor.y, w = mode.width, h = mode.height }
+            end
+            if target.window.fullscreen_client == 2 then
+                if not state.fullscreen[id] then
+                    state.fullscreen[id] = fullscreen_geometry(ctx)
+                    state.recenter = id
+                end
+            elseif state.fullscreen[id] then
+                state.fullscreen[id] = nil
+                state.recenter = id
+            end
         end
     end
 
@@ -124,6 +154,8 @@ local function sync(ctx)
     for id in pairs(state.sizes) do
         if not targets[id] then
             state.sizes[id] = nil
+            state.fullscreen[id] = nil
+            state.widened[id] = nil
         end
     end
 
@@ -149,10 +181,11 @@ local function sync(ctx)
             end
         end
     end
+    local fallback_row = shortest_row()
     for _, target in ipairs(ctx.targets) do
         local id = target_id(target)
         if present[id] then
-            local row = fixture_row(target) or focused_row or shortest_row()
+            local row = fixture_row(target) or focused_row or fallback_row
             local column = #state.rows[row] + 1
             if focused_row == row then
                 column = focused_column + 1
@@ -163,17 +196,61 @@ local function sync(ctx)
         end
     end
 
+    if focused then
+        state.focused_row = locate(focused)
+    end
+    align_rows(ctx)
     return targets
 end
 
+local function canvas_size(ctx, id)
+    local fullscreen = state.fullscreen[id]
+    return fullscreen and fullscreen.size or state.sizes[id] or { w = TILE_WIDTH, h = default_height(ctx) }
+end
+
+local function row_width(ctx, row)
+    local width = 0
+    for column, id in ipairs(state.rows[row]) do
+        if column > 1 then
+            width = width + GAP
+        end
+        width = width + ctx.area.w * canvas_size(ctx, id).w
+    end
+    return width
+end
+
+align_rows = function(ctx)
+    if not state.row_center then
+        for row, items in ipairs(state.rows) do
+            if #items > 0 then
+                state.row_center = (state.row_offsets[row] or 0) + row_width(ctx, row) / 2
+                break
+            end
+        end
+    end
+    if not state.row_center then
+        return
+    end
+    for row, items in ipairs(state.rows) do
+        if #items > 0 then
+            state.row_offsets[row] = state.row_center - row_width(ctx, row) / 2
+        end
+    end
+end
+
 geometry = function(ctx, row, column, id)
-    local size = state.sizes[id] or { w = TILE_WIDTH, h = TILE_HEIGHT }
-    local x = ctx.area.x - state.camera.x
-    local y = ctx.area.y - state.camera.y + (row - 1) * (ctx.area.h * ROW_HEIGHT + GAP)
+    local size = canvas_size(ctx, id)
+    local x = ctx.area.x + (state.row_offsets[row] or 0) - state.camera.x
+    local y = ctx.area.y + GAP - state.camera.y + (row - 1) * (ctx.area.h - GAP)
+    if state.fullscreen[id] and state.focused_row == row then
+        y = y - ctx.area.y + state.fullscreen[id].viewport.y
+    end
+    if state.focused_row and state.focused_row > 1 and row >= state.focused_row and state.viewport then
+        y = y + math.max(0, ctx.area.y - state.viewport.y)
+    end
     for previous = 1, column - 1 do
         local previous_id = state.rows[row][previous]
-        local previous_size = state.sizes[previous_id] or { w = TILE_WIDTH }
-        x = x + ctx.area.w * previous_size.w + GAP
+        x = x + ctx.area.w * canvas_size(ctx, previous_id).w + GAP
     end
     return {
         x = x,
@@ -190,65 +267,25 @@ local function center(ctx, id)
     end
 
     local box = geometry(ctx, row, column, id)
-    state.camera.x = state.camera.x + box.x + box.w / 2 - ctx.area.x - ctx.area.w / 2
-    state.camera.y = state.camera.y + box.y + box.h / 2 - ctx.area.y - ctx.area.h / 2
+    local viewport = state.fullscreen[id] and state.fullscreen[id].viewport or ctx.area
+    state.camera.x = state.camera.x + box.x + box.w / 2 - viewport.x - viewport.w / 2
+    state.camera.y = state.camera.y + box.y + box.h / 2 - viewport.y - viewport.h / 2
 end
 
 local function recalculate(ctx)
-    if CAMERA_V2 and state.overview and state.panning then
-        return
-    end
-
     local targets = sync(ctx)
+    local active = active_id(ctx)
+    if state.recenter then
+        if state.recenter == active then
+            center(ctx, active)
+        end
+        state.recenter = nil
+    end
     for row, items in ipairs(state.rows) do
         for column, id in ipairs(items) do
             targets[id]:set_box(geometry(ctx, row, column, id))
         end
     end
-end
-
-local function set_canvas_camera(zoom, offset_x, offset_y)
-    state.canvas.zoom = zoom
-    state.canvas.x = offset_x or 0
-    state.canvas.y = offset_y or 0
-    if CAMERA_V2 then
-        hl.config({ experimental = {
-            canvas_zoom = zoom,
-            canvas_offset_x = state.canvas.x,
-            canvas_offset_y = state.canvas.y,
-        } })
-    elseif CAMERA_MODE then
-        hl.config({ experimental = { canvas_zoom = zoom } })
-    end
-end
-
-local function frame_overview(ctx)
-    sync(ctx)
-    local min_x, min_y, max_x, max_y
-    for row, items in ipairs(state.rows) do
-        for column, id in ipairs(items) do
-            local box = geometry(ctx, row, column, id)
-            min_x = min_x and math.min(min_x, box.x) or box.x
-            min_y = min_y and math.min(min_y, box.y) or box.y
-            max_x = max_x and math.max(max_x, box.x + box.w) or box.x + box.w
-            max_y = max_y and math.max(max_y, box.y + box.h) or box.y + box.h
-        end
-    end
-    if not min_x then
-        return 1
-    end
-
-    local padding = GAP * 2
-    local content_width = max_x - min_x
-    local content_height = max_y - min_y
-    local zoom = math.max(0.25, math.min(1,
-        ctx.area.w / (content_width + padding * 2),
-        ctx.area.h / (content_height + padding * 2)))
-    local center_x = (min_x + max_x) / 2 - ctx.area.x
-    local center_y = (min_y + max_y) / 2 - ctx.area.y
-    return zoom,
-        ctx.area.w / 2 - zoom * center_x,
-        ctx.area.h / 2 - zoom * center_y
 end
 
 local function focus_direction(ctx, direction)
@@ -295,36 +332,10 @@ local function focus_direction(ctx, direction)
         local targets = sync(ctx)
         local window = targets[best_id] and targets[best_id].window
         if window then
+            state.focused_row = locate(best_id)
             center(ctx, best_id)
             hl.dispatch(hl.dsp.focus({ window = "address:" .. tostring(window.address) }))
         end
-    end
-end
-
-local function focus_center(ctx)
-    local targets = sync(ctx)
-    local viewport_x = ctx.area.x + ctx.area.w / 2
-    local viewport_y = ctx.area.y + ctx.area.h / 2
-    local current = active_id(ctx)
-    local best_id
-    local best_distance
-
-    for row, items in ipairs(state.rows) do
-        for column, id in ipairs(items) do
-            local box = geometry(ctx, row, column, id)
-            local dx = box.x + box.w / 2 - viewport_x
-            local dy = box.y + box.h / 2 - viewport_y
-            local distance = dx * dx + dy * dy
-            if not best_distance or distance < best_distance then
-                best_id = id
-                best_distance = distance
-            end
-        end
-    end
-
-    local window = best_id and best_id ~= current and targets[best_id] and targets[best_id].window
-    if window then
-        hl.dispatch(hl.dsp.focus({ window = "address:" .. tostring(window.address) }))
     end
 end
 
@@ -351,14 +362,18 @@ local function move_direction(ctx, direction)
     local next_row = row + (direction == "k" and -1 or 1)
     if next_row < 1 then
         table.insert(state.rows, 1, {})
+        table.insert(state.row_offsets, 1, 0)
         row = row + 1
         next_row = 1
     elseif next_row > #state.rows then
         table.insert(state.rows, {})
+        table.insert(state.row_offsets, 0)
     end
 
     table.remove(state.rows[row], column)
     table.insert(state.rows[next_row], math.min(column, #state.rows[next_row] + 1), id)
+    state.focused_row = next_row
+    align_rows(ctx)
     center(ctx, id)
 end
 
@@ -375,6 +390,26 @@ local function resize_direction(ctx, direction)
     else
         size.h = math.max(0.2, math.min(1.5, size.h + (direction == "j" and -0.05 or 0.05)))
     end
+    align_rows(ctx)
+    center(ctx, id)
+end
+
+local function toggle_widen(ctx)
+    local targets = sync(ctx)
+    local id = active_id(ctx)
+    local size = id and state.sizes[id]
+    if not size or not targets[id] then
+        return
+    end
+
+    if state.widened[id] then
+        size.w = state.widened[id]
+        state.widened[id] = nil
+    else
+        state.widened[id] = size.w
+        size.w = (ctx.area.w - GAP * 2) / ctx.area.w
+    end
+    align_rows(ctx)
     center(ctx, id)
 end
 
@@ -395,60 +430,40 @@ hl.layout.register("canvas", {
             local target = row and row + (arg1 == "j" and 1 or -1) or nil
             if target and target >= 1 and target <= #state.rows then
                 state.rows[row], state.rows[target] = state.rows[target], state.rows[row]
+                state.focused_row = target
                 center(ctx, id)
-            end
-        elseif command == "pan" then
-            local dx = tonumber(arg1)
-            local dy = tonumber(arg2)
-            if not dx or not dy then
-                return "canvas: pan expects numeric X and Y deltas"
-            end
-            state.camera.x = state.camera.x + dx
-            state.camera.y = state.camera.y + dy
-            if state.panning then
-                if CAMERA_V2 and state.overview then
-                    set_canvas_camera(
-                        state.canvas.zoom,
-                        state.canvas.x - dx * state.canvas.zoom,
-                        state.canvas.y - dy * state.canvas.zoom
-                    )
-                end
-                focus_center(ctx)
             end
         elseif command == "center" then
-            local id = active_id(ctx)
-            if id then
+            local id = arg1 ~= "" and arg1 or active_id(ctx)
+            if id and locate(id) then
+                state.focused_row = locate(id)
                 center(ctx, id)
+                local targets = sync(ctx)
+                for row, items in ipairs(state.rows) do
+                    for column, target_id in ipairs(items) do
+                        targets[target_id]:set_box(geometry(ctx, row, column, target_id))
+                    end
+                end
             end
-        elseif command == "overview" then
-            if not CAMERA_MODE then
-                return true
-            end
-            state.overview = not state.overview
-            if state.overview then
-                set_canvas_camera(frame_overview(ctx))
-            else
-                set_canvas_camera(1, 0, 0)
-            end
+        elseif command == "widen" then
+            toggle_widen(ctx)
         elseif command == "reset" then
             state.camera.x = 0
             state.camera.y = 0
         else
-            return "canvas: expected focus, move, move-row, resize, pan, center, overview, or reset"
+            return "canvas: expected focus, move, move-row, resize, center, widen, or reset"
         end
         return true
     end,
 })
 
 hl.on("window.active", function(window)
-    if not window or not is_canvas_workspace(window.workspace) then
+    if not window or window.floating or not is_canvas_workspace(window.workspace) then
         return
     end
-    if state.overview and not state.panning then
-        state.overview = false
-        set_canvas_camera(1, 0, 0)
-    end
-    hl.dispatch(hl.dsp.layout("center"))
+    local id = tostring(window.stable_id)
+    state.recenter = id
+    hl.dispatch(hl.dsp.layout("center " .. id))
 end)
 
 hl.on("window.close", function(window)
@@ -483,7 +498,10 @@ hl.on("window.close", function(window)
 
     local address = next_id and state.windows[next_id]
     if address then
-        hl.dispatch(hl.dsp.focus({ window = "address:" .. address }))
+        hl.timer(function()
+            state.recenter = next_id
+            hl.dispatch(hl.dsp.focus({ window = "address:" .. address }))
+        end, { timeout = 1, type = "oneshot" })
     end
 end)
 
@@ -538,7 +556,7 @@ hl.config({
         gaps_out = 0,
         border_size = 2,
         col = {
-            active_border = { colors = { "rgb(EDEDED)", "rgb(EDEDED)" }, angle = 180 },
+            active_border = { colors = { "rgb(10100E)", "rgb(10100E)" }, angle = 180 },
             inactive_border = "rgb(3A3A3A)",
         },
     },
@@ -547,9 +565,9 @@ hl.config({
         active_opacity = 1,
         inactive_opacity = 1,
         shadow = {
-            enabled = true,
+            enabled = false,
             range = 30,
-            offset = "0 5",
+            offset = "0 0",
             color = 0x77000000,
         },
         blur = {
@@ -571,11 +589,6 @@ hl.config({
         inactive_timeout = REAL_MODE and 1.5 or 0,
         hide_on_key_press = REAL_MODE,
     },
-    experimental = CAMERA_MODE and (CAMERA_V2 and {
-        canvas_zoom = 1,
-        canvas_offset_x = 0,
-        canvas_offset_y = 0,
-    } or { canvas_zoom = 1 }) or nil,
 })
 
 if REAL_MODE then
@@ -597,7 +610,14 @@ if REAL_MODE then
 
     floating_rule("picture-in-picture", { class = "firefox$", title = "^Picture-in-Picture$" })
     floating_rule("slqs-upload", { class = "^slqs-upload$" }, "1100 800")
-    floating_rule("satty", { class = "^com\\.gabm\\.satty$" }, "95% 95%")
+    hl.window_rule({
+        name = "satty",
+        match = { class = "^com\\.gabm\\.satty$" },
+        float = true,
+        center = true,
+        size = "monitor_w*0.95 monitor_h*0.95",
+        max_size = "monitor_w*0.95 monitor_h*0.95",
+    })
     floating_rule("file-chooser", { class = "^file-chooser$" }, "62% 72%")
     floating_rule("media-viewer", { class = "^(imv|mpv)$" })
     floating_rule("one-password", { class = "^1password$" }, "1400 950")
@@ -610,6 +630,17 @@ if REAL_MODE then
     floating_rule("btop", { class = "^btop$" }, "1600 1000")
     floating_rule("lovable-picker", { class = "^lovable_picker$" }, "1400 900")
 
+    hl.window_rule({
+        name = "canvas-client-fullscreen",
+        match = { class = ".*" },
+        sync_fullscreen = false,
+    })
+    hl.window_rule({
+        name = "canvas-client-fullscreen-decorations",
+        match = { class = ".*", fullscreen_state_client = 2 },
+        border_size = 0,
+        rounding = 0,
+    })
     hl.window_rule({
         name = "opaque-heavy-apps",
         match = { class = "^(browser-personal|browser-work|Slack|vesktop)$" },
@@ -632,9 +663,7 @@ end
 hl.curve("canvasMotion", { type = "spring", mass = 1, stiffness = 1200, damping = 69.282 })
 hl.curve("canvasFade", { type = "bezier", points = { { 0.2, 0.8 }, { 0.2, 1 } } })
 hl.animation({ leaf = "windowsMove", enabled = true, speed = 2.5, spring = "canvasMotion" })
-if CAMERA_V2 then
-    hl.animation({ leaf = "canvasCamera", enabled = true, speed = 2.5, spring = "canvasMotion" })
-end
+hl.animation({ leaf = "canvasCamera", enabled = true, speed = 2.5, spring = "canvasMotion" })
 hl.animation({ leaf = "windowsIn", enabled = false })
 hl.animation({ leaf = "fadeIn", enabled = true, speed = 5, bezier = "canvasFade" })
 
@@ -654,7 +683,7 @@ hl.bind("ALT + r", hl.dsp.layout("reset"))
 hl.bind("SUPER + SHIFT + d", hl.dsp.exec_cmd("kitty"))
 hl.bind("SUPER + CTRL + w", hl.dsp.window.close())
 hl.bind("SUPER + TAB", hl.dsp.layout("overview"))
-hl.bind("SUPER + CTRL + f", hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }))
+hl.bind("SUPER + CTRL + f", hl.dsp.layout("widen"))
 hl.bind("SUPER + CTRL + SHIFT + f", hl.dsp.window.float({ action = "toggle" }))
 hl.bind("SUPER + d", hl.dsp.exec_cmd(SCRIPTS .. "focus-kitty-cycle"))
 hl.bind("SUPER + u", hl.dsp.focus({ monitor = "+1" }))
@@ -782,40 +811,30 @@ if REAL_MODE and not DECK_MODE then
     bind_exec("XF86AudioPrev", "playerctl previous", { locked = true })
 end
 
-local function pan(dx, dy)
-    if not is_canvas_workspace(hl.get_active_workspace()) then
-        return
-    end
-    hl.dispatch(hl.dsp.layout(string.format("pan %.6f %.6f", dx * PAN_GAIN, dy * PAN_GAIN)))
-end
+hl.bind("Super_L", hl.dsp.layout("pan-end"), { release = true, ignore_mods = true })
+hl.bind("Super_R", hl.dsp.layout("pan-end"), { release = true, ignore_mods = true })
 
+local overview_timer
 hl.gesture({
     fingers = 3,
     direction = "swipe",
     action = {
-        start = function(e)
-            state.panning = true
-            state.gesture_serial = state.gesture_serial + 1
-            local serial = state.gesture_serial
-            hl.timer(function()
-                if state.panning and state.gesture_serial == serial and not state.overview and is_canvas_workspace(hl.get_active_workspace()) then
-                    hl.dispatch(hl.dsp.layout("overview"))
-                end
-            end, { timeout = 280, type = "oneshot" })
-            pan(e.delta.x, e.delta.y)
+        start = function()
+            hl.dispatch(hl.dsp.layout("pan-begin"))
+            overview_timer = hl.timer(function()
+                overview_timer = nil
+                hl.dispatch(hl.dsp.layout("pan-overview"))
+            end, { timeout = 350, type = "oneshot" })
         end,
         update = function(e)
-            pan(e.delta.x, e.delta.y)
+            hl.dispatch(hl.dsp.layout(string.format("pan %.6f %.6f", e.delta.x * PAN_GAIN, e.delta.y * PAN_GAIN)))
         end,
         finish = function()
-            state.panning = false
-            state.gesture_serial = state.gesture_serial + 1
-            if is_canvas_workspace(hl.get_active_workspace()) then
-                if state.overview then
-                    hl.dispatch(hl.dsp.layout("overview"))
-                end
-                hl.dispatch(hl.dsp.layout("center"))
+            if overview_timer then
+                overview_timer:set_enabled(false)
+                overview_timer = nil
             end
+            hl.dispatch(hl.dsp.layout("pan-end"))
         end,
     },
 })
