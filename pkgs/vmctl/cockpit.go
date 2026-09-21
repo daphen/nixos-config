@@ -43,6 +43,7 @@ type cockpitState struct {
 	sock    string
 	marker  string
 	ai      string
+	reaper  string
 	ssh     []string
 }
 
@@ -54,6 +55,7 @@ func runCockpit(a app, restart bool) error {
 		sock:   filepath.Join(runtime, "agentd-work.sock"),
 		marker: filepath.Join(runtime, "cockpit-role-bundle-work.restart-required"),
 		ai:     filepath.Join(a.home, "nixos", "dotfiles", "ai"),
+		reaper: filepath.Join(a.home, "nixos", "dotfiles", "niri", ".config", "niri", "scripts", "vm-slice-reaper"),
 		ssh:    []string{"ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=25", a.user + "@" + a.host},
 	}
 	legacy := filepath.Join(runtime, "heidr-role-bundle-work.restart-required")
@@ -68,6 +70,9 @@ func runCockpit(a app, restart bool) error {
 	}
 	c.checkPiSkew()
 	if err := c.syncBundle(); err != nil {
+		return err
+	}
+	if err := c.syncReaper(); err != nil {
 		return err
 	}
 	key, _ := c.a.output("fish", "-c", "source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY")
@@ -139,6 +144,38 @@ func (c cockpitState) syncBundle() error {
 		_ = os.Remove(c.marker)
 		c.say("role bundle updated and verified (" + hash + "); agentd will start with it")
 	}
+	return nil
+}
+
+func (c cockpitState) syncReaper() error {
+	data, err := os.ReadFile(c.reaper)
+	if err != nil {
+		return fmt.Errorf("reaper sync failed: %w", err)
+	}
+	hash := sha256.Sum256(data)
+	want := hex.EncodeToString(hash[:])
+	remote := strings.Fields(c.bestSSHOutput("sha256sum $HOME/.local/bin/vm-slice-reaper 2>/dev/null || true"))
+	if len(remote) > 0 && remote[0] == want {
+		c.say("slice reaper current (" + want + ")")
+		return nil
+	}
+	tmp := ".local/bin/.vm-slice-reaper-" + want + ".tmp"
+	c.say("slice reaper differs — syncing tracked script …")
+	if err := c.runSSH("mkdir -p $HOME/.local/bin"); err != nil {
+		return fmt.Errorf("reaper sync failed: %w", err)
+	}
+	if err := c.rsync(false, c.reaper, c.a.user+"@"+c.a.host+":"+tmp); err != nil {
+		return fmt.Errorf("reaper sync failed: %w", err)
+	}
+	install := "set -eu; tmp=$HOME/" + tmp + "; test \"$(sha256sum \"$tmp\" | cut -d' ' -f1)\" = '" + want + "'; chmod 0755 \"$tmp\"; mv -f \"$tmp\" $HOME/.local/bin/vm-slice-reaper"
+	if err := c.runSSH(install); err != nil {
+		return fmt.Errorf("reaper sync failed: %w", err)
+	}
+	verified := strings.Fields(c.bestSSHOutput("sha256sum $HOME/.local/bin/vm-slice-reaper 2>/dev/null || true"))
+	if len(verified) == 0 || verified[0] != want {
+		return fmt.Errorf("reaper sync failed: expected %s after atomic install", want)
+	}
+	c.say("slice reaper updated and verified (" + want + "); agentd restart not required")
 	return nil
 }
 

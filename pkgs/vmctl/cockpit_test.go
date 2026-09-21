@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -58,6 +60,30 @@ func TestCockpitCurrentBundleAndHealthyTunnel(t *testing.T) {
 		t.Fatalf("current/healthy path copied or tunneled:\n%s", calls)
 	}
 	inOrder(t, calls, "pi|--version", "ssh|-o StrictHostKeyChecking=no", "ssh|-o StrictHostKeyChecking=no", "python3 - instructions.md", "pgrep -x agentd", "fish|-c", "op|read", "export XDG_DATA_DIRS")
+}
+
+func TestCockpitScriptOnlyReaperUpdateIsAtomicWithoutDaemonRestart(t *testing.T) {
+	home, path, log := cockpitFixture(t)
+	bundle, _ := bundleHash(filepath.Join(home, "nixos/dotfiles/ai"))
+	reaper := cockpitReaperHash(t, home)
+	listener := cockpitHealthySocket(t, filepath.Join(home, "run/agentd-work.sock"))
+	defer listener.Close()
+	result := runCockpitBinary(t, home, path, []string{
+		"REMOTE_HASH_INITIAL=" + bundle, "REMOTE_REAPER_INITIAL=old", "REMOTE_REAPER_AFTER=" + reaper,
+		"WAS_RUNNING=yes", "DAEMON_MODE=already",
+	}, "cockpit")
+	if result.err != nil || !strings.Contains(result.stdout, "slice reaper updated and verified ("+reaper+"); agentd restart not required") {
+		t.Fatalf("result=%+v", result)
+	}
+	calls := readLog(t, log)
+	for _, want := range []string{"rsync|-az -e", ".local/bin/.vm-slice-reaper-" + reaper + ".tmp", "chmod 0755", "mv -f"} {
+		if !strings.Contains(calls, want) {
+			t.Errorf("calls missing %q:\n%s", want, calls)
+		}
+	}
+	if !strings.Contains(result.stdout, "already running (pid 42") || strings.Contains(result.stdout, "role bundle updated, agentd restart required") || strings.Contains(result.stdout, "restart requested — stopping") {
+		t.Fatalf("script-only update restarted or marked agentd:\n%s\n%s", result.stdout, calls)
+	}
 }
 
 func TestCockpitDifferentBundleCopiesVerifiesAndMarksRunningDaemon(t *testing.T) {
@@ -199,6 +225,13 @@ func cockpitFixture(t *testing.T) (string, string, string) {
 		}
 	}
 	ai := filepath.Join(home, "nixos/dotfiles/ai")
+	reaper := filepath.Join(home, "nixos/dotfiles/niri/.config/niri/scripts/vm-slice-reaper")
+	if err := os.MkdirAll(filepath.Dir(reaper), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(reaper, []byte("#!/usr/bin/env python3\nprint('fixture')\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	for _, rel := range cockpitRoleFiles {
 		path := filepath.Join(ai, filepath.FromSlash(rel))
 		if filepath.Ext(rel) == ".md" || rel == "instructions.md" {
@@ -223,10 +256,14 @@ case "$name" in
  pi) printf '%s\n' "${PI_LOCAL-}" ;;
  fish) printf '%s' "${OPENAI_VALUE-}" ;;
  op) printf '%s\n' "${SLACK_VALUE-}" ;;
- rsync) [ "${FAIL_RSYNC-}" = yes ] && exit 1; : > "$HOME/rsync-seen" ;;
+ rsync)
+   [ "${FAIL_RSYNC-}" = yes ] && exit 1
+   case "$*" in *".vm-slice-reaper-"*) : > "$HOME/reaper-seen" ;; *) : > "$HOME/rsync-seen" ;; esac ;;
  ssh)
    case "$*" in
      *"pi --version"*) printf '%s\n' "${PI_REMOTE-}" ;;
+     *"sha256sum "*"vm-slice-reaper"*)
+       if [ -f "$HOME/reaper-seen" ]; then echo "${REMOTE_REAPER_AFTER-}"; else echo "${REMOTE_REAPER_INITIAL-}"; fi ;;
      *"python3 - instructions.md"*)
        if [ -f "$HOME/rsync-seen" ]; then echo "${REMOTE_HASH_AFTER-}"; else echo "${REMOTE_HASH_INITIAL-}"; fi ;;
      *"pgrep -x agentd >/dev/null && echo yes"*) echo "${WAS_RUNNING-no}" ;;
@@ -265,10 +302,20 @@ func cockpitHealthySocket(t *testing.T, path string) net.Listener {
 	return listener
 }
 
+func cockpitReaperHash(t *testing.T, home string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(home, "nixos/dotfiles/niri/.config/niri/scripts/vm-slice-reaper"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
 func runCockpitBinary(t *testing.T, home, path string, extra []string, args ...string) result {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
-	base := []string{"HOME=" + home, "PATH=" + path, "VMCTL_LOG=" + filepath.Join(home, "calls.log"), "XDG_RUNTIME_DIR=" + filepath.Join(home, "run")}
+	base := []string{"HOME=" + home, "PATH=" + path, "VMCTL_LOG=" + filepath.Join(home, "calls.log"), "XDG_RUNTIME_DIR=" + filepath.Join(home, "run"),
+		"REMOTE_REAPER_INITIAL=" + cockpitReaperHash(t, home), "REMOTE_REAPER_AFTER=" + cockpitReaperHash(t, home)}
 	cmd.Env = append(os.Environ(), append(base, extra...)...)
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
