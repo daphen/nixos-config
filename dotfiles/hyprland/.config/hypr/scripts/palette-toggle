@@ -1,23 +1,48 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+scripts="$(dirname -- "$0")"
+palette_ipc="$scripts/palette-shell-ipc"
+palette_was_open=""
+radial_value="${1:-}"
+if [[ ${HYPR_CANVAS_PROFILE:-} == deck ]]; then
+    palette_was_open=$(hyprctl -j clients | jq -r '[.[] | select(.xwayland and .title == "quickshell")][0].address // empty')
+fi
 monitor=$(hyprctl -j monitors | jq -c '.[] | select(.focused)')
 output=$(jq -r '.name // empty' <<< "$monitor")
 monitor_id=$(jq -r '.id // empty' <<< "$monitor")
 
-target=$(hyprctl -j clients | jq -r --argjson monitor "$monitor_id" '
-    [.[] | select((.class == "browser-personal" or .class == "browser-work") and .monitor == $monitor)]
-    | sort_by(.focusHistoryID) | .[0].address // empty')
+if [[ -n $radial_value ]]; then
+    target_row=$(hyprctl -j activewindow | jq -r '
+        select(.class == "browser-personal" or .class == "browser-work")
+        | [.address, .class] | @tsv')
+else
+    target_row=$(hyprctl -j clients | jq -r --argjson monitor "$monitor_id" '
+        [.[] | select((.class == "browser-personal" or .class == "browser-work") and .monitor == $monitor)]
+        | sort_by(.focusHistoryID) | .[0] | [.address, .class] | @tsv')
+fi
+IFS=$'\t' read -r target target_class <<< "$target_row"
+[[ -z $radial_value || -n $target ]] || exit 0
 
 if [[ -n "$target" ]]; then
     current=$(hyprctl -j activewindow | jq -r '.address // empty')
     if [[ "$current" != "$target" ]]; then
-        "$(dirname -- "$0")/hypr-dispatch" focuswindow "address:$target" >/dev/null
+        "$scripts/hypr-dispatch" focuswindow "address:$target" >/dev/null
         for _ in {1..20}; do
             [[ $(hyprctl -j activewindow | jq -r '.address // empty') == "$target" ]] && break
             sleep 0.01
         done
     fi
+    "$palette_ipc" focusProfile "${target_class#browser-}"
+    sleep 0.05
 fi
 
-exec qs ipc call -- palette toggleOn "$output"
+if [[ -n $radial_value ]]; then
+    "$palette_ipc" radial open "$radial_value" "$output"
+else
+    "$palette_ipc" toggleOn "$output"
+fi
+if [[ ${HYPR_CANVAS_PROFILE:-} == deck && -z $palette_was_open ]]; then
+    palette=$(hyprctl -j clients | jq -r '[.[] | select(.xwayland and .title == "quickshell")][0].address // empty')
+    [[ -z $palette ]] || "$scripts/hypr-dispatch" focuswindow "address:$palette" >/dev/null
+fi

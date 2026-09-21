@@ -16,13 +16,14 @@ PanelWindow {
 
     screen: {
         const _ = NiriState.version
-        const output = NiriState.focusedOutput()
+        const output = PaletteState.targetOutput || NiriState.focusedOutput()
         const screens = Quickshell.screens
         for (let i = 0; i < screens.length; i++)
             if (screens[i].name === output) return screens[i]
         return screens.length ? screens[0] : null
     }
 
+    readonly property bool x11: Quickshell.env("QT_QPA_PLATFORM") === "xcb"
     property bool active: false
     property bool gestureActive: false
     property bool gestureSettling: false
@@ -122,6 +123,7 @@ PanelWindow {
                 openSlide.restart()
             }
             resetTransient()
+            PaletteState.clearTabMediaState()
             PaletteState.refresh()
             search.forceActiveFocus()
             Qt.callLater(() => {
@@ -196,9 +198,19 @@ PanelWindow {
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.namespace: "qs-picker"
-    WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    Component.onCompleted: {
+        if (x11) {
+            width = screen.width
+            height = screen.height
+            aboveWindows = true
+            focusable = true
+        } else {
+            WlrLayershell.layer = WlrLayer.Overlay
+            WlrLayershell.namespace = "qs-picker"
+            WlrLayershell.keyboardFocus = Qt.binding(() => open
+                ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None)
+        }
+    }
 
     // The old palette rendered in the system sans stack, not the
     // desktop's mono — part of what made it feel cleaner. Keep that.
@@ -271,6 +283,22 @@ PanelWindow {
             subtitle: niceUrl(tab.url || ""), faviconPath: tab.faviconPath || "",
             previewPath: tab.previewPath || "", tabId: tab.id, windowId: tab.windowId,
         }
+    }
+
+    function isYoutubeMedia(tab) {
+        return String(tab && tab.url || "")
+            .match(/^https?:\/\/(www\.)?(youtube\.com\/|youtu\.be\/)/) !== null
+    }
+
+    function tabMediaIsPlaying(tab) {
+        const reported = PaletteState.tabMediaPlaying[String(tab.id)]
+        return reported === undefined ? tab.audible === true : reported
+    }
+
+    function toggleSelectedMedia() {
+        const tab = filmTabs[filmIndex]
+        if (tab && isYoutubeMedia(tab)) PaletteState.toggleTabMedia(tab.id)
+        else PaletteState.playPauseMedia()
     }
 
     function syncFilmIndex() {
@@ -916,6 +944,9 @@ PanelWindow {
             const focused = (PaletteState.chin || []).find(w => w.focused)
             if (focused && focused.id !== sid) root.scopedWindowId = null
         }
+        function onTabCycleRequested(direction, commit) {
+            root.handlePaletteTabCycle(direction, commit)
+        }
         function onSaveResult(result) {
             markToast.show(result === "ok" ? "saved to Synced ✓"
                 : result === "dupe" ? "already in Synced"
@@ -954,7 +985,7 @@ PanelWindow {
             else PaletteState.hide()
             event.accepted = true
         } else if (ctrl && !shift && event.key === Qt.Key_Space) {
-            if (!event.isAutoRepeat) PaletteState.playPauseMedia()
+            if (!event.isAutoRepeat) root.toggleSelectedMedia()
             event.accepted = true
         } else if (ctrl && !shift && event.key === Qt.Key_T) {
             root.openBlankTab()
@@ -1348,8 +1379,7 @@ PanelWindow {
                             height: 34
                             radius: 17
                             z: 30
-                            visible: String(filmCard.modelData.url || "")
-                                .match(/^https?:\/\/(www\.)?(youtube\.com\/watch|youtu\.be\/)/) !== null
+                            visible: root.isYoutubeMedia(filmCard.modelData)
                             color: mediaControlHover.hovered
                                 ? Theme.cursor : Qt.rgba(0, 0, 0, 0.76)
 
@@ -1361,7 +1391,7 @@ PanelWindow {
                                 Text {
                                     anchors.centerIn: parent
                                     anchors.horizontalCenterOffset: 1
-                                    visible: !PaletteState.mediaPlaying
+                                    visible: !root.tabMediaIsPlaying(filmCard.modelData)
                                     text: "▶"
                                     color: mediaControlHover.hovered ? Theme.bg : "#ffffff"
                                     font.family: root.sans
@@ -1371,7 +1401,7 @@ PanelWindow {
                                 Row {
                                     anchors.centerIn: parent
                                     spacing: 4
-                                    visible: PaletteState.mediaPlaying
+                                    visible: root.tabMediaIsPlaying(filmCard.modelData)
 
                                     Repeater {
                                         model: 2
@@ -1401,7 +1431,7 @@ PanelWindow {
                                         && p.x <= mediaControl.x + mediaControl.width
                                         && p.y >= mediaControl.y
                                         && p.y <= mediaControl.y + mediaControl.height) {
-                                    PaletteState.playPauseMedia()
+                                    PaletteState.toggleTabMedia(filmCard.modelData.id)
                                     return
                                 }
                                 root.filmFocused = true

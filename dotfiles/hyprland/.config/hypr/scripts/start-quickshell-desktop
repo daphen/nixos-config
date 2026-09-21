@@ -14,4 +14,7 @@ for _ in {1..100}; do
 done
 
 qs -n -p "$HOME/.config/quickshell/wallpaper" &
+if [[ ${HYPR_CANVAS_PROFILE:-} == deck ]]; then
+    QT_QPA_PLATFORM=xcb qs -n -p "$HOME/.config/quickshell/palette-x11" &
+fi
 exec qs -n

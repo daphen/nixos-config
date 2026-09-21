@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ${HYPR_CANVAS_PROFILE:-} == deck ]]; then
+    exec env QT_QPA_PLATFORM=xcb qs -p "$HOME/.config/quickshell/palette-x11" ipc call -- palette "$@"
+fi
+exec qs ipc call -- palette "$@"
