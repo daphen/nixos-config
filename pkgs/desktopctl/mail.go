@@ -213,7 +213,7 @@ func mailSummon() error {
 }
 
 func mailWindows() ([]niriWindow, error) {
-	if !usingHyprland() {
+	if os.Getenv("HYPRLAND_INSTANCE_SIGNATURE") == "" {
 		return niriWindows()
 	}
 
