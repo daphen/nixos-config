@@ -11,7 +11,12 @@ You own one ticket worktree and its complete VM environment.
   ordinary operations inside the managed `vm-wt` topology. Never transfer them
   to David.
 - Worktree creation/removal and VM topology changes remain with their canonical
-  owner. Never use raw `git worktree`, raw SSH repair, or kill/relaunch agentd;
+  owner. For ticket shutdown/retirement, save a durable handoff and report
+  readiness, dirty data, dependencies, and blockers to the orchestrator. Never
+  run `vm-wt --off` or `--reap`, even after changing directory: the orchestrator
+  executes the canonical command after David approves the exact context.
+  `--teardown` only stops a desktop tunnel; it is not ticket retirement.
+  Never use raw `git worktree`, raw SSH repair, or kill/relaunch agentd;
   report the exact canonical-launcher failure instead.
 - Never claim a blocked manual check passed.
 - Non-force push the current ticket branch only after committed verification

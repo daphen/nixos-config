@@ -202,16 +202,16 @@ class HarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "not behind"):
                 harness.adopt_or_create_worktree(repo, 12, expected_sha, review)
 
-    def test_remote_clean_stale_worktree_updates_but_dirty_or_ahead_refuses(self):
+    def test_remote_setup_delegates_worktree_ownership_to_canonical_vm_wt(self):
         with tempfile.TemporaryDirectory() as td:
             text = self.context(Path(td)).remote_setup_script()
-            dirty = text.index("remote review worktree is dirty")
-            ancestry = text.index("merge-base --is-ancestor")
-            reset = text.index('reset --hard "9999999999999999999999999999999999999999"')
-            verified = text.index("remote review worktree SHA mismatch after update")
-            self.assertEqual([dirty, ancestry, reset, verified], sorted([dirty, ancestry, reset, verified]))
-            self.assertIn("remote review worktree is not behind PR head", text)
-            self.assertNotIn("reset --hard HEAD", text)
+            self.assertIn('"$HOME/.config/niri/scripts/vm-wt" --review "83188"', text)
+            self.assertIn("remote review worktree SHA mismatch", text)
+            self.assertIn("remote review worktree branch mismatch", text)
+            self.assertIn("remote review worktree is dirty", text)
+            self.assertNotIn("worktrunk", text.lower())
+            self.assertNotIn("worktree add", text)
+            self.assertNotIn("reset --hard", text)
 
     def test_context_artifacts_encode_proven_environment_and_owned_services(self):
         with tempfile.TemporaryDirectory() as td:
@@ -559,6 +559,32 @@ class HarnessTests(unittest.TestCase):
             self.assertLess(missing, mutation)
             self.assertLess(wrong, mutation)
             self.assertIn("production runtime contract must not load an override artifact", text)
+
+    def test_vm_native_public_entrypoint_uses_work_scope_without_desktop_tools(self):
+        script = ROOT / "dotfiles/niri/.config/niri/scripts/agent-review"
+        loader = importlib.machinery.SourceFileLoader("agent_review_vm_test", str(script))
+        spec = importlib.util.spec_from_loader("agent_review_vm_test", loader)
+        assert spec
+        module = importlib.util.module_from_spec(spec); loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td); repo = home / "src/lovable"; review = home / "src/lovable.review-9"
+            repo.mkdir(parents=True); review.mkdir(); started = []
+            patches = (mock.patch.object(module, name, value) for name, value in {
+                "HOME": td, "NATIVE_VM": True, "LOVABLE_DIR": repo, "REPO_DIR": repo,
+                "SCOPE": "work", "gh_pr_metadata": lambda _: ("title", "9" * 40),
+                "canonical_vm_review_worktree": lambda *_: review,
+                "start_rail_session": lambda *args: started.append(args),
+                "deterministic_path": lambda *_: self.fail("desktop tools requested"),
+            }.items())
+            with __import__("contextlib").ExitStack() as stack:
+                for patch in patches: stack.enter_context(patch)
+                stack.enter_context(mock.patch.object(sys, "argv", [str(script), "9"]))
+                self.assertEqual(module.main(), 0)
+                self.assertEqual((module.REPO_DIR, module.SCOPE), (repo, "work"))
+                with mock.patch.object(sys, "argv", [str(script), "9", "--manual-test", "project", "--runtime-contract", "production"]):
+                    with self.assertRaisesRegex(SystemExit, "authorized stopped desktop Chromium profile"):
+                        module.main()
+            self.assertEqual(started[0], ("review-pr-9", review, "/review-pr 9"))
 
     def test_correct_exact_runtime_contract_requires_url_digest_fingerprint_and_iframe_version(self):
         with tempfile.TemporaryDirectory() as td:

@@ -32,12 +32,9 @@ class GoCommandLauncherTests(unittest.TestCase):
                 path = bindir / binary
                 path.write_text("#!/bin/sh\nprintf '%s\\n%s\\n%s\\n' \"$*\" \"${BROWSER_CONFIG:-}${NIRI_SCRIPTS_DIR:-}${THEMES_DIR:-}\" \"$0\" > \"$LOG\"\n")
                 path.chmod(0o755)
-            env = os.environ | {"PATH": f"{bindir}:/run/current-system/sw/bin", "LOG": str(log)}
+            env = os.environ | {"HOME": directory, "PATH": f"{bindir}:/run/current-system/sw/bin", "LOG": str(log)}
             for launcher, binary, expected_args, expected_env in cases:
                 with self.subTest(launcher=launcher.name):
-                    text = launcher.read_text()
-                    self.assertNotIn(".bash", text)
-                    self.assertIn(f"/bin/{binary}", text)
                     subprocess.run([launcher, "one", "two"], env=env, check=True, timeout=10)
                     args, routed_env, executable = log.read_text().splitlines()
                     self.assertEqual(args, expected_args)

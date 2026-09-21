@@ -1,0 +1,17 @@
+--- a/css_browserhook.py
++++ b/css_browserhook.py
+@@ -166,2 +166,2 @@
+-                let style = document.createElement('style');
+-	            style.id = x.id;
++                let style = document.createElement('{"link" if self.title == "SharedJSContext" else "style"}');
++                style.id = x.id;
+@@ -169,2 +169,7 @@
+-	            document.head.append(style);
+-	            style.textContent = x.css;
++                if (style.tagName === 'LINK') {{
++                    style.rel = 'stylesheet';
++                    style.href = 'data:text/css;charset=utf-8,' + encodeURIComponent(x.css);
++                }} else {{
++                    style.textContent = x.css;
++                }}
++                document.head.append(style);

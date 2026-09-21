@@ -5,7 +5,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 var binary string
@@ -43,6 +45,9 @@ func setup(t *testing.T) *fixture {
 		}
 	}
 	f.mock("jq", "if [ \"$1\" = -r ]; then printf '#DADADA\\n'; fi")
+	f.write("preference", "prefer-dark\n")
+	f.mock("gsettings", "case \"$1\" in get) read -r value < '"+f.root+"/preference'; printf \"'%s'\\n\" \"$value\";; set) printf '%s\\n' \"$4\" > '"+f.root+"/preference'; printf '%s\\n' \"$*\" >> '"+f.root+"/preference-writes';; *) exit 1;; esac")
+	f.mock("dconf", "exit 0")
 	return f
 }
 
@@ -70,7 +75,7 @@ func (f *fixture) write(rel, text string) string {
 func (f *fixture) run(args ...string) (string, error) {
 	f.t.Helper()
 	cmd := exec.Command(binary, args...)
-	cmd.Env = append(os.Environ(), "HOME="+f.home, "THEMES_DIR="+f.themes, "PATH="+f.bin+":/usr/bin:/bin")
+	cmd.Env = append(os.Environ(), "HOME="+f.home, "XDG_CONFIG_HOME="+filepath.Join(f.home, ".config"), "DBUS_SESSION_BUS_ADDRESS=unix:path="+filepath.Join(f.root, "no-live-bus"), "THEMES_DIR="+f.themes, "PATH="+f.bin+":/usr/bin:/bin")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -102,7 +107,7 @@ func TestStatusDefaultsAndListsTemplates(t *testing.T) {
 	f.write("dotfiles/themes/.config/themes/templates/zeta-light.template", "")
 	f.write("dotfiles/themes/.config/themes/templates/alpha.template", "")
 	out, err := f.run("status", "ignored")
-	want := "=== Theme Status ===\nCurrent Theme: dark\nTheme Mode File: " + filepath.Join(f.home, ".config/theme_mode") + "\nThemes Directory: " + f.themes + "\nColors File: " + filepath.Join(f.themes, "colors.json") + "\n\nAvailable Tools:\n  - alpha\n  - zeta-light\n"
+	want := "=== Theme Status ===\nCurrent Theme: dark\nGenerated Mode File: " + filepath.Join(f.home, ".config/theme_mode") + "\nThemes Directory: " + f.themes + "\nColors File: " + filepath.Join(f.themes, "colors.json") + "\n\nAvailable Tools:\n  - alpha\n  - zeta-light\n"
 	if err != nil || out != want {
 		t.Fatalf("status: err=%v\nwant %q\ngot  %q", err, want, out)
 	}
@@ -136,6 +141,37 @@ func TestGenerateUsesSpecificThenGenericTemplatesAndMasksFailures(t *testing.T) 
 	}
 }
 
+func TestHyprlandThemeLiveApply(t *testing.T) {
+	f := setup(t)
+	log := filepath.Join(f.root, "hyprctl.log")
+	f.mock("hyprctl", "printf '%s\\n' \"$HYPRLAND_INSTANCE_SIGNATURE\" \"$@\" >> '"+log+"'")
+	t.Setenv("HYPRLAND_INSTANCE_SIGNATURE", "theme-test-instance")
+	for _, theme := range []struct{ mode, color string }{{"dark", "#FF570D"}, {"light", "#0000F2"}} {
+		want := "return { experimental = { canvas_focus_color = \"" + theme.color + "\" } }\n"
+		f.write(filepath.Join("dotfiles/themes/.config/themes/generated/hyprland", theme.mode+".theme"), want)
+		f.write("preference", "prefer-"+theme.mode+"\n")
+		if out, err := f.run("apply", theme.mode); err != nil {
+			t.Fatalf("apply: %v: %s", err, out)
+		}
+		if got := mustRead(t, filepath.Join(f.home, ".config/hypr/theme.lua")); got != want {
+			t.Fatalf("%s theme: got %q, want %q", theme.mode, got, want)
+		}
+	}
+	commands := mustRead(t, log)
+	want := "theme-test-instance\neval\nhl.config(dofile(\"" + filepath.Join(f.home, ".config/hypr/theme.lua") + "\"))\n"
+	if commands != want+want {
+		t.Fatalf("expected targeted live config updates, got %q", commands)
+	}
+	t.Setenv("HYPRLAND_INSTANCE_SIGNATURE", "")
+	f.write("preference", "prefer-dark\n")
+	if out, err := f.run("apply", "dark"); err != nil {
+		t.Fatalf("offline apply: %v: %s", err, out)
+	}
+	if got := mustRead(t, log); got != commands {
+		t.Fatalf("offline apply contacted a compositor: %q", got)
+	}
+}
+
 func TestApplyCoversEveryAdapterAndContinuesAfterFailures(t *testing.T) {
 	f := setup(t)
 	tools := []string{"nvim", "fish", "tmux", "fzf", "tide", "spotify-player", "opencode", "process-compose", "btop", "claude-code", "chromium-palette", "newtab", "starship", "clipse", "yazi", "yazi-tmtheme", "quickshell", "quickshell-client", "kitty", "pi", "swaylock", "gtk", "kvantum", "unknown"}
@@ -159,7 +195,7 @@ func TestApplyCoversEveryAdapterAndContinuesAfterFailures(t *testing.T) {
 	f.mock("npm", "exit 0")
 	f.write("home/.claude/settings.json", `{"theme":"dark","other":true}`)
 	out, err := f.run("apply", "dark")
-	if err != nil || !strings.Contains(out, "Unknown tool: unknown") || !strings.HasSuffix(out, "All themes applied for dark mode\n") {
+	if err != nil || !strings.Contains(out, "Unknown tool: unknown") || !strings.Contains(out, "All themes applied for dark mode") {
 		t.Fatalf("best-effort apply: err=%v output=%s", err, out)
 	}
 	checks := map[string]string{
@@ -197,10 +233,31 @@ func TestApplyCoversEveryAdapterAndContinuesAfterFailures(t *testing.T) {
 	}
 }
 
+func TestSteamCSSLoaderBundleFollowsPreference(t *testing.T) {
+	f := setup(t)
+	manifest := `{"name":"Dotfiles","manifest_version":8,"inject":{"shared.css":["bigpicture","QuickAccess","MainMenu"]}}`
+	f.write("dotfiles/themes/.config/themes/templates/steam-css-loader/theme.json", manifest)
+	for _, mode := range []string{"dark", "light", "dark"} {
+		css := ":root { color-scheme: " + mode + "; }\n"
+		f.write("dotfiles/themes/.config/themes/generated/steam-css-loader/"+mode+".theme", css)
+		f.write("preference", "prefer-"+mode+"\n")
+		if out, err := f.run("apply"); err != nil || !strings.Contains(out, "Applied Steam CSS Loader theme") {
+			t.Fatalf("apply %s: %v\n%s", mode, err, out)
+		}
+		target := filepath.Join(f.home, "homebrew/themes/Dotfiles")
+		if got := mustRead(t, filepath.Join(target, "shared.css")); got != css {
+			t.Fatalf("%s CSS = %q, want %q", mode, got, css)
+		}
+		if got := mustRead(t, filepath.Join(target, "theme.json")); got != manifest {
+			t.Fatalf("manifest = %q, want %q", got, manifest)
+		}
+	}
+}
+
 func TestSwitchGTKUsesReloadableThemesAndClearsOverrides(t *testing.T) {
 	f := setup(t)
 	log := filepath.Join(f.root, "commands")
-	for _, name := range []string{"gsettings", "dconf", "systemctl", "fish"} {
+	for _, name := range []string{"dconf", "systemctl", "fish"} {
 		f.mock(name, "printf '%s %s\\n' '"+name+"' \"$*\" >> '"+log+"'")
 	}
 	legacy := f.write("home/.config/gtk-3.0/gtk.css", "/* GTK theme overrides - auto-generated by theme-manager from colors.json */\nold colors")
@@ -209,6 +266,9 @@ func TestSwitchGTKUsesReloadableThemesAndClearsOverrides(t *testing.T) {
 		f.generated("gtk", mode)
 		if out, err := f.run("switch", mode); err != nil {
 			t.Fatalf("switch %s: %v\n%s", mode, err, out)
+		}
+		if out, err := f.run("apply"); err != nil {
+			t.Fatalf("apply %s: %v\n%s", mode, err, out)
 		}
 		for _, version := range []string{"gtk-3.0", "gtk-4.0"} {
 			css := mustRead(t, filepath.Join(f.home, ".local/share/themes", "Dotfiles-"+mode, version, "gtk.css"))
@@ -235,7 +295,7 @@ func TestSwitchGTKUsesReloadableThemesAndClearsOverrides(t *testing.T) {
 		t.Fatalf("unrelated user CSS changed: %q", got)
 	}
 	commands := readIfExists(log)
-	for _, want := range []string{"fish -c set -eU GTK_THEME", "systemctl --user unset-environment GTK_THEME"} {
+	for _, want := range []string{"fish --no-config -c set -eU GTK_THEME", "systemctl --user unset-environment GTK_THEME"} {
 		if !strings.Contains(commands, want) {
 			t.Errorf("missing cleanup %q: %s", want, commands)
 		}
@@ -275,7 +335,7 @@ func TestApplyKittySkipsMissingSourceThemes(t *testing.T) {
 func TestSwitchValidationOrderingSystemNiriAndWallpaper(t *testing.T) {
 	f := setup(t)
 	log := filepath.Join(f.root, "commands")
-	for _, name := range []string{"gsettings", "dconf", "systemctl", "fish"} {
+	for _, name := range []string{"dconf", "systemctl", "fish"} {
 		f.mock(name, "printf '%s %s\\n' '"+name+"' \"$*\" >> '"+log+"'")
 	}
 	f.mock("python3", "while IFS= read -r line || [ -n \"$line\" ]; do printf '%s\\n' \"$line\"; done < \"$2\" > \"$5\"; printf 'python %s\\n' \"$*\" >> '"+log+"'")
@@ -290,9 +350,16 @@ func TestSwitchValidationOrderingSystemNiriAndWallpaper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("switch: %v\n%s", err, out)
 	}
-	ordered(t, out, "Switching to dark", "Generating all themes", "All themes generated", "Applying all themes", "All themes applied", "Updated dconf", "Applied niri", "Theme switched")
-	if got := mustRead(t, filepath.Join(f.home, ".config/theme_mode")); got != "dark\n" {
-		t.Fatalf("mode = %q", got)
+	if strings.Contains(out, "Generating") || pathExists(filepath.Join(f.home, ".config/theme_mode")) {
+		t.Fatalf("switch applied outputs: %s", out)
+	}
+	out, err = f.run("auto")
+	if err != nil {
+		t.Fatalf("auto: %v\n%s", err, out)
+	}
+	ordered(t, out, "Generating all themes", "All themes generated", "Applying all themes", "All themes applied", "Updated GTK", "Applied niri", "Applied system theme")
+	if pathExists(filepath.Join(f.home, ".config/theme_mode")) {
+		t.Fatal("renderer wrote the follower's notification file")
 	}
 	niri := mustRead(t, filepath.Join(f.root, "dotfiles/niri/.config/niri/config.kdl"))
 	for _, want := range []string{`active-color "#DADADA"`, `inactive-color "#3A3A3A"`, `active-gradient from="#DADADA" to="#DADADA"`, `active-color "#FF570D"`, `inactive-color "#999999"`} {
@@ -301,7 +368,10 @@ func TestSwitchValidationOrderingSystemNiriAndWallpaper(t *testing.T) {
 		}
 	}
 	commands := readIfExists(log)
-	ordered(t, commands, "gsettings set", "python ", "gsettings set", "dconf write")
+	ordered(t, commands, "python ", "dconf write")
+	if got := strings.Count(readIfExists(filepath.Join(f.root, "preference-writes")), "set "); got != 1 {
+		t.Fatalf("expected one preference write, got %d", got)
+	}
 	if strings.Contains(commands, "waypaper") || strings.Contains(commands, "swaybg") {
 		t.Fatalf("switch launched a wallpaper renderer:\n%s", commands)
 	}
@@ -315,19 +385,22 @@ func TestToggleFallsBackWhenGSettingsSchemasAreMissing(t *testing.T) {
 	f := setup(t)
 	log := filepath.Join(f.root, "dconf-commands")
 	f.mock("gsettings", "printf 'No schemas installed\\n' >&2; exit 1")
-	f.mock("dconf", "printf '%s\\n' \"$*\" >> '"+log+"'")
+	f.mock("dconf", "printf '%s\\n' \"$*\" >> '"+log+"'; case \"$1\" in read) read -r value < '"+f.root+"/preference'; printf '%s\\n' \"$value\";; write) printf '%s\\n' \"$3\" > '"+f.root+"/preference';; esac")
 	f.write("home/.config/theme_mode", "dark\n")
 	for _, mode := range []string{"light", "dark"} {
 		out, err := f.run("toggle")
 		if err != nil {
 			t.Fatalf("toggle %s: %v\n%s", mode, err, out)
 		}
-		if got := mustRead(t, filepath.Join(f.home, ".config/theme_mode")); got != mode+"\n" {
-			t.Fatalf("mode = %q, want %s", got, mode)
+		if got := mustRead(t, filepath.Join(f.root, "preference")); got != "'prefer-"+mode+"'\n" {
+			t.Fatalf("preference = %q, want %s", got, mode)
+		}
+		if got := mustRead(t, filepath.Join(f.home, ".config/theme_mode")); got != "dark\n" {
+			t.Fatalf("toggle wrote compatibility output: %q", got)
 		}
 		want := "write /org/gnome/desktop/interface/color-scheme 'prefer-" + mode + "'"
-		if got := strings.Count(readIfExists(log), want); got != 2 {
-			t.Fatalf("expected preference at start and end of toggle, got %d writes:\n%s", got, readIfExists(log))
+		if got := strings.Count(readIfExists(log), want); got != 1 {
+			t.Fatalf("expected one preference write, got %d writes:\n%s", got, readIfExists(log))
 		}
 	}
 }
@@ -345,8 +418,8 @@ func TestWallpaperValidationNeverLaunchesRenderer(t *testing.T) {
 	log := filepath.Join(f.root, "commands")
 	f.mock("waypaper", "printf 'waypaper %s\\n' \"$*\" >> '"+log+"'")
 	f.mock("swaybg", "printf 'swaybg %s\\n' \"$*\" >> '"+log+"'")
-	out, err := f.run("switch", "dark")
-	if err != nil || !strings.Contains(out, "Theme switched to dark mode") {
+	out, err := f.run("auto")
+	if err != nil || !strings.Contains(out, "Applied system theme: dark") {
 		t.Fatalf("valid wallpaper: err=%v output=%q", err, out)
 	}
 	if commands := readIfExists(log); commands != "" {
@@ -356,25 +429,232 @@ func TestWallpaperValidationNeverLaunchesRenderer(t *testing.T) {
 	if err := os.Remove(wall); err != nil {
 		t.Fatal(err)
 	}
-	out, err = f.run("switch", "dark")
-	if err != nil || !strings.Contains(out, "No wallpaper set for dark") || !strings.Contains(out, "Theme switched to dark mode") {
+	out, err = f.run("auto")
+	if err != nil || !strings.Contains(out, "No wallpaper set for dark") || !strings.Contains(out, "Applied system theme: dark") {
 		t.Fatalf("broken wallpaper: err=%v output=%q", err, out)
 	}
 }
 
-func TestToggleAutoDefaultsAndWallpaperWarnings(t *testing.T) {
+func TestToggleAndAutoIgnoreStaleOutput(t *testing.T) {
 	f := setup(t)
-	f.mock("gsettings", "exit 0")
-	f.mock("dconf", "exit 0")
-	f.write("home/.config/theme_mode", "dark\n")
+	f.write("home/.config/theme_mode", "light\n")
 	out, err := f.run("toggle")
-	if err != nil || !strings.Contains(out, "Switching to light theme") || !strings.Contains(out, "No wallpaper set for light") {
+	if err != nil || !strings.Contains(out, "Theme preference set to light") || strings.Contains(out, "Applying") {
 		t.Fatalf("toggle: err=%v output=%s", err, out)
 	}
-	f.write("home/.config/theme_mode", "bogus\n")
-	out, err = f.run()
-	if err == nil || !strings.Contains(out, "Auto-detecting system theme: bogus") || !strings.Contains(out, "Invalid theme mode: bogus") {
-		t.Fatalf("auto invalid current mode: err=%v output=%s", err, out)
+	for _, preference := range []string{"prefer-dark", "prefer-light", "default"} {
+		f.write("preference", preference+"\n")
+		f.write("home/.config/theme_mode", "bogus\n")
+		out, err = f.run()
+		mode := "light"
+		if preference == "prefer-dark" {
+			mode = "dark"
+		}
+		if err != nil || !strings.Contains(out, "No wallpaper set for "+mode) || mustRead(t, filepath.Join(f.home, ".config/theme_mode")) != "bogus\n" {
+			t.Fatalf("auto %s: err=%v output=%s", preference, err, out)
+		}
+	}
+	if got := strings.Count(readIfExists(filepath.Join(f.root, "preference-writes")), "set "); got != 1 {
+		t.Fatalf("auto wrote preference: %d", got)
+	}
+}
+
+func TestPreferenceFailuresLeaveOutputsUntouched(t *testing.T) {
+	f := setup(t)
+	modeFile := f.write("home/.config/theme_mode", "light\n")
+	f.mock("gsettings", "exit 1")
+	f.mock("dconf", "exit 1")
+	for _, args := range [][]string{{"toggle"}, {"switch", "dark"}, {"auto"}, {"apply"}, {"status"}} {
+		if out, err := f.run(args...); err == nil || !strings.Contains(out, "[ERROR]") {
+			t.Fatalf("%v silently succeeded: %v: %s", args, err, out)
+		}
+		if got := mustRead(t, modeFile); got != "light\n" {
+			t.Fatalf("failed command changed output: %q", got)
+		}
+	}
+	if out, err := f.run("generate", "dark"); err != nil {
+		t.Fatalf("offline generation: %v: %s", err, out)
+	}
+	f.mock("gsettings", "if [ \"$1\" = get ]; then printf \"'prefer-light'\\n\"; fi")
+	if out, err := f.run("switch", "dark"); err == nil {
+		t.Fatalf("silently failed backend write was reported as success: %s", out)
+	}
+}
+
+func TestApplyRejectsAnotherPreferenceAndKeepsIdenticalQML(t *testing.T) {
+	f := setup(t)
+	if out, err := f.run("apply", "light"); err == nil {
+		t.Fatalf("apply overrode preference: %s", out)
+	}
+	f.generated("quickshell", "dark")
+	f.write("dotfiles/quickshell/.config/quickshell/modules/Theme.qml", "old theme")
+	for i := 0; i < 2; i++ {
+		if out, err := f.run("apply"); err != nil {
+			t.Fatalf("apply: %v: %s", err, out)
+		}
+		path := filepath.Join(f.root, "dotfiles/quickshell/.config/quickshell/modules/Theme.qml")
+		if i == 0 {
+			if err := os.Chtimes(path, time.Unix(1, 0), time.Unix(1, 0)); err != nil {
+				t.Fatal(err)
+			}
+		} else if info, err := os.Stat(path); err != nil || info.ModTime() != time.Unix(1, 0) {
+			t.Fatalf("unchanged QML was rewritten: %v: %v", info, err)
+		}
+	}
+}
+
+func TestConcurrentApplicationsFollowChangeDuringGeneration(t *testing.T) {
+	f := setup(t)
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.write("dotfiles/themes/.config/themes/templates/process-compose.template", "theme")
+	f.mock("python3", "printf '%s begin\\n' \"$4\" >> '"+f.root+"/order'; '"+sleep+"' 0.05; printf '%s\\n' \"$4\" > \"$5\"; if [ \"$4\" = dark ]; then printf 'prefer-light\\n' > '"+f.root+"/preference'; fi; printf '%s end\\n' \"$4\" >> '"+f.root+"/order'")
+	results := make(chan string, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			out, err := f.run("auto")
+			if err != nil {
+				results <- out
+			} else {
+				results <- ""
+			}
+		}()
+	}
+	for i := 0; i < 2; i++ {
+		if out := <-results; out != "" {
+			t.Fatal(out)
+		}
+	}
+	if got := mustRead(t, filepath.Join(f.root, "order")); got != "dark begin\ndark end\nlight begin\nlight end\nlight begin\nlight end\n" {
+		t.Fatalf("applications interleaved or missed change: %s", got)
+	}
+	if got := mustRead(t, filepath.Join(f.home, ".config/process-compose/theme.yaml")); got != "light\n" {
+		t.Fatalf("stale final output: %q", got)
+	}
+	if got := readIfExists(filepath.Join(f.root, "preference-writes")); got != "" {
+		t.Fatalf("following wrote preference: %s", got)
+	}
+}
+
+func TestFishStartupOnlyReadsGeneratedColors(t *testing.T) {
+	fish, err := exec.LookPath("fish")
+	if err != nil {
+		t.Skip("fish is required for the shell startup check")
+	}
+	cat, err := exec.LookPath("cat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"missing", "light", "dark"} {
+		t.Run(mode, func(t *testing.T) {
+			f := setup(t)
+			for _, file := range []string{"config.fish", "conf.d/theme_watcher.fish", "functions/sync_theme.fish", "functions/check_theme_change.fish", "functions/toggle_theme.fish", "functions/set_dark_theme.fish", "functions/set_light_theme.fish"} {
+				data, err := os.ReadFile(filepath.Join("../../dotfiles/fish/.config/fish", file))
+				if err != nil {
+					t.Fatal(err)
+				}
+				f.write(filepath.Join("home/.config/fish", file), string(data))
+			}
+			f.mock("themectl", "printf '%s\\n' \"$*\" >> '"+f.root+"/requests'")
+			for _, name := range []string{"gsettings", "dconf", "systemctl", "pkill", "spotify_player"} {
+				f.mock(name, "printf '%s\\n' '"+name+"' >> '"+f.root+"/forbidden'; exit 1")
+			}
+			if mode != "missing" {
+				f.write("home/.config/theme_mode", mode+"\n")
+				for _, tool := range []string{"fish", "tide"} {
+					f.write("home/.config/themes/generated/"+tool+"/"+mode+".theme", "set -g fixture_"+tool+" "+mode+"\n")
+				}
+			}
+			f.write("home/.config/themes/.current-theme", "dark\n")
+			cmd := exec.Command(fish, "--no-config", "-c", `set -p fish_function_path "$HOME/.config/fish/functions"; function nvm; end; source "$HOME/.config/fish/conf.d/theme_watcher.fish"; source "$HOME/.config/fish/config.fish"; emit fish_prompt; check_theme_change; if set -q GTK_THEME; exit 2; end; if test "$argv[1]" != missing; test "$fixture_fish" = "$argv[1]"; and test "$fixture_tide" = "$argv[1]"; or exit 3; end; toggle_theme; set_dark_theme; set_light_theme`, mode)
+			cmd.Env = append(os.Environ(), "HOME="+f.home, "XDG_CONFIG_HOME="+filepath.Join(f.home, ".config"), "DBUS_SESSION_BUS_ADDRESS=unix:path="+filepath.Join(f.root, "no-live-bus"), "GTK_THEME=Adwaita:dark", "PATH="+f.bin+":"+filepath.Dir(cat))
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("Fish %s: %v: %s", mode, err, out)
+			}
+			if got := readIfExists(filepath.Join(f.root, "forbidden")); got != "" {
+				t.Fatalf("startup changed desktop: %s", got)
+			}
+			if got := readIfExists(filepath.Join(f.root, "requests")); got != "toggle\nswitch dark\nswitch light\n" {
+				t.Fatalf("unexpected preference requests: %q", got)
+			}
+		})
+	}
+}
+
+func TestPackagedPreferenceSubscription(t *testing.T) {
+	watcher, err := exec.LookPath("themectl-watch")
+	if err != nil {
+		t.Skip("run with the built themectl package on PATH for the real subscription check")
+	}
+	f := setup(t)
+	f.write("dotfiles/themes/.config/themes/templates/process-compose.template", "theme")
+	f.write("dotfiles/themes/.config/themes/theme-processor.py", `import time, sys
+from pathlib import Path
+started = Path.home() / "slow-render-started"
+if not started.exists():
+    started.write_text("started")
+    time.sleep(3)
+    (Path.home() / "slow-render-finished").write_text("finished")
+Path(sys.argv[4]).write_text(sys.argv[3] + "\n")
+`)
+	runtime := filepath.Join(f.root, "runtime")
+	if err := os.Mkdir(runtime, 0700); err != nil {
+		t.Fatal(err)
+	}
+	script := `set -eu
+ctl="$1/themectl"
+"$ctl" switch dark
+"$1/themectl-watch" >"$HOME/watcher.log" 2>&1 & watcher=$!
+trap 'kill "$watcher" 2>/dev/null || true' EXIT
+wait_mode() {
+  for i in $(seq 1 50); do
+    [ "$(cat "$HOME/.config/theme_mode" 2>/dev/null || true)" = "$1" ] && return 0
+    kill -0 "$watcher" || { cat "$HOME/watcher.log"; return 1; }
+    sleep .01
+  done
+  cat "$HOME/watcher.log"; return 1
+}
+wait_mode dark
+for i in $(seq 1 100); do [ -f "$HOME/slow-render-started" ] && break; sleep .01; done
+test -f "$HOME/slow-render-started"
+for mode in light dark light; do
+  start=$(date +%s%3N)
+  gsettings set org.gnome.desktop.interface color-scheme "prefer-$mode"
+  wait_mode "$mode"
+  test ! -f "$HOME/slow-render-finished"
+  test "$(ps -o pid= --ppid "$watcher" | wc -w)" -eq 1
+  echo "$mode notification: $(($(date +%s%3N) - start)) ms while renderer is blocked"
+done
+for i in $(seq 1 100); do grep -q 'Applied system theme: light' "$HOME/watcher.log" && break; sleep .05; done
+grep -q 'Applied system theme: light' "$HOME/watcher.log"
+gsettings reset org.gnome.desktop.interface color-scheme
+wait_mode light
+kill "$watcher"
+wait "$watcher" || true
+printf bogus > "$HOME/.config/theme_mode"
+"$1/themectl-watch" >>"$HOME/watcher.log" 2>&1 & watcher=$!
+wait_mode light
+rm "$HOME/.config/theme_mode"
+mkdir "$HOME/.config/theme_mode"
+gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+for i in $(seq 1 100); do kill -0 "$watcher" 2>/dev/null || break; sleep .05; done
+if kill -0 "$watcher" 2>/dev/null; then cat "$HOME/watcher.log"; exit 1; fi
+if wait "$watcher"; then echo 'failed application exited successfully'; exit 1; fi
+`
+	cmd := exec.Command("dbus-run-session", "--", "bash", "-c", script, "test", filepath.Dir(watcher))
+	cmd.Env = append(os.Environ(), "HOME="+f.home, "THEMES_DIR="+f.themes, "XDG_CONFIG_HOME="+filepath.Join(f.home, ".config"), "XDG_DATA_HOME="+filepath.Join(f.home, ".local/share"), "XDG_CACHE_HOME="+filepath.Join(f.home, ".cache"), "XDG_RUNTIME_DIR="+runtime, "HYPRLAND_INSTANCE_SIGNATURE=", "NIRI_SOCKET=", "GSETTINGS_BACKEND=dconf")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	defer func() {
+		if cmd.Process != nil {
+			syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		}
+	}()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("real subscription: %v:\n%s", err, out)
+	} else {
+		t.Log(string(out))
 	}
 }
 

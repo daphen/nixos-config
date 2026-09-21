@@ -14,21 +14,14 @@ function __theme_watcher_check --on-event fish_prompt
         if test "$current_mode" != "$__theme_watcher_last_mode"
             set -g __theme_watcher_last_mode $current_mode
 
-            # Note: Tide always uses dark theme (looks good in both modes)
-
-            # Source the fish theme
-            set -l fish_theme "$themes_dir/fish/$current_mode.theme"
-            if test -f $fish_theme
-                source $fish_theme
+            for tool in fish tide
+                set -l theme "$themes_dir/$tool/$current_mode.theme"
+                if test -f $theme
+                    source $theme
+                end
             end
         end
     end
-end
-
-# Always use dark Tide theme (looks good in both light and dark modes)
-set -l tide_dark_theme "$HOME/.config/themes/generated/tide/dark.theme"
-if test -f $tide_dark_theme
-    source $tide_dark_theme
 end
 
 # Initialize on shell start

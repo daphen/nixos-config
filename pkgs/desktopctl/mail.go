@@ -260,7 +260,11 @@ func mailExecClient() error {
 	if err != nil {
 		return commandStatus{code: 127, err: err}
 	}
-	if err := syscall.Exec(client, []string{"mlqs-client"}, os.Environ()); err != nil {
+	launcher, err := exec.LookPath("desktop-launch")
+	if err != nil {
+		return commandStatus{code: 127, err: err}
+	}
+	if err := syscall.Exec(launcher, []string{"desktop-launch", client}, os.Environ()); err != nil {
 		return commandStatus{code: 126, err: err}
 	}
 	return nil

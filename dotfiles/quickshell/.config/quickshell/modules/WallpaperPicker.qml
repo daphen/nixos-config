@@ -81,7 +81,6 @@ Item {
     Item {
         anchors.fill: parent
         opacity: root.open ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 190; easing.type: Easing.OutCubic } }
 
         Column {
             anchors.fill: parent

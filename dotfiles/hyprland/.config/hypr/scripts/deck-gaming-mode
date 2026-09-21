@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec 9>"${XDG_RUNTIME_DIR:?}/deck-gaming-mode.lock"
+flock 9
+umask 077
+record="$XDG_RUNTIME_DIR/deck-gaming-mode.frozen"
+thaw_work() {
+    [[ -f "$record" ]] || return 0
+    local unit failed=0 load
+    while IFS= read -r unit; do
+        case "$unit" in deck-work.slice|app-org.chromium.Chromium-*.scope) ;; *) failed=1; continue ;; esac
+        load=$(systemctl --user show "$unit" -p LoadState --value) || { failed=1; continue; }
+        [[ $load == not-found ]] && continue
+        timeout 3s systemctl --user thaw "$unit" || failed=1
+    done < "$record"
+    if (( failed == 0 )); then rm -f -- "$record"; fi
+    return "$failed"
+}
+freeze_unit() {
+    local state
+    state=$(systemctl --user show "$1" -p FreezerState --value) || return 1
+    case "$state" in
+        frozen|frozen-by-parent) return 0 ;;
+        running) ;;
+        *) return 1 ;;
+    esac
+    printf '%s\n' "$1" >> "$record"
+    timeout 3s systemctl --user freeze "$1"
+}
+freeze_work() {
+    local clients rows pid name unit slice
+    local -A browsers=() gaming=()
+    clients=$(hyprctl -j clients) || return 1
+    rows=$(jq -r '.[] | select(.pid > 0) | [.pid, .workspace.name] | @tsv' <<< "$clients") || return 1
+    while IFS=$'\t' read -r pid name; do
+        [[ -n $pid ]] || continue
+        unit=$(systemctl --user whoami "$pid" 2>/dev/null) || continue
+        if [[ $name == gaming ]]; then
+            gaming["$unit"]=1
+            slice=$(systemctl --user show "$unit" -p Slice --value) || return 1
+            [[ $slice != deck-work.slice ]] || return 1
+        fi
+        case "$unit" in app-org.chromium.Chromium-*.scope) browsers["$unit"]=1 ;; esac
+    done <<< "$rows"
+    freeze_unit deck-work.slice || return 1
+    for unit in "${!browsers[@]}"; do
+        [[ ${gaming[$unit]:-} == 1 ]] && continue
+        freeze_unit "$unit" || return 1
+    done
+}
+trap 'thaw_work; exit 1' HUP INT TERM
+if [[ ${1:-} == cleanup ]]; then thaw_work; exit; fi
+workspace=$(hyprctl -j activeworkspace | jq -er '.name')
+profile() {
+    local path
+    path=$(readlink -f "/etc/inputplumber/profiles/hyprland-$1.yaml")
+    if [[ $(inputplumber device 0 profile path) != "Current profile path: '$path'" ]]; then
+        inputplumber device 0 profile load "$path"
+    fi
+}
+dispatch() {
+    local result
+    result=$(hyprctl dispatch "$1")
+    [[ $result == ok ]]
+}
+focus() { dispatch "hl.dsp.focus({workspace=\"$1\"})"; }
+
+case ${1:-enter} in
+    sync)
+        if [[ $workspace == gaming ]]; then
+            pkill -USR1 -x wvkbd-mobintl || true
+            if ! profile gaming || ! freeze_work; then thaw_work; exit 1; fi
+        else
+            thaw_work
+            if hyprctl clients -j | jq -e --arg workspace "$workspace" 'any(.[]; .mapped and (.hidden | not) and (.pinned or .workspace.name == $workspace) and .title == "Steam Input On-screen Keyboard")' >/dev/null; then
+                profile keyboard
+            else
+                profile canvas
+            fi
+        fi
+        exit 0
+        ;;
+    tap)
+        if [[ $workspace == gaming ]]; then
+            exec busctl call org.shadowblip.InputPlumber \
+                /org/shadowblip/InputPlumber/CompositeDevice0 \
+                org.shadowblip.Input.CompositeDevice SendButtonChord \
+                as 1 Gamepad:Button:Guide
+        fi
+        ;;
+    return)
+        if [[ $workspace != gaming ]]; then thaw_work; exit; fi
+        thaw_work
+        if ! profile canvas; then profile gaming; exit 1; fi
+        if ! focus previous; then
+            profile gaming
+            exit 1
+        fi
+        exit 0
+        ;;
+    enter) pkill -USR1 -x wvkbd-mobintl || true ;;
+    *) echo 'Usage: deck-gaming-mode [enter|tap|return|sync|cleanup]' >&2; exit 2 ;;
+esac
+
+if [[ $workspace != gaming ]]; then
+    if ! profile gaming; then profile canvas; exit 1; fi
+    if ! focus name:gaming; then
+        profile canvas
+        exit 1
+    fi
+fi
+# Dispatch asynchronously so Steam's lifetime cannot hold the transition lock.
+if ! freeze_work || ! dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")"; then
+    thaw_work || true
+    echo 'Game Mode entry failed; attempted to resume work.' >&2
+    notify-send 'Game Mode' 'Could not pause work or open Steam; returning to work.' || true
+    if [[ $workspace != gaming ]]; then
+        profile canvas
+        focus previous
+    fi
+    exit 1
+fi

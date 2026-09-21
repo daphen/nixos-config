@@ -1,0 +1,12 @@
+{
+  "name": "Split Keyboard",
+  "author": "daphen",
+  "version": "v1.0.0",
+  "description": "Two thumb panels with a transparent center, using Steam's English and Swedish keyboards.",
+  "target": "Keyboard",
+  "manifest_version": 8,
+  "inject": {
+    "../Dotfiles/shared.css": ["SharedJSContext"],
+    "keyboard.css": ["SharedJSContext"]
+  }
+}

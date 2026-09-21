@@ -7,16 +7,16 @@ desktop behavior.
 
 ## Route by subsystem
 
-| Work | Read first | Source |
-| --- | --- | --- |
-| Host or Home Manager | `README.md` | `flake.nix`, `common/`, `machines/` |
-| Desktop architecture | `dotfiles/SYSTEM.md` | `dotfiles/`, `common/home/symlinks.nix` |
-| Niri | Niri section in `dotfiles/SYSTEM.md` | `dotfiles/niri/.config/niri/` |
-| Bar, pickers, notifications | Quickshell section in `dotfiles/SYSTEM.md` | `dotfiles/quickshell/.config/quickshell/` |
-| Themes | Theme section in `dotfiles/SYSTEM.md` | `dotfiles/themes/.config/themes/`, `pkgs/themectl/` |
-| Neovim | Neovim section in `dotfiles/SYSTEM.md` | `pkgs/neovim/` |
-| Cockpit | `/home/daphen/personal/ai-cockpit/AGENTS.md` | separate `ai-cockpit` repository |
-| agentd | `/home/daphen/personal/agentd/AGENTS.md` | separate `agentd` repository |
+| Work                        | Read first                                   | Source                                              |
+| --------------------------- | -------------------------------------------- | --------------------------------------------------- |
+| Host or Home Manager        | `README.md`                                  | `flake.nix`, `common/`, `machines/`                 |
+| Desktop architecture        | `dotfiles/SYSTEM.md`                         | `dotfiles/`, `common/home/symlinks.nix`             |
+| Niri                        | Niri section in `dotfiles/SYSTEM.md`         | `dotfiles/niri/.config/niri/`                       |
+| Bar, pickers, notifications | Quickshell section in `dotfiles/SYSTEM.md`   | `dotfiles/quickshell/.config/quickshell/`           |
+| Themes                      | Theme section in `dotfiles/SYSTEM.md`        | `dotfiles/themes/.config/themes/`, `pkgs/themectl/` |
+| Neovim                      | Neovim section in `dotfiles/SYSTEM.md`       | `pkgs/neovim/`                                      |
+| Cockpit                     | `/home/daphen/personal/ai-cockpit/AGENTS.md` | separate `ai-cockpit` repository                    |
+| agentd                      | `/home/daphen/personal/agentd/AGENTS.md`     | separate `agentd` repository                        |
 
 The desktop Quickshell tree is not Cockpit. Current Cockpit launchers in
 `dotfiles/niri/.config/niri/scripts/cockpit-*` enter
@@ -24,14 +24,23 @@ The desktop Quickshell tree is not Cockpit. Current Cockpit launchers in
 
 ## Validation and activation
 
-- Files mapped by `common/home/symlinks.nix` are live working-tree links. Inspect
-  that file before deciding whether a rebuild is necessary.
+- For `experiments/hyprland-canvas`, run `./dev status` before compiling and
+  reuse its persistent Ninja state with `./dev build`. Never use a fresh `/tmp`
+  or per-session dev root for iterative builds. An isolated agent must use one
+  stable, non-live `HYPRLAND_CANVAS_DEV_ROOT` named for its worktree and reuse
+  it across turns; it must not duplicate that root's source elsewhere.
+- `./dev bootstrap` is a cold full compile. Run it only when the stable root is
+  absent or incompatible, and only after David approves the expected cost.
+  Changes to central Hyprland headers can invalidate hundreds of objects; state
+  that before editing them and avoid it when a smaller production seam exists.
+- Files mapped by `common/home/symlinks.nix` are live working-tree links.
+  Inspect that file before deciding whether a rebuild is necessary.
 - Validate system changes without activation using
   `nice -n 10 ionice -c3 nix build .#nixosConfigurations.proart.config.system.build.toplevel --no-link`.
 - Activate only with David's explicit approval:
   `/run/wrappers/bin/sudo nixos-rebuild switch --flake /home/daphen/nixos#proart`.
-  This switches NixOS and Home Manager together; never run bare
-  `nixos-rebuild` and never reboot as part of validation.
+  This switches NixOS and Home Manager together; never run bare `nixos-rebuild`
+  and never reboot as part of validation.
 - A live-linked QML, KDL, Lua, or unit edit still needs its real isolated loader
   check before reporting success. Do not restart a visible Cockpit, daemon, or
   desktop service without explicit approval.

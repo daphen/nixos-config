@@ -91,6 +91,8 @@ in {
     # send/spawn), the one command replacing the wt-* scripts. Pi agents use the
     # native agent_* tools (pi-extensions/agents) instead; both speak agentd's socket.
     ".local/bin/agent".source = link "${dotfiles}/bin/.local/bin/agent";
+    ".local/bin/hypr-session".source =
+      link "${config.home.homeDirectory}/nixos/experiments/hyprland-canvas/run-login";
     ".local/bin/orchestrator-seed".source = link "${dotfiles}/bin/.local/bin/orchestrator-seed";
     # cockpit-spawn: the full ticket kickoff (cockpit context + devenv + nvim rail tab
     # + seeded roster agent) — callable by any agent, and by the rail's Enter-on-ticket.

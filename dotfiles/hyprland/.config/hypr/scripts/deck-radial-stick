@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+import math, struct, sys
+from pathlib import Path
+
+REPORT_SIZE = 64
+REPORT_HEADER = bytes((1, 0, 9))
+RIGHT_STICK = struct.Struct("<hh")
+RIGHT_STICK_OFFSET = 52
+AXIS_SCALE = 32767
+
+
+def find_controller():
+    for entry in sorted(Path("/sys/class/hidraw").glob("hidraw*")):
+        device = entry / "device"
+        try:
+            resolved = str(device.resolve())
+            uevent = (device / "uevent").read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if "/virtual/" in resolved and "HID_ID=0003:000028DE:000012F0\n" in uevent:
+            return Path("/dev") / entry.name
+    raise RuntimeError("InputPlumber virtual Steam Deck controller not found")
+
+
+def emit(x, y):
+    x, y = x / AXIS_SCALE, y / AXIS_SCALE
+    if x * x + y * y < 0.04:
+        return
+    direction = math.atan2(x, y) / (2 * math.pi) % 1 * 8
+    print(f"direction {direction:.6f}", flush=True)
+
+
+def main():
+    with find_controller().open("rb", buffering=0) as device:
+        previous = None
+        while data := device.read(REPORT_SIZE):
+            if len(data) < REPORT_SIZE or data[:3] != REPORT_HEADER:
+                continue
+            axes = RIGHT_STICK.unpack_from(data, RIGHT_STICK_OFFSET)
+            if axes == previous:
+                continue
+            previous = axes
+            emit(*axes)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, RuntimeError) as error:
+        print(f"deck-radial-stick: {error}", file=sys.stderr)
+        raise SystemExit(1)

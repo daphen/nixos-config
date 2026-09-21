@@ -65,6 +65,23 @@ def git(args: list[str], cwd: Path, timeout: int = 30) -> str:
     return run(["git", "-C", str(cwd), *args], timeout=timeout).stdout.strip()
 
 
+def canonical_vm_review_worktree(home: Path, pr: int, expected_sha: str) -> Path:
+    launcher = home / ".config/niri/scripts/vm-wt"
+    found = str(launcher) if os.access(launcher, os.X_OK) else shutil.which("vm-wt")
+    if not found:
+        raise RuntimeError("canonical vm-wt is unavailable")
+    result = run([found, "--review", str(pr), expected_sha], timeout=120, check=False)
+    if result.returncode:
+        raise RuntimeError(f"vm-wt review setup failed: {result.stderr.strip() or result.stdout.strip()}")
+    lines = result.stdout.splitlines()
+    worktree = Path(lines[0]) if len(lines) == 1 else Path()
+    if not worktree.is_absolute() or worktree == home / "src/lovable" or home / "src" not in worktree.parents:
+        raise RuntimeError("vm-wt review setup returned an unsafe worktree path")
+    if git(["rev-parse", "HEAD"], worktree) != expected_sha:
+        raise RuntimeError("vm-wt review worktree does not match PR head")
+    return worktree
+
+
 def worktree_records(repo: Path) -> list[dict[str, str]]:
     records: list[dict[str, str]] = []
     current: dict[str, str] = {}
@@ -427,36 +444,15 @@ resolve() {{
   ln -sfn "$out/bin/$name" "$marker"
   printf '%s\\n' "$marker"
 }}
-wt="$(resolve wt github:max-sixty/worktrunk/v0.37.0)"
-git_lfs="$(resolve git-lfs nixpkgs#git-lfs)"
 patchelf="$(resolve patchelf nixpkgs#patchelf)"
 direnv="$(resolve direnv nixpkgs#direnv)"
-export PATH="$(dirname "$git_lfs"):$(dirname "$wt"):$PATH"
-git -C "$repo" fetch origin "+refs/heads/main:refs/remotes/origin/main"
-git -C "$repo" fetch origin "pull/{self.pr}/head"
-[ "$(git -C "$repo" rev-parse FETCH_HEAD)" = "{self.expected_sha}" ] || {{ echo 'remote fetched SHA mismatch' >&2; exit 1; }}
-review_wt="$(git -C "$repo" worktree list --porcelain | awk '$1=="worktree"{{path=$2}} $1=="branch"&&$2=="refs/heads/review/pr-{self.pr}"{{print path}}')"
-if [ -z "$review_wt" ]; then
-  "$wt" switch -C "$repo" --create "review/pr-{self.pr}" --base "{self.expected_sha}" --no-hooks --yes --no-cd --format json >/dev/null
-  review_wt="$(git -C "$repo" worktree list --porcelain | awk '$1=="worktree"{{path=$2}} $1=="branch"&&$2=="refs/heads/review/pr-{self.pr}"{{print path}}')"
-  printf '%s|%s\n' "$review_wt" "{self.expected_sha}" >"$state/owned-worktree"
-fi
-[ -n "$review_wt" ] || {{ echo 'remote review worktree missing' >&2; exit 1; }}
-[ -z "$(git -C "$review_wt" status --porcelain=v1)" ] || {{ echo 'remote review worktree is dirty' >&2; exit 1; }}
-actual="$(git -C "$review_wt" rev-parse HEAD)"
-if [ "$actual" != "{self.expected_sha}" ]; then
-  git -C "$review_wt" merge-base --is-ancestor "$actual" "{self.expected_sha}" || {{ echo 'remote review worktree is not behind PR head' >&2; exit 1; }}
-  git -C "$review_wt" reset --hard "{self.expected_sha}" >/dev/null
-fi
-[ "$(git -C "$review_wt" rev-parse HEAD)" = "{self.expected_sha}" ] || {{ echo 'remote review worktree SHA mismatch after update' >&2; exit 1; }}
+review_wt="$("$HOME/.config/niri/scripts/vm-wt" --review "{self.pr}" "{self.expected_sha}")"
+[ -n "$review_wt" ] && [ "$review_wt" != "$repo" ] && [ "${{review_wt#"$HOME/src/"}}" != "$review_wt" ] || {{ echo 'vm-wt returned an unsafe review worktree path' >&2; exit 1; }}
+printf '%s|%s\n' "$review_wt" "{self.expected_sha}" >"$state/owned-worktree"
 (
   cd "$review_wt"
-  git config --local filter.lfs.clean 'git-lfs clean -- %f'
-  git config --local filter.lfs.smudge 'git-lfs smudge -- %f'
-  git config --local filter.lfs.process 'git-lfs filter-process'
-  git config --local filter.lfs.required true
-  git lfs pull
-  git lfs fsck
+  [ "$(git rev-parse HEAD)" = "{self.expected_sha}" ] || {{ echo 'remote review worktree SHA mismatch' >&2; exit 1; }}
+  [ "$(git branch --show-current)" = "review/pr-{self.pr}" ] || {{ echo 'remote review worktree branch mismatch' >&2; exit 1; }}
   [ -z "$(git status --porcelain=v1)" ] || {{ echo 'remote review worktree is dirty' >&2; exit 1; }}
   "$direnv" allow .
   CI=true "$direnv" exec . pnpm --config.enableGlobalVirtualStore=false install --force

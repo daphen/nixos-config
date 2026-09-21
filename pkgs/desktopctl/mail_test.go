@@ -34,6 +34,7 @@ func newMailDesktop(t *testing.T) *mailDesktop {
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	installDesktopLauncher(t, bin)
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Fatal(err)

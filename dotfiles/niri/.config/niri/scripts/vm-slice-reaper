@@ -24,6 +24,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.request
 
 HOME = os.path.expanduser("~")
 SRC = os.path.join(HOME, "src")
@@ -40,6 +41,7 @@ def log(msg: str) -> None:
 def roster() -> dict | None:
     """Live sessions from agentd, by name. Prefers the unix socket, falls back to TCP."""
     for kind, target in (("unix", SOCK), ("tcp", TCP)):
+        s = None
         try:
             if kind == "unix":
                 if not os.path.exists(target):
@@ -60,8 +62,12 @@ def roster() -> dict | None:
             if b"\n" not in buf:
                 continue
             data = json.loads(buf.split(b"\n", 1)[0])
-            return {x.get("name"): x for x in data.get("sessions", []) if x.get("name")}
+            sessions = data.get("sessions") if isinstance(data, dict) else None
+            if not isinstance(sessions, list):
+                continue
+            return {x.get("name"): x for x in sessions if x.get("name")}
         except Exception:
+            if s is not None: s.close()
             continue
     return None
 
@@ -75,23 +81,19 @@ def slice_dirs() -> set[str]:
     return found
 
 
-def pc_ports(worktree: str) -> list[int]:
-    """Candidate process-compose ports seen in that worktree's process args."""
-    out = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True).stdout
-    ports: list[int] = []
-    for line in out.splitlines():
-        if f"{SRC}/{worktree}" not in line:
+def listeners() -> dict[int, set[int]]:
+    """Return listening TCP ports and any process IDs visible to this user."""
+    result = subprocess.run(["ss", "-Hlnpt"], capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError(f"listener inspection failed: {result.stderr.strip()}")
+    owners: dict[int, set[int]] = {}
+    for fields in map(str.split, result.stdout.splitlines()):
+        try:
+            port = int(fields[3].rsplit(":", 1)[1])
+        except (IndexError, ValueError):
             continue
-        for m in re.finditer(r":(\d{5})\b", line):
-            p = int(m.group(1))
-            if p not in ports:
-                ports.append(p)
-    # process-compose usually sits one below the slice's web port; try neighbours too.
-    for p in list(ports):
-        for delta in (-1, 1):
-            if p + delta not in ports:
-                ports.append(p + delta)
-    return ports
+        owners.setdefault(port, set()).update(map(int, re.findall(r"pid=(\d+)", fields[-1])))
+    return owners
 
 
 def session_name_for(worktree: str) -> str:
@@ -135,44 +137,77 @@ def owner_dormant(worktree: str, live: dict) -> tuple[bool, str]:
                            for entry, _, why in states)
 
 
-def stop_slice(worktree: str) -> bool:
-    wt = os.path.join(SRC, worktree)
-    for port in pc_ports(worktree):
-        r = subprocess.run(["process-compose", "down", "-p", str(port)],
-                           cwd=wt, capture_output=True, text=True, timeout=25)
-        if "failed to stop" not in (r.stdout + r.stderr):
-            log(f"  process-compose down on :{port} accepted")
-            return True
-    return False
+def stop_slice(wt: str) -> tuple[bool, str]:
+    try:
+        base = int(open(os.path.join(wt, ".devenv/state/wt-base-port")).read().strip())
+    except (OSError, ValueError):
+        return False, "missing or invalid .devenv/state/wt-base-port"
+    if base < 1 or base + 6 > 65535:
+        return False, f"invalid base port {base}"
+    ports = (base, base + 1, base + 2, base + 5, base + 6)
+    open_ports = listeners()
+    occupied = [port for port in ports if port in open_ports]
+    if not occupied:
+        return True, "already stopped"
+    controller = open_ports.get(base + 1, set())
+    if len(controller) != 1:
+        return False, f"controller :{base + 1} has unknown/shared ownership"
+    pid = next(iter(controller))
+    try:
+        cwd = os.path.realpath(f"/proc/{pid}/cwd")
+    except OSError:
+        return False, f"controller :{base + 1} ownership changed"
+    if cwd != wt:
+        return False, f"controller :{base + 1} belongs to {cwd}, not {wt}"
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{base + 1}/project/stop", data=b"", method="POST")
+        urllib.request.urlopen(request, timeout=5).close()
+    except OSError as error:
+        return False, f"controller :{base + 1} stop failed: {error}"
+    deadline = time.time() + float(os.environ.get("SLICE_STOP_TIMEOUT", "20"))
+    while time.time() < deadline:
+        remaining = [port for port in ports if port in listeners()]
+        if not remaining:
+            return True, f"stopped controller :{base + 1}"
+        time.sleep(0.1)
+    return False, "shutdown unconfirmed; listeners remain on " + ", ".join(map(str, remaining))
 
 
-def reap_one(worktree_path: str, session: str) -> int:
-    """Hook mode: agentd just stopped `session`, whose cwd was worktree_path."""
-    worktree = os.path.basename(worktree_path.rstrip("/"))
-    if worktree in ("lovable", "") or not worktree.startswith("lovable"):
-        log(f"hook: {worktree_path} is not a ticket worktree — nothing to reap")
-        return 0
-    if worktree not in slice_dirs():
-        log(f"hook: {worktree} has no running slice")
-        return 0
-    # A stop is not always final: a re-prompt wakes the session straight back up. Give it
-    # a breath, then confirm the session really is gone before killing a 6GB slice.
-    time.sleep(int(os.environ.get("SLICE_HOOK_DELAY", "20")))
+def reap_one(worktree_path: str, session: str, now: bool = False) -> int:
+    """Stop one registered ticket runtime; --now bypasses only the hook delay."""
+    wt = os.path.abspath(worktree_path)
+    worktree = os.path.basename(wt)
+    expected = session_name_for(worktree)
+    if (wt != os.path.realpath(wt) or os.path.dirname(wt) != os.path.realpath(SRC)
+            or not worktree.startswith("lovable-") or session.lower() != expected.lower()):
+        log(f"hook: {worktree_path} is not the exact checkout for session {session}")
+        return 1
+    if not now:
+        time.sleep(int(os.environ.get("SLICE_HOOK_DELAY", "20")))
     live = roster()
-    if not live:
+    if live is None:
         log("hook: agentd roster unavailable — refusing to reap blind")
-        return 0
+        return 1
     ok, why = owner_dormant(worktree, live)
     if not ok:
         log(f"hook: keeping {worktree}: {why}")
+        return 1
+    if DRY:
+        log(f"hook: would reap {worktree} ({why})")
         return 0
-    log(f"hook: reaping {worktree} ({why}; session {session} stopped)")
-    if not stop_slice(worktree):
-        log(f"  no process-compose answered for {worktree}")
+    stopped, result = stop_slice(wt)
+    log(f"hook: {worktree}: {result}")
+    if not stopped:
+        return 1
     tmux = subprocess.run(["tmux", "ls"], capture_output=True, text=True).stdout
-    tmux_name = f"wt-{session_name_for(worktree)}"
+    tmux_name = f"wt-{expected}"
     if tmux_name in tmux:
-        subprocess.run(["tmux", "kill-session", "-t", tmux_name], capture_output=True, text=True)
+        result = subprocess.run(["tmux", "kill-session", "-t", tmux_name],
+                                capture_output=True, text=True)
+        if result.returncode:
+            log(f"  tmux {tmux_name} removal failed: {result.stderr.strip()}")
+            return 1
         log(f"  tmux {tmux_name} cleared")
     return 0
 
@@ -188,19 +223,20 @@ def main() -> int:
         if "--session" in sys.argv:
             j = sys.argv.index("--session")
             sess = sys.argv[j + 1] if len(sys.argv) > j + 1 else ""
-        return reap_one(wt, sess or session_name_for(os.path.basename(wt.rstrip("/"))))
+        return reap_one(wt, sess or session_name_for(os.path.basename(wt.rstrip("/"))),
+                        "--now" in sys.argv)
 
     live = roster()
-    if not live:
+    if live is None:
         log("agentd roster unavailable — refusing to reap blind")
-        return 0
+        return 1
     running = slice_dirs()
     if not running:
         log("no devenv slices running")
         return 0
 
     tmux = subprocess.run(["tmux", "ls"], capture_output=True, text=True).stdout
-
+    failed = False
     for worktree in sorted(running):
         if worktree in ("lovable",):
             continue
@@ -212,14 +248,21 @@ def main() -> int:
         log(f"reap {worktree}: {why}")
         if DRY:
             continue
-        if not stop_slice(worktree):
-            log(f"  no process-compose answered for {worktree}")
+        stopped, result = stop_slice(os.path.join(SRC, worktree))
+        log(f"  {result}")
+        if not stopped:
+            failed = True
+            continue
         tmux_name = f"wt-{name}"
         if tmux_name in tmux:
-            subprocess.run(["tmux", "kill-session", "-t", tmux_name],
-                           capture_output=True, text=True)
-            log(f"  tmux {tmux_name} cleared")
-    return 0
+            result = subprocess.run(["tmux", "kill-session", "-t", tmux_name],
+                                    capture_output=True, text=True)
+            if result.returncode:
+                log(f"  tmux {tmux_name} removal failed: {result.stderr.strip()}")
+                failed = True
+            else:
+                log(f"  tmux {tmux_name} cleared")
+    return int(failed)
 
 
 if __name__ == "__main__":

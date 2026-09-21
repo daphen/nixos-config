@@ -159,6 +159,9 @@ Picker {
         if (!item) return
         if (item.action === "wallpaper") WallpaperPickerState.show()
         else if (item.command) Quickshell.execDetached(item.command)
-        else if (item.app && item.app.execute) item.app.execute()
+        else if (item.app && item.app.execute) Quickshell.execDetached({
+            command: [root.home + "/.config/hypr/scripts/desktop-launch"].concat(item.app.command),
+            workingDirectory: item.app.workingDirectory
+        })
     }
 }

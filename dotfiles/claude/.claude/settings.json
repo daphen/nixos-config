@@ -1,0 +1,93 @@
+{
+  "cleanupPeriodDays": 3650,
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Bash(curl * localhost:8020*)",
+      "Bash(curl * BypassId * localhost:8020*)",
+      "Read",
+      "Grep",
+      "Write(/home/daphen/**)",
+      "Edit(/home/daphen/**)",
+      "Write(/tmp/**)",
+      "Edit(/tmp/**)"
+    ],
+    "deny": [],
+    "ask": [],
+    "defaultMode": "auto"
+  },
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /home/daphen/.claude/hooks/ai-tracker.js"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/daphen/.local/bin/wt-state-update"
+          },
+          {
+            "type": "command",
+            "command": "/home/daphen/.claude/hooks/cockpit-wants-input-clear.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/daphen/.local/bin/wt-state-update"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/daphen/.local/bin/wt-state-inject"
+          },
+          {
+            "type": "command",
+            "command": "/home/daphen/.claude/hooks/cockpit-wants-input-clear.sh"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/daphen/.claude/hooks/notify-with-context.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "graphite-workflow@lovable-internal": true,
+    "vercel@claude-plugins-official": true
+  },
+  "syntaxHighlightingDisabled": true,
+  "alwaysThinkingEnabled": true,
+  "effortLevel": "high",
+  "tui": "default",
+  "theme": "custom:dotfiles",
+  "editorMode": "normal",
+  "skipAutoPermissionPrompt": true
+}

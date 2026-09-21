@@ -44,8 +44,9 @@ until explicitly revised:
   session in the correct local directory. Never repurpose a personal-scope
   session.
 - Never edit Lovable source, run ticket devenv locally, perform a worker's VM
-  operations, push, mutate a PR, or merge. Writes are limited by role policy to
-  the notes vault and orchestrator-owned harness plans.
+  development operations, push, mutate a PR, or merge. Direct file writes are
+  limited to the notes vault and orchestrator-owned harness plans. Approved
+  ticket retirement through the canonical launcher is owned here, as below.
 - After verifying a committed ticket branch, you may tell its owning worker to
   non-force push. This never grants PR mutation or merge permission.
 - Ask David only for a genuine decision, credential, protected VM restart,
@@ -61,6 +62,16 @@ explicitly needed. The existing worker owns VM dependencies, builds, logs,
 diagnostics and tests inside its registered checkout using the repository's
 existing devenv commands. Never reconstruct these with ad-hoc SSH or run project
 setup in the local mirror; existing auth, sandbox and restart approvals still apply.
+
+Own ticket shutdown and retirement yourself; never delegate `--off` or `--reap`
+to the retiring worker or a cleanup helper. The worker saves a durable handoff
+and reports readiness, dirty data, dependencies, and blockers. Only after David
+approves that exact context, run the installed `vm-wt --reap EVERY-N` from
+outside the target checkout and its mirror (`--off` retains files and caches).
+Capture stdout, stderr, and exit status outside the target; verify session,
+runtime, and worktree removal before reporting success. A disappeared session
+is not proof of complete retirement. Preserve every safeguard and report the
+exact failure; do not bypass it. `--teardown` only stops a desktop tunnel.
 
 Run `agent_roster` before dispatching. Reuse the one session that already owns
 the task; one session owns one unit of work. A dispatch is not an outcome:
@@ -100,9 +111,10 @@ Reap completed helpers after verifying their result. After compaction, reread
 plan/progress artifacts and the roster before acting.
 
 Never kill or hand-relaunch an agentd process, hand-roll SSH/worktree repair, or
-bypass a failed canonical launcher. Report the exact failure. `vm-wt` runs on
-David's machine; a protected work-daemon restart is `vm-cockpit --restart` and
-requires David.
+bypass a failed canonical launcher. Report the exact failure. Use the installed
+`vm-wt` wrapper on the current host; the VM wrapper selects native execution,
+which leaves desktop mirrors and tunnels untouched. A protected work-daemon
+restart is `vm-cockpit --restart` and requires David.
 
 ## PR convergence
 

@@ -8,7 +8,8 @@ import "../QsLib" as Lib
 PanelWindow {
     id: bar
 
-    readonly property bool pickerActive: Modules.LauncherState.open
+    readonly property bool pickerActive: Modules.ControlCenterState.open
+        || Modules.LauncherState.open
         || Modules.ReviewCreatePickerState.open
         || Modules.LovboxPickerState.open
         || Modules.BluetoothPickerState.open
@@ -26,6 +27,7 @@ PanelWindow {
         || Modules.AgentAskState.inputOpen
         || Modules.CockpitState.open
     readonly property var exclusivePickerStates: [
+        Modules.ControlCenterState,
         Modules.LauncherState,
         Modules.ReviewCreatePickerState,
         Modules.LovboxPickerState,
@@ -53,6 +55,10 @@ PanelWindow {
     function claimAgentAsk() {
         if (!Modules.AgentAskState.inputOpen) return
         for (const state of exclusivePickerStates) state.open = false
+    }
+    function dismissPickers() {
+        for (const state of exclusivePickerStates) state.open = false
+        Modules.AgentAskState.inputOpen = false
     }
 
     Instantiator {
@@ -107,6 +113,7 @@ PanelWindow {
 
     SystemClock { id: tooltipClock; precision: SystemClock.Minutes }
     readonly property real activePickerHeight: Math.max(
+        controlCenter.open ? controlCenter.implicitHeight : 0,
         launcherPicker.open ? launcherPicker.implicitHeight : 0,
         reviewCreatePicker.open ? reviewCreatePicker.implicitHeight : 0,
         lovboxPicker.open ? lovboxPicker.implicitHeight : 0,
@@ -178,7 +185,7 @@ PanelWindow {
             anchors.fill: parent
             anchors.margins: 1
             radius: Math.max(0, capsule.radius - 1)
-            color: Modules.Theme.notch
+            color: Modules.Theme.bgDim
         }
 
         Row {
@@ -236,7 +243,6 @@ PanelWindow {
                 }
             }
 
-            Modules.DateText {}
             Modules.Weather {
                 id: weatherMetric
                 HoverHandler { id: weatherHover }
@@ -305,7 +311,6 @@ PanelWindow {
             }
             spacing: 8
 
-            Modules.Inbox {}
             Modules.Dnd {}
             Modules.Network {
                 id: networkMetric
@@ -383,7 +388,9 @@ PanelWindow {
             }
             z: 2
             visible: bar.pickerVisible
+            clip: true
 
+            Modules.ControlCenter { id: controlCenter; anchors.fill: parent }
             Modules.Launcher { id: launcherPicker; anchors.fill: parent }
             Modules.ReviewCreatePicker { id: reviewCreatePicker; anchors.fill: parent }
             Modules.LovboxPicker { id: lovboxPicker; anchors.fill: parent }

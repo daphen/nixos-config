@@ -12,6 +12,63 @@ local function open_changed_files_picker()
 		cwd = cockpit.workspace_cwd()
 		if not cwd then return end
 	end
+	if cockpit and cockpit.git_snapshot and cockpit.git_snapshot(cwd, false) ~= false then
+		local picker = Snacks.picker.pick({
+			title = "Loading VM snapshot…",
+			cwd = cwd,
+			show_delay = 0,
+			layout = { layout = { backdrop = false, width = 0.85, height = 0.9, box = "vertical",
+				border = "rounded", title = "{title}", title_pos = "center",
+				{ win = "preview", title = "{preview}", height = 0.7, border = "bottom" },
+				{ win = "input", height = 1, border = "bottom" }, { win = "list", border = "none" } } },
+			finder = function(_, ctx)
+				return function(cb)
+					cockpit.git_snapshot(cwd, true, function(snapshot)
+						ctx.async:schedule(function()
+							if snapshot.error then
+								ctx.picker.title = "VM diff unavailable · " .. snapshot.error
+							else
+								local branch = snapshot.branch and snapshot.branch ~= "" and (snapshot.branch .. "  ·  ") or ""
+								ctx.picker.title = branch .. "changed vs " .. tostring(snapshot.base or "?"):sub(1, 8)
+							end
+							ctx.picker:update_titles()
+						end)
+						if snapshot.error then return end
+						for _, file in ipairs(snapshot.files or {}) do
+							if not file.path:match("^%.heidr%-pastes/") and not file.path:match("^%.cockpit%-pastes/") then
+								file.text = file.oldPath and (file.oldPath .. " → " .. file.path) or file.path
+								file.file = cwd .. "/" .. file.path
+								cb(file)
+							end
+						end
+					end)
+				end
+			end,
+			format = function(item)
+				local suffix = item.binary and "  [binary]" or (item.untracked and "  [untracked]" or "")
+				return { { (item.text or "") .. suffix, "SnacksPickerFile" } }
+			end,
+			preview = function(ctx)
+				ctx.preview:reset()
+				local item = ctx.item
+				if not item then return false end
+				if item.binary then ctx.preview:notify("Binary file", "info"); return end
+				if not item.patch or item.patch == "" then ctx.preview:notify("Patch unavailable", "warn"); return end
+				ctx.preview:set_lines(vim.split(item.patch, "\n", { plain = true }))
+				ctx.preview:highlight({ ft = "diff" })
+			end,
+			confirm = function(p, item)
+				p:close()
+				if item and item.file and vim.fn.filereadable(item.file) == 1 then
+					vim.cmd("edit " .. vim.fn.fnameescape(item.file))
+				else
+					vim.notify("Cockpit: local mirror unavailable for editing", vim.log.levels.WARN)
+				end
+			end,
+		})
+		picker:show()
+		return
+	end
 	local repo_root = vim.fs.root(cwd, ".git")
 	if not repo_root or repo_root == "" then
 		vim.notify("Not in a git worktree", vim.log.levels.ERROR)

@@ -1,0 +1,979 @@
+--- a/src/input/composite_device/mod.rs
++++ b/src/input/composite_device/mod.rs
+@@ -13,7 +13,11 @@
+ 
+ use evdev::InputEvent;
+ use targets::CompositeDeviceTargets;
+-use tokio::{sync::mpsc, task::JoinSet, time::Duration};
++use tokio::{
++    sync::mpsc,
++    task::JoinSet,
++    time::{Duration, Instant},
++};
+ use zbus::{object_server::Interface, Connection};
+ 
+ use crate::{
+@@ -25,14 +29,18 @@
+         composite_device::CompositeDeviceInterface, force_feedback::ForceFeedbackInterface,
+         DBusInterfaceManager,
+     },
++    drivers::steam_deck::hid_report::{CommandType, Intensity, PackedHapticReport, PadSide},
+     input::{
+-        capability::{Capability, Gamepad, GamepadButton, Mouse},
++        capability::{
++            Capability, Gamepad, GamepadButton, GamepadTrigger, Keyboard, Mouse, Touch,
++            TouchButton, Touchpad,
++        },
+         event::{
+             native::NativeEvent,
+             value::{InputValue, TranslationError},
+             Event,
+         },
+-        output_capability::OutputCapability,
++        output_capability::{Haptic, OutputCapability},
+         output_event::UinputOutputEvent,
+         source::{
+             evdev::EventDevice, hidraw::HidRawDevice, iio::IioDevice, led::LedDevice,
+@@ -53,6 +61,217 @@
+ /// Size of the command channel buffer for processing input events and commands.
+ const BUFFER_SIZE: usize = 16384;
+ 
++#[derive(Debug, Default)]
++struct TouchpadScrollState {
++    physical_contact: Option<u8>,
++    scrolling: bool,
++    scroll_position: Option<(u8, f64, f64)>,
++    remainder: (f64, f64),
++    haptic_position: Option<(u8, f64, f64)>,
++    haptic_pressed: bool,
++    haptic_active: bool,
++    last_haptic: Option<Instant>,
++}
++
++impl TouchpadScrollState {
++    fn clear_scroll(&mut self) {
++        self.scroll_position = None;
++        self.remainder = (0.0, 0.0);
++    }
++
++    fn reset(&mut self) {
++        *self = Self::default();
++    }
++
++    fn route_to_scroll(&mut self, value: &InputValue, modifier_active: bool) -> bool {
++        let InputValue::Touch {
++            index, is_touching, ..
++        } = value
++        else {
++            self.reset();
++            return false;
++        };
++        if *is_touching && self.physical_contact != Some(*index) {
++            self.scrolling = modifier_active;
++            self.clear_scroll();
++        }
++        let route_to_scroll = self.scrolling;
++        self.physical_contact = is_touching.then_some(*index);
++        if !is_touching {
++            self.scrolling = false;
++        }
++        route_to_scroll
++    }
++
++    fn desktop_haptic(&mut self, event: &NativeEvent) -> Option<CommandType> {
++        match (event.as_capability(), event.get_value()) {
++            (
++                Capability::Touchpad(Touchpad::RightPad(Touch::Motion)),
++                InputValue::Touch {
++                    index,
++                    is_touching,
++                    x,
++                    y,
++                    ..
++                },
++            ) => {
++                if !is_touching {
++                    self.haptic_position = None;
++                    self.last_haptic = None;
++                    return self.haptic_active.then(|| {
++                        self.haptic_active = false;
++                        CommandType::Off
++                    });
++                }
++                let (Some(x), Some(y)) = (x, y) else {
++                    return None;
++                };
++                let now = Instant::now();
++                let Some((previous_index, previous_x, previous_y)) = self.haptic_position else {
++                    self.haptic_position = Some((index, x, y));
++                    self.last_haptic = Some(now);
++                    return None;
++                };
++                self.haptic_position = Some((index, x, y));
++                if index != previous_index || (x == previous_x && y == previous_y) {
++                    return None;
++                }
++                if self
++                    .last_haptic
++                    .is_some_and(|last| now.duration_since(last) < Duration::from_millis(50))
++                {
++                    return None;
++                }
++                self.last_haptic = Some(now);
++                self.haptic_active = true;
++                Some(CommandType::Tick)
++            }
++            (
++                Capability::Touchpad(Touchpad::RightPad(Touch::Button(TouchButton::Press))),
++                InputValue::Bool(pressed),
++            ) => {
++                let changed = pressed != self.haptic_pressed;
++                self.haptic_pressed = pressed;
++                if !changed {
++                    return None;
++                }
++                self.haptic_active = pressed;
++                Some(if pressed {
++                    CommandType::Click
++                } else {
++                    CommandType::Off
++                })
++            }
++            _ => None,
++        }
++    }
++
++    fn translate(&mut self, value: InputValue, speed: f64) -> InputValue {
++        let InputValue::Touch {
++            index,
++            is_touching,
++            x: Some(x),
++            y: Some(y),
++            ..
++        } = value
++        else {
++            self.clear_scroll();
++            return InputValue::None;
++        };
++        if !is_touching {
++            self.clear_scroll();
++            return InputValue::None;
++        }
++        let Some((previous_index, previous_x, previous_y)) = self.scroll_position else {
++            self.scroll_position = Some((index, x, y));
++            return InputValue::None;
++        };
++        self.scroll_position = Some((index, x, y));
++        if index != previous_index {
++            self.remainder = (0.0, 0.0);
++            return InputValue::None;
++        }
++
++        let horizontal = (x - previous_x) * speed + self.remainder.0;
++        let vertical = (previous_y - y) * speed + self.remainder.1;
++        let x_steps = horizontal.trunc();
++        let y_steps = vertical.trunc();
++        self.remainder = (horizontal - x_steps, vertical - y_steps);
++        InputValue::Vector2 {
++            x: (x_steps != 0.0).then_some(x_steps),
++            y: (y_steps != 0.0).then_some(y_steps),
++        }
++    }
++}
++
++fn translate_desktop_pads(
++    event: &NativeEvent,
++    mappings: &HashMap<Capability, Vec<ProfileMapping>>,
++    active_inputs: &[Capability],
++    state: &mut TouchpadScrollState,
++) -> Option<Vec<NativeEvent>> {
++    let right_motion = Capability::Touchpad(Touchpad::RightPad(Touch::Motion));
++    let scroll_mapping = mappings.get(&right_motion)?.iter().find(|mapping| {
++        mapping
++            .target_events
++            .iter()
++            .any(|target| Capability::from(target.clone()) == Capability::Mouse(Mouse::Wheel))
++    })?;
++    let source_cap = event.as_capability();
++    let center = |touch| Capability::Touchpad(Touchpad::CenterPad(touch));
++
++    if source_cap == right_motion {
++        let value = event.get_value();
++        let scroll_active = active_inputs.contains(&Capability::Keyboard(Keyboard::KeyLeftMeta));
++        if !state.route_to_scroll(&value, scroll_active) {
++            return Some(vec![NativeEvent::new_translated(
++                source_cap,
++                center(Touch::Motion),
++                value,
++            )]);
++        }
++        if !scroll_active {
++            state.clear_scroll();
++            return Some(Vec::new());
++        }
++
++        let speed = scroll_mapping
++            .source_event
++            .touchpad
++            .as_ref()
++            .and_then(|touchpad| touchpad.touch.motion.as_ref())
++            .and_then(|motion| motion.speed_pps)
++            .unwrap_or(24) as f64;
++        let value = state.translate(value, speed);
++        if matches!(value, InputValue::None) {
++            return Some(Vec::new());
++        }
++        return Some(vec![NativeEvent::new_translated(
++            source_cap,
++            Capability::Mouse(Mouse::Wheel),
++            value,
++        )]);
++    }
++
++    match source_cap {
++        Capability::Touchpad(Touchpad::LeftPad(Touch::Button(TouchButton::Press)))
++        | Capability::Touchpad(Touchpad::RightPad(Touch::Button(TouchButton::Press))) => {
++            Some(vec![NativeEvent::new_translated(
++                source_cap,
++                center(Touch::Button(TouchButton::Press)),
++                event.get_value(),
++            )])
++        }
++        Capability::Touchpad(Touchpad::LeftPad(Touch::Button(TouchButton::Touch)))
++        | Capability::Touchpad(Touchpad::RightPad(Touch::Button(TouchButton::Touch)))
++        | Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::LeftTouchpadForce))
++        | Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::RightTouchpadForce)) => {
++            Some(Vec::new())
++        }
++        _ => None,
++    }
++}
++
+ /// The [InterceptMode] defines whether or not inputs should be routed over
+ /// DBus instead of to the target devices. This can be used by overlays to
+ /// intercept input.
+@@ -97,6 +316,7 @@
+     /// Map of profile source events to translate to one or more profile mapping
+     /// configs that define how the source event should be translated.
+     device_profile_config_map: HashMap<Capability, Vec<ProfileMapping>>,
++    touchpad_scroll: TouchpadScrollState,
+     /// List of input capabilities that can be translated by the capability map
+     translatable_capabilities: Vec<Capability>,
+     /// List of currently "pressed" actions used to translate multiple input
+@@ -190,6 +410,7 @@
+             device_profile: None,
+             device_profile_path: None,
+             device_profile_config_map: HashMap::new(),
++            touchpad_scroll: TouchpadScrollState::default(),
+             translatable_capabilities: Vec::new(),
+             translatable_active_inputs: Vec::new(),
+             translated_recent_events: HashSet::new(),
+@@ -910,6 +1131,8 @@
+         // Track the delay for chord events.
+         let mut sleep_time = 0;
+ 
++        let source_is_touchpad = matches!(event.as_capability(), Capability::Touchpad(_));
++
+         // Translate the event using the device profile.
+         let mut events = if self.device_profile.is_some() {
+             self.translate_event(&event)
+@@ -922,7 +1145,7 @@
+         };
+ 
+         // Check if we need to reverse the event list.
+-        if events.len() > 1 {
++        if events.len() > 1 && !source_is_touchpad {
+             //log::trace!("Got chord: {events:?}");
+             is_chord = true;
+             if !is_pressed {
+@@ -938,6 +1161,7 @@
+ 
+         for event in events {
+             let cap = event.as_capability();
++            let event_is_pressed = event.pressed();
+ 
+             // Track what is currently active so we can ignore extra events.
+             match cap {
+@@ -947,11 +1171,11 @@
+                 | Capability::Sync
+                 | Capability::DBus(_) => {}
+                 Capability::Keyboard(_) => {
+-                    if !self.is_new_active_event(&cap, is_pressed) {
++                    if !self.is_new_active_event(&cap, event_is_pressed) {
+                         continue;
+                     }
+                     if self
+-                        .is_intercept_event(&event, is_pressed, intercept)
++                        .is_intercept_event(&event, event_is_pressed, intercept)
+                         .await?
+                     {
+                         continue;
+@@ -1472,12 +1696,51 @@
+     /// Translates the given event into a Vec of events based on the currently loaded
+     /// [DeviceProfile]
+     async fn translate_event(
+-        &self,
++        &mut self,
+         event: &NativeEvent,
+     ) -> Result<Vec<NativeEvent>, Box<dyn Error>> {
+         // Lookup the profile mapping associated with this event capability. If
+         // none is found, return the original un-translated event.
+         let source_cap = event.as_capability();
++        let releases_scroll_modifier = !event.pressed()
++            && self
++                .device_profile_config_map
++                .get(&source_cap)
++                .is_some_and(|mappings| {
++                    mappings.iter().any(|mapping| {
++                        mapping.target_events.iter().any(|target| {
++                            Capability::from(target.clone())
++                                == Capability::Keyboard(Keyboard::KeyLeftMeta)
++                        })
++                    })
++                });
++        if releases_scroll_modifier {
++            self.touchpad_scroll.clear_scroll();
++        }
++        if let Some(events) = translate_desktop_pads(
++            event,
++            &self.device_profile_config_map,
++            &self.active_inputs,
++            &mut self.touchpad_scroll,
++        ) {
++            let haptics_enabled = self.ff_enabled
++                && self
++                    .output_capabilities
++                    .contains(&OutputCapability::Haptics(Haptic::TrackpadRight));
++            if haptics_enabled {
++                if let Some(cmd_type) = self.touchpad_scroll.desktop_haptic(event) {
++                    self.process_output_event(OutputEvent::SteamDeckHaptics(PackedHapticReport {
++                        side: PadSide::Right,
++                        cmd_type,
++                        intensity: Intensity::Default,
++                        gain: 0,
++                        ..Default::default()
++                    }))
++                    .await?;
++                }
++            }
++            return Ok(events);
++        }
+         if let Some(mappings) = self.device_profile_config_map.get(&source_cap) {
+             // Find which mappings in the device profile matches this source event
+             let matched_mappings = mappings
+@@ -1850,6 +2113,7 @@
+         // Remove all outdated capability mappings.
+         log::debug!("Clearing old device profile mappings");
+         self.device_profile_config_map.clear();
++        self.touchpad_scroll.reset();
+ 
+         // Load the device profile
+         self.device_profile = profile;
+@@ -2219,3 +2483,541 @@
+         });
+     }
+ }
++
++#[cfg(test)]
++mod deck_gesture_tests {
++    use super::*;
++    use crate::input::{
++        source::command::SourceCommand,
++        target::{client::TargetDeviceClient, command::TargetCommand},
++    };
++
++    fn profile(yaml: &str) -> DeviceProfile {
++        DeviceProfile::from_yaml(yaml.to_string()).unwrap()
++    }
++
++    fn touch(x: f64, y: f64, is_touching: bool) -> InputValue {
++        InputValue::Touch {
++            index: 0,
++            is_touching,
++            pressure: Some(1.0),
++            x: is_touching.then_some(x),
++            y: is_touching.then_some(y),
++        }
++    }
++
++    async fn composite_fixture(
++        attach_native: bool,
++        supports_haptics: bool,
++    ) -> (
++        CompositeDeviceClient,
++        mpsc::Receiver<NativeEvent>,
++        mpsc::Receiver<NativeEvent>,
++        mpsc::Receiver<SourceCommand>,
++        tokio::task::JoinHandle<Result<(), String>>,
++    ) {
++        let conn = Connection::session().await.unwrap();
++        let path = "/org/shadowblip/InputPlumber/CompositeDevice/test".to_string();
++        let config = CompositeDeviceConfig::from_yaml(
++            r#"
++version: 1
++kind: CompositeDevice
++name: gesture-test
++matches: []
++source_devices: []
++options: { persist: true }
++"#
++            .to_string(),
++        )
++        .unwrap();
++        let (tx, rx) = mpsc::channel(BUFFER_SIZE);
++        let (manager, _manager_rx) = mpsc::channel(8);
++        let client = CompositeDeviceClient::from(tx.clone());
++        let (source_tx, source_events) = mpsc::channel(64);
++        let haptic_capability = OutputCapability::Haptics(Haptic::TrackpadRight);
++        let output_capabilities = supports_haptics
++            .then(|| HashSet::from([haptic_capability]))
++            .unwrap_or_default();
++        let mut device = CompositeDevice {
++            dbus: DBusInterfaceManager::new(conn.clone(), path.clone()).unwrap(),
++            config,
++            name: "gesture-test".to_string(),
++            capabilities: HashSet::new(),
++            capabilities_by_source: HashMap::new(),
++            output_capabilities: output_capabilities.clone(),
++            output_capabilities_by_source: HashMap::from([(
++                "/test/source".to_string(),
++                output_capabilities,
++            )]),
++            capability_map: None,
++            device_profile: None,
++            device_profile_path: None,
++            device_profile_config_map: HashMap::new(),
++            touchpad_scroll: TouchpadScrollState::default(),
++            translatable_capabilities: Vec::new(),
++            translatable_active_inputs: Vec::new(),
++            translated_recent_events: HashSet::new(),
++            emitted_mappings: HashSet::new(),
++            intercept_mode: InterceptMode::None,
++            tx,
++            rx,
++            source_devices: HashMap::from([(
++                "/test/source".to_string(),
++                SourceDeviceClient::new(source_tx),
++            )]),
++            source_devices_discovered: Vec::new(),
++            source_devices_to_hide: Vec::new(),
++            source_devices_blocked: HashSet::new(),
++            source_device_paths: Vec::new(),
++            source_device_tasks: JoinSet::new(),
++            source_device_persistent_ids: HashMap::new(),
++            source_devices_used: Vec::new(),
++            targets: CompositeDeviceTargets::new(conn, path, client.clone(), manager),
++            ff_enabled: true,
++            ff_effect_ids: (0..64).collect(),
++            ff_effect_id_source_map: HashMap::new(),
++            intercept_activation_caps: Vec::new(),
++            intercept_mode_target_cap: Capability::None,
++            intercept_active_inputs: Vec::new(),
++            active_inputs: Vec::new(),
++            exclusive_inputs: HashMap::new(),
++        };
++        let run =
++            tokio::spawn(async move { device.run().await.map_err(|error| error.to_string()) });
++
++        let spawn_target = |capabilities: Vec<Capability>| {
++            let (target_tx, mut target_rx) = mpsc::channel(64);
++            let (events_tx, events_rx) = mpsc::channel(64);
++            tokio::spawn(async move {
++                while let Some(command) = target_rx.recv().await {
++                    match command {
++                        TargetCommand::GetCapabilities(sender) => {
++                            let _ = sender.send(capabilities.clone()).await;
++                        }
++                        TargetCommand::WriteEvent(event) => {
++                            let _ = events_tx.send(event).await;
++                        }
++                        TargetCommand::Stop => break,
++                        _ => {}
++                    }
++                }
++            });
++            (TargetDeviceClient::new(target_tx), events_rx)
++        };
++        let (native, native_events) = spawn_target(vec![
++            Capability::Mouse(Mouse::Wheel),
++            Capability::Touchpad(Touchpad::CenterPad(Touch::Motion)),
++            Capability::Touchpad(Touchpad::CenterPad(Touch::Button(TouchButton::Press))),
++            Capability::Touchpad(Touchpad::LeftPad(Touch::Motion)),
++            Capability::Touchpad(Touchpad::LeftPad(Touch::Button(TouchButton::Press))),
++            Capability::Touchpad(Touchpad::RightPad(Touch::Motion)),
++            Capability::Touchpad(Touchpad::RightPad(Touch::Button(TouchButton::Press))),
++        ]);
++        let (steam, steam_events) = spawn_target(vec![
++            Capability::Gamepad(Gamepad::Button(GamepadButton::Guide)),
++            Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::LeftTouchpadForce)),
++            Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::RightTouchpadForce)),
++            Capability::Touchpad(Touchpad::LeftPad(Touch::Motion)),
++            Capability::Touchpad(Touchpad::LeftPad(Touch::Button(TouchButton::Press))),
++            Capability::Touchpad(Touchpad::LeftPad(Touch::Button(TouchButton::Touch))),
++            Capability::Touchpad(Touchpad::RightPad(Touch::Motion)),
++            Capability::Touchpad(Touchpad::RightPad(Touch::Button(TouchButton::Press))),
++            Capability::Touchpad(Touchpad::RightPad(Touch::Button(TouchButton::Touch))),
++        ]);
++        let mut targets = HashMap::from([("/test/steam".to_string(), steam)]);
++        if attach_native {
++            targets.insert("/test/native".to_string(), native);
++        }
++        client.attach_target_devices(targets).await.unwrap();
++        assert!(!client.get_target_capabilities().await.unwrap().is_empty());
++        (client, native_events, steam_events, source_events, run)
++    }
++
++    async fn flush_events(
++        client: &CompositeDeviceClient,
++        native: &mut mpsc::Receiver<NativeEvent>,
++        steam: &mut mpsc::Receiver<NativeEvent>,
++    ) -> (Vec<NativeEvent>, Vec<NativeEvent>) {
++        let marker = Capability::Gamepad(Gamepad::Button(GamepadButton::Guide));
++        client
++            .write_event(NativeEvent::new(marker.clone(), InputValue::Bool(true)))
++            .await
++            .unwrap();
++        let mut steam_received = Vec::new();
++        loop {
++            let event = tokio::time::timeout(Duration::from_secs(2), steam.recv())
++                .await
++                .unwrap()
++                .unwrap();
++            if event.as_capability() == marker {
++                break;
++            }
++            steam_received.push(event);
++        }
++        client.get_target_capabilities().await.unwrap();
++        let mut native_received = Vec::new();
++        while let Ok(event) = native.try_recv() {
++            native_received.push(event);
++        }
++        (native_received, steam_received)
++    }
++
++    fn drain_haptics(source: &mut mpsc::Receiver<SourceCommand>) -> Vec<CommandType> {
++        let mut commands = Vec::new();
++        while let Ok(command) = source.try_recv() {
++            if let SourceCommand::WriteEvent(OutputEvent::SteamDeckHaptics(report)) = command {
++                assert_eq!(report.side, PadSide::Right);
++                commands.push(report.cmd_type);
++            }
++        }
++        commands
++    }
++
++    #[tokio::test]
++    async fn composite_routes_desktop_pads_exclusively_and_preserves_raw_keyboard_pads() {
++        let (client, mut native_events, mut steam_events, mut source_events, run) =
++            composite_fixture(true, true).await;
++        let canvas = r#"
++version: 1
++kind: DeviceProfile
++name: canvas
++mapping:
++  - name: Super modifier
++    source_event: { gamepad: { trigger: { name: LeftTrigger, deadzone: 0.3 } } }
++    target_events: [ { keyboard: KeyLeftMeta } ]
++  - name: Left pad pan
++    source_event: { touchpad: { name: LeftPad, touch: { motion: { region: left } } } }
++    target_events: [ { keyboard: KeyF17 } ]
++  - name: Right pad scroll
++    source_event: { touchpad: { name: RightPad, touch: { motion: { speed_pps: 24 } } } }
++    target_events: [ { mouse: { wheel: {} } } ]
++"#;
++        let keyboard = "version: 1\nkind: DeviceProfile\nname: keyboard\nmapping: []\n";
++        let lt = |pressed| {
++            NativeEvent::new(
++                Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::LeftTrigger)),
++                InputValue::Float(if pressed { 1.0 } else { 0.0 }),
++            )
++        };
++        let pad_motion = |pad: fn(Touch) -> Touchpad, x, is_touching| {
++            NativeEvent::new(
++                Capability::Touchpad(pad(Touch::Motion)),
++                touch(x, 0.5, is_touching),
++            )
++        };
++        let pad_button = |pad: fn(Touch) -> Touchpad, button, pressed| {
++            NativeEvent::new(
++                Capability::Touchpad(pad(Touch::Button(button))),
++                InputValue::Bool(pressed),
++            )
++        };
++        let pad_force = |trigger| {
++            NativeEvent::new(
++                Capability::Gamepad(Gamepad::Trigger(trigger)),
++                InputValue::Float(0.75),
++            )
++        };
++
++        client
++            .load_profile_from_yaml(canvas.to_string())
++            .await
++            .unwrap();
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.7, true))
++            .await
++            .unwrap();
++        let (native, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert_eq!(native.len(), 1);
++        assert!(steam.is_empty());
++        assert!(drain_haptics(&mut source_events).is_empty());
++        for pad in [
++            Touchpad::LeftPad as fn(Touch) -> Touchpad,
++            Touchpad::RightPad,
++        ] {
++            client
++                .handle_event(pad_button(pad, TouchButton::Press, true))
++                .await
++                .unwrap();
++            client
++                .handle_event(pad_button(pad, TouchButton::Touch, true))
++                .await
++                .unwrap();
++        }
++        client
++            .handle_event(pad_force(GamepadTrigger::LeftTouchpadForce))
++            .await
++            .unwrap();
++        client
++            .handle_event(pad_force(GamepadTrigger::RightTouchpadForce))
++            .await
++            .unwrap();
++        client
++            .handle_event(pad_motion(Touchpad::LeftPad, 0.1, true))
++            .await
++            .unwrap();
++        let (native, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert!(steam.is_empty());
++        assert_eq!(
++            native
++                .iter()
++                .map(NativeEvent::as_capability)
++                .collect::<Vec<_>>(),
++            vec![
++                Capability::Touchpad(Touchpad::CenterPad(Touch::Button(TouchButton::Press))),
++                Capability::Touchpad(Touchpad::CenterPad(Touch::Button(TouchButton::Press))),
++            ]
++        );
++        assert_eq!(drain_haptics(&mut source_events), vec![CommandType::Click]);
++        client
++            .handle_event(pad_button(Touchpad::RightPad, TouchButton::Press, false))
++            .await
++            .unwrap();
++        client
++            .handle_event(pad_button(Touchpad::RightPad, TouchButton::Press, false))
++            .await
++            .unwrap();
++        let (_, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert!(steam.is_empty());
++        assert_eq!(drain_haptics(&mut source_events), vec![CommandType::Off]);
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.7, false))
++            .await
++            .unwrap();
++        let (lift, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert_eq!(lift.len(), 1);
++        assert!(steam.is_empty());
++        assert!(drain_haptics(&mut source_events).is_empty());
++
++        client.handle_event(lt(true)).await.unwrap();
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.2, true))
++            .await
++            .unwrap();
++        tokio::time::sleep(Duration::from_millis(51)).await;
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.4, true))
++            .await
++            .unwrap();
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.4, true))
++            .await
++            .unwrap();
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.5, true))
++            .await
++            .unwrap();
++        let (scroll, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert!(steam.is_empty());
++        assert!(scroll
++            .iter()
++            .any(|event| event.as_capability() == Capability::Mouse(Mouse::Wheel)));
++        assert_eq!(drain_haptics(&mut source_events), vec![CommandType::Tick]);
++        client.handle_event(lt(false)).await.unwrap();
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.4, false))
++            .await
++            .unwrap();
++        let (release, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert!(release.is_empty());
++        assert!(steam.is_empty());
++        assert_eq!(drain_haptics(&mut source_events), vec![CommandType::Off]);
++
++        client
++            .load_profile_from_yaml(keyboard.to_string())
++            .await
++            .unwrap();
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.8, true))
++            .await
++            .unwrap();
++        client
++            .handle_event(pad_button(Touchpad::RightPad, TouchButton::Press, true))
++            .await
++            .unwrap();
++        let (_, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert_eq!(steam.len(), 2);
++        assert!(drain_haptics(&mut source_events).is_empty());
++        client
++            .load_profile_from_yaml(canvas.to_string())
++            .await
++            .unwrap();
++        client.handle_event(lt(false)).await.unwrap();
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.6, true))
++            .await
++            .unwrap();
++        let (reset, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert!(steam.is_empty());
++        assert_eq!(
++            reset
++                .iter()
++                .map(NativeEvent::as_capability)
++                .collect::<Vec<_>>(),
++            vec![Capability::Touchpad(Touchpad::CenterPad(Touch::Motion))]
++        );
++        assert!(drain_haptics(&mut source_events).is_empty());
++        client.set_ff_enabled(false).await.unwrap();
++        tokio::time::sleep(Duration::from_millis(51)).await;
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.9, true))
++            .await
++            .unwrap();
++        let (native, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert_eq!(native.len(), 1);
++        assert!(steam.is_empty());
++        assert!(drain_haptics(&mut source_events).is_empty());
++        client.stop().await.unwrap();
++        run.await.unwrap().unwrap();
++
++        let (client, mut native_events, mut steam_events, mut source_events, run) =
++            composite_fixture(true, false).await;
++        client
++            .load_profile_from_yaml(canvas.to_string())
++            .await
++            .unwrap();
++        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.3, true))
++            .await
++            .unwrap();
++        let (native, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert_eq!(native.len(), 1);
++        assert!(steam.is_empty());
++        assert!(drain_haptics(&mut source_events).is_empty());
++        client.stop().await.unwrap();
++        run.await.unwrap().unwrap();
++
++        let (client, mut native_events, mut steam_events, _source_events, run) =
++            composite_fixture(false, false).await;
++        client
++            .load_profile_from_yaml(keyboard.to_string())
++            .await
++            .unwrap();
++        let raw_events = vec![
++            pad_motion(Touchpad::LeftPad, 0.2, true),
++            pad_button(Touchpad::LeftPad, TouchButton::Press, true),
++            pad_button(Touchpad::LeftPad, TouchButton::Touch, true),
++            pad_force(GamepadTrigger::LeftTouchpadForce),
++            pad_motion(Touchpad::RightPad, 0.8, true),
++            pad_button(Touchpad::RightPad, TouchButton::Press, true),
++            pad_button(Touchpad::RightPad, TouchButton::Touch, true),
++            pad_force(GamepadTrigger::RightTouchpadForce),
++        ];
++        let raw_caps = raw_events
++            .iter()
++            .map(NativeEvent::as_capability)
++            .collect::<Vec<_>>();
++        for event in raw_events {
++            client.handle_event(event).await.unwrap();
++        }
++        let (native, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert!(native.is_empty());
++        assert_eq!(
++            steam
++                .iter()
++                .map(NativeEvent::as_capability)
++                .collect::<Vec<_>>(),
++            raw_caps
++        );
++        client.stop().await.unwrap();
++        run.await.unwrap().unwrap();
++    }
++
++    #[test]
++    fn left_pad_regions_press_change_release_and_contact_end() {
++        let profile = profile(
++            r#"
++version: 1
++kind: DeviceProfile
++name: test
++mapping:
++  - name: left
++    source_event: { touchpad: { name: LeftPad, touch: { motion: { region: left } } } }
++    target_events: [ { keyboard: KeyF17 } ]
++  - name: bottom
++    source_event: { touchpad: { name: LeftPad, touch: { motion: { region: bottom } } } }
++    target_events: [ { keyboard: KeyF18 } ]
++  - name: top
++    source_event: { touchpad: { name: LeftPad, touch: { motion: { region: top } } } }
++    target_events: [ { keyboard: KeyF19 } ]
++  - name: right
++    source_event: { touchpad: { name: LeftPad, touch: { motion: { region: right } } } }
++    target_events: [ { keyboard: KeyF20 } ]
++"#,
++        );
++        let source = Capability::Touchpad(Touchpad::LeftPad(Touch::Motion));
++        let states = |value: InputValue| {
++            profile
++                .mapping
++                .iter()
++                .map(|mapping| {
++                    let target = Capability::from(mapping.target_events[0].clone());
++                    let translated = value
++                        .translate(
++                            &source,
++                            &mapping.source_event,
++                            &target,
++                            &mapping.target_events[0],
++                        )
++                        .unwrap();
++                    (target, translated.pressed())
++                })
++                .collect::<HashMap<_, _>>()
++        };
++
++        let left = states(touch(0.1, 0.5, true));
++        assert_eq!(left[&Capability::Keyboard(Keyboard::KeyF17)], true);
++        assert_eq!(left[&Capability::Keyboard(Keyboard::KeyF19)], false);
++        let top = states(touch(0.5, 0.1, true));
++        assert_eq!(top[&Capability::Keyboard(Keyboard::KeyF17)], false);
++        assert_eq!(top[&Capability::Keyboard(Keyboard::KeyF19)], true);
++        assert!(states(touch(0.5, 0.5, true))
++            .values()
++            .all(|pressed| !pressed));
++        assert!(states(touch(0.5, 0.5, false))
++            .values()
++            .all(|pressed| !pressed));
++    }
++
++    #[test]
++    fn left_trigger_and_dpad_translation_is_preserved() {
++        let profile = profile(
++            r#"
++version: 1
++kind: DeviceProfile
++name: test
++mapping:
++  - name: Super modifier
++    source_event: { gamepad: { trigger: { name: LeftTrigger, deadzone: 0.3 } } }
++    target_events: [ { keyboard: KeyLeftMeta } ]
++  - name: D-pad left
++    source_event: { gamepad: { button: DPadLeft } }
++    target_events: [ { keyboard: KeyF13 } ]
++"#,
++        );
++        for (mapping, value) in profile
++            .mapping
++            .iter()
++            .zip([InputValue::Float(0.8), InputValue::Bool(true)])
++        {
++            let source = Capability::from(mapping.source_event.clone());
++            let target = Capability::from(mapping.target_events[0].clone());
++            assert!(value
++                .translate(
++                    &source,
++                    &mapping.source_event,
++                    &target,
++                    &mapping.target_events[0],
++                )
++                .unwrap()
++                .pressed());
++        }
++        assert_eq!(
++            Capability::from(profile.mapping[0].target_events[0].clone()),
++            Capability::Keyboard(Keyboard::KeyLeftMeta)
++        );
++        assert_eq!(
++            Capability::from(profile.mapping[1].target_events[0].clone()),
++            Capability::Keyboard(Keyboard::KeyF13)
++        );
++    }
++}
+--- a/src/input/event/value.rs
++++ b/src/input/event/value.rs
+@@ -464,7 +464,9 @@
+                             Mouse::Button(_) => Err(TranslationError::NotImplemented),
+                             Mouse::Wheel => Err(TranslationError::NotImplemented),
+                         },
+-                        Capability::Keyboard(_) => Err(TranslationError::NotImplemented),
++                        Capability::Keyboard(_) => {
++                            self.translate_touch_motion_to_button(source_config)
++                        }
+                         // Touchpad Motion -> Touchpad
+                         Capability::Touchpad(touchpad) => match touchpad {
+                             Touchpad::LeftPad(target_touch) => match target_touch {
+@@ -691,6 +693,52 @@
+         }
+     }
+ 
++    fn translate_touch_motion_to_button(
++        &self,
++        source_config: &CapabilityConfig,
++    ) -> Result<InputValue, TranslationError> {
++        let motion = source_config
++            .touchpad
++            .as_ref()
++            .and_then(|touchpad| touchpad.touch.motion.as_ref())
++            .ok_or_else(|| {
++                TranslationError::InvalidSourceConfig(
++                    "No touchpad motion config to translate touch motion".to_string(),
++                )
++            })?;
++        let region = motion.region.as_ref().ok_or_else(|| {
++            TranslationError::InvalidSourceConfig(
++                "No region defined to translate touch motion".to_string(),
++            )
++        })?;
++        let InputValue::Touch {
++            is_touching, x, y, ..
++        } = self
++        else {
++            return Err(TranslationError::ImpossibleTranslation(
++                "Only touch values can be translated from touch motion".to_string(),
++            ));
++        };
++        if !is_touching {
++            return Ok(InputValue::Bool(false));
++        }
++        let (Some(x), Some(y)) = (x, y) else {
++            return Ok(InputValue::Bool(false));
++        };
++        let pressed = match region.as_str() {
++            "left" => *x <= 0.35,
++            "right" => *x >= 0.65,
++            "top" => *y <= 0.35,
++            "bottom" => *y >= 0.65,
++            _ => {
++                return Err(TranslationError::InvalidSourceConfig(format!(
++                    "Invalid touchpad region: {region}"
++                )))
++            }
++        };
++        Ok(InputValue::Bool(pressed))
++    }
++
+     /// Translate the axis value into mouse motion
+     fn translate_axis_to_mouse_motion(
+         &self,

@@ -116,6 +116,7 @@ Item {
                 flickableDirection: Flickable.VerticalFlick
                 boundsBehavior: Flickable.StopAtBounds
                 interactive: contentHeight > height
+                ScrollFeel { flick: flick }
                 Column { id: bodyCol; width: flick.width }
             }
 

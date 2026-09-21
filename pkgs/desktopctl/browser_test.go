@@ -17,6 +17,7 @@ type fakeBrowserDesktop struct {
 func newFakeBrowserDesktop(t *testing.T) *fakeBrowserDesktop {
 	t.Helper()
 	dir := t.TempDir()
+	installDesktopLauncher(t, dir)
 	f := &fakeBrowserDesktop{dir: dir, home: filepath.Join(dir, "home"), browserLog: filepath.Join(dir, "browser.log"), actionLog: filepath.Join(dir, "actions.log"), toolLog: filepath.Join(dir, "tools.log")}
 	shell, err := exec.LookPath("bash")
 	if err != nil {

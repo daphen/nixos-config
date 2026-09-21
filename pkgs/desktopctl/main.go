@@ -28,7 +28,7 @@ func main() {
 			os.Exit(1)
 		}
 		err = runMail()
-	case "niri-jump-or-exec":
+	case "jump-or-exec", "niri-jump-or-exec":
 		err = jumpOrExec(os.Args[2:])
 	case "notification-dispatch":
 		err = runNotification(os.Args[2:])

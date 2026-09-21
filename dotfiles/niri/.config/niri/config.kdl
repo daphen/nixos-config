@@ -247,7 +247,7 @@ layout {
         off
 
         // How many logical pixels the ring extends out from the windows.
-        width 4
+        width 2
 
         // Colors can be set in a variety of ways:
         // - CSS named colors: "red"
@@ -255,13 +255,13 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#6F6F6E"
+        active-color "#EDEDED"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#E2E2E1"
+        inactive-color "#3A3A3A"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -284,14 +284,14 @@ layout {
         // The settings are the same as for the focus ring.
         // If you enable the border, you probably want to disable the focus ring.
 
-        width 4
-        active-color "#6F6F6E"
+        width 2
+        active-color "#EDEDED"
         // Active border fades top-dark → bottom-light in light mode; dark mode
         // sets equal stops (renders solid). Managed by theme-manager.sh.
-        active-gradient from="#6F6F6E" to="#6F6F6E" angle=180
+        active-gradient from="#EDEDED" to="#EDEDED" angle=180
         // Matches waybar-notch light theme hairline
         // (foreground.primary @ 50% alpha).
-        inactive-color "#E2E2E1"
+        inactive-color "#3A3A3A"
 
         // Color of the border around windows that request your attention.
         urgent-color "#9b0000"
@@ -349,7 +349,7 @@ layout {
     struts {
         left 0
         right 0
-        top -8
+        top -6
         bottom 0
     }
 }
@@ -377,8 +377,7 @@ blur {
 // (browsers, agentd keys) after the 2026-08-24 crash reboot.
 spawn-sh-at-startup "dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE"
 
-spawn-at-startup "qs"
-spawn-at-startup "qs" "-n" "-p" "/home/daphen/.config/quickshell/wallpaper"
+spawn-at-startup "/home/daphen/.config/niri/scripts/start-quickshell-desktop"
 // Mutagen has no user unit (this build has no `daemon register`), so after a reboot
 // its daemon stays down and every VM worktree mirror silently stops syncing until
 // some mutagen command happens to run. Start it with the session.
@@ -409,10 +408,8 @@ spawn-sh-at-startup "/home/daphen/.config/niri/scripts/niri-hotplug-handler >> /
 workspace "lovable"
 
 
-// Two stable Cockpit instances restore their own Personal/Work selection.
-// Their mode and placement are independent of whichever workspace starts niri.
-spawn-sh-at-startup "$HOME/.config/niri/scripts/cockpit-boot work"
-spawn-sh-at-startup "$HOME/.config/niri/scripts/cockpit-boot personal"
+// Map the primary session apps in deterministic left-to-right order.
+spawn-sh-at-startup "$HOME/.config/niri/scripts/start-session-apps"
 
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
@@ -755,10 +752,11 @@ binds {
 
     // Suggested binds for running programs: app launcher, screen locker.
     Super+Space hotkey-overlay-title="Run an Application" { spawn "qs" "ipc" "call" "launcher" "toggle"; }
+    Super+v repeat=false hotkey-overlay-title="Hold to Dictate" { spawn "dbus-send" "--session" "--type=method_call" "--dest=com.openwhispr.App" "/com/openwhispr/App" "com.openwhispr.App.PttDown"; }
     Super+Return { spawn "qs" "ipc" "call" "launcher" "toggle"; }
     // 1Password lives in the tray (close-to-tray default): focus the window
     // if mapped, else spawn — which summons the tray instance (~instant)
-    Super+P hotkey-overlay-title="1Password credential picker" { spawn "opqs-client"; }
+    Super+P hotkey-overlay-title="1Password credential picker" { spawn-sh "$HOME/.config/hypr/scripts/desktop-launch opqs-client"; }
     Super+Shift+P hotkey-overlay-title="Open 1Password" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 1password 1password"; }
     Super+Ctrl+q hotkey-overlay-title="Force Kill Focused Window" { spawn "/home/daphen/.config/niri/scripts/force-kill-focused"; }
     Super+Shift+Ctrl+q hotkey-overlay-title="Lock the Screen" { spawn "swaylock"; }
@@ -770,21 +768,20 @@ binds {
 
     // Jump-or-exec keybinds for quick app access
     Super+c hotkey-overlay-title="Discord" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec title:dsqrd $HOME/.config/niri/scripts/launch-discord-client"; }
-    Super+e hotkey-overlay-title="Files" { spawn-sh "$HOME/.config/niri/scripts/spawn-terminal-with-yazi"; }
+    Super+e hotkey-overlay-title="Files" { spawn-sh "$HOME/.config/hypr/scripts/desktop-launch $HOME/.config/niri/scripts/spawn-terminal-with-yazi"; }
     // Open the notification-center picker (active + recently-dismissed);
     // pick one to jump to its window/app.
     Super+i hotkey-overlay-title="Notifications" { spawn-sh "$HOME/.config/niri/scripts/inbox-jump"; }
-    // Super+Ctrl+g: resume an existing claude session (fzf picker)
-    Super+Ctrl+g hotkey-overlay-title="Resume Agent Session" { spawn-sh "kitty --class lovable_picker $HOME/.config/niri/scripts/spawn-claude-session-picker"; }
+    // Super+Ctrl+g: resume an existing agent session (fzf picker)
+    Super+Ctrl+g hotkey-overlay-title="Resume Agent Session" { spawn-sh "$HOME/.config/hypr/scripts/desktop-launch kitty --class lovable_picker $HOME/.config/niri/scripts/spawn-claude-session-picker"; }
     Super+Shift+g hotkey-overlay-title="Chat" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here title:qstns $HOME/personal/qstns/run.sh"; }
-    Super+Shift+f hotkey-overlay-title="Fork Agent Session" { spawn-sh "$HOME/.config/niri/scripts/fork-claude-session"; }
     Super+r hotkey-overlay-title="Create PR review" { spawn "qs" "ipc" "call" "review-create" "toggle"; }
     // Super+G — jump to the cockpit's nvim window (hosts the agent rail).
     // Super+D — cycle through every kitty window (plain + cockpit agent/nvim/
     // devenv), the general terminal-cycle role.
     Super+g hotkey-overlay-title="Focus Cockpit Editor" { spawn-sh "$HOME/.config/niri/scripts/cockpit-focus nvim"; }
     Super+d hotkey-overlay-title="Cycle Terminals" { spawn-sh "$HOME/.config/niri/scripts/focus-kitty-cycle"; }
-    Super+Shift+d hotkey-overlay-title="New Terminal" { spawn-sh "SHOW_FASTFETCH=1 kitty"; }
+    Super+Shift+d hotkey-overlay-title="New Terminal" { spawn-sh "$HOME/.config/hypr/scripts/desktop-launch env SHOW_FASTFETCH=1 kitty"; }
     Super+s hotkey-overlay-title="Slack" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
     Super+Shift+s hotkey-overlay-title="Slack" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec Slack slack"; }
     Super+a hotkey-overlay-title="Spotify" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 'spotify_player' 'kitty --class spotify_player /home/daphen/.config/niri/scripts/spotify-player-launch'"; }
@@ -795,19 +792,19 @@ binds {
     //   browser-work window, falling back to the browser-work script when
     //   no candidate window matches. browser-work in INACTIVE worktrees is
     //   excluded automatically via ws-tracker's excluded-id list.
-    Super+q hotkey-overlay-title="Personal Browser" { spawn-sh "/home/daphen/.config/niri/scripts/browser-personal"; }
+    Super+q hotkey-overlay-title="Personal Browser" { spawn-sh "$HOME/.config/hypr/scripts/desktop-launch /home/daphen/.config/niri/scripts/browser-personal"; }
     // browser-work targets the work-CLASS window only (stateless); the old
     // ws-focus cycled both profiles once its personal-id tracker went stale.
-    Super+w hotkey-overlay-title="Work Browser" { spawn-sh "$HOME/.config/niri/scripts/browser-work"; }
-    Super+Shift+q hotkey-overlay-title="New Personal Browser Window" { spawn-sh "/home/daphen/.config/niri/scripts/chromium-launch"; }
-    Super+Shift+w hotkey-overlay-title="New Work Browser Window" { spawn-sh "$HOME/.config/niri/scripts/browser-work-new"; }
+    Super+w hotkey-overlay-title="Work Browser" { spawn-sh "$HOME/.config/hypr/scripts/desktop-launch $HOME/.config/niri/scripts/browser-work"; }
+    Super+Shift+q hotkey-overlay-title="New Personal Browser Window" { spawn-sh "$HOME/.config/hypr/scripts/desktop-launch /home/daphen/.config/niri/scripts/chromium-launch"; }
+    Super+Shift+w hotkey-overlay-title="New Work Browser Window" { spawn-sh "$HOME/.config/hypr/scripts/desktop-launch $HOME/.config/niri/scripts/browser-work-new"; }
 
     Super+f hotkey-overlay-title="Toggle Command Palette" { spawn-sh "$HOME/.config/niri/scripts/palette-toggle"; }
     Super+Shift+m hotkey-overlay-title="Add Quickmark" { spawn "palette-ipc" "add-quickmark"; }
     Super+m hotkey-overlay-title="Mail" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec --here title:mlqs $HOME/.config/niri/scripts/launch-mail-client"; }
     // Cockpit (nvim + agentd rail) coexists with the kitty cockpit.
     Super+y hotkey-overlay-title="Answer agent question / Cockpit" { spawn-sh "$HOME/.config/niri/scripts/agent-ask-or-cockpit"; }
-    Super+Shift+y hotkey-overlay-title="New Cockpit" { spawn-sh "$HOME/.config/niri/scripts/cockpit-new"; }
+    Super+Shift+y hotkey-overlay-title="New Cockpit" { spawn-sh "$HOME/.config/hypr/scripts/desktop-launch $HOME/.config/niri/scripts/cockpit-new"; }
 
     // Super+Ctrl+Y — flip the ORCHESTRATOR role between proart and the dev VM. Direction
     // is derived from whichever side currently holds it, so one key works both ways. The
@@ -972,7 +969,6 @@ binds {
     Super+Ctrl+Shift+B hotkey-overlay-title="Cycle Bar Theme" { spawn-sh "$HOME/.config/niri/scripts/waybar-theme --cycle"; }  // Cycle waybar theme
     Super+Ctrl+P hotkey-overlay-title="ASUS Performance Profile" { spawn "qs" "ipc" "call" "asus-profile" "toggle"; }  // Switch ASUS performance profile
     Super+Ctrl+A hotkey-overlay-title="Headphones" { spawn "/home/daphen/.config/niri/scripts/toggle-headphones"; }  // Toggle whichever headphones are on (Px8 or AirPods)
-    Super+Ctrl+R hotkey-overlay-title="Rename Agent Session" { spawn "/home/daphen/.config/niri/scripts/claude-rename"; }  // Rename focused Claude session via QS prompt
 
     // Dismiss all notifications
     Super+Escape hotkey-overlay-title="Dismiss Notifications" { spawn "qs" "ipc" "call" "notifications" "dismissAll"; }
@@ -980,8 +976,8 @@ binds {
 
 // Clipboard management with clipse
 spawn-at-startup "wl-clip-persist" "--clipboard" "regular"
-spawn-at-startup "systemd-run" "--user" "--unit=clipse-image-session" "--property=Restart=always" "--property=RestartSec=1" "wl-paste" "--type" "image/png" "--watch" "clipse" "--wl-store"
-spawn-at-startup "systemd-run" "--user" "--unit=clipse-text-session" "--property=Restart=always" "--property=RestartSec=1" "wl-paste" "--type" "text" "--watch" "clipse" "--wl-store"
+spawn-at-startup "systemd-run" "--user" "--collect" "--unit=clipse-image-session" "--property=Restart=always" "--property=RestartSec=1" "wl-paste" "--type" "image/png" "--watch" "clipse" "--wl-store"
+spawn-at-startup "systemd-run" "--user" "--collect" "--unit=clipse-text-session" "--property=Restart=always" "--property=RestartSec=1" "wl-paste" "--type" "text" "--watch" "clipse" "--wl-store"
 
 // Mirror desktop activity to slqs/dsqrd so Slack/Discord hold phone notifications
 // while you're active and resume them after 5 min idle (so you don't miss things away).

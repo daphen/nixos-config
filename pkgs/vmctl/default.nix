@@ -5,6 +5,7 @@ pkgs.buildGoModule {
   version = "0-unstable";
   src = ./.;
   vendorHash = null;
+  env.CGO_ENABLED = "0";
   subPackages = [ "." ];
   nativeBuildInputs = [ pkgs.makeWrapper pkgs.git pkgs.git-lfs pkgs.openssh pkgs.rsync pkgs.worktrunk ];
   postInstall = ''

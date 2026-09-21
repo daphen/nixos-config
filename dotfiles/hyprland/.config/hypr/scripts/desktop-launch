@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+(( $# )) || { echo 'Usage: desktop-launch <command> [args...]' >&2; exit 2; }
+if [[ ${HYPR_CANVAS_PROFILE:-} != deck ]]; then
+    exec "$@"
+fi
+slice=deck-work.slice
+case ${1##*/} in
+    steam|deck-gaming-mode) slice=app.slice ;;
+esac
+if [[ $(< /proc/self/cgroup) == *"/$slice/"* ]]; then
+    exec "$@"
+fi
+exec 8>"${XDG_RUNTIME_DIR:?}/deck-gaming-mode.lock"
+flock 8
+state=$(systemctl --user show "$slice" -p FreezerState --value 2>/dev/null) || state=
+if [[ $slice == deck-work.slice && ( $state == frozen || $state == frozen-by-parent ) ]]; then
+    flock -u 8
+    sleep 0.1
+    exec "$0" "$@"
+fi
+unit="desktop-launch-$BASHPID-$RANDOM.scope"
+(exec 8>&-; exec systemd-run --user --scope --collect --quiet --unit="$unit" --slice="$slice" -- "$@") &
+runner=$!
+while kill -0 "$runner" 2>/dev/null &&
+    [[ $(systemctl --user show "$unit" -p ActiveState --value 2>/dev/null) != active ]]; do sleep 0.01; done
+flock -u 8
+wait "$runner"

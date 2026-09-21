@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 )
 
 const (
@@ -71,9 +73,15 @@ func (m *manager) dispatch(args []string) bool {
 	}
 	switch command {
 	case "generate":
+		if mode == "" {
+			mode = m.current()
+		}
+		if mode != "light" && mode != "dark" {
+			return false
+		}
 		m.generateAll(mode)
 	case "apply":
-		m.applyAll(mode)
+		return m.follow(mode, false)
 	case "switch":
 		return m.switchTheme(mode)
 	case "toggle":
@@ -81,7 +89,7 @@ func (m *manager) dispatch(args []string) bool {
 	case "auto", "":
 		return m.auto()
 	case "status":
-		m.status()
+		return m.status()
 	case "help", "-h", "--help":
 		m.help()
 	default:
@@ -94,18 +102,27 @@ func (m *manager) dispatch(args []string) bool {
 }
 
 func (m *manager) current() string {
-	b, err := os.ReadFile(m.modeFile)
+	b, err := exec.Command("gsettings", "get", "org.gnome.desktop.interface", "color-scheme").Output()
 	if err != nil {
-		return "dark"
+		b, err = exec.Command("dconf", "read", "/org/gnome/desktop/interface/color-scheme").Output()
 	}
-	return strings.TrimRight(string(b), "\n")
+	if err == nil {
+		switch strings.Trim(strings.TrimSpace(string(b)), "'") {
+		case "prefer-dark":
+			return "dark"
+		case "prefer-light", "default", "":
+			return "light"
+		}
+	}
+	m.failure("Could not read the system color-scheme preference")
+	return ""
 }
 
-func (m *manager) setMode(mode string) {
-	bestEffort(os.WriteFile(m.modeFile, []byte(mode+"\n"), 0644))
-	if !m.runQuiet("gsettings", "set", "org.gnome.desktop.interface", "color-scheme", "prefer-"+mode) && has("dconf") {
-		m.run("dconf", "write", "/org/gnome/desktop/interface/color-scheme", "'prefer-"+mode+"'")
+func (m *manager) setMode(mode string) bool {
+	if m.runQuiet("gsettings", "set", "org.gnome.desktop.interface", "color-scheme", "prefer-"+mode) {
+		return m.current() == mode
 	}
+	return m.runQuiet("dconf", "write", "/org/gnome/desktop/interface/color-scheme", "'prefer-"+mode+"'") && m.current() == mode
 }
 
 func (m *manager) generateAll(mode string) {
@@ -180,6 +197,29 @@ func (m *manager) apply(tool, mode string) {
 		bestEffort(copyFile(generated, dst))
 	}
 	switch tool {
+	case "steam-css-loader":
+		target := filepath.Join(m.home, "homebrew/themes/Dotfiles")
+		if err := os.MkdirAll(target, 0755); err != nil {
+			m.failure(err.Error())
+			return
+		}
+		for _, file := range [][2]string{
+			{generated, "shared.css"},
+			{filepath.Join(m.templates, tool, "theme.json"), "theme.json"},
+		} {
+			if err := copyFile(file[0], filepath.Join(target, file[1])); err != nil {
+				m.failure(err.Error())
+				return
+			}
+		}
+		m.success("Applied Steam CSS Loader theme (enable Dotfiles in CSS Loader)")
+	case "hyprland":
+		target := filepath.Join(m.home, ".config/hypr/theme.lua")
+		copyTo(target)
+		if os.Getenv("HYPRLAND_INSTANCE_SIGNATURE") != "" && has("hyprctl") {
+			m.runQuiet("hyprctl", "eval", fmt.Sprintf("hl.config(dofile(%q))", target))
+		}
+		m.success("Applied Hyprland canvas theme")
 	case "nvim":
 		if target, label := m.target(tool); target != "" {
 			copyTo(filepath.Join(target, "colors", "custom-theme-"+mode+".lua"))
@@ -414,44 +454,80 @@ func (m *manager) switchTheme(mode string) bool {
 		return false
 	}
 	m.info("Switching to " + mode + " theme...")
-	m.setMode(mode)
-	m.generateAll(mode)
-	m.applyAll(mode)
-	m.applySystem(mode)
-	m.validateWallpaper(mode)
-	m.success("Theme switched to " + mode + " mode")
+	if !m.setMode(mode) {
+		m.failure("Could not change the system color-scheme preference")
+		return false
+	}
+	m.success("Theme preference set to " + mode)
 	return true
 }
 
 func (m *manager) toggle() bool {
-	if m.current() == "dark" {
+	switch m.current() {
+	case "dark":
 		return m.switchTheme("light")
+	case "light":
+		return m.switchTheme("dark")
 	}
-	return m.switchTheme("dark")
+	return false
 }
-func (m *manager) auto() bool {
-	mode := m.current()
-	m.info("Auto-detecting system theme: " + mode)
-	return m.switchTheme(mode)
+func (m *manager) auto() bool { return m.follow("", true) }
+
+func (m *manager) follow(requested string, generate bool) bool {
+	dir := filepath.Join(m.home, ".cache")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		m.failure(err.Error())
+		return false
+	}
+	lock, err := os.OpenFile(filepath.Join(dir, "themectl.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		m.failure(err.Error())
+		return false
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		m.failure(err.Error())
+		return false
+	}
+	for {
+		mode := m.current()
+		if mode == "" {
+			return false
+		}
+		if requested != "" && requested != mode {
+			m.failure("Use switch to change the system preference; apply only follows it")
+			return false
+		}
+		if generate {
+			m.generateAll(mode)
+		}
+		m.applyAll(mode)
+		m.applySystem(mode)
+		m.validateWallpaper(mode)
+		if latest := m.current(); latest == "" {
+			return false
+		} else if latest != mode {
+			continue
+		}
+		m.success("Applied system theme: " + mode)
+		return true
+	}
 }
 
 func (m *manager) applySystem(mode string) {
-	pref, gtk := "prefer-"+mode, "Dotfiles-"+mode
+	gtk := "Dotfiles-" + mode
 	if has("dconf") {
-		if !m.runQuiet("gsettings", "set", "org.gnome.desktop.interface", "color-scheme", pref) {
-			m.run("dconf", "write", "/org/gnome/desktop/interface/color-scheme", "'"+pref+"'")
-		}
 		m.runQuiet("dconf", "write", "/org/gnome/desktop/interface/gtk-theme", "'"+gtk+"'")
 		if has("fish") {
-			m.runQuiet("fish", "-c", "set -eU GTK_THEME")
+			m.runQuiet("fish", "--no-config", "-c", "set -eU GTK_THEME")
 		}
 		if has("systemctl") {
 			m.runQuiet("systemctl", "--user", "unset-environment", "GTK_THEME")
 		}
-		m.success("Updated dconf color-scheme=" + pref + ", gtk-theme=" + gtk)
+		m.success("Updated GTK theme: " + gtk)
 	} else if has("gsettings") {
-		m.runQuiet("gsettings", "set", "org.gnome.desktop.interface", "color-scheme", pref)
-		m.success("Updated gsettings color-scheme")
+		m.runQuiet("gsettings", "set", "org.gnome.desktop.interface", "gtk-theme", gtk)
+		m.success("Updated GTK theme: " + gtk)
 	}
 	if isFile(filepath.Join(m.home, ".config/Kvantum/kvantum.kvconfig")) {
 		m.success("Kvantum Qt theme is configured")
@@ -529,12 +605,17 @@ func (m *manager) validateWallpaper(mode string) {
 	}
 }
 
-func (m *manager) status() {
-	fmt.Printf("=== Theme Status ===\nCurrent Theme: %s\nTheme Mode File: %s\nThemes Directory: %s\nColors File: %s\n\nAvailable Tools:\n", m.current(), m.modeFile, m.themes, m.colors)
+func (m *manager) status() bool {
+	mode := m.current()
+	if mode == "" {
+		return false
+	}
+	fmt.Printf("=== Theme Status ===\nCurrent Theme: %s\nGenerated Mode File: %s\nThemes Directory: %s\nColors File: %s\n\nAvailable Tools:\n", mode, m.modeFile, m.themes, m.colors)
 	matches, _ := filepath.Glob(filepath.Join(m.templates, "*.template"))
 	for _, path := range matches {
 		fmt.Println("  - " + strings.TrimSuffix(filepath.Base(path), ".template"))
 	}
+	return true
 }
 
 func (m *manager) help() {
@@ -544,10 +625,10 @@ Usage: %s [COMMAND] [OPTIONS]
 
 Commands:
     generate [MODE]     Generate themes for specified mode (dark/light)
-    apply [MODE]        Apply themes for specified mode (dark/light)
-    switch [MODE]       Switch to specified theme mode (dark/light)
-    toggle              Toggle between light and dark themes
-    auto                Auto-detect and apply system theme
+    apply [MODE]        Apply generated themes matching the system preference
+    switch [MODE]       Set the global theme preference (dark/light)
+    toggle              Toggle the global theme preference
+    auto                Generate and apply themes from the system preference
     status              Show current theme status
     help                Show this help message
 
@@ -598,6 +679,9 @@ func copyFile(src, dst string) error {
 	contents, err := os.ReadFile(src)
 	if err != nil {
 		return err
+	}
+	if previous, err := os.ReadFile(dst); err == nil && bytes.Equal(previous, contents) {
+		return nil
 	}
 	return os.WriteFile(dst, contents, 0666)
 }

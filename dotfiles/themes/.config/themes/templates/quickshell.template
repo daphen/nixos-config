@@ -17,6 +17,7 @@ Singleton {
     readonly property var palettes: ({
         "light": {
             "bg":          "{{light.background.primary}}",
+            "bg_dim":      "{{light.background.dim}}",
             "bg_alt":      "{{light.background.secondary}}",
             "tertiary":    "{{light.background.tertiary}}",
             "selection":   "{{light.background.selection}}",
@@ -54,6 +55,7 @@ Singleton {
         },
         "dark": {
             "bg":          "{{dark.background.primary}}",
+            "bg_dim":      "{{dark.background.dim}}",
             "bg_alt":      "{{dark.background.secondary}}",
             "tertiary":    "{{dark.background.tertiary}}",
             "selection":   "{{dark.background.selection}}",
@@ -92,6 +94,7 @@ Singleton {
     })
 
     readonly property color bg:           palettes[mode].bg
+    readonly property color bgDim:        palettes[mode].bg_dim
     readonly property color bg_alt:       palettes[mode].bg_alt
     readonly property color tertiary:     palettes[mode].tertiary
     readonly property color selection:    palettes[mode].selection
@@ -139,11 +142,11 @@ Singleton {
     readonly property color hairlineSoft: Qt.rgba(fg.r, fg.g, fg.b, hairlineAlpha * 0.6)
     readonly property color dimmedFg: Qt.rgba(fg.r, fg.g, fg.b, dimmedFgAlpha)
 
-    readonly property int barHeight:     44
-    readonly property int notchMinWidth: 1200
+    readonly property int barHeight:     48
+    readonly property int notchMinWidth: 950
     readonly property int notchRadius:   14
     readonly property int notchPadH:     10
-    readonly property int notchInnerGap: 80
+    readonly property int notchInnerGap: 5
     readonly property int modulePadH:    5
     readonly property int modulePadV:    2
     readonly property int radius:        12

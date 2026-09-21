@@ -4,6 +4,22 @@
 `vmctl --native worktree`; source-only startup does not start the app or require
 a desktop mirror. `--app` explicitly starts/reuses the ticket's tmux session.
 
+## Ticket retirement ownership
+
+The orchestrator owns full ticket shutdown and retirement. Workers save a
+handoff and report readiness/blockers; they never invoke `--off` or `--reap`.
+After David approves the exact context, the orchestrator runs
+`vm-wt --reap EVERY-N` from outside the target checkout and its desktop mirror,
+captures output/exit status there, and verifies completion. `--off` stops the
+session/runtime but retains files and caches; `--teardown` stops only the
+desktop tunnel. Native VM retirement leaves desktop mirrors/tunnels untouched.
+
+Before contacting agentd or making changes, `--off` and `--reap` reject
+non-orchestrator agent profiles and callers inside the target or mirror,
+including nested and symlinked directories. Manual CLI callers remain allowed
+outside those directories. These guards prevent accidental self-retirement; they
+do not grant deletion permission or replace the existing safety checks.
+
 ## Certificates across the tmux boundary
 
 New app sessions must explicitly receive `NODE_EXTRA_CA_CERTS` via tmux's
@@ -24,6 +40,19 @@ unrelated.
 Verify CA propagation in the supervisor/web/API and actual Confidence flag
 resolution. HTTP200 or a signed-in dashboard with fallback values is not
 success.
+
+## Desktop draft mirror
+
+`vm-sync --drafts` mirrors the VM's `~/personal/notes/storage/inbox` into the
+desktop's `~/work/vm-notes/inbox`. It creates or reuses the `vm-notes-inbox`
+Mutagen session with `two-way-safe` synchronization, flushes it, and refuses
+success on conflicts, transfer errors, or disconnected endpoints. The canonical
+desktop notes vault and standalone cached copies are not synchronization roots.
+
+Cockpit calls this before opening a VM inbox file, then uses its ordinary local
+Neovim editing path. Saved edits travel back through Mutagen; conflicting edits
+remain on both sides for explicit resolution. An unrelated session with the same
+name, or an unmanaged nonempty local folder, is never adopted automatically.
 
 ## Validation and deployment
 

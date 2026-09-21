@@ -17,9 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FakeAgentd:
-    def __init__(self, path: Path, sessions=None):
+    def __init__(self, path: Path, sessions=None, payload=None):
         self.path = path
         self.sessions = sessions or []
+        self.payload = payload
         self.messages = []
         self.ready = threading.Event()
         self.thread = threading.Thread(target=self._serve, daemon=True)
@@ -30,7 +31,7 @@ class FakeAgentd:
         server.listen(1)
         self.ready.set()
         conn, _ = server.accept()
-        conn.sendall((json.dumps({"type": "roster", "sessions": self.sessions}) + "\n").encode())
+        conn.sendall((json.dumps(self.payload if self.payload is not None else {"type": "roster", "sessions": self.sessions}) + "\n").encode())
         buf = b""
         while True:
             try:
@@ -73,7 +74,8 @@ class VmSliceReaperOwnershipTests(unittest.TestCase):
     def run_reaper(self, live, running, argv):
         stopped = []
         completed = SimpleNamespace(stdout="", stderr="", returncode=0)
-        with mock.patch.object(self.reaper, "roster", return_value=live), \
+        roster = live if callable(live) else lambda: live
+        with mock.patch.object(self.reaper, "roster", side_effect=roster), \
              mock.patch.object(self.reaper, "slice_dirs", return_value=set(running)), \
              mock.patch.object(self.reaper, "stop_slice", side_effect=lambda worktree: stopped.append(worktree) or True), \
              mock.patch.object(self.reaper.time, "sleep"), \
@@ -104,8 +106,48 @@ class VmSliceReaperOwnershipTests(unittest.TestCase):
         argv = ["vm-slice-reaper", "--worktree", f"/vm/src/{worktree}", "--session", "every-9999"]
         self.assertEqual(self.run_reaper(None, [worktree], argv), [])
 
+    def test_main_reaps_only_valid_empty_roster(self):
+        worktree = "lovable-every-9999"
+        argv = ["vm-slice-reaper", "--worktree", f"/vm/src/{worktree}", "--session", "every-9999"]
+        with tempfile.TemporaryDirectory() as td:
+            for i, (payload, expected) in enumerate([({"sessions": []}, [worktree]), ({"sessions": [None]}, []), ({"type": "ping"}, [])]):
+                fake = FakeAgentd(Path(td) / str(i), payload=payload); fake.start()
+                self.reaper.SOCK = str(fake.path); self.reaper.TCP = ("127.0.0.1", 1)
+                self.assertEqual(self.run_reaper(self.reaper.roster, [worktree], argv), expected); fake.join()
+
 
 class LauncherPayloadTests(unittest.TestCase):
+    def test_cockpit_app_refuses_stale_remote_port_before_opening_browser(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td); runtime = tmp / "run"; runtime.mkdir()
+            listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            listener.bind(("127.0.0.1", 0)); listener.listen(2)
+            port = listener.getsockname()[1]
+            sessions = [{"name": "every-2447", "cwd": "/vm/src/lovable-every-2447", "webPort": port}]
+            fake = FakeAgentd(runtime / "agentd-work.sock", sessions); fake.start()
+
+            def dead_forward():
+                for _ in range(2):
+                    conn, _ = listener.accept(); conn.close()
+                listener.close()
+
+            forward = threading.Thread(target=dead_forward, daemon=True); forward.start()
+            scripts = tmp / ".config/niri/scripts"; scripts.mkdir(parents=True)
+            browser_log = tmp / "browser.log"
+            dispatch = scripts / "browser-dispatch"
+            dispatch.write_text(f"#!/bin/sh\necho \"$*\" >> {browser_log}\n")
+            dispatch.chmod(0o755)
+            env = os.environ | {"HOME": td, "XDG_RUNTIME_DIR": str(runtime)}
+            result = subprocess.run(
+                [ROOT / "dotfiles/niri/.config/niri/scripts/cockpit-app", "every-2447"],
+                env=env, check=False, capture_output=True, text=True, timeout=10,
+            )
+            fake.join(); forward.join(2)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("advertises port", result.stderr)
+            self.assertIn("VM app is not serving HTTP", result.stderr)
+            self.assertFalse(browser_log.exists())
+
     def test_vm_wt_spawns_worker_with_plan_seed(self):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td); runtime = tmp / "run"; runtime.mkdir()

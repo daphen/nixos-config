@@ -14,6 +14,7 @@ type fakeDesktop struct {
 	dir       string
 	actionLog string
 	launchLog string
+	policyLog string
 	countFile string
 }
 
@@ -24,10 +25,14 @@ func newFakeDesktop(t *testing.T) *fakeDesktop {
 		dir:       dir,
 		actionLog: filepath.Join(dir, "actions"),
 		launchLog: filepath.Join(dir, "launch"),
+		policyLog: filepath.Join(dir, "policy"),
 		countFile: filepath.Join(dir, "count"),
 	}
 	shell, err := exec.LookPath("bash")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(shell, filepath.Join(dir, "bash")); err != nil {
 		t.Fatal(err)
 	}
 	writeExecutable(t, filepath.Join(dir, "niri"), "#!"+shell+"\n"+`printf '%s\n' "$*" >> "$FAKE_ACTION_LOG"
@@ -47,6 +52,13 @@ if [[ "$*" == "msg action move-window-to-workspace"* ]]; then exit "${FAKE_MOVE_
 `)
 	writeExecutable(t, filepath.Join(dir, "launcher"), "#!"+shell+"\n"+`printf '%s\n' "$*" > "$FAKE_LAUNCH_LOG"
 `)
+	writeExecutable(t, filepath.Join(dir, "systemctl"), "#!"+shell+"\n"+`printf 'running\n'`)
+	writeExecutable(t, filepath.Join(dir, "systemd-run"), "#!"+shell+"\n"+`printf '%s\n' "$*" > "$FAKE_POLICY_LOG"
+while [[ $1 != -- ]]; do shift; done
+shift
+exec "$@"
+`)
+	installDesktopLauncher(t, dir)
 	return f
 }
 
@@ -57,18 +69,38 @@ func writeExecutable(t *testing.T, path, body string) {
 	}
 }
 
+func installDesktopLauncher(t *testing.T, dir string) {
+	t.Helper()
+	source := filepath.Join("..", "..", "dotfiles", "hyprland", ".config", "hypr", "scripts", "desktop-launch")
+	if _, err := os.Stat(source); err != nil {
+		source = filepath.Join("testdata", "desktop-launch")
+	}
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell, err := exec.LookPath("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeExecutable(t, filepath.Join(dir, "desktop-launch"), strings.Replace(string(data), "#!/usr/bin/env bash", "#!"+shell, 1))
+}
+
 func (f *fakeDesktop) run(t *testing.T, first, second, workspaces string, extraEnv []string, args ...string) ([]byte, error) {
 	t.Helper()
 	cmd := exec.Command(testBinary, append([]string{"niri-jump-or-exec"}, args...)...)
-	cmd.Env = append(os.Environ(),
-		"PATH="+f.dir,
-		"FAKE_ACTION_LOG="+f.actionLog,
-		"FAKE_LAUNCH_LOG="+f.launchLog,
-		"FAKE_COUNT_FILE="+f.countFile,
-		"FAKE_WINDOWS_1="+first,
-		"FAKE_WINDOWS_2="+second,
-		"FAKE_WORKSPACES="+workspaces,
-	)
+	cmd.Env = []string{
+		"HOME=" + os.Getenv("HOME"),
+		"PATH=" + f.dir + ":" + os.Getenv("PATH"),
+		"XDG_RUNTIME_DIR=" + f.dir,
+		"FAKE_ACTION_LOG=" + f.actionLog,
+		"FAKE_LAUNCH_LOG=" + f.launchLog,
+		"FAKE_POLICY_LOG=" + f.policyLog,
+		"FAKE_COUNT_FILE=" + f.countFile,
+		"FAKE_WINDOWS_1=" + first,
+		"FAKE_WINDOWS_2=" + second,
+		"FAKE_WORKSPACES=" + workspaces,
+	}
 	cmd.Env = append(cmd.Env, extraEnv...)
 	return cmd.CombinedOutput()
 }
@@ -102,6 +134,41 @@ func cleanState(t *testing.T, selector string) {
 	for _, path := range []string{trackerStatePath(selector), cycleStatePath(selector)} {
 		_ = os.Remove(path)
 		t.Cleanup(func() { _ = os.Remove(path) })
+	}
+}
+
+func TestJumpHyprlandFocusesByAddress(t *testing.T) {
+	selector := uniqueSelector(t, "hypr")
+	cleanState(t, selector)
+	dir := t.TempDir()
+	log := filepath.Join(dir, "actions")
+	shell, err := exec.LookPath("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeExecutable(t, filepath.Join(dir, "hyprctl"), "#!"+shell+"\n"+`printf '%s\n' "$*" >> "$FAKE_ACTION_LOG"
+if [[ "$*" == "-j clients" ]]; then
+  printf '[{"address":"0x1","class":"'"$FAKE_CLASS"'","focusHistoryID":0},{"address":"0x2","class":"'"$FAKE_CLASS"'","focusHistoryID":1}]'
+elif [[ "$*" == "-j activewindow" ]]; then
+  printf '{"address":"0x1"}'
+fi
+`)
+	cmd := exec.Command(testBinary, "niri-jump-or-exec", selector, "unused")
+	cmd.Env = append(os.Environ(),
+		"PATH="+dir,
+		"HYPRLAND_INSTANCE_SIGNATURE=test",
+		"FAKE_ACTION_LOG="+log,
+		"FAKE_CLASS="+selector,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("run failed: %v: %s", err, output)
+	}
+	data, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(data), "eval hl.dispatch(hl.dsp.focus({ window = \"address:0x2\" }))\n") {
+		t.Fatalf("actions:\n%s", data)
 	}
 }
 
@@ -203,6 +270,30 @@ func TestJumpNoMatchStartsSplitCommand(t *testing.T) {
 	}
 	if _, err := os.Stat(cycleStatePath(selector)); !os.IsNotExist(err) {
 		t.Fatalf("no-match launch wrote cycle state: %v", err)
+	}
+}
+
+func TestJumpDeckLaunchUsesSharedWorkScope(t *testing.T) {
+	selector := uniqueSelector(t, "deck")
+	cleanState(t, selector)
+	f := newFakeDesktop(t)
+	if output, err := f.run(t, "[]", "[]", "[]", []string{"HYPR_CANVAS_PROFILE=deck"}, selector, "launcher alpha beta"); err != nil {
+		t.Fatalf("run failed: %v: %s", err, output)
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		data, err := os.ReadFile(f.policyLog)
+		if err == nil {
+			got := string(data)
+			if !strings.Contains(got, "--slice=deck-work.slice -- launcher alpha beta") {
+				t.Fatalf("policy args %q", got)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("shared launch policy did not run")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

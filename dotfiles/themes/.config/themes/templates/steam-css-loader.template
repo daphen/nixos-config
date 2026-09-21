@@ -1,0 +1,65 @@
+:root {
+  --dotfiles-background: {{background.primary}};
+  --dotfiles-surface: {{background.surface1}};
+  --dotfiles-hover: {{background.surface2}};
+  --dotfiles-selection: {{background.selection}};
+  --dotfiles-foreground: {{foreground.primary}};
+  --dotfiles-muted: {{foreground.secondary}};
+  --dotfiles-accent: {{semantic.cursor}};
+}
+
+[class*="gamepadui_BasicHome_"],
+[class*="gamepadhome_TabbedContent_"],
+[class*="gamepadlibrary_GamepadLibrary_"],
+[class*="basicappdetailssectionstyler_AppDetailsRoot_"],
+[class*="gamepadsearch_GamepadSearch_"],
+[class*="downloads_DownloadsPage_"],
+[class*="gamepadpagedsettings_PagedSettingDialog_ContentColumn_"],
+[class*="gamepadpagedsettings_PagedSettingsDialog_PageListColumn_"],
+[class*="quickaccessmenu_QuickAccessMenu_"],
+[class*="quickaccessmenu_Title_"],
+[class*="mainmenu_Menu_"] {
+  background: var(--dotfiles-background) !important;
+  color: var(--dotfiles-foreground) !important;
+}
+
+.DialogContent,
+[class*="gamepaddialog_GamepadDialogContent_"],
+[class*="quickaccessmenu_Tab_"] {
+  background: var(--dotfiles-surface) !important;
+  color: var(--dotfiles-foreground) !important;
+}
+
+.DialogHeader,
+.DialogLabel {
+  color: var(--dotfiles-foreground) !important;
+}
+
+.DialogBodyText,
+.DialogLabelExplainer {
+  color: var(--dotfiles-muted) !important;
+}
+
+.DialogButton {
+  background: var(--dotfiles-surface) !important;
+  color: var(--dotfiles-foreground) !important;
+}
+
+.DialogButton:hover {
+  background: var(--dotfiles-hover) !important;
+}
+
+[class*="quickaccessmenu_Tab_"][class*="quickaccessmenu_Selected_"] {
+  background: var(--dotfiles-selection) !important;
+}
+
+.gpfocus,
+.DialogButton:focus-visible {
+  outline: 2px solid var(--dotfiles-accent) !important;
+  outline-offset: 2px;
+}
+
+.DialogButton.gpfocus,
+.DialogButton:focus-visible {
+  background: var(--dotfiles-selection) !important;
+}

@@ -19,39 +19,9 @@ if status is-interactive
     alias tt='toggle_theme'
 end
 
-# Always apply themes (for both interactive and non-interactive sessions)
-# Load theme from centralized system if available, otherwise fallback to direct detection
-if test -f ~/.config/themes/generated/fish/dark.theme -a -f ~/.config/themes/generated/fish/light.theme
-    # Use centralized theme system
-    # Check theme from file (created by theme toggle system)
-    set -l system_theme "dark"
-    if test -f ~/.config/theme_mode
-        set system_theme (cat ~/.config/theme_mode)
-    end
-
-    if test "$system_theme" = "dark"
-        source ~/.config/themes/generated/fish/dark.theme
-        set -g THEME_MODE "dark"
-    else
-        source ~/.config/themes/generated/fish/light.theme
-        set -g THEME_MODE "light"
-    end
-else
-    # Fallback to manual theme functions
-    set -l system_theme "dark"
-    if test -f ~/.config/theme_mode
-        set system_theme (cat ~/.config/theme_mode)
-    end
-
-    if test "$system_theme" = "dark"
-        set_dark_theme
-    else
-        set_light_theme
-    end
-end
-
-# Disabled automatic theme signal handler to prevent crashes
-# Use manual theme switching instead: toggle_theme, set_dark_theme, set_light_theme
+set -eg GTK_THEME
+set -eU GTK_THEME
+sync_theme
 
 if test -f ~/.config/fish/secrets.fish
   source ~/.config/fish/secrets.fish
@@ -117,7 +87,6 @@ alias lsp-watch='lsp-guard'
 alias lsp-kill='lsp-guard kill'
 
 alias drag='dragon-drop -x -T -i -s 48'
-set -gx GTK_THEME (if test -f ~/.config/theme_mode; and test (cat ~/.config/theme_mode) = dark; echo "Adwaita:dark"; else; echo "Adwaita"; end)
 
 # The next line updates PATH for the Google Cloud SDK.
 if [ -f '/home/daphen/google-cloud-sdk/path.fish.inc' ]; . '/home/daphen/google-cloud-sdk/path.fish.inc'; end

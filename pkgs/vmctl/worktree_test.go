@@ -14,49 +14,6 @@ import (
 	"time"
 )
 
-func TestWorktreePassesCABundleToNewTmuxSession(t *testing.T) {
-	for _, supplied := range []string{"", "/trusted/custom CA's.pem"} {
-		t.Run(supplied, func(t *testing.T) {
-			t.Setenv("NODE_EXTRA_CA_CERTS", supplied)
-			home, path, _ := worktreeFixture(t, `
-case "$*" in
-  *"tmux new-session"*) eval "script=\${$#}"; /bin/sh -c "$script"; exit 23 ;;
-esac
-`)
-			tmux := `#!/bin/sh
-case "$1" in
-  has-session) exit 1 ;;
-  new-session)
-    ca=not-forwarded
-    while [ "$#" -gt 0 ]; do
-      if [ "$1" = -e ]; then shift; case "$1" in NODE_EXTRA_CA_CERTS=*) ca=${1#*=} ;; esac; fi
-      shift
-    done
-    printf '%s' "$ca" > "$HOME/launch-ca"
-    exit 23 ;;
-esac
-`
-			if err := os.WriteFile(filepath.Join(path, "tmux"), []byte(tmux), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, nil)
-			defer listener.Close()
-			result := runWorktreeBinaryArgs(t, home, path, "--app", "EVERY-44")
-			if result.err == nil || !strings.Contains(result.stderr, "remote dev startup failed") {
-				t.Fatalf("fixture must stop after capturing tmux startup: %+v", result)
-			}
-			got, err := os.ReadFile(filepath.Join(home, "launch-ca"))
-			want := supplied
-			if want == "" {
-				want = "/etc/ssl/certs/ca-certificates.crt"
-			}
-			if err != nil || string(got) != want {
-				t.Fatalf("tmux CA=%q, want %q: %v", got, want, err)
-			}
-		})
-	}
-}
-
 func TestWorktreeRequiresCockpitSocket(t *testing.T) {
 	home, path, log := worktreeFixture(t, "")
 	result := runWorktreeBinary(t, home, path, "EVERY-42")
@@ -166,12 +123,154 @@ esac
 		t.Errorf("host warning leaked: %s", result.stdout)
 	}
 	calls := readLog(t, log)
-	inOrder(t, calls, "ssh|-o StrictHostKeyChecking=no", "git worktree add", "ssh|-o StrictHostKeyChecking=no", "tmux new-session",
+	var tunnelCall string
+	for _, call := range strings.Split(calls, "\n") {
+		if strings.HasPrefix(call, "systemd-run|") {
+			tunnelCall = call
+		}
+	}
+	if !strings.Contains(tunnelCall, "/run/current-system/sw/bin/ssh -N -o AddressFamily=any -o BatchMode=yes -o ConnectTimeout=25") {
+		t.Errorf("persistent tunnel missing address-family override or ConnectTimeout:\n%s", tunnelCall)
+	}
+	inOrder(t, calls, "ssh|-o StrictHostKeyChecking=no", "git -C '/home/tester/src/lovable' worktree add", "ssh|-o StrictHostKeyChecking=no", "tmux new-session",
 		"vm-sync|--prepare EvErY-44", "git|-C "+mirror+" rev-parse HEAD")
-	for _, want := range []string{"nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous", "@playwright/mcp@latest", "PLAYWRIGHT_BROWSERS_PATH", "grep -qx '.pi/'", fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", web, web), fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", api, api)} {
+	for _, want := range []string{"show-ref --verify --quiet 'refs/heads/daphen/every-44'", "worktree add '/home/tester/src/lovable-every-44' 'daphen/every-44'", "worktree add -b 'daphen/every-44' '/home/tester/src/lovable-every-44' origin/main", "nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous", `"@playwright/mcp@0.0.80"`, `"--executable-path", "/nix/store/4zn3d0v19mhpw5k3mn5l684v4y79na7k-chromium-143.0.7499.169/bin/chromium"`, `"env": { "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1" }`, "grep -qx '.pi/'", fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", web, web), fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", api, api)} {
 		if !strings.Contains(calls, want) {
 			t.Errorf("calls missing %q:\n%s", want, calls)
 		}
+	}
+	for _, stale := range []string{"WORKTRUNK_WORKTREE_PATH", "wt -C '/home/tester/src/lovable'", "@playwright/mcp@latest", "PLAYWRIGHT_BROWSERS_PATH", "6n74mm97b8f8gfra77hiz9q4ffiianpy-playwright-browsers"} {
+		if strings.Contains(calls, stale) {
+			t.Errorf("calls contain stale Playwright value %q:\n%s", stale, calls)
+		}
+	}
+}
+
+func TestWorktreePassesCABundleToNewTmuxSession(t *testing.T) {
+	for _, supplied := range []string{"", "/trusted/custom CA's.pem"} {
+		t.Run(supplied, func(t *testing.T) {
+			t.Setenv("NODE_EXTRA_CA_CERTS", supplied)
+			home, path, _ := worktreeFixture(t, `
+case "$*" in
+  *"tmux new-session"*) eval "script=\${$#}"; /bin/sh -c "$script"; exit 23 ;;
+esac
+`)
+			tmux := `#!/bin/sh
+case "$1" in
+  has-session) exit 1 ;;
+  new-session)
+    ca=not-forwarded
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = -e ]; then shift; case "$1" in NODE_EXTRA_CA_CERTS=*) ca=${1#*=} ;; esac; fi
+      shift
+    done
+    printf '%s' "$ca" > "$HOME/launch-ca"
+    exit 23 ;;
+esac
+`
+			if err := os.WriteFile(filepath.Join(path, "tmux"), []byte(tmux), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, nil)
+			defer listener.Close()
+			result := runWorktreeBinaryArgs(t, home, path, "--app", "EVERY-44")
+			if result.err == nil || !strings.Contains(result.stderr, "remote dev startup failed") {
+				t.Fatalf("fixture must stop after capturing tmux startup: %+v", result)
+			}
+			got, err := os.ReadFile(filepath.Join(home, "launch-ca"))
+			want := supplied
+			if want == "" {
+				want = "/etc/ssl/certs/ca-certificates.crt"
+			}
+			if err != nil || string(got) != want {
+				t.Fatalf("tmux CA=%q, want %q: %v", got, want, err)
+			}
+		})
+	}
+}
+
+func TestWorktreeSurfacesCheckoutAndBootFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name, match, diagnostic, want, forbidden string
+	}{
+		{"checkout", " worktree add", "worktree disk full", "worktree disk full", "tmux new-session"},
+		{"checkout empty output", "show-ref --verify", "", "exit status 7", "tmux new-session"},
+		{"boot", "tmux new-session", "tmux rejected cwd", "tmux rejected cwd", "vm-sync|"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			script := `
+name=${0##*/}; echo "$name|$*" >> "$VMCTL_LOG"
+case "$name|$*" in
+  "ssh|"*"` + tc.match + `"*) echo '` + tc.diagnostic + `' >&2; exit 7 ;;
+esac
+`
+			home, path, log := worktreeFixture(t, script)
+			listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, nil)
+			defer listener.Close()
+			result := runWorktreeBinaryArgs(t, home, path, "--app", "EVERY-54")
+			calls := readLog(t, log)
+			if result.err == nil || !strings.Contains(result.stderr, tc.want) || strings.Contains(calls, tc.forbidden) {
+				t.Fatalf("result=%+v calls=%s", result, calls)
+			}
+		})
+	}
+}
+
+func TestWorktreeSetupHandlesNewBranchExistingBranchAndCheckout(t *testing.T) {
+	home, path, log := worktreeFixture(t, `
+name=${0##*/}; echo "$name|$*" >> "$VMCTL_LOG"
+[ "$name" = vm-sync ] && exit 9
+exit 0
+`)
+	listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, nil)
+	defer listener.Close()
+	_ = runWorktreeBinary(t, home, path, "EVERY-55")
+	calls := readLog(t, log)
+	start, end := strings.Index(calls, "if [ -d '"), strings.Index(calls, "\nvm-sync|")
+	if start < 0 || end < start {
+		t.Fatalf("setup shell not captured:\n%s", calls)
+	}
+	remote, gitLog := filepath.Join(home, "remote", "lovable"), filepath.Join(home, "git.log")
+	setup := strings.ReplaceAll(calls[start:end], "/home/tester/src/lovable", remote)
+	git := `#!/bin/sh
+printf '%s\n' "$*" >> "$GIT_LOG"
+case "$*" in
+  *"show-ref"*) [ "${BRANCH_EXISTS:-}" = yes ] ;;
+  *"worktree add"*) mkdir -p "$REMOTE_WT"; [ "${FAIL_ADD:-}" != true ] || { echo partial-checkout-failure >&2; exit 7; } ;;
+esac
+`
+	_ = os.WriteFile(filepath.Join(path, "git"), []byte(git), 0o755)
+	for _, tc := range []struct {
+		name, branch, want string
+		checkout, fail     bool
+	}{
+		{"existing checkout", "", "", true, false},
+		{"new branch", "", "worktree add -b daphen/every-55 ", false, false},
+		{"existing branch", "yes", "worktree add " + remote + "-every-55 daphen/every-55", false, false},
+		{"partial checkout failure", "", "", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_ = os.RemoveAll(remote + "-every-55")
+			if tc.checkout {
+				_ = os.MkdirAll(remote+"-every-55", 0o755)
+			}
+			cmd := exec.Command("/bin/sh", "-c", setup)
+			cmd.Env = append(os.Environ(), "PATH="+path+":"+os.Getenv("PATH"), "GIT_LOG="+gitLog, "REMOTE_WT="+remote+"-every-55", "BRANCH_EXISTS="+tc.branch, fmt.Sprintf("FAIL_ADD=%t", tc.fail))
+			output, err := cmd.CombinedOutput()
+			if tc.fail {
+				if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 7 || !strings.Contains(string(output), "partial-checkout-failure") || !pathExists(remote+"-every-55") {
+					t.Fatalf("partial checkout failure lost: err=%v output=%s", err, output)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("setup failed: %v: %s", err, output)
+			}
+			got, _ := os.ReadFile(gitLog)
+			if tc.want == "" && len(got) != 0 || tc.want != "" && !strings.Contains(string(got), tc.want) {
+				t.Fatalf("git calls=%q want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -260,6 +359,40 @@ func TestWorktreeRefusesRegisteredWrongCwdBeforeRemoteCommands(t *testing.T) {
 	}
 }
 
+func TestWorktreeMirrorHeadIgnoresSSHWarningAndPreservesSSHFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name, remoteResult, want string
+	}{
+		{"warning with matching head", "echo 'Warning: Permanently added fake' >&2; echo 0123456789abcdef0123456789abcdef01234567", "source mirror ready"},
+		{"failure diagnostic", "echo 'remote git diagnostic' >&2; exit 7", "remote git diagnostic"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			script := `
+name=${0##*/}; echo "$name|$*" >> "$VMCTL_LOG"
+case "$name|$*" in
+  "ssh|"*" rev-parse HEAD"*) ` + tc.remoteResult + ` ;;
+  "git|"*" rev-parse HEAD") echo 0123456789abcdef0123456789abcdef01234567 ;;
+  "vm-sync|"*) exit 0 ;;
+esac
+`
+			home, path, log := worktreeFixture(t, script)
+			makeWorktreeMirror(t, home, "lovable.daphen-every-53")
+			listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, make(chan map[string]any, 1))
+			defer listener.Close()
+			result := runWorktreeBinary(t, home, path, "EVERY-53")
+			if !strings.Contains(result.stdout, tc.want) {
+				t.Fatalf("result=%+v calls=%s", result, readLog(t, log))
+			}
+			if tc.name == "warning with matching head" && strings.Contains(result.stdout, "Warning: Permanently") {
+				t.Fatalf("SSH warning contaminated the parsed head: %s", result.stdout)
+			}
+			if tc.name == "failure diagnostic" && strings.Contains(readLog(t, log), "process-compose-wt-") {
+				t.Fatalf("HTTP readiness ran after mirror verification failure:\n%s", readLog(t, log))
+			}
+		})
+	}
+}
+
 func TestWorktreeExistingGitDirWithSyncFailureIsNotMirrorReady(t *testing.T) {
 	script := `
 name=${0##*/}; echo "$name|$*" >> "$VMCTL_LOG"
@@ -336,6 +469,403 @@ func TestWorktreeTunnelTeardownUsesOwnedUnitOnly(t *testing.T) {
 	if result.err != nil || !strings.Contains(result.stdout, "agent, mirror, and remote dev slice were left running") || !strings.Contains(readLog(t, log), "systemctl|--user stop every-51-dev-tunnel.service") {
 		t.Fatalf("result=%+v calls=%s", result, readLog(t, log))
 	}
+}
+
+func TestReapUsesNativeGitAndArchivesEvidenceWithoutDeletingBranches(t *testing.T) {
+	t.Setenv("COCKPIT_AGENT_PROFILE", "lovable-orchestrator")
+	f := newRetirementFixture(t, "secret/\n")
+	os.MkdirAll(filepath.Join(f.remoteWT, "secret"), 0o700)
+	os.WriteFile(filepath.Join(f.remoteWT, "secret", "evidence.md"), []byte("durable evidence\n"), 0o600)
+	shared := filepath.Join(f.home, "shared-cache")
+	os.MkdirAll(shared, 0o700)
+	os.WriteFile(filepath.Join(shared, "keep"), []byte("shared\n"), 0o600)
+	os.Symlink(shared, filepath.Join(f.remoteWT, "node_modules", "shared"))
+	result := f.run(t, "--reap")
+	if result.err != nil {
+		t.Fatalf("result=%+v\ncalls=%s", result, readLog(t, f.log))
+	}
+	if pathExists(f.remoteWT) || pathExists(f.mirror) {
+		t.Fatalf("remote=%t mirror=%t credential=%t", pathExists(f.remoteWT), pathExists(f.mirror), pathExists(filepath.Join(f.mirror, ".pi/mcp.json")))
+	}
+	if got := strings.TrimSpace(runGit(t, f.remoteRepo, "rev-parse", "daphen/every-77")); got != f.head {
+		t.Fatalf("branch moved: %s != %s", got, f.head)
+	}
+	archives, _ := filepath.Glob(filepath.Join(f.home, ".local/state/cockpit/retired/*/evidence.tar.gz"))
+	if len(archives) != 2 {
+		t.Fatalf("archives: %v", archives)
+	}
+	found := false
+	for _, archive := range archives {
+		info, _ := os.Stat(archive)
+		if info.Mode().Perm()&0o077 != 0 {
+			t.Fatal("archive permissions expose credentials")
+		}
+		data, err := exec.Command("tar", "-xOf", archive, ".pi/mcp.json").Output()
+		if err != nil || string(data) != "protected\n" {
+			t.Fatalf("credentials not preserved: %s %v", data, err)
+		}
+		listing, _ := exec.Command("tar", "-tf", archive).Output()
+		if strings.Contains(string(listing), "node_modules/pkg/cache") || strings.Contains(string(listing), ".devenv/state/go/bin/cache") {
+			t.Fatal("cache was archived instead of reclaimed")
+		}
+		found = found || strings.Contains(string(listing), "secret/evidence.md")
+	}
+	if !found || string(mustRead(t, filepath.Join(shared, "keep"))) != "shared\n" {
+		t.Fatal("evidence/shared cache not preserved")
+	}
+	calls := readLog(t, f.log)
+	for _, forbidden := range []string{"worktree remove --force", "rm -rf"} {
+		if strings.Contains(calls, forbidden) {
+			t.Fatalf("retirement used forbidden %q:\n%s", forbidden, calls)
+		}
+	}
+	if !strings.Contains(result.stdout, "confirmed VM worktree removed with native Git") || !strings.Contains(result.stdout, "REAP complete") {
+		t.Fatalf("completion was not visible: %s", result.stdout)
+	}
+
+	_ = os.Remove(filepath.Join(f.home, "run/agentd-work.sock"))
+	rerun := f.run(t, "--reap")
+	if rerun.err != nil || !strings.Contains(rerun.stdout, "already absent") {
+		t.Fatalf("rerun=%+v", rerun)
+	}
+}
+
+func TestNativeOrchestratorReapsFromOutsideTarget(t *testing.T) {
+	f := newRetirementFixture(t, "")
+	t.Setenv("COCKPIT_AGENT_PROFILE", "lovable-orchestrator")
+	repo := filepath.Join(f.home, "src/lovable")
+	os.MkdirAll(filepath.Dir(repo), 0o755)
+	runGit(t, f.home, "clone", f.remoteRepo, repo)
+	wt := repo + "-every-77"
+	runGit(t, repo, "worktree", "add", "-b", "daphen/every-77", wt, "origin/daphen/every-77")
+	listener, done := worktreeSocket(t, f.home, `{"sessions":[]}`, nil)
+	defer closeRetirementRoster(listener, done)
+	result := runWorktreeBinaryAt(t, f.home, f.path, repo, "--native", "--reap", "EVERY-77")
+	if result.err != nil || pathExists(wt) || !pathExists(f.mirror) || !strings.Contains(result.stdout, "REAP complete") {
+		t.Fatalf("result=%+v", result)
+	}
+	if strings.TrimSpace(runGit(t, repo, "rev-parse", "daphen/every-77")) != f.head {
+		t.Fatal("ticket branch was not preserved")
+	}
+	for _, forbidden := range []string{"ssh|", "mutagen|", "systemctl|"} {
+		if strings.Contains(readLog(t, f.log), forbidden) {
+			t.Fatal(readLog(t, f.log))
+		}
+	}
+}
+
+func TestNativeVMResumesRetainedCheckoutWithoutDesktopTools(t *testing.T) {
+	f := newRetirementFixture(t, "")
+	repo := filepath.Join(f.home, "src/lovable")
+	os.MkdirAll(filepath.Dir(repo), 0o755)
+	runGit(t, f.home, "clone", f.remoteRepo, repo)
+	wt := repo + "-every-77"
+	runGit(t, repo, "worktree", "add", "-b", "daphen/every-77", wt, "origin/daphen/every-77")
+	head := strings.TrimSpace(runGit(t, wt, "rev-parse", "HEAD"))
+	for _, name := range []string{"ssh", "mutagen", "wt", "vm-sync", "systemd-run"} {
+		os.Remove(filepath.Join(f.path, name))
+	}
+	os.Remove(filepath.Join(f.home, ".local/bin/vm-sync"))
+	messages := make(chan map[string]any, 2)
+	listener, done := worktreeSocket(t, f.home, `{"sessions":[]}`, messages)
+	result := runWorktreeBinaryArgs(t, f.home, f.path, "--native", "EVERY-77")
+	closeRetirementRoster(listener, done)
+	if result.err != nil {
+		t.Fatalf("native launch=%+v", result)
+	}
+	if got := strings.TrimSpace(runGit(t, wt, "rev-parse", "HEAD")); got != head {
+		t.Fatalf("retained HEAD changed: %s", got)
+	}
+	if dirty := strings.TrimSpace(runGit(t, wt, "status", "--porcelain")); dirty != "" {
+		t.Fatal(dirty)
+	}
+	request := <-messages
+	if request["type"] != "spawn" || request["cwd"] != wt || request["profile"] != "lovable-worker" {
+		t.Fatal(request)
+	}
+	if strings.Contains(result.stdout, "source mirror") || pathExists(filepath.Join(f.home, "work/lovable.daphen-every-77/.devenv")) {
+		t.Fatal(result.stdout)
+	}
+	if !strings.Contains(result.stdout, "orchestrator runs vm-wt --reap EVERY-77") || strings.Contains(result.stdout, "vm-wt --teardown") {
+		t.Fatal("incorrect retirement guidance: " + result.stdout)
+	}
+}
+
+func TestRetirementRejectsNonOrchestratorBeforeContactingDaemon(t *testing.T) {
+	for _, key := range []string{"COCKPIT_AGENT_PROFILE", "HEIDR_AGENT_PROFILE"} {
+		for _, profile := range []string{"lovable-worker", "lovable-watcher", "lovable-reviewer", "coding"} {
+			t.Run(key+"/"+profile, func(t *testing.T) {
+				f := newRetirementFixture(t, "")
+				t.Setenv(key, profile)
+				for _, action := range []string{"--off", "--reap"} {
+					result := runWorktreeBinaryArgs(t, f.home, f.path, "--native", action, "EVERY-77")
+					if result.err == nil || !strings.Contains(result.stderr, "orchestrator owns ticket shutdown") || readLog(t, f.log) != "" || !pathExists(f.remoteWT) {
+						t.Fatalf("%s: result=%+v calls=%s", action, result, readLog(t, f.log))
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestRetirementRejectsOwnCwdBeforeContactingDaemon(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		for _, location := range []string{"root", "nested", "symlink"} {
+			t.Run(fmt.Sprintf("native=%t/%s", native, location), func(t *testing.T) {
+				f := newRetirementFixture(t, "")
+				t.Setenv("COCKPIT_AGENT_PROFILE", "lovable-orchestrator")
+				cwd := f.mirror
+				if native {
+					cwd = filepath.Join(f.home, "src/lovable-every-77")
+				}
+				if location == "nested" {
+					cwd = filepath.Join(cwd, "nested")
+				}
+				if err := os.MkdirAll(cwd, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if location == "symlink" {
+					link := filepath.Join(f.home, "alias")
+					if err := os.Symlink(cwd, link); err != nil {
+						t.Fatal(err)
+					}
+					cwd = link
+				}
+				for _, action := range []string{"--off", "--reap"} {
+					args := []string{action, "EVERY-77"}
+					if native {
+						args = append([]string{"--native"}, args...)
+					}
+					result := runWorktreeBinaryAt(t, f.home, f.path, cwd, args...)
+					if result.err == nil || !strings.Contains(result.stderr, "run from outside") || readLog(t, f.log) != "" || !pathExists(cwd) {
+						t.Fatalf("%s: result=%+v calls=%s", action, result, readLog(t, f.log))
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestTurnOffRetainsWorktreesAndCaches(t *testing.T) {
+	f := newRetirementFixture(t, "")
+	result := f.run(t, "--off")
+	if result.err != nil || !pathExists(f.remoteWT) || !pathExists(f.mirror) || !pathExists(filepath.Join(f.remoteWT, "node_modules/pkg/cache")) {
+		t.Fatalf("off=%+v", result)
+	}
+	if !strings.Contains(readLog(t, f.log), "runtime|") || strings.Contains(readLog(t, f.log), "worktree remove") {
+		t.Fatal(readLog(t, f.log))
+	}
+}
+
+func TestReapStopsAtRuntimeFailure(t *testing.T) {
+	f := newRetirementFixture(t, "")
+	t.Setenv("RUNTIME_FAIL", "7")
+	result := f.run(t, "--reap")
+	if result.err == nil || !pathExists(f.remoteWT) || !pathExists(f.mirror) || !strings.Contains(result.stderr, "shutdown not confirmed") {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestTurnOffConfirmsNamedAgentStop(t *testing.T) {
+	f := newRetirementFixture(t, "")
+	listener, err := net.Listen("unix", filepath.Join(f.home, "run/agentd-work.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	done := make(chan bool, 1)
+	go func() {
+		for i := 0; i < 2; i++ {
+			conn, err := listener.Accept()
+			if err != nil {
+				done <- false
+				return
+			}
+			fmt.Fprintln(conn, `{"type":"roster","sessions":[{"name":"every-77","cwd":"/home/tester/src/lovable-every-77","profile":"lovable-worker"}]}`)
+			if i == 1 {
+				var command map[string]string
+				if json.NewDecoder(conn).Decode(&command) != nil || command["type"] != "stop" || command["session"] != "every-77" {
+					conn.Close()
+					done <- false
+					return
+				}
+				fmt.Fprintln(conn, `{"type":"roster","sessions":[]}`)
+			}
+			conn.Close()
+		}
+		done <- true
+	}()
+	result := runWorktreeBinaryArgs(t, f.home, f.path, "--off", "EVERY-77")
+	if result.err != nil || !<-done || !strings.Contains(result.stdout, "session stopped") {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestRetireWorktreePreservesDetachedHead(t *testing.T) {
+	f := newRetirementFixture(t, "")
+	runGit(t, f.remoteWT, "checkout", "--detach", f.head)
+	result := f.run(t, "--reap")
+	keep := "retired/every-77-" + f.head[:12]
+	if result.err != nil || strings.TrimSpace(runGit(t, f.remoteRepo, "rev-parse", keep)) != f.head {
+		t.Fatalf("result=%+v keep=%s", result, keep)
+	}
+}
+
+func TestRetireWorktreeBlocksOwnersAndValuableData(t *testing.T) {
+	t.Run("roster owner", func(t *testing.T) {
+		f := newRetirementFixture(t, "")
+		roster := `{"sessions":[{"name":"other-owner","profile":"lovable-worker","cwd":"/home/tester/src/lovable-every-77"}]}`
+		listener, done := worktreeSocket(t, f.home, roster, nil)
+		result := runWorktreeBinaryArgs(t, f.home, f.path, "--reap", "EVERY-77")
+		closeRetirementRoster(listener, done)
+		if result.err == nil || !strings.Contains(result.stderr, "still owns") || !pathExists(f.remoteWT) || readLog(t, f.log) != "" {
+			t.Fatalf("result=%+v calls=%s", result, readLog(t, f.log))
+		}
+	})
+	for _, tc := range []struct{ name, setup, want string }{
+		{"tracked", "tracked", "tracked changes"},
+		{"untracked", "untracked", "untracked data"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newRetirementFixture(t, "secret/\nbazel-*/\n")
+			switch tc.setup {
+			case "tracked":
+				os.WriteFile(filepath.Join(f.remoteWT, "README.md"), []byte("changed\n"), 0o644)
+			case "untracked":
+				os.WriteFile(filepath.Join(f.remoteWT, "notes.md"), []byte("valuable\n"), 0o600)
+
+			}
+			result := f.run(t, "--reap")
+			if result.err == nil || !strings.Contains(result.stdout+result.stderr, tc.want) || !pathExists(f.remoteWT) {
+				t.Fatalf("result=%+v", result)
+			}
+		})
+	}
+}
+
+func TestRetireWorktreeBlocksWrongSyncAndActiveCwd(t *testing.T) {
+	t.Run("wrong tunnel endpoint", func(t *testing.T) {
+		f := newRetirementFixture(t, "")
+		t.Setenv("TUNNEL_EXEC", "ssh -N -L 127.0.0.1:42:127.0.0.1:42 other@other-host")
+		result := f.run(t, "--reap")
+		if result.err == nil || !strings.Contains(result.stderr, "not the expected VM loopback tunnel") || !pathExists(f.remoteWT) {
+			t.Fatalf("result=%+v", result)
+		}
+	})
+	t.Run("wrong sync endpoint", func(t *testing.T) {
+		f := newRetirementFixture(t, "")
+		t.Setenv("MUTAGEN_JSON", `[{"name":"vmwt-every-77","alpha":{"protocol":"ssh","user":"other","host":"test-host","path":"/home/tester/src/lovable-every-77"},"beta":{"protocol":"local","path":"`+f.mirror+`"}}]`)
+		result := f.run(t, "--reap")
+		if result.err == nil || !strings.Contains(result.stderr, "exact expected endpoints") || !pathExists(f.remoteWT) {
+			t.Fatalf("result=%+v", result)
+		}
+	})
+	t.Run("active cwd", func(t *testing.T) {
+		f := newRetirementFixture(t, "")
+		proc := exec.Command("/bin/sh", "-c", "cd \"$1\" && exec sleep 30", "sh", f.remoteWT)
+		if err := proc.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = proc.Process.Kill(); _, _ = proc.Process.Wait() }()
+		result := f.run(t, "--reap")
+		if result.err == nil || !strings.Contains(result.stdout+result.stderr, "active CWD or file") || !pathExists(f.remoteWT) {
+			t.Fatalf("result=%+v", result)
+		}
+	})
+}
+
+type retirementFixture struct {
+	home, path, log, remoteRepo, remoteWT, mirror, head string
+}
+
+func (f retirementFixture) run(t *testing.T, action string) result {
+	t.Helper()
+	listener, done := worktreeSocket(t, f.home, `{"sessions":[]}`, nil)
+	defer closeRetirementRoster(listener, done)
+	return runWorktreeBinaryArgs(t, f.home, f.path, action, "EVERY-77")
+}
+
+func closeRetirementRoster(listener net.Listener, done <-chan struct{}) {
+	_ = listener.Close()
+	<-done
+}
+
+func newRetirementFixture(t *testing.T, extraIgnore string) retirementFixture {
+	t.Helper()
+	home, path, log := worktreeFixture(t, "")
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(filepath.Join(path, "git"))
+	if err := os.Symlink(gitPath, filepath.Join(path, "git")); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"sed", "grep", "sha256sum", "cut", "readlink", "sh", "tar", "mkdir", "mktemp", "head", "awk", "wt", "find", "cat", "gzip"} {
+		command, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(command, filepath.Join(path, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	remoteRepo := filepath.Join(home, "remote", "lovable")
+	remoteWT := filepath.Join(home, "remote", "lovable-every-77")
+	if err := os.MkdirAll(remoteRepo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, remoteRepo, "init", "-b", "main")
+	runGit(t, remoteRepo, "config", "user.email", "test@example.com")
+	runGit(t, remoteRepo, "config", "user.name", "Test")
+	ignore := ".pi/\n.mcp.json\nnode_modules/\n.devenv/\n.wrangler/\n" + extraIgnore
+	os.WriteFile(filepath.Join(remoteRepo, ".gitignore"), []byte(ignore), 0o644)
+	os.WriteFile(filepath.Join(remoteRepo, "README.md"), []byte("fixture\n"), 0o644)
+	runGit(t, remoteRepo, "add", ".")
+	runGit(t, remoteRepo, "commit", "-m", "fixture")
+	runGit(t, remoteRepo, "worktree", "add", "-b", "daphen/every-77", remoteWT, "main")
+	head := strings.TrimSpace(runGit(t, remoteWT, "rev-parse", "HEAD"))
+	localRepo := filepath.Join(home, "work", "lovable")
+	if err := os.MkdirAll(filepath.Dir(localRepo), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, home, "clone", remoteRepo, localRepo)
+	mirror := filepath.Join(home, "work", "lovable.daphen-every-77")
+	runGit(t, localRepo, "worktree", "add", "-b", "daphen/every-77", mirror, "origin/daphen/every-77")
+	for _, root := range []string{remoteWT, mirror} {
+		os.MkdirAll(filepath.Join(root, ".pi"), 0o700)
+		os.WriteFile(filepath.Join(root, ".pi/mcp.json"), []byte("protected\n"), 0o600)
+		os.WriteFile(filepath.Join(root, ".mcp.json"), []byte("root-protected\n"), 0o600)
+	}
+	os.MkdirAll(filepath.Join(remoteWT, "node_modules/pkg"), 0o755)
+	os.WriteFile(filepath.Join(remoteWT, "node_modules/pkg/cache"), []byte("generated\n"), 0o644)
+	os.MkdirAll(filepath.Join(remoteWT, ".devenv/state"), 0o755)
+	os.WriteFile(filepath.Join(remoteWT, ".devenv/state/process-compose-wt-fixture.yaml"), []byte("generated\n"), 0o644)
+	os.MkdirAll(filepath.Join(remoteWT, ".devenv/state/go/bin"), 0o755)
+	os.WriteFile(filepath.Join(remoteWT, ".devenv/state/go/bin/cache"), []byte("compiled cache\n"), 0o644)
+	ssh := `#!/bin/sh
+printf 'ssh|%s\n' "$*" >> "$VMCTL_LOG"
+eval "script=\${$#}"
+script=$(printf '%s' "$script" | sed "s|/home/tester/src/lovable-every-77|$REMOTE_WT|g; s|/home/tester/src/lovable|$REMOTE_REPO|g")
+exec /bin/sh -c "$script"
+`
+	mutagen := `#!/bin/sh
+printf 'mutagen|%s\n' "$*" >> "$VMCTL_LOG"
+case "$*" in "sync list "*) printf '%s\n' "${MUTAGEN_JSON-[]}";; esac
+`
+	systemctl := `#!/bin/sh
+printf 'systemctl|%s\n' "$*" >> "$VMCTL_LOG"
+case "$*" in *"LoadState"*) [ -n "${TUNNEL_EXEC-}" ] && echo loaded || echo not-found;; *"ExecStart"*) echo "${TUNNEL_EXEC-}";; *"is-active"*) exit 1;; esac
+`
+	for name, script := range map[string]string{"ssh": ssh, "mutagen": mutagen, "systemctl": systemctl} {
+		if err := os.WriteFile(filepath.Join(path, name), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("REMOTE_REPO", remoteRepo)
+	t.Setenv("REMOTE_WT", remoteWT)
+	os.WriteFile(filepath.Join(home, ".local/bin/vm-slice-reaper"), []byte("#!/bin/sh\nprintf 'runtime|%s\\n' \"$*\" >> \"$VMCTL_LOG\"\nexit \"${RUNTIME_FAIL:-0}\"\n"), 0o755)
+	return retirementFixture{home, path, log, remoteRepo, remoteWT, mirror, head}
 }
 
 func matchingTunnelScript(web, api int) string {
@@ -433,7 +963,7 @@ func worktreeFixture(t *testing.T, body string) (string, string, string) {
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"git", "ssh", "direnv", "nohup", "vm-sync", "systemctl", "systemd-run", "ss"} {
+	for _, name := range []string{"git", "ssh", "mutagen", "direnv", "nohup", "vm-sync", "systemctl", "systemd-run", "ss"} {
 		if err := os.WriteFile(filepath.Join(path, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -507,7 +1037,17 @@ func runWorktreeBinary(t *testing.T, home, path, raw string) result {
 
 func runWorktreeBinaryArgs(t *testing.T, home, path string, args ...string) result {
 	t.Helper()
-	cmd := exec.Command(binary, append([]string{"worktree"}, args...)...)
+	return runWorktreeBinaryAt(t, home, path, "", args...)
+}
+
+func runWorktreeBinaryAt(t *testing.T, home, path, cwd string, args ...string) result {
+	t.Helper()
+	commandArgs := append([]string{"worktree"}, args...)
+	if len(args) > 0 && args[0] == "--native" {
+		commandArgs = append([]string{"--native", "worktree"}, args[1:]...)
+	}
+	cmd := exec.Command(binary, commandArgs...)
+	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "HOME="+home, "PATH="+path, "VMCTL_LOG="+filepath.Join(home, "calls.log"),
 		"XDG_RUNTIME_DIR="+filepath.Join(home, "run"), "COCKPIT_VM_USER=tester", "COCKPIT_VM_HOST=test-host")
 	var stdout, stderr strings.Builder

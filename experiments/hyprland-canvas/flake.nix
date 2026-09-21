@@ -65,9 +65,13 @@
         ];
       };
       canvasPackage = pkgs.hyprland;
+      guiutilsPackage = hyprland.inputs.hyprland-guiutils.packages.${system}.default;
       cmakeFlags = builtins.concatStringsSep " " canvasPackage.cmakeFlags;
     in {
-      packages.${system}.default = canvasPackage;
+      packages.${system} = {
+        default = canvasPackage;
+        guiutils = guiutilsPackage;
+      };
 
       devShells.${system}.default = pkgs.mkShell.override { stdenv = canvasPackage.stdenv; } {
         inputsFrom = [ canvasPackage ];

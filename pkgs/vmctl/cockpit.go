@@ -23,6 +23,8 @@ var cockpitRoleFiles = []string{
 	"skills/plan-ticket", "skills/watch-pr", "skills/review-pr", "skills/handoff",
 }
 
+const vmWorktreeWrapper = "#!/bin/sh\nexec \"$HOME/.local/bin/vmctl\" --native worktree \"$@\"\n"
+
 var remoteHashProgram = `import hashlib, pathlib, sys
 root = pathlib.Path.home() / '.pi' / 'agent'
 files = []
@@ -71,6 +73,9 @@ func runCockpit(a app, restart bool) error {
 	}
 	c.checkPiSkew()
 	if err := c.syncBundle(); err != nil {
+		return err
+	}
+	if err := c.syncLaunchers(); err != nil {
 		return err
 	}
 	if err := c.syncReaper(); err != nil {
@@ -148,35 +153,65 @@ func (c cockpitState) syncBundle() error {
 	return nil
 }
 
-func (c cockpitState) syncReaper() error {
-	data, err := os.ReadFile(c.reaper)
+func (c cockpitState) syncLaunchers() error {
+	executable, err := os.Executable()
 	if err != nil {
+		return fmt.Errorf("launcher sync failed: %w", err)
+	}
+	wrapper, err := os.CreateTemp("", "vm-wt-")
+	if err != nil {
+		return fmt.Errorf("launcher sync failed: %w", err)
+	}
+	defer os.Remove(wrapper.Name())
+	defer wrapper.Close()
+	if _, err := wrapper.WriteString(vmWorktreeWrapper); err != nil {
+		return fmt.Errorf("launcher sync failed: %w", err)
+	}
+	files := [][3]string{{executable, "vmctl", "vmctl launcher"}, {wrapper.Name(), "vm-wt", "vm-wt wrapper"}}
+	for _, file := range files {
+		if err := c.syncProgram(file[0], file[1], file[2]); err != nil {
+			return fmt.Errorf("launcher sync failed: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c cockpitState) syncReaper() error {
+	if err := c.syncProgram(c.reaper, "vm-slice-reaper", "slice reaper"); err != nil {
 		return fmt.Errorf("reaper sync failed: %w", err)
 	}
-	hash := sha256.Sum256(data)
-	want := hex.EncodeToString(hash[:])
-	remote := strings.Fields(c.bestSSHOutput("sha256sum $HOME/.local/bin/vm-slice-reaper 2>/dev/null || true"))
+	return nil
+}
+
+func (c cockpitState) syncProgram(source, name, label string) error {
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return err
+	}
+	want := fmt.Sprintf("%x", sha256.Sum256(data))
+	remotePath := "$HOME/.local/bin/" + name
+	remote := strings.Fields(c.bestSSHOutput("sha256sum " + remotePath + " 2>/dev/null || true"))
 	if len(remote) > 0 && remote[0] == want {
-		c.say("slice reaper current (" + want + ")")
+		c.say(label + " current (" + want + ")")
 		return nil
 	}
-	tmp := ".local/bin/.vm-slice-reaper-" + want + ".tmp"
-	c.say("slice reaper differs — syncing tracked script …")
+	tmp := ".local/bin/." + name + "-" + want + ".tmp"
+	c.say(label + " differs — syncing …")
 	if err := c.runSSH("mkdir -p $HOME/.local/bin"); err != nil {
-		return fmt.Errorf("reaper sync failed: %w", err)
+		return err
 	}
-	if err := c.rsync(false, c.reaper, c.a.user+"@"+c.a.host+":"+tmp); err != nil {
-		return fmt.Errorf("reaper sync failed: %w", err)
+	if err := c.rsync(false, source, c.a.user+"@"+c.a.host+":"+tmp); err != nil {
+		return err
 	}
-	install := "set -eu; tmp=$HOME/" + tmp + "; test \"$(sha256sum \"$tmp\" | cut -d' ' -f1)\" = '" + want + "'; chmod 0755 \"$tmp\"; mv -f \"$tmp\" $HOME/.local/bin/vm-slice-reaper"
+	install := "set -eu; tmp=$HOME/" + tmp + "; test \"$(sha256sum \"$tmp\" | cut -d' ' -f1)\" = '" + want + "'; chmod 0755 \"$tmp\"; mv -f \"$tmp\" " + remotePath
 	if err := c.runSSH(install); err != nil {
-		return fmt.Errorf("reaper sync failed: %w", err)
+		return err
 	}
-	verified := strings.Fields(c.bestSSHOutput("sha256sum $HOME/.local/bin/vm-slice-reaper 2>/dev/null || true"))
+	verified := strings.Fields(c.bestSSHOutput("sha256sum " + remotePath + " 2>/dev/null || true"))
 	if len(verified) == 0 || verified[0] != want {
-		return fmt.Errorf("reaper sync failed: expected %s after atomic install", want)
+		return fmt.Errorf("expected %s after atomic install of %s", want, name)
 	}
-	c.say("slice reaper updated and verified (" + want + "); agentd restart not required")
+	c.say(label + " updated and verified (" + want + "); agentd restart not required")
 	return nil
 }
 

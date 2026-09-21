@@ -7,6 +7,10 @@ set -u
 
 source "$(dirname "$0")/browser-config.sh"
 
+if [[ ${HYPR_CANVAS_PROFILE:-} == deck ]]; then
+    BROWSER_FLAGS+=(--enable-wayland-ime --wayland-text-input-version=3)
+fi
+
 exec "$BROWSER_BIN" \
     "${BROWSER_FLAGS[@]}" \
     --user-data-dir="$BROWSER_USER_DATA_PERSONAL" \

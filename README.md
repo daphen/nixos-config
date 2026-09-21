@@ -1,13 +1,13 @@
 # NixOS Configuration
 
-Multi-machine NixOS flake. System + home-manager + dotfiles all live in this
-one repo. Niri (Wayland), a centralized theme system, Quickshell bar/pickers,
-and a portable dev-env flake output for remote sandboxes.
+Multi-machine NixOS flake. System + home-manager + dotfiles all live in this one
+repo. Niri (Wayland), a centralized theme system, Quickshell bar/pickers, and a
+portable dev-env flake output for remote sandboxes.
 
-For the desktop architecture (Quickshell, theme system, Niri launchers, daemons),
-see [`dotfiles/SYSTEM.md`](dotfiles/SYSTEM.md). This file is about the Nix
-plumbing: how the repo is laid out, how dotfiles get linked, and how to bring
-up a new machine.
+For the desktop architecture (Quickshell, theme system, Niri launchers,
+daemons), see [`dotfiles/SYSTEM.md`](dotfiles/SYSTEM.md). This file is about the
+Nix plumbing: how the repo is laid out, how dotfiles get linked, and how to
+bring up a new machine.
 
 ## Repo layout
 
@@ -26,6 +26,7 @@ nixos/
 ├── machines/              # one dir per host
 │   ├── proart/            #   default.nix + hardware-configuration.nix (committed)
 │   ├── thinkpad/          #   default.nix + hardware-configuration.nix (committed)
+│   ├── steamdeck/         #   isolated Jovian + Hyprland host; no workstation modules
 │   └── zenbook/           #   default.nix only (commented out in flake.nix)
 ├── pkgs/                  # in-repo derivations
 │   ├── neovim/            #   nvim wrapper (config baked in)
@@ -59,8 +60,8 @@ Consequences:
   adding a line to `xdg.configFile` (for `~/.config/…`) or `home.file` (for
   `$HOME`) in `symlinks.nix`, then rebuilding once.
 
-Two known files are deliberately **not** symlinked (their apps rewrite them),
-so they must be copied by hand on a fresh install:
+Two known files are deliberately **not** symlinked (their apps rewrite them), so
+they must be copied by hand on a fresh install:
 
 - `~/.config/fish/fish_variables` — fish rewrites it constantly.
 - 1Password / browser / Claude local state — per-machine, gitignored.
@@ -69,15 +70,19 @@ so they must be copied by hand on a fresh install:
 
 `flake.nix`:
 
-- defines overlays (`iwd` pin, `neovim` 0.11.6 pin, widevine, asusctl patch,
-  and an `appsOverlay` that routes fast-moving apps through the `nixpkgs-apps`
+- defines overlays (`iwd` pin, `neovim` 0.11.6 pin, widevine, asusctl patch, and
+  an `appsOverlay` that routes fast-moving apps through the `nixpkgs-apps`
   channel);
 - `commonModules` applies those overlays, the niri flake module, the `common/`
   system modules, and wires home-manager in-process
-  (`home-manager.nixosModules.home-manager`, `users.daphen = import ./common/home`);
+  (`home-manager.nixosModules.home-manager`,
+  `users.daphen = import ./common/home`);
 - `mkHost` = `commonModules ++ [ ./machines/<host> ]`;
-- `nixosConfigurations` currently exports **`proart`** and **`thinkpad`**
-  (`zenbook` is commented out).
+- `nixosConfigurations` exports **`proart`**, **`thinkpad`**, and
+  **`steamdeck`** (`zenbook` is commented out). `steamdeck` is assembled
+  separately from Jovian, portable Home Manager, and `machines/steamdeck`; it
+  never imports the workstation Niri, NVIDIA Steam, high-quantum PipeWire, or
+  daemon modules.
 
 Home-manager is **integrated into the system build** — there is no standalone
 `homeConfigurations` to switch separately. `nixos-rebuild switch` applies both.
@@ -105,29 +110,33 @@ up). The steps below are what's needed beyond the repo itself, because some
 things are intentionally *not* in git.
 
 1. **Clone the repo.**
+
    ```bash
    git clone <repo-url> ~/nixos
    ```
 
-2. **Add an SSH key that can read the private flake input.** `flake.nix` pulls
+1. **Add an SSH key that can read the private flake input.** `flake.nix` pulls
    `palette-daemon` over `git+ssh://git@github.com/daphen/palette-daemon`. Nix
    can't evaluate the flake without an SSH key that has access to that repo, so
    set up `~/.ssh` and add the key to GitHub *before* the first build. (On a
-   machine that won't run the desktop, you can instead drop the
-   `palette-daemon` input + its uses.)
+   machine that won't run the desktop, you can instead drop the `palette-daemon`
+   input + its uses.)
 
-3. **Create the machine entry.** If it's a brand-new host (not proart/thinkpad):
+1. **Create the machine entry.** If it's a brand-new host (not proart/thinkpad):
+
    ```bash
    sudo nixos-generate-config --show-hardware-config \
      > ~/nixos/machines/<host>/hardware-configuration.nix
    ```
+
    Add `machines/<host>/default.nix` (copy an existing one; set
    `networking.hostName`, hardware/GPU/sleep quirks), then register it in
    `flake.nix` under `nixosConfigurations`. Existing hosts already have their
    `hardware-configuration.nix` committed — reuse only on the same physical
    machine.
 
-4. **Provision secrets** (gitignored, so they don't come from the clone):
+1. **Provision secrets** (gitignored, so they don't come from the clone):
+
    - `~/nixos/secrets.nix` — recreate it; it only points at the password hash
      file:
      ```nix
@@ -142,24 +151,32 @@ things are intentionally *not* in git.
      (Or drop `secrets.nix` and set a password with `passwd` — secrets aren't
      managed by sops/agenix here, just a plain root-owned file.)
 
-5. **Build & switch.**
+1. **Build & switch.**
+
    ```bash
    sudo nixos-rebuild switch --flake ~/nixos#<host>
    ```
+
    This activates the system *and* home-manager (dotfiles get symlinked).
 
-6. **Copy the hand-managed, gitignored bits** for full parity:
+1. **Copy the hand-managed, gitignored bits** for full parity:
+
    - `~/.config/fish/fish_variables` (copy from the old machine / the repo's
      reference copy).
    - Sign in to **1Password**, then the browsers (Helium profiles and Chrome) —
      profile data is per-machine and not in git.
-   - **Claude Code** state lives under `~/.claude` (symlinked from
-     `dotfiles/claude/.claude`); only `themes/` is tracked — re-auth and let
-     transcripts/credentials regenerate.
+   - Agent configuration under `~/.claude` is symlinked from
+     `dotfiles/claude/.claude`. Settings, keybindings, custom hooks, commands,
+     and themes are tracked; credentials, transcripts, downloaded plugins, and
+     `settings.local.json` remain private and ignored.
+   - The currently selected wallpaper is backed up under
+     `dotfiles/themes/.config/themes/wallpapers/`. Copy it to
+     `~/Pictures/Wallpapers/` to restore the existing absolute wallpaper links.
 
-7. **Clone the dev-source repos** that runtime services or your workflow expect
+1. **Clone the dev-source repos** that runtime services or your workflow expect
    (separate repos, not needed for the *system* to build but needed for parity
    of behavior):
+
    - `~/personal/notes/cli/` — the `notes-sync` user service runs
      `notes-cli -watch` from here.
    - `~/personal/palette-daemon`, `~/personal/wpm-daemon`,
@@ -168,12 +185,90 @@ things are intentionally *not* in git.
      for editing/rebuilding them).
    - `~/work/bastardkb-qmk` — Charybdis firmware fork.
 
-8. **Reboot.** Auto-login to niri on TTY1; TTY2 is kept enabled for emergency
+1. **Reboot.** Auto-login to niri on TTY1; TTY2 is kept enabled for emergency
    access.
 
 What you get "for free" from the rebuild (no manual step): every package, all
 dotfiles, the theme system (activated via home-manager), niri + Quickshell,
 kanata, the systemd-user services (notes-sync, etc.), and fonts.
+
+## Steam Deck pre-arrival and first-day bring-up
+
+The Deck keeps SteamOS and boots Hyprland by default. **Gaming Mode** opens
+Steam Big Picture on a normal `gaming` workspace in the same running session; it
+does not log out or start another compositor. Tap Steam from work to enter, tap
+during gaming for Steam's menu, and hold for 600 ms to return to work.
+Steam+button chords are deferred in this first version. The command
+`deck-gaming-mode return` also returns without closing Steam or games.
+
+Configured application starts share the `desktop-launch` policy on every host;
+it is transparent on workstations and groups Deck apps and terminal descendants
+in `deck-work.slice`. Entering Game Mode freezes that slice and eligible
+browser-owned scopes, while Steam, the compositor, desktop Quickshell,
+controller handling, audio, networking and remote jobs keep running. Returning
+to work resumes only units frozen by that transition. In-flight local browser or
+maintenance requests can time out, and freezing does not reclaim RAM. Root Nix
+workers, independent VMs and unmanaged TTY jobs are not paused.
+
+Decky Loader is installed and started automatically on the Deck by Jovian;
+plugins and themes live under `/home/daphen/homebrew`. Home Manager enables
+Steam's required CEF remote-debugging marker; no firewall ports are opened.
+Install **CSS Loader** once from Decky's plugin store, then enable **Dotfiles**.
+The theme generator writes its palette to `~/homebrew/themes/Dotfiles/`; use CSS
+Loader's theme reload after palette changes if they are not picked up live. The
+plugin itself is not provisioned by the NixOS configuration.
+
+The separate **Split Keyboard** theme is sourced from
+`machines/steamdeck/split-keyboard/` through Home Manager links. Enable it in
+CSS Loader for two thumb panels with a clear center in the desktop Steam
+keyboard; the Deck's keyboard window rule disables blur only for that window.
+Select Swedish in Steam's keyboard settings for åäö and keep English selectable
+with the globe key. This changes neither the OS locale nor Steam's interface
+language.
+
+The hardware file names only the new `NIXOS_DECK_ROOT` and `NIXOS_DECK_EFI`
+labels; they are placeholders until the real partition table is inspected.
+
+Before hardware arrives, validate only the Deck target from the repository root.
+Use `path:.` while the canvas experiment is untracked; after that work is
+committed, the ordinary `.` flake reference is equivalent.
+
+```bash
+nice -n 10 ionice -c3 nix eval --no-write-lock-file \
+  path:.#nixosConfigurations.steamdeck.config.system.build.toplevel.drvPath
+nice -n 10 ionice -c3 nix build --cores 4 --max-jobs 1 --no-link \
+  path:.#nixosConfigurations.steamdeck.config.system.build.toplevel
+```
+
+Do not resize or format anything from this document. On arrival day:
+
+1. Boot SteamOS and Valve recovery media first; record the Deck model, firmware,
+   partition table, panel modes, input devices, audio devices, Wi-Fi/Bluetooth,
+   and battery health.
+1. Create only the new unencrypted NixOS partitions using the separately
+   reviewed dual-boot procedure. Reconcile their observed labels/device facts
+   with `machines/steamdeck/hardware-configuration.nix` before installation.
+1. Install `#steamdeck`, then prove TTY2 and both SteamOS/NixOS boot entries
+   before relying on graphical auto-login.
+1. In Hyprland, certify orientation/touch, all canvas keyboard and Deck
+   controls, right-pad pointer/click, left-pad pan, OSK, suspend, audio,
+   Bluetooth, and dock hotplug. Verify Guide tap/hold and the switch between
+   desktop controls and the virtual Steam Deck controller, including haptics.
+1. In Gaming Mode, browse the library and test native and Proton titles. Check
+   late-opening game windows, fullscreen/frame times, Steam's menu, and hold to
+   return to the untouched work canvas. Finally boot the previous NixOS
+   generation and Valve recovery media once.
+
+A local terminal and its child client pause, but root Nix workers do not. From
+TTY2, run `deck-gaming-mode cleanup` after an interrupted graphical session;
+startup and normal session exit perform the same cleanup. Hardware validation
+must still compare frame times, CPU/GPU activity and power with the same
+game/settings, then certify controller return, audio, network, suspend and
+portal dialogs. Mocked workstation checks do not establish SteamOS parity.
+
+Keep automatic Deck firmware updates and Nix garbage collection disabled until
+this checklist passes. Never copy partition UUIDs from another machine or from
+this plan.
 
 ## Troubleshooting
 

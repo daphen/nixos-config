@@ -10,6 +10,7 @@ here is worktree-coupled — `spawn` takes a real directory.
 Subcommands:
   agent roster                      list sessions (scope · status · profile · name · cwd)
   agent read <ref> [N]              print another agent's last N turns (default 6)
+  agent diff --scope SCOPE <ref>    print the session's authoritative Git snapshot
   agent send <ref> [text...]        dispatch a prompt (text args, or stdin if omitted)
   agent send --cwd PATH [text...]   target the session driving PATH
   agent steer <ref> [text...]       redirect a RUNNING agent mid-turn (idle → normal prompt)
@@ -179,6 +180,42 @@ def cmd_roster(_a) -> int:
         print("no active agent sessions", file=sys.stderr)
         return 1
     return 0
+
+
+def cmd_diff(a) -> int:
+    hit = resolve(a.ref, scope_filter=a.scope)
+    if not hit:
+        print(f"agent diff: no session matching {a.ref!r} in scope {a.scope!r}", file=sys.stderr)
+        return 1
+    _sc, sp, session = hit
+    sid = session.get("id") or session.get("name")
+    request_id = f"agent-diff-{os.getpid()}-{time.time_ns()}"
+    c = socket.socket(socket.AF_UNIX)
+    timeout = float(os.environ.get("AGENT_DIFF_TIMEOUT", "10"))
+    c.settimeout(timeout)
+    try:
+        c.connect(sp)
+        c.sendall((json.dumps({"type": "get_changes", "session": sid, "id": request_id}) + "\n").encode())
+        buf = b""
+        while True:
+            chunk = c.recv(65536)
+            if not chunk:
+                raise ConnectionError("agentd closed the socket")
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if event.get("id") == request_id and event.get("type") in ("changes", "error"):
+                    print(json.dumps(event, separators=(",", ":")))
+                    return 1 if event.get("error") or event.get("type") == "error" else 0
+    except (OSError, TimeoutError) as e:
+        print(f"agent diff: {e}", file=sys.stderr)
+        return 1
+    finally:
+        c.close()
 
 
 def cmd_read(a) -> int:
@@ -492,6 +529,11 @@ def main() -> int:
     p_read.add_argument("ref", help="session name, id, or cwd")
     p_read.add_argument("n", nargs="?", type=int, default=6, help="turns (default 6)")
     p_read.set_defaults(fn=cmd_read)
+
+    p_diff = sub.add_parser("diff", help="print an authoritative Git snapshot")
+    p_diff.add_argument("ref", help="session name, id, or cwd")
+    p_diff.add_argument("--scope", required=True, help="exact agentd scope")
+    p_diff.set_defaults(fn=cmd_diff)
 
     p_send = sub.add_parser("send", help="dispatch a prompt")
     p_send.add_argument("ref", nargs="?", help="session name, id, or cwd")

@@ -4,13 +4,16 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
-// Cockpit writes the focused rail nvim's pid here (empty when none focused). If a
-// live rail holds focus you're at the cockpit and the roster already shows the
-// session settle — so a desktop toast would be noise (matches Cockpit's own guard).
-function railFocused(): boolean {
+// Cockpit writes the focused rail nvim's pid and selected session here. Suppress
+// only the session the user is already reading; background agents still notify.
+function railFocused(sessionId: string): boolean {
   try {
-    const pid = parseInt(readFileSync(join(process.env.XDG_RUNTIME_DIR ?? "/tmp", "agent-rail-focused"), "utf8").trim(), 10);
-    if (!pid) return false;
+    const [pidText, selected] = readFileSync(
+      join(process.env.XDG_RUNTIME_DIR ?? "/tmp", "agent-rail-focused"),
+      "utf8",
+    ).split("\n");
+    const pid = parseInt(pidText, 10);
+    if (!pid || !selected || selected !== sessionId) return false;
     process.kill(pid, 0); // throws if the pid is dead → not focused
     return true;
   } catch {
@@ -129,9 +132,9 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_settled", async (_event, ctx) => {
-    if (railFocused()) return; // you're at the cockpit — the roster shows it; don't toast
     const info = ctxInfo(ctx);
     if (!info) return; // stale ctx after --continue reload — skip the toast, never throw into the turn
+    if (railFocused(info.sessionId)) return;
     run(NOTIFY, [], JSON.stringify({
       app: "Cockpit",
       cwd: info.cwd,

@@ -2,7 +2,7 @@
 
 {
   # Import secrets if file exists (gitignored)
-  imports = if builtins.pathExists ../secrets.nix then [ ../secrets.nix ] else [];
+  imports = [ ./applications.nix ] ++ (if builtins.pathExists ../secrets.nix then [ ../secrets.nix ] else []);
 
   # Bootloader
   boot.loader.systemd-boot.enable = true;
@@ -102,28 +102,14 @@
     direnv
     glow
 
-    # File Management
-    yazi
-    nautilus
-
     # Version Control
     git
     github-cli
     lazygit
 
-    # Terminal Emulators
-    kitty
-
-    # Browsers
-    google-chrome
-    chromium
-
     # Wayland Tools
     grim
     slurp
-    (inputs.nixpkgs-latest.legacyPackages.${pkgs.system}.satty.overrideAttrs (old: {
-      patches = (old.patches or []) ++ [ ../pkgs/satty-single-enter-crop.patch ];
-    }))
     wf-recorder
     wl-clipboard
     wl-clip-persist
@@ -134,15 +120,9 @@
     dragon-drop
 
     # Screenshot & Screen Sharing
-    imv
     chafa
 
-    # Clipboard Managers
-    copyq
-    clipse
-
     # Audio/Video
-    pavucontrol
     brightnessctl
     playerctl
 
@@ -161,36 +141,12 @@
     rofimoji            # shipped emoji CSVs read by the QS emoji picker
 
     # GTK / System Theme
-    dconf-editor
     adwaita-icon-theme
     glib                       # provides `gsettings` CLI
     gsettings-desktop-schemas  # schema for org.gnome.desktop.interface (color-scheme)
 
-    # Display Management
-    waypaper
-
     # Fonts
     noto-fonts-color-emoji
-
-    # Communication
-    (pkgs.slack.overrideAttrs (old: {
-      nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.makeWrapper ];
-      postInstall = (old.postInstall or "") + ''
-        wrapProgram $out/bin/slack \
-          --add-flags "--ozone-platform=wayland --render-node-override=/dev/dri/by-path/pci-0000:65:00.0-render"
-      '';
-    }))
-    vesktop
-
-    # Media
-    spotify
-    spotify-player
-
-    # Notes / knowledge base
-    obsidian
-
-    # Office
-    libreoffice-fresh
 
     # Container Tools
     docker
@@ -202,13 +158,8 @@
     # Security
     mkcert
 
-    # Qt/Kvantum theming
-    libsForQt5.qtstyleplugin-kvantum
-    kdePackages.qtstyleplugin-kvantum
-
     # Keyboard Tools
     kanata
-    vial
 
     # Text Expansion
     espanso
@@ -233,10 +184,6 @@
 
     # Misc Tools
     bun
-    opencode
-    claude-code
-    codex
-    pi-coding-agent
     electron
 
     # System Tools
@@ -255,21 +202,6 @@
     cargo
     rustc
     goLatest   # Go patch level required by lovable/go.work (see the flake overlay note)
-  ];
-
-  # Fonts
-  fonts.packages = with pkgs; [
-    (callPackage ../pkgs/qsicons { })
-    geist-font
-    inter
-    noto-fonts
-    noto-fonts-cjk-sans
-    noto-fonts-color-emoji
-    font-awesome
-    nerd-fonts.geist-mono
-    nerd-fonts.jetbrains-mono
-    nerd-fonts.fira-code
-    nerd-fonts.symbols-only
   ];
 
   # Enable Docker
@@ -309,29 +241,6 @@
 
   # nix-ld: allows dynamically-linked binaries from generic Linux distros to run
   programs.nix-ld.enable = true;
-
-  # 1Password with polkit integration
-  programs._1password.enable = true;
-  programs._1password-gui.enable = true;
-  programs._1password-gui.package = pkgs._1password-gui.overrideAttrs (old: {
-    postFixup = (old.postFixup or "") + ''
-      mv "$out/bin/1password" "$out/bin/.1password-wrapped"
-      cat > "$out/bin/1password" <<'EOF'
-#!/bin/sh
-self="$(readlink -f "$0")"
-if [ "$(cat "$HOME/.config/theme_mode" 2>/dev/null)" = dark ]; then
-  exec "$(dirname "$self")/.1password-wrapped" --force-dark-mode "$@"
-fi
-exec "$(dirname "$self")/.1password-wrapped" "$@"
-EOF
-      chmod +x "$out/bin/1password"
-    '';
-  });
-  programs._1password-gui.polkitPolicyOwners = [ "daphen" ];
-  environment.etc."1password/custom_allowed_browsers" = {
-    text = "helium\n";
-    mode = "0755";
-  };
 
   # Keyboard firmware (udev rules for Vial/QMK)
   hardware.keyboard.qmk.enable = true;

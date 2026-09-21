@@ -43,17 +43,19 @@ end)
 vim.cmd.CockpitReconnect()
 check(vim.wait(1000, function() return client ~= nil end, 10), "native client connected")
 local marker = vim.env.XDG_RUNTIME_DIR .. "/agent-rail-focused"
-local cases = { "missing", "empty", "invalid", "live" }
+local cases = { "missing", "empty", "invalid", "matching", "other" }
 for _, case in ipairs(cases) do
+  local session = "background-" .. case
   if case == "missing" then fn.delete(marker)
   elseif case == "empty" then fn.writefile({}, marker)
   elseif case == "invalid" then fn.writefile({ "not-a-pid" }, marker)
-  else fn.writefile({ tostring(fn.getpid()) }, marker) end
+  elseif case == "matching" then fn.writefile({ tostring(fn.getpid()), session }, marker)
+  else fn.writefile({ tostring(fn.getpid()), "another-session" }, marker) end
   local before = fn.filereadable(home .. "/notified") == 1 and #fn.readfile(home .. "/notified") or 0
-  client:write(vim.json.encode({ type = "extension_ui_request", session = "background-" .. case, method = "confirm", id = case, title = "Question" }) .. "\n")
-  if case == "live" then
+  client:write(vim.json.encode({ type = "extension_ui_request", session = session, method = "confirm", id = case, title = "Question" }) .. "\n")
+  if case == "matching" then
     vim.wait(100)
-    check(#fn.readfile(home .. "/notified") == before, "focused live rail suppresses desktop notification")
+    check(#fn.readfile(home .. "/notified") == before, "focused matching session suppresses desktop notification")
   else
     check(vim.wait(1000, function() return fn.filereadable(home .. "/notified") == 1 and #fn.readfile(home .. "/notified") > before end, 10), case .. " marker permits notification without callback error")
   end

@@ -2,28 +2,57 @@
 local hl = hl
 
 local REAL_MODE = os.getenv("HYPR_CANVAS_REAL") == "1"
-local CAMERA_MODE = os.getenv("HYPR_CANVAS_CAMERA") == "1"
-local CAMERA_V2 = os.getenv("HYPR_CANVAS_CAMERA_V2") == "1"
 local PROFILE = os.getenv("HYPR_CANVAS_PROFILE") or "workstation"
 local DECK_MODE = PROFILE == "deck"
 local SCRIPTS = os.getenv("HYPR_SCRIPTS") or "/home/daphen/.config/hypr/scripts/"
 local ROW_COUNT = 3
-local GAP = 24
+local GAP = DECK_MODE and 4 or 24
 local TILE_WIDTH = 0.9
-local TILE_HEIGHT = 0.9
-local ROW_HEIGHT = TILE_HEIGHT
-local PAN_GAIN = 2.5
+local PAN_GAIN = 8.0
 
-local state = {
-    camera = { x = 0, y = 0 },
-    canvas = { zoom = 1, x = 0, y = 0 },
-    rows = { {}, {}, {} },
-    panning = false,
-    sizes = {},
-    windows = {},
-    overview = false,
-    gesture_serial = 0,
-}
+local checkpoint = require("canvas-state")
+local states = checkpoint.read()
+local state
+
+local function select_workspace(workspace)
+    if not workspace then return false end
+    local key = workspace.addressable_name
+    if not states[key] then
+        states[key] = {
+            camera = { x = 0, y = 0 }, rows = { {}, {}, {} },
+            row_offsets = { 0, 0, 0 }, sizes = {}, fullscreen = {}, widened = {},
+        }
+    end
+    state = states[key]
+    state.windows = state.windows or {}
+    return true
+end
+
+local function forget(saved, id)
+    for _, row in ipairs(saved.rows) do
+        for i = #row, 1, -1 do
+            if row[i] == id then table.remove(row, i) end
+        end
+    end
+    saved.sizes[id], saved.fullscreen[id], saved.widened[id] = nil, nil, nil
+    if saved.windows then saved.windows[id] = nil end
+end
+
+local function prune_closed_windows()
+    local live = {}
+    for _, window in ipairs(hl.get_windows()) do
+        if window.mapped and not window.floating and window.workspace then
+            live[tostring(window.stable_id)] = window.workspace.addressable_name
+        end
+    end
+    -- A layout callback can contain only some targets during provider reattachment.
+    -- Only the compositor's live window inventory can prove a saved entry is gone.
+    for key, saved in pairs(states) do
+        for id in pairs(saved.sizes) do
+            if live[id] ~= key then forget(saved, id) end
+        end
+    end
+end
 
 local function is_canvas_workspace(workspace)
     return workspace and workspace.tiled_layout == "lua:canvas"
@@ -77,13 +106,30 @@ local function fixture_row(target)
 end
 
 local geometry
+local fullscreen_geometry
+local align_rows
+
+local function default_height(ctx)
+    return (ctx.area.h - GAP * 2) / ctx.area.h
+end
+
+fullscreen_geometry = function(ctx)
+    local viewport = state.viewport or ctx.area
+    return {
+        size = {
+            w = viewport.w / ctx.area.w,
+            h = viewport.h / ctx.area.h,
+        },
+        viewport = viewport,
+    }
+end
 
 local function initial_size(ctx, target)
     local window = target.window
     local class = window and window.class or ""
     local title = window and window.title or ""
     local width = 0.5
-    local height = TILE_HEIGHT
+    local height = default_height(ctx)
 
     if class:match("^(kitty|claude|lovable_deps|lovable_devenv|browser%-work|spotify_player|vesktop|Slack)$")
         or (class == "org.quickshell" and title:match("^(slqs|dsqrd)$")) then
@@ -106,25 +152,26 @@ local function sync(ctx)
         present[id] = true
         targets[id] = target
         if target.window then
+            local monitor = target.window.monitor
+            local mode = monitor and monitor.mode
             state.windows[id] = tostring(target.window.address)
-        end
-    end
-
-    for row = 1, #state.rows do
-        local kept = {}
-        for _, id in ipairs(state.rows[row]) do
-            if present[id] then
-                table.insert(kept, id)
-                present[id] = nil
+            if mode then
+                state.viewport = { x = monitor.x, y = monitor.y, w = mode.width, h = mode.height }
+            end
+            if target.window.fullscreen_client == 2 then
+                if not state.fullscreen[id] then
+                    state.fullscreen[id] = fullscreen_geometry(ctx)
+                    state.recenter = id
+                end
+            elseif state.fullscreen[id] then
+                state.fullscreen[id] = nil
+                state.recenter = id
             end
         end
-        state.rows[row] = kept
     end
 
-    for id in pairs(state.sizes) do
-        if not targets[id] then
-            state.sizes[id] = nil
-        end
+    for _, row in ipairs(state.rows) do
+        for _, id in ipairs(row) do present[id] = nil end
     end
 
     local focused = active_id(ctx)
@@ -149,10 +196,11 @@ local function sync(ctx)
             end
         end
     end
+    local fallback_row = shortest_row()
     for _, target in ipairs(ctx.targets) do
         local id = target_id(target)
         if present[id] then
-            local row = fixture_row(target) or focused_row or shortest_row()
+            local row = fixture_row(target) or focused_row or fallback_row
             local column = #state.rows[row] + 1
             if focused_row == row then
                 column = focused_column + 1
@@ -163,17 +211,61 @@ local function sync(ctx)
         end
     end
 
+    if focused then
+        state.focused_row = locate(focused)
+    end
+    align_rows(ctx)
     return targets
 end
 
+local function canvas_size(ctx, id)
+    local fullscreen = state.fullscreen[id]
+    return fullscreen and fullscreen.size or state.sizes[id] or { w = TILE_WIDTH, h = default_height(ctx) }
+end
+
+local function row_width(ctx, row)
+    local width = 0
+    for column, id in ipairs(state.rows[row]) do
+        if column > 1 then
+            width = width + GAP
+        end
+        width = width + ctx.area.w * canvas_size(ctx, id).w
+    end
+    return width
+end
+
+align_rows = function(ctx)
+    if not state.row_center then
+        for row, items in ipairs(state.rows) do
+            if #items > 0 then
+                state.row_center = (state.row_offsets[row] or 0) + row_width(ctx, row) / 2
+                break
+            end
+        end
+    end
+    if not state.row_center then
+        return
+    end
+    for row, items in ipairs(state.rows) do
+        if #items > 0 then
+            state.row_offsets[row] = state.row_center - row_width(ctx, row) / 2
+        end
+    end
+end
+
 geometry = function(ctx, row, column, id)
-    local size = state.sizes[id] or { w = TILE_WIDTH, h = TILE_HEIGHT }
-    local x = ctx.area.x - state.camera.x
-    local y = ctx.area.y - state.camera.y + (row - 1) * (ctx.area.h * ROW_HEIGHT + GAP)
+    local size = canvas_size(ctx, id)
+    local x = ctx.area.x + (state.row_offsets[row] or 0) - state.camera.x
+    local y = ctx.area.y + GAP - state.camera.y + (row - 1) * (ctx.area.h - GAP)
+    if state.fullscreen[id] then
+        y = y - ctx.area.y + state.fullscreen[id].viewport.y
+    end
+    if state.focused_row and state.focused_row > 1 and row >= state.focused_row and state.viewport then
+        y = y + math.max(0, ctx.area.y - state.viewport.y)
+    end
     for previous = 1, column - 1 do
         local previous_id = state.rows[row][previous]
-        local previous_size = state.sizes[previous_id] or { w = TILE_WIDTH }
-        x = x + ctx.area.w * previous_size.w + GAP
+        x = x + ctx.area.w * canvas_size(ctx, previous_id).w + GAP
     end
     return {
         x = x,
@@ -189,66 +281,30 @@ local function center(ctx, id)
         return
     end
 
-    local box = geometry(ctx, row, column, id)
-    state.camera.x = state.camera.x + box.x + box.w / 2 - ctx.area.x - ctx.area.w / 2
-    state.camera.y = state.camera.y + box.y + box.h / 2 - ctx.area.y - ctx.area.h / 2
+    state.recenter = id
 end
 
 local function recalculate(ctx)
-    if CAMERA_V2 and state.overview and state.panning then
+    prune_closed_windows()
+    local window = ctx.targets[1] and ctx.targets[1].window
+    if not select_workspace(window and window.workspace) then
+        checkpoint.write(states)
         return
     end
-
     local targets = sync(ctx)
+    local active = active_id(ctx)
     for row, items in ipairs(state.rows) do
         for column, id in ipairs(items) do
-            targets[id]:set_box(geometry(ctx, row, column, id))
+            if targets[id] then targets[id]:set_box(geometry(ctx, row, column, id)) end
         end
     end
-end
-
-local function set_canvas_camera(zoom, offset_x, offset_y)
-    state.canvas.zoom = zoom
-    state.canvas.x = offset_x or 0
-    state.canvas.y = offset_y or 0
-    if CAMERA_V2 then
-        hl.config({ experimental = {
-            canvas_zoom = zoom,
-            canvas_offset_x = state.canvas.x,
-            canvas_offset_y = state.canvas.y,
-        } })
-    elseif CAMERA_MODE then
-        hl.config({ experimental = { canvas_zoom = zoom } })
-    end
-end
-
-local function frame_overview(ctx)
-    sync(ctx)
-    local min_x, min_y, max_x, max_y
-    for row, items in ipairs(state.rows) do
-        for column, id in ipairs(items) do
-            local box = geometry(ctx, row, column, id)
-            min_x = min_x and math.min(min_x, box.x) or box.x
-            min_y = min_y and math.min(min_y, box.y) or box.y
-            max_x = max_x and math.max(max_x, box.x + box.w) or box.x + box.w
-            max_y = max_y and math.max(max_y, box.y + box.h) or box.y + box.h
+    if state.recenter then
+        if state.recenter == active then
+            hl.dispatch(hl.dsp.layout("camera-center"))
         end
+        state.recenter = nil
     end
-    if not min_x then
-        return 1
-    end
-
-    local padding = GAP * 2
-    local content_width = max_x - min_x
-    local content_height = max_y - min_y
-    local zoom = math.max(0.25, math.min(1,
-        ctx.area.w / (content_width + padding * 2),
-        ctx.area.h / (content_height + padding * 2)))
-    local center_x = (min_x + max_x) / 2 - ctx.area.x
-    local center_y = (min_y + max_y) / 2 - ctx.area.y
-    return zoom,
-        ctx.area.w / 2 - zoom * center_x,
-        ctx.area.h / 2 - zoom * center_y
+    checkpoint.write(states)
 end
 
 local function focus_direction(ctx, direction)
@@ -295,36 +351,9 @@ local function focus_direction(ctx, direction)
         local targets = sync(ctx)
         local window = targets[best_id] and targets[best_id].window
         if window then
-            center(ctx, best_id)
+            state.focused_row = locate(best_id)
             hl.dispatch(hl.dsp.focus({ window = "address:" .. tostring(window.address) }))
         end
-    end
-end
-
-local function focus_center(ctx)
-    local targets = sync(ctx)
-    local viewport_x = ctx.area.x + ctx.area.w / 2
-    local viewport_y = ctx.area.y + ctx.area.h / 2
-    local current = active_id(ctx)
-    local best_id
-    local best_distance
-
-    for row, items in ipairs(state.rows) do
-        for column, id in ipairs(items) do
-            local box = geometry(ctx, row, column, id)
-            local dx = box.x + box.w / 2 - viewport_x
-            local dy = box.y + box.h / 2 - viewport_y
-            local distance = dx * dx + dy * dy
-            if not best_distance or distance < best_distance then
-                best_id = id
-                best_distance = distance
-            end
-        end
-    end
-
-    local window = best_id and best_id ~= current and targets[best_id] and targets[best_id].window
-    if window then
-        hl.dispatch(hl.dsp.focus({ window = "address:" .. tostring(window.address) }))
     end
 end
 
@@ -351,14 +380,18 @@ local function move_direction(ctx, direction)
     local next_row = row + (direction == "k" and -1 or 1)
     if next_row < 1 then
         table.insert(state.rows, 1, {})
+        table.insert(state.row_offsets, 1, 0)
         row = row + 1
         next_row = 1
     elseif next_row > #state.rows then
         table.insert(state.rows, {})
+        table.insert(state.row_offsets, 0)
     end
 
     table.remove(state.rows[row], column)
     table.insert(state.rows[next_row], math.min(column, #state.rows[next_row] + 1), id)
+    state.focused_row = next_row
+    align_rows(ctx)
     center(ctx, id)
 end
 
@@ -375,12 +408,35 @@ local function resize_direction(ctx, direction)
     else
         size.h = math.max(0.2, math.min(1.5, size.h + (direction == "j" and -0.05 or 0.05)))
     end
+    align_rows(ctx)
+    center(ctx, id)
+end
+
+local function toggle_widen(ctx)
+    local targets = sync(ctx)
+    local id = active_id(ctx)
+    local size = id and state.sizes[id]
+    if not size or not targets[id] then
+        return
+    end
+
+    if state.widened[id] then
+        size.w = state.widened[id]
+        state.widened[id] = nil
+    else
+        state.widened[id] = size.w
+        size.w = (ctx.area.w - GAP * 2) / ctx.area.w
+    end
+    align_rows(ctx)
     center(ctx, id)
 end
 
 hl.layout.register("canvas", {
     recalculate = recalculate,
     layout_msg = function(ctx, message)
+        prune_closed_windows()
+        local window = ctx.targets[1] and ctx.targets[1].window
+        if not select_workspace(window and window.workspace) then return true end
         local command, arg1, arg2 = message:match("^(%S+)%s*(%S*)%s*(%S*)")
         if command == "focus" and arg1:match("^[hjkl]$") then
             focus_direction(ctx, arg1)
@@ -395,70 +451,56 @@ hl.layout.register("canvas", {
             local target = row and row + (arg1 == "j" and 1 or -1) or nil
             if target and target >= 1 and target <= #state.rows then
                 state.rows[row], state.rows[target] = state.rows[target], state.rows[row]
+                state.focused_row = target
                 center(ctx, id)
-            end
-        elseif command == "pan" then
-            local dx = tonumber(arg1)
-            local dy = tonumber(arg2)
-            if not dx or not dy then
-                return "canvas: pan expects numeric X and Y deltas"
-            end
-            state.camera.x = state.camera.x + dx
-            state.camera.y = state.camera.y + dy
-            if state.panning then
-                if CAMERA_V2 and state.overview then
-                    set_canvas_camera(
-                        state.canvas.zoom,
-                        state.canvas.x - dx * state.canvas.zoom,
-                        state.canvas.y - dy * state.canvas.zoom
-                    )
-                end
-                focus_center(ctx)
             end
         elseif command == "center" then
-            local id = active_id(ctx)
-            if id then
+            local id = arg1 ~= "" and arg1 or active_id(ctx)
+            if id and locate(id) then
+                state.focused_row = locate(id)
                 center(ctx, id)
+                local targets = sync(ctx)
+                for row, items in ipairs(state.rows) do
+                    for column, target_id in ipairs(items) do
+                        if targets[target_id] then targets[target_id]:set_box(geometry(ctx, row, column, target_id)) end
+                    end
+                end
             end
-        elseif command == "overview" then
-            if not CAMERA_MODE then
-                return true
-            end
-            state.overview = not state.overview
-            if state.overview then
-                set_canvas_camera(frame_overview(ctx))
-            else
-                set_canvas_camera(1, 0, 0)
-            end
+        elseif command == "recalculate" then
+            recalculate(ctx)
+        elseif command == "widen" then
+            toggle_widen(ctx)
         elseif command == "reset" then
             state.camera.x = 0
             state.camera.y = 0
         else
-            return "canvas: expected focus, move, move-row, resize, pan, center, overview, or reset"
+            return "canvas: expected focus, move, move-row, resize, center, recalculate, widen, or reset"
         end
+        checkpoint.write(states)
         return true
     end,
 })
 
 hl.on("window.active", function(window)
-    if not window or not is_canvas_workspace(window.workspace) then
+    if not window or window.floating or not is_canvas_workspace(window.workspace) then
         return
     end
-    if state.overview and not state.panning then
-        state.overview = false
-        set_canvas_camera(1, 0, 0)
+    select_workspace(window.workspace)
+    local row = locate(tostring(window.stable_id))
+    if row and row ~= state.focused_row then
+        hl.dispatch(hl.dsp.layout("recalculate"))
     end
-    hl.dispatch(hl.dsp.layout("center"))
+    hl.dispatch(hl.dsp.layout("camera-center"))
 end)
 
 hl.on("window.close", function(window)
-    if not window or not window.active then
-        return
-    end
-
+    if not window or not select_workspace(window.workspace) then return end
+    local closing_state = state
     local id = tostring(window.stable_id)
     local row, column = locate(id)
-    if not row then
+    if not window.active or not row then
+        forget(state, id)
+        checkpoint.write(states)
         return
     end
 
@@ -482,15 +524,20 @@ hl.on("window.close", function(window)
     end
 
     local address = next_id and state.windows[next_id]
+    forget(state, id)
+    checkpoint.write(states)
     if address then
-        hl.dispatch(hl.dsp.focus({ window = "address:" .. address }))
+        hl.timer(function()
+            closing_state.recenter = next_id
+            hl.dispatch(hl.dsp.focus({ window = "address:" .. address }))
+        end, { timeout = 1, type = "oneshot" })
     end
 end)
 
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = DECK_MODE and 1 or (REAL_MODE and "auto" or 1) })
 
 if DECK_MODE then
-    hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 1, transform = 1 })
+    hl.monitor({ output = "eDP-1", mode = "800x1280@90", position = "0x0", scale = 1, transform = 3 })
 elseif REAL_MODE then
     local monitors = {
         -- Hyprland requires integer logical dimensions; 1.75 is invalid at 3840x2400.
@@ -505,8 +552,11 @@ elseif REAL_MODE then
     for _, monitor in ipairs(monitors) do
         hl.monitor(monitor)
     end
+    hl.env("GTK_THEME", "", true)
     hl.env("FZF_DEFAULT_OPTS_FILE", "/home/daphen/.config/fzf/opts.conf")
     hl.env("FZF_DEFAULT_OPTS", "")
+end
+if REAL_MODE then
     hl.env("XCURSOR_THEME", "Adwaita")
     hl.env("XCURSOR_SIZE", "24")
 end
@@ -531,6 +581,18 @@ if REAL_MODE and not DECK_MODE then
     }
 end
 
+if DECK_MODE then
+    hl.device({ name = "fts3528:00-2808:1015", output = "eDP-1", transform = 3 })
+    input.kb_options = "fkeys:basic_13-24"
+    input.invert_horizontal_scroll = false
+    hl.device({
+        name = "inputplumber-touchpad",
+        natural_scroll = false,
+        sensitivity = 0.0,
+        scroll_factor = 3.0,
+    })
+end
+
 hl.config({
     general = {
         layout = "lua:canvas",
@@ -538,7 +600,7 @@ hl.config({
         gaps_out = 0,
         border_size = 2,
         col = {
-            active_border = { colors = { "rgb(EDEDED)", "rgb(EDEDED)" }, angle = 180 },
+            active_border = { colors = { "rgb(10100E)", "rgb(10100E)" }, angle = 180 },
             inactive_border = "rgb(3A3A3A)",
         },
     },
@@ -547,9 +609,9 @@ hl.config({
         active_opacity = 1,
         inactive_opacity = 1,
         shadow = {
-            enabled = true,
+            enabled = false,
             range = 30,
-            offset = "0 5",
+            offset = "0 0",
             color = 0x77000000,
         },
         blur = {
@@ -571,12 +633,14 @@ hl.config({
         inactive_timeout = REAL_MODE and 1.5 or 0,
         hide_on_key_press = REAL_MODE,
     },
-    experimental = CAMERA_MODE and (CAMERA_V2 and {
-        canvas_zoom = 1,
-        canvas_offset_x = 0,
-        canvas_offset_y = 0,
-    } or { canvas_zoom = 1 }) or nil,
 })
+
+local theme_path = (os.getenv("XDG_CONFIG_HOME") or os.getenv("HOME") .. "/.config") .. "/hypr/theme.lua"
+local theme_file = io.open(theme_path, "r")
+if theme_file then
+    theme_file:close()
+    hl.config(dofile(theme_path))
+end
 
 if REAL_MODE then
     local function floating_rule(name, match, size)
@@ -595,9 +659,29 @@ if REAL_MODE then
         hl.window_rule(rule)
     end
 
+    if DECK_MODE then
+        hl.window_rule({
+            name = "deck-radial-overlay",
+            match = { title = "^quickshell$", xwayland = true },
+            float = true,
+            size = "monitor_w monitor_h",
+            move = "0 0",
+            border_size = 0,
+            rounding = 0,
+            no_anim = true,
+        })
+    end
+
     floating_rule("picture-in-picture", { class = "firefox$", title = "^Picture-in-Picture$" })
     floating_rule("slqs-upload", { class = "^slqs-upload$" }, "1100 800")
-    floating_rule("satty", { class = "^com\\.gabm\\.satty$" }, "95% 95%")
+    hl.window_rule({
+        name = "satty",
+        match = { class = "^com\\.gabm\\.satty$" },
+        float = true,
+        center = true,
+        size = "monitor_w*0.95 monitor_h*0.95",
+        max_size = "monitor_w*0.95 monitor_h*0.95",
+    })
     floating_rule("file-chooser", { class = "^file-chooser$" }, "62% 72%")
     floating_rule("media-viewer", { class = "^(imv|mpv)$" })
     floating_rule("one-password", { class = "^1password$" }, "1400 950")
@@ -610,6 +694,17 @@ if REAL_MODE then
     floating_rule("btop", { class = "^btop$" }, "1600 1000")
     floating_rule("lovable-picker", { class = "^lovable_picker$" }, "1400 900")
 
+    hl.window_rule({
+        name = "canvas-client-fullscreen",
+        match = { class = ".*" },
+        sync_fullscreen = false,
+    })
+    hl.window_rule({
+        name = "canvas-client-fullscreen-decorations",
+        match = { class = ".*", fullscreen_state_client = 2 },
+        border_size = 0,
+        rounding = 0,
+    })
     hl.window_rule({
         name = "opaque-heavy-apps",
         match = { class = "^(browser-personal|browser-work|Slack|vesktop)$" },
@@ -632,9 +727,7 @@ end
 hl.curve("canvasMotion", { type = "spring", mass = 1, stiffness = 1200, damping = 69.282 })
 hl.curve("canvasFade", { type = "bezier", points = { { 0.2, 0.8 }, { 0.2, 1 } } })
 hl.animation({ leaf = "windowsMove", enabled = true, speed = 2.5, spring = "canvasMotion" })
-if CAMERA_V2 then
-    hl.animation({ leaf = "canvasCamera", enabled = true, speed = 2.5, spring = "canvasMotion" })
-end
+hl.animation({ leaf = "canvasCamera", enabled = true, speed = 2.5, spring = "canvasMotion" })
 hl.animation({ leaf = "windowsIn", enabled = false })
 hl.animation({ leaf = "fadeIn", enabled = true, speed = 5, bezier = "canvasFade" })
 
@@ -644,6 +737,49 @@ for _, direction in ipairs({ "h", "j", "k", "l" }) do
     hl.bind("SUPER + CTRL + " .. direction, hl.dsp.layout("resize " .. direction))
 end
 
+local palette_tab_cycle_active = false
+local palette_tab_cycle_output = ""
+local function palette_tab_cycle(direction)
+    return function()
+        local window = hl.get_active_window()
+        if not palette_tab_cycle_active then
+            palette_tab_cycle_output = window and window.monitor and window.monitor.name or ""
+        end
+        palette_tab_cycle_active = true
+        hl.exec_cmd(string.format("%spalette-shell-ipc tabCycle %d false %q",
+            SCRIPTS, direction, palette_tab_cycle_output))
+    end
+end
+
+local function finish_palette_tab_cycle()
+    if not palette_tab_cycle_active then return end
+    palette_tab_cycle_active = false
+    palette_tab_cycle_output = ""
+    hl.exec_cmd(SCRIPTS .. "palette-shell-ipc tabCycle 0 true ''")
+end
+
+local palette_tab_bindings = {
+    hl.bind("CTRL + h", palette_tab_cycle(-1), { repeating = true }),
+    hl.bind("CTRL + l", palette_tab_cycle(1), { repeating = true }),
+}
+
+hl.on("input.keyboard.key", function(keycode, _, state)
+    if state == 0 and (keycode == 37 or keycode == 105) then finish_palette_tab_cycle() end
+end)
+
+local function set_palette_tab_bindings(window)
+    local class = window and window.class or ""
+    local enabled = class == "browser-personal" or class == "browser-work"
+    for _, binding in ipairs(palette_tab_bindings) do binding:set_enabled(enabled) end
+    if enabled then
+        local profile = class == "browser-work" and "work" or "personal"
+        hl.exec_cmd(string.format("%spalette-shell-ipc focusProfile %q", SCRIPTS, profile))
+    end
+end
+
+set_palette_tab_bindings(hl.get_active_window())
+hl.on("window.active", set_palette_tab_bindings)
+
 hl.bind("ALT + CTRL + h", hl.dsp.layout("pan -120 0"), { repeating = true })
 hl.bind("ALT + CTRL + l", hl.dsp.layout("pan 120 0"), { repeating = true })
 hl.bind("ALT + CTRL + k", hl.dsp.layout("pan 0 -120"), { repeating = true })
@@ -651,10 +787,10 @@ hl.bind("ALT + CTRL + j", hl.dsp.layout("pan 0 120"), { repeating = true })
 hl.bind("ALT + SHIFT + j", hl.dsp.layout("move-row j"))
 hl.bind("ALT + SHIFT + k", hl.dsp.layout("move-row k"))
 hl.bind("ALT + r", hl.dsp.layout("reset"))
-hl.bind("SUPER + SHIFT + d", hl.dsp.exec_cmd("kitty"))
+hl.bind("SUPER + SHIFT + d", hl.dsp.exec_cmd(SCRIPTS .. "desktop-launch kitty"))
 hl.bind("SUPER + CTRL + w", hl.dsp.window.close())
 hl.bind("SUPER + TAB", hl.dsp.layout("overview"))
-hl.bind("SUPER + CTRL + f", hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }))
+hl.bind("SUPER + CTRL + f", hl.dsp.layout("widen"))
 hl.bind("SUPER + CTRL + SHIFT + f", hl.dsp.window.float({ action = "toggle" }))
 hl.bind("SUPER + d", hl.dsp.exec_cmd(SCRIPTS .. "focus-kitty-cycle"))
 hl.bind("SUPER + u", hl.dsp.focus({ monitor = "+1" }))
@@ -670,26 +806,274 @@ hl.bind("ALT + CTRL + SHIFT + h", hl.dsp.workspace.move({ monitor = "l" }))
 hl.bind("ALT + CTRL + SHIFT + j", hl.dsp.workspace.move({ monitor = "d" }))
 hl.bind("ALT + CTRL + SHIFT + k", hl.dsp.workspace.move({ monitor = "u" }))
 hl.bind("ALT + CTRL + SHIFT + l", hl.dsp.workspace.move({ monitor = "r" }))
-hl.bind("ALT + escape", hl.dsp.exec_cmd(SCRIPTS .. "session-exit"))
+if not DECK_MODE then
+    hl.bind("ALT + escape", hl.dsp.exec_cmd(SCRIPTS .. "session-exit"))
+end
+
+local deck_dictation_active = false
+local deck_dictation_f9_down = false
+local function stop_deck_dictation()
+    if not deck_dictation_active then return end
+    deck_dictation_active = false
+    hl.exec_cmd("dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App.PttUp")
+end
 
 if DECK_MODE then
+    hl.workspace_rule({ workspace = "name:gaming", layout = "dwindle" })
+    hl.window_rule({
+        name = "deck-big-picture-fullscreen",
+        match = { class = "(?i)^steam$", title = "^Steam Big Picture Mode$" },
+        fullscreen = true,
+    })
+    hl.window_rule({
+        name = "deck-steam",
+        match = {
+            class = "(?i)^(steam|steam_app_[0-9]+)$",
+            title = "negative:^Steam Input On-screen Keyboard$",
+        },
+        workspace = "name:gaming",
+        sync_fullscreen = true,
+    })
+    hl.window_rule({
+        name = "deck-game-fullscreen",
+        match = { workspace = "name:gaming" },
+        sync_fullscreen = true,
+    })
+    hl.window_rule({
+        name = "deck-steam-keyboard",
+        match = { class = "(?i)^steam$", title = "^Steam Input On-screen Keyboard$" },
+        float = true,
+        pin = true,
+        no_initial_focus = true,
+        no_blur = true,
+        border_size = 0,
+        no_shadow = true,
+    })
+    hl.on("workspace.active", function()
+        hl.dispatch(hl.dsp.exec_cmd(SCRIPTS .. "deck-gaming-mode sync"))
+    end)
+    for _, event in ipairs({ "window.open", "window.close" }) do
+        hl.on(event, function(window)
+            if window.title == "Steam Input On-screen Keyboard" then
+                hl.dispatch(hl.dsp.exec_cmd(SCRIPTS .. "deck-gaming-mode sync"))
+            end
+        end)
+    end
+    local steam_held = false
+    hl.bind("F23", function() steam_held = false end, { dont_inhibit = true })
+    hl.bind("F23", function()
+        steam_held = true
+        hl.dispatch(hl.dsp.exec_cmd("deck-gaming-mode return"))
+    end, { long_press = true, dont_inhibit = true })
+    hl.bind("F23", function()
+        if not steam_held then hl.dispatch(hl.dsp.exec_cmd("deck-gaming-mode tap")) end
+    end, { release = true, dont_inhibit = true })
+    local radial_open, radial_outer, radial_kind = false, false, nil
+    local radial_held = { false, false, false, false }
+    local apps_held = { false, false, false, false }
+    local radial_last_direction = 0
+    local radial_release_timer
+    local function cancel_radial_release()
+        if radial_release_timer then
+            radial_release_timer:set_enabled(false)
+            radial_release_timer = nil
+        end
+    end
+    local function set_radial_pointer_blocked(blocked)
+        for _, name in ipairs({ "inputplumber-touchpad", "inputplumber-mouse", "extest-fake-device-1" }) do
+            hl.device({ name = name, enabled = not blocked })
+        end
+        if blocked then hl.dispatch(hl.dsp.layout("pan-cancel")) end
+    end
+    local function radial_ipc(action, value)
+        hl.exec_cmd(string.format("%spalette-shell-ipc radial %s %d ''", SCRIPTS, action, value or 0))
+    end
+    local function close_radial(action)
+        if not radial_open then return end
+        cancel_radial_release()
+        set_radial_pointer_blocked(false)
+        radial_ipc(action, 0)
+        radial_open, radial_kind = false, nil
+        radial_held = { false, false, false, false }
+        apps_held = { false, false, false, false }
+    end
+    local function start_deck_dictation()
+        if deck_dictation_active then return end
+        close_radial("cancel")
+        deck_dictation_active = true
+        hl.exec_cmd("dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App.PttDown")
+    end
+    local function stick_direction(held)
+        local x = (held[4] and 1 or 0) - (held[1] and 1 or 0)
+        local y = (held[2] and 1 or 0) - (held[3] and 1 or 0)
+        local directions = {["0,-1"]=0,["1,-1"]=1,["1,0"]=2,["1,1"]=3,["0,1"]=4,["-1,1"]=5,["-1,0"]=6,["-1,-1"]=7}
+        return directions[x .. "," .. y]
+    end
+    local function update_radial_direction(held)
+        local direction = stick_direction(held)
+        if direction ~= nil then
+            radial_last_direction = direction
+            if radial_open then radial_ipc("direction", direction) end
+        end
+        return radial_last_direction
+    end
+    local function schedule_radial_release(held)
+        cancel_radial_release()
+        radial_release_timer = hl.timer(function()
+            radial_release_timer = nil
+            if radial_open and stick_direction(held) ~= nil then update_radial_direction(held) end
+        end, { timeout = 25, type = "oneshot" })
+    end
+    local function radial_press(index)
+        if deck_dictation_active or radial_kind == "apps" then return end
+        cancel_radial_release()
+        radial_held[index] = true
+        if radial_open then
+            if radial_kind == "browser" then update_radial_direction(radial_held) end
+            return
+        end
+        local direction = update_radial_direction(radial_held)
+        local window = hl.get_active_window()
+        if window and (window.class == "browser-personal" or window.class == "browser-work") then
+            radial_open, radial_kind = true, "browser"
+            set_radial_pointer_blocked(true)
+            hl.exec_cmd(string.format("%spalette-toggle %d", SCRIPTS, direction + (radial_outer and 8 or 0)))
+        end
+    end
+    local function apps_radial_press(index)
+        if deck_dictation_active then return end
+        cancel_radial_release()
+        apps_held[index] = true
+        if radial_open and radial_kind == "browser" then
+            if index == 1 then radial_ipc("step", -1)
+            elseif index == 4 then radial_ipc("step", 1) end
+            return
+        end
+        local direction = update_radial_direction(apps_held)
+        if not radial_open then
+            radial_open, radial_kind = true, "apps"
+            set_radial_pointer_blocked(true)
+            hl.exec_cmd(string.format("%spalette-toggle %d", SCRIPTS, 16 + direction + (radial_outer and 8 or 0)))
+        end
+    end
+    for index, key in ipairs({ "F1", "F2", "F3", "F4" }) do
+        hl.bind(key, function()
+            if radial_open or not radial_outer or (key ~= "F1" and key ~= "F4") then return end
+            local window = hl.get_active_window()
+            if window and (window.class == "browser-personal" or window.class == "browser-work") then
+                hl.dispatch(hl.dsp.send_shortcut({ mods = "ALT", key = key == "F1" and "Left" or "Right" }))
+            end
+        end)
+        hl.bind("SUPER + " .. key, function() radial_press(index) end)
+    end
+    local function radial_outer_press()
+        radial_outer = true
+        if radial_open then radial_ipc("outer", 1) end
+    end
+    hl.bind("F11", radial_outer_press)
+    hl.bind("SUPER + F11", radial_outer_press)
+    hl.on("input.keyboard.key", function(keycode, _, key_state)
+        if key_state == 0 then
+            if keycode == 75 then deck_dictation_f9_down = false end
+            if keycode == 75 or keycode == 133 then stop_deck_dictation() end
+        end
+        if keycode >= 67 and keycode <= 70 and key_state == 0 then
+            radial_held[keycode - 66] = false
+            if radial_kind == "browser" then schedule_radial_release(radial_held) end
+        elseif keycode >= 191 and keycode <= 194 and key_state == 0 then
+            apps_held[keycode - 190] = false
+            if radial_kind == "apps" then schedule_radial_release(apps_held) end
+        elseif keycode == 95 and key_state == 0 then
+            radial_outer = false
+            if radial_open then radial_ipc("outer", 0) end
+        elseif keycode == 133 and key_state == 0 and radial_open then
+            close_radial((radial_kind == "apps" or radial_outer) and "activate" or "finish")
+        end
+    end)
     local deck_directions = {
         F13 = "h",
         F14 = "j",
         F15 = "k",
         F16 = "l",
     }
+    local deck_arrows = { h = "Left", j = "Down", k = "Up", l = "Right" }
     for key, direction in pairs(deck_directions) do
-        hl.bind(key, hl.dsp.layout("focus " .. direction), { repeating = true })
+        hl.bind(key, function()
+            if radial_open then
+                if key == "F13" then radial_ipc("step", -1)
+                elseif key == "F16" then radial_ipc("step", 1) end
+                return
+            end
+            for _, layer in ipairs(hl.get_layers({ namespace = "qs-rounded-bar" })) do
+                if layer.keyboard_interactivity ~= 0 then
+                    hl.dispatch(hl.dsp.send_key_state({ mods = "", key = deck_arrows[direction], state = "down" }))
+                    hl.dispatch(hl.dsp.send_key_state({ mods = "", key = deck_arrows[direction], state = "up" }))
+                    return
+                end
+            end
+            hl.dispatch(hl.dsp.layout("focus " .. direction))
+        end, { repeating = true })
+        local apps_index = ({ F13 = 1, F14 = 2, F15 = 3, F16 = 4 })[key]
+        hl.bind("SUPER + " .. key, function() apps_radial_press(apps_index) end, { repeating = true })
         hl.bind("SHIFT + " .. key, hl.dsp.layout("move " .. direction), { repeating = true })
         hl.bind("CTRL + " .. key, hl.dsp.layout("resize " .. direction), { repeating = true })
     end
-    hl.bind("F17", hl.dsp.layout("pan -120 0"), { repeating = true })
-    hl.bind("F18", hl.dsp.layout("pan 0 120"), { repeating = true })
-    hl.bind("F19", hl.dsp.layout("pan 0 -120"), { repeating = true })
-    hl.bind("F20", hl.dsp.layout("pan 120 0"), { repeating = true })
-    hl.bind("F21", hl.dsp.layout("overview"))
+    for _, axis in ipairs({ "mouse_up", "mouse_down", "mouse_left", "mouse_right" }) do
+        hl.bind("SUPER + " .. axis, function()
+            if not radial_open then return { pass_event = true } end
+        end)
+    end
+    hl.bind("F21", function()
+        if radial_open then radial_ipc("delete", 0)
+        else hl.dispatch(hl.dsp.layout("overview")) end
+    end)
     hl.bind("F22", hl.dsp.exec_cmd("deck-osk-toggle"))
+    hl.bind("Escape", function()
+        for _, layer in ipairs(hl.get_layers({ namespace = "wvkbd" })) do
+            if layer.mapped then
+                hl.dispatch(hl.dsp.exec_cmd("pkill -USR1 -x wvkbd-mobintl"))
+                return
+            end
+        end
+        return { pass_event = true }
+    end)
+    hl.bind("F24", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
+    hl.bind("F10", hl.dsp.exec_cmd("qs ipc call -- controlCenter toggle"))
+    hl.bind("SUPER + mouse:272", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
+    hl.bind("SUPER + F21", function()
+        if radial_open then radial_ipc("delete", 0)
+        elseif radial_outer then hl.dispatch(hl.dsp.layout("move k")) end
+    end)
+    hl.bind("SUPER + Escape", function()
+        if radial_open then close_radial("cancel")
+        elseif radial_outer then hl.dispatch(hl.dsp.layout("move l"))
+        else hl.dispatch(hl.dsp.layout("resize l")) end
+    end)
+    hl.bind("SUPER + F22", function()
+        if radial_open then return
+        elseif radial_outer then hl.dispatch(hl.dsp.layout("move h"))
+        else hl.dispatch(hl.dsp.layout("resize h")) end
+    end, { repeating = true })
+    hl.bind("F9", function()
+        deck_dictation_f9_down = true
+    end)
+    hl.bind("SUPER + F9", function()
+        deck_dictation_f9_down = true
+        start_deck_dictation()
+    end)
+    hl.bind("code:133", function()
+        if deck_dictation_f9_down then start_deck_dictation() end
+    end, { ignore_mods = true })
+    hl.bind("F12", function() end)
+    hl.bind("SUPER + F12", function()
+        if not radial_open and radial_outer then hl.dispatch(hl.dsp.window.close()) end
+    end)
+    hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
+    hl.bind("SUPER + RETURN", function()
+        if radial_open then close_radial("activate")
+        elseif radial_outer then hl.dispatch(hl.dsp.layout("move j"))
+        else hl.exec_cmd("qs ipc call -- launcher toggle") end
+    end)
     hl.bind("XF86PowerOff", hl.dsp.exec_cmd("systemctl suspend"), { locked = true })
 end
 
@@ -697,6 +1081,9 @@ if REAL_MODE and not DECK_MODE then
     local scripts = SCRIPTS
     local function picker(name)
         return hl.dsp.exec_cmd("qs ipc call -- " .. name .. " toggle")
+    end
+    local function launch(command)
+        return scripts .. "desktop-launch " .. command
     end
     local function bind_exec(key, command, options)
         hl.bind(key, hl.dsp.exec_cmd(command), options)
@@ -706,10 +1093,10 @@ if REAL_MODE and not DECK_MODE then
         return hl.dsp.exec_cmd(string.format("%sjump-or-exec %s%q %q", scripts, flag, selector, command))
     end
 
-    hl.bind("SUPER + q", hl.dsp.exec_cmd(scripts .. "browser-personal"))
-    hl.bind("SUPER + w", hl.dsp.exec_cmd(scripts .. "browser-work"))
-    hl.bind("SUPER + SHIFT + q", hl.dsp.exec_cmd(scripts .. "chromium-launch"))
-    hl.bind("SUPER + SHIFT + w", hl.dsp.exec_cmd(scripts .. "browser-work-new"))
+    hl.bind("SUPER + q", hl.dsp.exec_cmd(launch(scripts .. "browser-personal")))
+    hl.bind("SUPER + w", hl.dsp.exec_cmd(launch(scripts .. "browser-work")))
+    hl.bind("SUPER + SHIFT + q", hl.dsp.exec_cmd(launch(scripts .. "chromium-launch")))
+    hl.bind("SUPER + SHIFT + w", hl.dsp.exec_cmd(launch(scripts .. "browser-work-new")))
     hl.bind("SUPER + c", jump("title:dsqrd", scripts .. "launch-discord-client"))
     hl.bind("SUPER + s", jump("Slack", "slack"))
     hl.bind("SUPER + SHIFT + s", jump("Slack", "slack"))
@@ -718,13 +1105,15 @@ if REAL_MODE and not DECK_MODE then
     hl.bind("SUPER + SHIFT + g", jump("title:qstns", "/home/daphen/personal/qstns/run.sh", true))
     hl.bind("SUPER + g", jump("cockpit-nvim", "true"))
     hl.bind("SUPER + i", hl.dsp.exec_cmd(scripts .. "inbox-jump"))
+    hl.bind("SUPER + v", hl.dsp.exec_cmd("dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App.PttDown"))
+    hl.bind("SUPER + v", hl.dsp.exec_cmd("dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App.PttUp"), { release = true })
     hl.bind("SUPER + t", hl.dsp.exec_cmd(scripts .. "cockpit-rail-roster"))
     hl.bind("SUPER + y", hl.dsp.exec_cmd(scripts .. "agent-ask-or-cockpit"))
-    hl.bind("SUPER + SHIFT + y", hl.dsp.exec_cmd(scripts .. "cockpit-new"))
+    hl.bind("SUPER + SHIFT + y", hl.dsp.exec_cmd(launch(scripts .. "cockpit-new")))
     hl.bind("SUPER + CTRL + y", hl.dsp.exec_cmd("notify-send -t 3000 'Orchestrator' 'handover starting…'; out=$($HOME/.local/bin/cockpit-handover 2>&1 | tail -3); notify-send -t 8000 'Orchestrator' \"$out\""))
     hl.bind("SUPER + o", hl.dsp.exec_cmd(scripts .. "cockpit-toggle"))
-    hl.bind("SUPER + CTRL + g", hl.dsp.exec_cmd("kitty --class lovable_picker " .. scripts .. "spawn-claude-session-picker"))
-    hl.bind("SUPER + e", hl.dsp.exec_cmd(scripts .. "spawn-terminal-with-yazi"))
+    hl.bind("SUPER + CTRL + g", hl.dsp.exec_cmd(launch("kitty --class lovable_picker " .. scripts .. "spawn-claude-session-picker")))
+    hl.bind("SUPER + e", hl.dsp.exec_cmd(launch(scripts .. "spawn-terminal-with-yazi")))
     hl.bind("SUPER + b", jump("btop", "kitty --class btop btop", true))
     hl.bind("SUPER + SPACE", picker("launcher"))
     hl.bind("SUPER + RETURN", picker("launcher"))
@@ -740,10 +1129,12 @@ if REAL_MODE and not DECK_MODE then
     hl.bind("SUPER + escape", hl.dsp.exec_cmd("qs ipc call -- notifications dismissAll"))
     hl.bind("F8", picker("emoji"), { locked = true })
 
-    bind_exec("SUPER + p", "opqs-client")
+    bind_exec("SUPER + p", launch("opqs-client"))
     bind_exec("SUPER + SHIFT + p", scripts .. "jump-or-exec 1password 1password")
     bind_exec("SUPER + CTRL + q", scripts .. "force-kill-focused")
-    bind_exec("SUPER + CTRL + SHIFT + q", "swaylock")
+    if not DECK_MODE then
+        bind_exec("SUPER + CTRL + SHIFT + q", "swaylock")
+    end
     bind_exec("SUPER + ALT + s", "pkill orca || exec orca", { locked = true })
     bind_exec("SUPER + SHIFT + m", "palette-ipc add-quickmark")
     bind_exec("SUPER + CTRL + SHIFT + t", "qs ipc call -- todos toggle")
@@ -755,7 +1146,7 @@ if REAL_MODE and not DECK_MODE then
     bind_exec("SUPER + SHIFT + r", scripts .. "record-toggle region")
     bind_exec("SUPER + CTRL + c", scripts .. "pick-color")
     bind_exec("SUPER + CTRL + SHIFT + e", scripts .. "screenshot-to-clipboard")
-    bind_exec("SUPER + SHIFT + e", "g=$(hyprctl -j activewindow | jq -r '\"\\(.at[0]),\\(.at[1]) \\(.size[0])x\\(.size[1])\"'); grim -g \"$g\" - | tee \"$HOME/Pictures/Screenshots/Screenshot from $(date +'%Y-%m-%d %H-%M-%S').png\" | wl-copy")
+    bind_exec("SUPER + SHIFT + e", "f=\"$HOME/Pictures/Screenshots/Screenshot from $(date +'%Y-%m-%d %H-%M-%S').png\"; id=$(hyprctl -j activewindow | jq -er '.stableId') && grim -T \"$id\" - | tee \"$f\" | wl-copy && [ -s \"$f\" ] && notify-send -a Screenshot Screenshot 'Copied to clipboard'")
     bind_exec("SUPER + CTRL + e", "o=$(hyprctl -j monitors | jq -r '.[] | select(.focused).name'); grim -o \"$o\" - | tee \"$HOME/Pictures/Screenshots/Screenshot from $(date +'%Y-%m-%d %H-%M-%S').png\" | wl-copy")
 
     bind_exec("XF86AudioRaiseVolume", "wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 && wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+", { locked = true, repeating = true })
@@ -782,40 +1173,32 @@ if REAL_MODE and not DECK_MODE then
     bind_exec("XF86AudioPrev", "playerctl previous", { locked = true })
 end
 
-local function pan(dx, dy)
-    if not is_canvas_workspace(hl.get_active_workspace()) then
-        return
-    end
-    hl.dispatch(hl.dsp.layout(string.format("pan %.6f %.6f", dx * PAN_GAIN, dy * PAN_GAIN)))
-end
+hl.bind("Super_L", function()
+    hl.dispatch(hl.dsp.layout("pan-end"))
+end, { release = true, ignore_mods = true })
+hl.bind("Super_R", hl.dsp.layout("pan-end"), { release = true, ignore_mods = true })
 
+local overview_timer
 hl.gesture({
     fingers = 3,
     direction = "swipe",
     action = {
-        start = function(e)
-            state.panning = true
-            state.gesture_serial = state.gesture_serial + 1
-            local serial = state.gesture_serial
-            hl.timer(function()
-                if state.panning and state.gesture_serial == serial and not state.overview and is_canvas_workspace(hl.get_active_workspace()) then
-                    hl.dispatch(hl.dsp.layout("overview"))
-                end
-            end, { timeout = 280, type = "oneshot" })
-            pan(e.delta.x, e.delta.y)
+        start = function()
+            hl.dispatch(hl.dsp.layout("pan-begin"))
+            overview_timer = hl.timer(function()
+                overview_timer = nil
+                hl.dispatch(hl.dsp.layout("pan-overview"))
+            end, { timeout = 350, type = "oneshot" })
         end,
         update = function(e)
-            pan(e.delta.x, e.delta.y)
+            hl.dispatch(hl.dsp.layout(string.format("pan %.6f %.6f", e.delta.x * PAN_GAIN, e.delta.y * PAN_GAIN)))
         end,
         finish = function()
-            state.panning = false
-            state.gesture_serial = state.gesture_serial + 1
-            if is_canvas_workspace(hl.get_active_workspace()) then
-                if state.overview then
-                    hl.dispatch(hl.dsp.layout("overview"))
-                end
-                hl.dispatch(hl.dsp.layout("center"))
+            if overview_timer then
+                overview_timer:set_enabled(false)
+                overview_timer = nil
             end
+            hl.dispatch(hl.dsp.layout("pan-end"))
         end,
     },
 })
@@ -826,7 +1209,8 @@ hl.on("hyprland.start", function()
             "sh -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE && systemctl --user start nixos-fake-graphical-session.target'",
             SCRIPTS .. "start-quickshell-desktop >> /tmp/hyprland-quickshell-main.log 2>&1",
             "wl-clip-persist --clipboard regular",
-            "swayidle -w timeout 300 swaylock before-sleep swaylock",
+            "wvkbd-mobintl -H 280 -L 280 --hidden",
+            "steam -silent",
         }
         for _, command in ipairs(startup) do
             hl.exec_cmd(command)
@@ -835,14 +1219,26 @@ hl.on("hyprland.start", function()
     end
 
     if REAL_MODE then
+        local target, largest = nil, 0
+        for _, monitor in ipairs(hl.get_monitors()) do
+            local mode = monitor.mode
+            local area = mode.width * mode.height * monitor.scale ^ 2
+            if not monitor.name:match("^eDP%-") and area > largest then
+                target, largest = monitor, area
+            end
+        end
+        if target then
+            hl.dispatch(hl.dsp.focus({ monitor = target.name }))
+            hl.dispatch(hl.dsp.cursor.move({ x = target.x + target.mode.width / 2, y = target.y + target.mode.height / 2 }))
+        end
         local startup = {
             "sh -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE && systemctl --user start nixos-fake-graphical-session.target'",
             SCRIPTS .. "start-quickshell-desktop >> /tmp/hyprland-quickshell-main.log 2>&1",
             "mutagen daemon start",
             "bash /home/daphen/.config/kanata/start-kanata.sh",
             "wl-clip-persist --clipboard regular",
-            "systemd-run --user --unit=clipse-image-session --property=Restart=always --property=RestartSec=1 wl-paste --type image/png --watch clipse --wl-store",
-            "systemd-run --user --unit=clipse-text-session --property=Restart=always --property=RestartSec=1 wl-paste --type text --watch clipse --wl-store",
+            "systemd-run --user --collect --unit=clipse-image-session --property=Restart=always --property=RestartSec=1 wl-paste --type image/png --watch clipse --wl-store",
+            "systemd-run --user --collect --unit=clipse-text-session --property=Restart=always --property=RestartSec=1 wl-paste --type text --watch clipse --wl-store",
             "swayidle -w timeout 300 " .. SCRIPTS .. "set-presence idle resume " .. SCRIPTS .. "set-presence active",
             SCRIPTS .. "hyprland-hotplug-handler >> /tmp/hyprland-hotplug-handler.log 2>&1",
             SCRIPTS .. "start-session-apps",
@@ -860,3 +1256,6 @@ hl.on("hyprland.start", function()
         end
     end
 end)
+if not DECK_MODE then
+    pcall(require, "/home/daphen/.config/hypr/openwhispr-binds.lua")
+end

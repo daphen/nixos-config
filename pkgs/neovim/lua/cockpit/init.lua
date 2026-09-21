@@ -886,6 +886,7 @@ end
 --------------------------------------------------------------------------------
 render_roster = function()
   if not (S.buf and api.nvim_buf_is_valid(S.buf) and S.ns) then return end
+  if S.nvim_focused then rail_focus_mark(true) end
 
   -- Source of truth for "is the roster the focused pane": the ACTUAL current window,
   -- recomputed every render. The enter/leave autocmds used to set S.roster_active,
@@ -1764,12 +1765,12 @@ end
 -- Shared cross-instance focus marker. Every cockpit tab is its own nvim on the
 -- same agentd, so focus must be a GLOBAL fact, not a per-instance flag — else a
 -- background tab toasts while you sit in the focused one. On focus we write this
--- pid; on blur/exit we clear it iff it's still ours. rail_focused() reports whether
+-- pid plus selected session; on blur/exit we clear it iff it's still ours. rail_focused() reports whether
 -- ANY live rail holds it (a dead pid — crashed nvim — is ignored, self-healing).
 local RAIL_FOCUS_FILE = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/agent-rail-focused"
 function rail_focus_mark(on)
   if on then
-    pcall(fn.writefile, { tostring(fn.getpid()) }, RAIL_FOCUS_FILE)
+    pcall(fn.writefile, { tostring(fn.getpid()), S.selected or "" }, RAIL_FOCUS_FILE)
   else
     local ok, l = pcall(fn.readfile, RAIL_FOCUS_FILE)
     if ok and l[1] and vim.trim(l[1]) == tostring(fn.getpid()) then
@@ -1777,21 +1778,20 @@ function rail_focus_mark(on)
     end
   end
 end
-local function rail_focused()
+local function rail_focused(session)
   local ok, l = pcall(fn.readfile, RAIL_FOCUS_FILE)
   if not ok then return false end
   local pid = l[1] and tonumber(vim.trim(l[1]))
+  local selected = l[2] and vim.trim(l[2]) or ""
   return pid ~= nil and fn.isdirectory("/proc/" .. pid) == 1
+    and (selected == "" or not session or selected == session)
 end
 
 local function desktop_notify(session, body, urgency)
-  if not session or session == S.selected then return end
-  -- ANY rail focused (this instance or another) → you're at the cockpit and the
-  -- roster already shows the change, so a desktop toast is pure noise. The shared
-  -- marker makes a background instance stay quiet while another holds focus — that
-  -- cross-instance case was the spam. Toasts only fire once every rail is blurred
-  -- (you've tabbed to the browser/slack), which is exactly when you'd want a ping.
-  if rail_focused() then return end
+  if not session then return end
+  -- The selected session in the focused rail is already visible. Other sessions
+  -- still notify, including one selected in a rail that is currently blurred.
+  if rail_focused(session) then return end
   -- Cross-instance dedup for the tabbed-away case: with no rail focused, EVERY
   -- instance would fire for the same event. Claim a short per-session lease (mtime
   -- on a shared file); if another instance claimed it in the last 10s, stand down.
@@ -1871,6 +1871,33 @@ local function edit_abs(cwd, path)
 end
 
 handle = function(obj)
+  if obj.type == "changes" and obj.session then
+    local w = S.workspace
+    if w and w.remoteCwd and w.remoteCwd ~= "" and (obj.session == w.id or obj.cwd == w.remoteCwd) then
+      local request = S.diff_jobs[w.remoteCwd] or S.diff_jobs[w.cwd]
+      if not obj.id or (request and request.id == obj.id) then
+        local files, bypath = {}, {}
+        for _, source in ipairs(obj.files or {}) do
+          local parsed = parse_git_diff(vim.split(source.patch or "", "\n", { plain = true }))
+          local change = parsed.bypath[source.path] or parsed.files[1] or { hunks = {} }
+          for key, value in pairs(source) do change[key] = value end
+          change.add, change.del = tonumber(source.add) or 0, tonumber(source.del) or 0
+          change.path = source.path
+          files[#files + 1], bypath[change.path] = change, change
+        end
+        table.sort(files, function(a, b) return a.path < b.path end)
+        local snapshot = { files = files, bypath = bypath, at = os.time(), head = obj.head,
+          base = obj.base, branch = obj.branch, diff = obj.diff, error = obj.error }
+        S.gitdiff[w.remoteCwd], S.gitdiff[w.cwd] = snapshot, snapshot
+        S.diff_jobs[w.remoteCwd], S.diff_jobs[w.cwd] = nil, nil
+        if request and request.done then request.done(snapshot) end
+        if S.view == "changes" then render_changes() else render_chat(false) end
+        if refresh_dashboard then refresh_dashboard() end
+        pcall(function() require("cockpit.chin").refresh() end)
+      end
+    end
+    return
+  end
   -- Any event carrying a session id (except a get_entries response, which is a
   -- reply to us, not pi working) means that pi is alive → disarm its wedge watchdog.
   if obj.session and obj.type ~= "response" and S.awaiting then S.awaiting[obj.session] = nil end
@@ -4215,9 +4242,18 @@ end
 function M.git_summary(cwd)
   cwd = cwd or fn.getcwd()
   local cache = S.gitdiff[cwd]
+  local w = S.workspace
+  local remote = w and w.remoteCwd and w.remoteCwd ~= "" and (cwd == w.cwd or cwd == w.remoteCwd)
   if not cache then
     if not S.diff_jobs[cwd] then refresh_git_changes(cwd) end
-    return nil
+    return remote and { authoritative = true, loading = true } or nil
+  end
+  if remote then
+    if (os.time() - (cache.at or 0)) > 20 and not S.diff_jobs[cwd] then refresh_git_changes(cwd) end
+    if cache.error then return { authoritative = true, error = cache.error } end
+    local add, del = 0, 0
+    for _, change in ipairs(cache.files or {}) do add = add + (change.add or 0); del = del + (change.del or 0) end
+    return { authoritative = true, add = add, del = del, head = cache.head, base = cache.base }
   end
   -- Externally-changed trees (a mutagen mirror sync) never fire an nvim event, so a
   -- diff computed mid-sync would otherwise be reported forever. Re-run in the
@@ -4453,6 +4489,7 @@ function M.workspace_cwd()
   local w = S.workspace
   if not w then return fn.getcwd() end
   if fn.isdirectory(w.cwd) == 1 then return w.cwd end
+  if w.remoteCwd and w.remoteCwd ~= "" then return w.cwd end
   vim.notify("Cockpit: " .. w.id .. " checkout missing: " .. w.cwd, vim.log.levels.WARN)
   return nil
 end
@@ -4486,7 +4523,7 @@ local function sync_scope()
   pcall(function() require("cockpit.chin").refresh() end)
 end
 
-function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile)
+function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, source_scope, remote_cwd)
   sync_scope()
   if persisted_scope() and normalized_scope(workspace_scope) ~= scope then return "" end
   local snacks = package.loaded["snacks"]
@@ -4510,7 +4547,13 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile)
     local pending = S.diff_jobs[previous.cwd]; if pending and pending.job then pcall(fn.jobstop, pending.job) end
     S.diff_jobs[previous.cwd] = nil
   end
-  S.workspace = { scope = workspace_scope, id = id, cwd = cwd, plan = plan, profile = profile }
+  if remote_cwd and remote_cwd ~= "" and not (same and previous.remoteCwd == remote_cwd) then
+    local pending = S.diff_jobs[cwd]
+    if pending and pending.job then pcall(fn.jobstop, pending.job) end
+    S.gitdiff[cwd], S.gitdiff[remote_cwd], S.diff_jobs[cwd] = nil, nil, nil
+  end
+  S.workspace = { scope = workspace_scope, id = id, cwd = cwd, plan = plan, profile = profile,
+    sourceScope = source_scope, remoteCwd = remote_cwd }
   S.selected = id
   if fn.getcwd(ed) ~= cwd and fn.isdirectory(cwd) == 1 then
     api.nvim_win_call(ed, function() vim.cmd.cd(fn.fnameescape(cwd)) end)
@@ -4537,7 +4580,7 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile)
       open_file(file)
       return
     end
-    if view == "dashboard" or fn.isdirectory(cwd) == 0 then
+    if view == "dashboard" or (fn.isdirectory(cwd) == 0 and not (remote_cwd and remote_cwd ~= "" and view == "diff")) then
       show_scratch(ed, cwd)
       if view == "diff" or view == "code" then M.workspace_cwd() end
       return
@@ -4757,8 +4800,28 @@ parse_git_diff = function(lines)
   return { files = files, bypath = bypath }
 end
 
-refresh_git_changes = function(cwd, path)
-  if not cwd or fn.isdirectory(cwd) ~= 1 then return end
+refresh_git_changes = function(cwd, path, done)
+  local w = S.workspace
+  local remote = w and w.remoteCwd and w.remoteCwd ~= "" and (cwd == w.cwd or cwd == w.remoteCwd)
+  if remote then
+    local previous = S.diff_jobs[w.remoteCwd] or S.diff_jobs[w.cwd]
+    if previous then previous.done = done or previous.done; return end
+    local request = { id = string.format("nvim-diff-%d-%d", fn.getpid(), uv.hrtime()), done = done }
+    S.gitdiff[w.remoteCwd], S.gitdiff[w.cwd] = nil, nil
+    S.diff_jobs[w.remoteCwd], S.diff_jobs[w.cwd] = request, request
+    send({ type = "get_changes", session = w.id, id = request.id })
+    vim.defer_fn(function()
+      if S.diff_jobs[w.remoteCwd] ~= request then return end
+      local snapshot = { files = {}, bypath = {}, at = os.time(), error = "VM diff request timed out" }
+      S.gitdiff[w.remoteCwd], S.gitdiff[w.cwd] = snapshot, snapshot
+      S.diff_jobs[w.remoteCwd], S.diff_jobs[w.cwd] = nil, nil
+      if request.done then request.done(snapshot) end
+      if S.view == "changes" then render_changes() end
+      pcall(function() require("cockpit.chin").refresh() end)
+    end, 10000)
+    return
+  end
+  if not cwd or fn.isdirectory(cwd) ~= 1 then if done then done(nil, "checkout unavailable") end; return end
   if path and not S.gitdiff[cwd] then path = nil end
   local ok, signs = pcall(require, "hunk-nvim.signs")
   local base = ok and signs.base_for and signs.base_for(cwd) or "HEAD"
@@ -4770,12 +4833,13 @@ refresh_git_changes = function(cwd, path)
   end
   local previous = S.diff_jobs[cwd]
   if previous and previous.job then pcall(fn.jobstop, previous.job) end
-  local request, output, untracked = {}, {}, {}
+  local request, output, untracked = { files = 0, too_large = false }, {}, {}
+  local max_files = cwd:match("/work/lovable%.daphen%-every%-%d+$") and 200 or math.huge
   S.diff_jobs[cwd] = request
   local function apply()
     if S.diff_jobs[cwd] ~= request then return end
     S.diff_jobs[cwd] = nil
-    local parsed = parse_git_diff(output)
+    local parsed = request.too_large and { files = {}, bypath = {}, unready = true } or parse_git_diff(output)
     for _, u in ipairs(untracked) do
       if not parsed.bypath[u.path] then
         local h = { old_l1 = 0, old_l2 = 0, l1 = 1, l2 = math.max(1, u.lines), add = u.lines, del = 0 }
@@ -4802,6 +4866,7 @@ refresh_git_changes = function(cwd, path)
     end
     if refresh_dashboard and S.dash and S.dash.cwd == cwd then refresh_dashboard() end
     pcall(function() require("cockpit.chin").refresh() end)
+    if done then done(S.gitdiff[cwd]) end
   end
   local function count_untracked(files)
     local next_file, active = 1, 0
@@ -4845,11 +4910,16 @@ refresh_git_changes = function(cwd, path)
       partial = data[#data]
       for index = 1, #data - 1 do
         local line = data[index]
+        if line:match("^diff %-%-git ") then
+          request.files = request.files + 1
+          if request.files > max_files then request.too_large = true; pcall(fn.jobstop, request.job); return end
+        end
         if line ~= "" then output[#output + 1] = line end
       end
     end,
     on_exit = function(_, code)
       if S.diff_jobs[cwd] ~= request then return end
+      if request.too_large then vim.schedule(apply); return end
       if code ~= 0 then S.diff_jobs[cwd] = nil; return end
       if partial ~= "" then output[#output + 1] = partial end
       local files = {}
@@ -4857,10 +4927,13 @@ refresh_git_changes = function(cwd, path)
         stdout_buffered = true,
         on_stdout = function(_, data)
           for _, f in ipairs(data or {}) do
-            if f ~= "" and not f:match("^%.heidr%-pastes/") and not f:match("^agents/") then files[#files + 1] = f end
+            if f ~= "" and not f:match("^%.heidr%-pastes/") and not f:match("^agents/") then
+              files[#files + 1] = f
+              if request.files + #files > max_files then request.too_large = true; break end
+            end
           end
         end,
-        on_exit = function() count_untracked(files) end,
+        on_exit = function() if request.too_large then apply() else count_untracked(files) end end,
       })
     end,
   })
@@ -4871,6 +4944,17 @@ git_changes = function(cwd)
   local cache = cwd and S.gitdiff[cwd]
   if cwd and not cache and not S.diff_jobs[cwd] then refresh_git_changes(cwd) end
   return cache and cache.files or {}
+end
+
+function M.git_snapshot(cwd, fresh, done)
+  cwd = cwd or M.workspace_cwd()
+  local w = S.workspace
+  local remote = cwd and w and w.remoteCwd and w.remoteCwd ~= "" and (cwd == w.cwd or cwd == w.remoteCwd)
+  if not remote then return false end
+  if fresh then refresh_git_changes(cwd, nil, done); return true end
+  local cache = S.gitdiff[cwd]
+  if not cache and not S.diff_jobs[cwd] then refresh_git_changes(cwd, nil, done) end
+  return cache or true
 end
 
 local function statmark(add, del)
@@ -5071,6 +5155,8 @@ render_changes = function()
     local W = rail_width()
     local plan = load_plan(cwd)
     local changes = git_changes(cwd)
+    local diff = S.gitdiff[cwd]
+    local diff_status = S.diff_jobs[cwd] and "loading VM snapshot…" or (diff and diff.error and ("VM diff unavailable · " .. diff.error))
     local bypath = {}
     for _, c in ipairs(changes) do bypath[c.path] = c end
     local inner = W - 6 -- match box()'s inner (│  … │ with 2-space pads)
@@ -5112,6 +5198,7 @@ render_changes = function()
 
     -- diffstat as (text, segs) for placement inside a box; nil when no changes.
     local function diffstat()
+      if diff_status then return diff_status, { { 0, #diff_status, diff and diff.error and "CockpitErr" or "CockpitMuted" } } end
       local ta, td = 0, 0
       for _, c in ipairs(changes) do ta = ta + (c.add or 0); td = td + (c.del or 0) end
       if #changes == 0 then return nil end
@@ -5171,7 +5258,7 @@ render_changes = function()
     else
       box(push, decor, W, ICON.changes, "CHANGES · " .. base(cwd), function(add)
         local ds, dsegs = diffstat(); if ds then add(ds, dsegs) end
-        if #changes == 0 then
+        if #changes == 0 and not diff_status then
           add("no changes on this branch", { { 0, #"no changes on this branch", "CockpitMuted" } })
         else
           local rows = {}
@@ -6047,11 +6134,8 @@ function M.open()
 
   -- Track terminal focus so desktop_notify stays silent while you're in nvim (the
   -- roster already shows the change) and only toasts once you've tabbed away.
-  -- SHARED across instances: every cockpit tab is a separate nvim all wired to the
-  -- same agentd, so a per-instance flag let a BACKGROUND tab toast while you sat in
-  -- the focused one. rail_focus_mark writes this nvim's pid to a shared file on
-  -- focus (clears it on blur/exit); desktop_notify suppresses while ANY live rail
-  -- holds it. So "a rail is focused" is global, not per-window.
+  -- Shared across instances: record this nvim and its selected session on focus;
+  -- notification senders suppress only that session until the rail loses focus.
   S.nvim_focused = true
   rail_focus_mark(true)
   local fgrp = api.nvim_create_augroup("CockpitRailFocus", { clear = true })

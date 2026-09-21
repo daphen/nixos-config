@@ -1,0 +1,17 @@
+set -euo pipefail
+
+native() {
+  if ! pkill -RTMIN -x wvkbd-mobintl; then
+    exec wvkbd-mobintl -H 280 -L 280
+  fi
+}
+
+if [[ ${1:-} == native ]]; then
+  native
+  exit 0
+fi
+
+if pgrep -x steam >/dev/null; then
+  pkill -USR1 -x wvkbd-mobintl || true
+  exec steam -ifrunning steam://open/keyboard
+fi

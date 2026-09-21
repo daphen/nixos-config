@@ -35,23 +35,26 @@ from agent_review_harness import (
     HarnessPorts,
     ManualHarness,
     adopt_or_create_worktree,
+    canonical_vm_review_worktree,
     deterministic_path,
     teardown_context,
 )
 
 HOME = os.environ["HOME"]
-LOVABLE_DIR = Path(HOME) / "work" / "lovable"
+VM_NAME = os.environ.get("COCKPIT_VM", os.environ.get("HEIDR_VM", "dev-heidr-2a39"))
+NATIVE_VM = socket.gethostname().split(".", 1)[0] == VM_NAME.split(".", 1)[0]
+LOVABLE_DIR = Path(HOME) / ("src" if NATIVE_VM else "work") / "lovable"
 RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 PR_URL_RE = re.compile(r"https?://github\.com/([^/]+)/([^/]+)/pull/(\d+)")
 
 
 def detect_repo(pr_arg: str) -> Path:
-    """The repo the PR belongs to — reviews are not lovable-only.
-
-    A PR URL names its repo (find the local checkout); a bare number means the
-    CALLER's repo (agent_review runs in the calling session's cwd). Lovable
-    stays the fallback so every existing flow behaves exactly as before."""
+    """Resolve desktop reviews normally; the VM owns only its lovable checkout."""
     m = PR_URL_RE.search(pr_arg)
+    if NATIVE_VM:
+        if m and m.group(2) != "lovable":
+            raise SystemExit("VM-native review supports only ~/src/lovable")
+        return LOVABLE_DIR
     if m:
         name = m.group(2)
         for cand in (Path(HOME) / "work" / name, Path(HOME) / "personal" / name):
@@ -80,18 +83,21 @@ def detect_repo(pr_arg: str) -> Path:
 
 
 REPO_DIR = LOVABLE_DIR   # resolved in main() once the PR arg is known
-SCOPE = os.environ.get("AGENT_SCOPE", "lovable")
+SCOPE = os.environ.get("AGENT_SCOPE", "work" if NATIVE_VM else "lovable")
 
 
 def scope_for_repo(repo: Path) -> str:
+    if NATIVE_VM:
+        return "work"
     if os.environ.get("AGENT_SCOPE"):
         return os.environ["AGENT_SCOPE"]
     return "personal" if str(repo).startswith(str(Path(HOME) / "personal")) else "lovable"
 
 
 def notify(msg: str) -> None:
-    subprocess.run(["notify-send", "-t", "2500", "PR review", msg],
-                   capture_output=True)
+    if not NATIVE_VM:
+        subprocess.run(["notify-send", "-t", "2500", "PR review", msg],
+                       capture_output=True)
 
 
 def parse_pr(s: str) -> int:
@@ -133,6 +139,11 @@ def git_output(args: list[str], cwd: Path) -> str:
 
 
 def ensure_worktree(num: int, slug: str, sha: str) -> Path:
+    if NATIVE_VM:
+        try:
+            return canonical_vm_review_worktree(Path(HOME), num, sha)
+        except RuntimeError as error:
+            raise fail(str(error)) from error
     result = subprocess.run(
         ["git", "-C", str(REPO_DIR), "fetch", "origin",
          "+refs/heads/main:refs/remotes/origin/main", f"pull/{num}/head"],
@@ -300,15 +311,18 @@ def main() -> int:
         ap.error("browser harness options require --manual-test PROJECT_ID")
     if a.manual_test and not a.runtime_contract:
         ap.error("--manual-test requires explicit --runtime-contract production|exact-branch")
+    if NATIVE_VM and a.manual_test:
+        raise SystemExit("VM-native --manual-test still requires an authorized stopped desktop Chromium profile and laptop-to-VM forwarding")
 
     num = parse_pr(a.pr)
     global REPO_DIR, SCOPE
     REPO_DIR = detect_repo(a.pr)
     SCOPE = scope_for_repo(REPO_DIR)
-    try:
-        deterministic_path(Path(HOME))
-    except RuntimeError as error:
-        raise SystemExit(str(error)) from error
+    if not NATIVE_VM:
+        try:
+            deterministic_path(Path(HOME))
+        except RuntimeError as error:
+            raise SystemExit(str(error)) from error
     notify(f"preparing PR #{num}…")
     title, sha = gh_pr_metadata(num)
     slug = slugify(title)

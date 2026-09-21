@@ -1,58 +1,33 @@
 #!/usr/bin/env bash
-# Focus the most-recently-focused Helium window (if any) before toggling
-# the palette (the quickshell CmdPalette, fed by palette-daemon). Focusing Helium wakes its service worker via
-# chrome.windows.onFocusChanged, so the daemon has fresh tab state by
-# the time the palette renders. This replaces the SW keepalive alarm —
-# the user's gesture *is* the wake.
-#
-# Recency source: /tmp/niri-focus-tracker/app-<class> (last-focused
-# window-id per app-id) and /tmp/niri-focus-tracker/focus-times.json
-# (window-id → epoch). Maintained by ~/.config/niri/scripts/niri-focus-tracker.
+set -euo pipefail
 
-set -u
+snapshot=$(niri msg --json workspaces)
+focused_output=$(jq -r '.[] | select(.is_focused) | .output' <<< "$snapshot" | head -1)
 
-target_id=$(python3 - <<'PY'
-import json
-from pathlib import Path
+target=$(niri msg --json windows | WORKSPACES="$snapshot" OUTPUT="$focused_output" python3 -c '
+import json, os, sys
+windows = json.load(sys.stdin)
+workspaces = {str(w["id"]): w.get("output", "") for w in json.loads(os.environ["WORKSPACES"])}
+output = os.environ.get("OUTPUT", "")
+browsers = [w for w in windows
+            if w.get("app_id") in ("browser-personal", "browser-work")
+            and workspaces.get(str(w.get("workspace_id"))) == output]
+if browsers:
+    def stamp(w):
+        t = w.get("focus_timestamp") or {}
+        return (t.get("secs") or 0, t.get("nanos") or 0)
+    print(max(browsers, key=stamp)["id"])
+')
 
-FOCUS_DIR = Path("/tmp/niri-focus-tracker")
-times_path = FOCUS_DIR / "focus-times.json"
-
-times = {}
-if times_path.exists():
-    try:
-        times = json.loads(times_path.read_text())
-    except Exception:
-        pass
-
-candidates = []
-for cls in ("browser-personal", "browser-work"):
-    p = FOCUS_DIR / f"app-{cls}"
-    if not p.exists():
-        continue
-    try:
-        wid = p.read_text().strip()
-        if wid:
-            candidates.append((times.get(wid, 0), wid))
-    except Exception:
-        pass
-
-if candidates:
-    candidates.sort(reverse=True)
-    print(candidates[0][1])
-PY
-)
-
-if [[ -n "$target_id" ]]; then
-    current=$(niri msg --json focused-window 2>/dev/null \
-        | python3 -c "import json,sys; d=json.load(sys.stdin) or {}; print(f\"{d.get('id','')}\\t{d.get('app_id','')}\")" \
-        2>/dev/null || echo "")
-    current_id=${current%%$'\t'*}
-    current_app=${current#*$'\t'}
-    if [[ "$current_app" != "browser-personal" && "$current_app" != "browser-work" \
-          && "$current_id" != "$target_id" ]]; then
-        niri msg action focus-window --id "$target_id" 2>/dev/null || true
+if [[ -n "$target" ]]; then
+    current=$(niri msg --json focused-window | jq -r '.id // empty')
+    if [[ "$current" != "$target" ]]; then
+        niri msg action focus-window --id "$target" >/dev/null
+        for _ in {1..20}; do
+            [[ $(niri msg --json focused-window | jq -r '.id // empty') == "$target" ]] && break
+            sleep 0.01
+        done
     fi
 fi
 
-exec qs ipc call -- palette toggle
+exec qs ipc call -- palette toggleOn "$focused_output"

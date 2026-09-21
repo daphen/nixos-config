@@ -98,18 +98,65 @@ that defines a package or the system → rebuild.**
   `screen.name === NiriState.focusedOutput()` so toasts only appear on the
   active monitor.
 
+## Voice dictation
+
+Hold `Super+V` to record and release it to transcribe. Niri sends `PttDown` to
+OpenWhispr's session D-Bus service; OpenWhispr's evdev listener observes the key
+release, runs local transcription and cleanup, then pastes through `uinput`.
+
+`openwhispr.service` owns the app and removes stale state on exit. Confirmed
+lifecycle changes are written atomically to
+`$XDG_RUNTIME_DIR/openwhispr-dictation-state`; `DictationState.qml` watches that
+file and `DictationOverlay.qml` maps the click-through bottom-center ThinkingOrb.
+Models and provider choices remain in OpenWhispr's settings. For recovery, check
+`systemctl --user status openwhispr`, D-Bus name `com.openwhispr.App`, membership
+in `input`, `uinput`, and `ydotool`, then the runtime state file.
+
 ## Theme system
 
 `~/nixos/dotfiles/themes/.config/themes/`
 
-- `colors.json` — single source of truth, two palettes (dark + light).
+- `org.gnome.desktop.interface color-scheme` — the sole light/dark preference;
+  `prefer-dark` selects dark, while `prefer-light` and `default` select light.
+  `themectl switch light|dark` and `toggle_theme` only change this setting.
+- Desktop `shell.qml` owns one `themectl-watch` child. Its native GSettings
+  subscription immediately publishes `theme_mode`, then runs `themectl auto`
+  asynchronously. Generation and browser builds cannot block that notification.
+  Only one application runs at a time; changes during it request one follow-up
+  using the current preference, not a queue of old modes. The renderer never
+  writes the notification file or the preference and rechecks the preference
+  after slow adapters finish.
+- `~/.config/theme_mode` — generated output for existing Quickshell, wallpaper,
+  Neovim and Fish readers, never an input for choosing the system preference.
+  Fish refreshes colors on the next prompt; startup/activation cannot select a
+  different mode. Already-running apps with explicit overrides may need their
+  own theme setting changed to system-following.
+- `colors.json` — the two color palettes (dark + light).
 - `templates/<tool>.template` — Mustache-ish placeholders like
   `{{background.primary}}`.
 - `theme-processor.py` — substitutes placeholders →
   `generated/<tool>/<mode>.theme`.
-- `theme-manager.sh apply <mode>` — copies generated theme into each tool's
-  expected path. For tools that need restart/reload, also pokes the running
-  process (e.g. kitty `load-config`, QS file-watch).
+- `theme-manager.sh apply` — applies generated themes matching the global
+  preference. `auto` generates first; `generate dark|light` also works offline.
+  Existing adapters update app configuration and `theme_mode` without restarting
+  the desktop portal. Identical generated QML is not rewritten, avoiding reload
+  loops when the desktop follower starts.
+
+### Steam Big Picture (CSS Loader)
+
+`templates/steam-css-loader.template` renders both palettes through the normal
+processor. The Steam adapter copies the current palette to
+`~/homebrew/themes/Dotfiles/shared.css` alongside the v8 `theme.json` manifest
+from `templates/steam-css-loader/`. This is a CSS Loader bundle, not a legacy
+Steam `skins/` directory; it targets Big Picture, Quick Access, and the main
+menu.
+
+On the Deck, Jovian installs Decky automatically using `~/homebrew` as its state
+directory. Install CSS Loader from Decky's store and enable **Dotfiles** once.
+Use CSS Loader's theme reload if palette edits are not reflected immediately.
+Steam UI class changes may require updating the template's selectors; actual
+Deck rendering remains a hardware check. Workstation Decky/CSS Loader installs
+are separate from the Deck's NixOS configuration.
 
 ### FZF special-case
 
@@ -118,7 +165,7 @@ take effect live in already-running processes (yazi, claude TUI, etc). Flow:
 
 1. Template produces a plain `--color=...` lines file (one flag per line, no
    shell wrapper).
-1. `theme-manager.sh apply <mode>` symlinks `~/.config/fzf/opts.conf` →
+1. `theme-manager.sh apply` symlinks `~/.config/fzf/opts.conf` →
    `~/.config/themes/generated/fzf/<mode>.theme`.
 1. `FZF_DEFAULT_OPTS_FILE=~/.config/fzf/opts.conf` is exported via home-manager
    `home.sessionVariables` (and `niri.environment{}` for compositor-spawned
@@ -154,9 +201,11 @@ pickers only.
 source or execute files under `.config/niri`; shared behavior is copied only
 when it has an independent Hyprland entrypoint.
 
-Home Manager maps this tree to `~/.config/hypr/`. The TTY test launcher remains
-at `~/hypr-real`, but it loads the canonical config directly so an unactivated
-Home Manager generation cannot make tests use stale files.
+Home Manager maps this tree to `~/.config/hypr/`. From a Linux TTY, run
+`hypr-session` to start the canvas directly; Niri need not be running. The old
+`~/hypr-real` entrypoint still works. Both load the canonical config directly.
+When handing over from an active Niri session, the launcher restores Niri on
+exit; a standalone launch returns to the TTY instead.
 
 ## Notifications
 
@@ -203,6 +252,7 @@ VIA layout backup: `~/nixos/dotfiles/via/charybdis-mini-via.json`.
 | `quickshell` (wallpaper) | Isolated wallpaper surfaces                            | niri spawn-at-startup                   |
 | `palette-daemon`         | Cmd-palette overlay                                    | systemd-user (graphical-session.target) |
 | `wpm-daemon`             | Bar WPM counter                                        | systemd-user (graphical-session.target) |
+| `openwhispr`             | Local voice dictation + transcript paste               | systemd-user (graphical-session.target) |
 | `kanata`                 | Key remap                                              | NixOS system service                    |
 | `mako`                   | (removed; replaced by Quickshell's NotificationServer) | —                                       |
 | `blueman-applet`         | (removed; deduped bluetooth notifs)                    | —                                       |

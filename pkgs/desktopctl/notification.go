@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -143,7 +144,18 @@ func dispatchActiveNotification(id string, n notification) error {
 		_, _ = quickshellCall("", "notifications", "dismiss", id)
 	}
 	if selector, command, ok := notificationJump(n.App); ok {
-		invokeDismiss()
+		if n.App == "Slack" && hintString(n, "desktop-entry") == "Slack" {
+			path := slackBrowserLogPath()
+			offset := fileSize(path)
+			_, _ = quickshellCall("", "notifications", "invoke", id)
+			target, found := waitForSlackClick(path, offset, 250*time.Millisecond)
+			_, _ = quickshellCall("", "notifications", "dismiss", id)
+			if found {
+				return notificationExec("slack", target.deepLink())
+			}
+		} else {
+			invokeDismiss()
+		}
 		return notificationExec(notificationCommand("niri-jump-or-exec"), selector, command)
 	}
 	switch n.App {
@@ -191,6 +203,58 @@ func dispatchActiveNotification(id string, n notification) error {
 			focusAppWindow(n.App)
 		}
 		return nil
+	}
+}
+
+type slackClickTarget struct {
+	Channel         string `json:"channel"`
+	MessageID       string `json:"messageId"`
+	TeamID          string `json:"teamId"`
+	ThreadTimestamp string `json:"threadTimestamp"`
+}
+
+func (target slackClickTarget) deepLink() string {
+	query := url.Values{"team": {target.TeamID}, "id": {target.Channel}, "message": {target.MessageID}}
+	if target.ThreadTimestamp != "" {
+		query.Set("thread_ts", target.ThreadTimestamp)
+	}
+	return "slack://channel?" + query.Encode()
+}
+
+func slackBrowserLogPath() string {
+	return filepath.Join(os.Getenv("HOME"), ".config", "Slack", "logs", "default", "browser.log")
+}
+
+func fileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+func waitForSlackClick(path string, offset int64, timeout time.Duration) (slackClickTarget, bool) {
+	deadline := time.Now().Add(timeout)
+	for {
+		file, err := os.Open(path)
+		if err == nil {
+			_, _ = file.Seek(offset, io.SeekStart)
+			data, _ := io.ReadAll(file)
+			file.Close()
+			if marker := bytes.LastIndex(data, []byte("Store: CLICK_NOTIFICATION")); marker >= 0 {
+				if start := bytes.IndexByte(data[marker:], '{'); start >= 0 {
+					var target slackClickTarget
+					decoder := json.NewDecoder(bytes.NewReader(data[marker+start:]))
+					if decoder.Decode(&target) == nil && target.TeamID != "" && target.Channel != "" && target.MessageID != "" {
+						return target, true
+					}
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			return slackClickTarget{}, false
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

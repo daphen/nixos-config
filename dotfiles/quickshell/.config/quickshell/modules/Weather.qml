@@ -45,4 +45,5 @@ Item {
         font.weight: Theme.fontWeight
         font.hintingPreference: Font.PreferFullHinting
     }
+
 }

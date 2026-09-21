@@ -54,12 +54,20 @@ starship/.config/starship/starship.toml
 secrets/
 opencode/.config/opencode/opencode.json
 
-# Claude Code lives at ~/.claude (relocated into the repo) but is local
-# runtime/config — transcripts, credentials, settings, plugins, caches.
-# This is a PUBLIC repo, so ignore everything under it; only the custom
-# prompt themes are tracked (dev-env ships them to sandboxes).
+# This repo is public: exclude private agent state and credentials.
+# Allow only the configuration and custom sources listed below.
 claude/.claude/*
 !claude/.claude/themes/
+!claude/.claude/hooks/
+claude/.claude/hooks/*
+!claude/.claude/hooks/*.sh
+!claude/.claude/hooks/*.js
+!claude/.claude/hooks/README.md
+!claude/.claude/hooks/package.json
+!claude/.claude/settings.json
+!claude/.claude/keybindings.json
+!claude/.claude/CLAUDE.md
+!claude/.claude/commands/
 # Personal skills travel to sandboxes via #dev-env (see pkgs/daphen-env).
 # Workflow instructions only — no credentials. PUBLIC, so keep it that way.
 !claude/.claude/skills/

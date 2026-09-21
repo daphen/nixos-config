@@ -14,7 +14,7 @@ let
     };
     Service = {
       Type = "simple";
-      Environment = "PATH=${pkgs.libsecret}/bin:${pkgs.fish}/bin:/run/current-system/sw/bin";
+      Environment = "PATH=${pkgs.libsecret}/bin:${pkgs.fish}/bin:/etc/profiles/per-user/daphen/bin:/run/current-system/sw/bin";
       ExecStart = "%h/.config/niri/scripts/launch-agentd ${scope} ${extraArgs}";
       Restart = "on-failure";
       RestartSec = "10s";
@@ -22,6 +22,7 @@ let
     Install.WantedBy = [ "default.target" ];
   };
   palette-daemon = inputs.palette-daemon.packages.${pkgs.system}.default;
+  openwhispr = pkgs.callPackage ../../pkgs/openwhispr { };
   ancs4linux = import ../../pkgs/ancs4linux { inherit pkgs; };
 
   claudeBackupSrc = "%h/.claude/projects/";
@@ -68,6 +69,30 @@ in
       ];
       Restart = "on-failure";
       RestartSec = 2;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
+  systemd.user.services.openwhispr = {
+    Unit = {
+      Description = "OpenWhispr local voice dictation";
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStartPre = "/bin/sh -c '[ -n \"$WAYLAND_DISPLAY\" ] && (${pkgs.procps}/bin/pkill -u %U -f \"openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64\" || true)'";
+      ExecStart = "${openwhispr}/bin/openwhispr --no-sandbox --ozone-platform=wayland";
+      ExecStopPost = "/bin/sh -c '${pkgs.procps}/bin/pkill -u %U -f \"openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64\" || true; ${pkgs.coreutils}/bin/rm -f %t/openwhispr-dictation-state'";
+      Environment = [
+        "DICTATION_KEY=Super+V"
+        "OPENWHISPR_EXTERNAL_DICTATION_KEY=Super+V"
+        "OPENWHISPR_EXTERNAL_HOTKEY=1"
+        "OPENWHISPR_EXTERNAL_OVERLAY=1"
+        "OPENWHISPR_FORCE_PUSH_TO_TALK=1"
+      ];
+      Restart = "on-failure";
+      RestartSec = 3;
     };
     Install.WantedBy = [ "graphical-session.target" ];
   };

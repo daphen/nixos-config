@@ -33,6 +33,7 @@ printf 'qs %s\n' "$*" >> "$LOG"
 case "$*" in
   "list -a --json") printf '%s' "${INSTANCES:-[]}" ;;
   "ipc call notifications list") printf '%s' "${NOTIFICATIONS:-[]}" ;;
+  *notifications*invoke*) [ -n "$SLACK_CLICK" ] && printf '%s' "$SLACK_CLICK" >> "$HOME/.config/Slack/logs/default/browser.log" ;;
   *" call cockpit scopeMode") [ -n "$SCOPE_SLEEP" ] && exec `+sleep+` "$SCOPE_SLEEP"; printf '%s' "$SCOPE_MODE" ;;
   *" call cockpit sessions") printf '%s' "$SESSIONS" ;;
   *" call cockpit title") printf '%s' "$COCKPIT_TITLE" ;;
@@ -90,6 +91,38 @@ func TestNotificationActiveAliasesInvokeDismissThenExec(t *testing.T) {
 				t.Fatalf("log:\n%s\nwant:\n%s", got, want)
 			}
 		})
+	}
+}
+
+func TestNotificationActiveSlackUsesClickedThreadDeepLink(t *testing.T) {
+	f := newNotificationDesktop(t)
+	n := `[{"id":75,"app_name":"Slack","hints":{"desktop-entry":"Slack"}}]`
+	if err := os.MkdirAll(filepath.Join(f.home, ".config", "Slack", "logs", "default"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	click := "[09/17/26, 10:14:38:283] info: Store: CLICK_NOTIFICATION \n" +
+		`{"channel":"C123","messageId":"1789632874.990739","teamId":"T456","threadTimestamp":"1789630797.519439"}` + "\n"
+	if output, err := f.run(t, map[string]string{"NOTIFICATIONS": n, "SLACK_CLICK": click}, "75"); err != nil {
+		t.Fatalf("%v: %s", err, output)
+	}
+	if data, err := os.ReadFile(filepath.Join(f.home, ".config", "Slack", "logs", "default", "browser.log")); err != nil {
+		t.Fatalf("Slack click log: %v", err)
+	} else if string(data) != click {
+		t.Fatalf("Slack click log = %q, want %q", data, click)
+	}
+	want := "qs ipc call notifications list\n" +
+		"qs ipc call notifications invoke 75\n" +
+		"qs ipc call notifications dismiss 75\n" +
+		"exec slack slack://channel?id=C123&message=1789632874.990739&team=T456&thread_ts=1789630797.519439\n"
+	if got := f.readLog(t); got != want {
+		t.Fatalf("log:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestSlackClickDeepLinkOmitsThreadForChannelMessage(t *testing.T) {
+	target := slackClickTarget{Channel: "C1", MessageID: "1700.2", TeamID: "T1"}
+	if got, want := target.deepLink(), "slack://channel?id=C1&message=1700.2&team=T1"; got != want {
+		t.Fatalf("deep link = %q, want %q", got, want)
 	}
 }
 

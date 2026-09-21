@@ -62,21 +62,29 @@ func TestCockpitCurrentBundleAndHealthyTunnel(t *testing.T) {
 	inOrder(t, calls, "pi|--version", "ssh|-o StrictHostKeyChecking=no", "ssh|-o StrictHostKeyChecking=no", "python3 - instructions.md", "pgrep -x agentd", "fish|-c", "op|read", "export XDG_DATA_DIRS")
 }
 
-func TestCockpitScriptOnlyReaperUpdateIsAtomicWithoutDaemonRestart(t *testing.T) {
+func TestCockpitLauncherAndReaperUpdatesAreAtomicWithoutDaemonRestart(t *testing.T) {
 	home, path, log := cockpitFixture(t)
 	bundle, _ := bundleHash(filepath.Join(home, "nixos/dotfiles/ai"))
 	reaper := cockpitReaperHash(t, home)
+	launcher := cockpitFileHash(t, binary)
+	wrapper := fmt.Sprintf("%x", sha256.Sum256([]byte(vmWorktreeWrapper)))
 	listener := cockpitHealthySocket(t, filepath.Join(home, "run/agentd-work.sock"))
 	defer listener.Close()
 	result := runCockpitBinary(t, home, path, []string{
-		"REMOTE_HASH_INITIAL=" + bundle, "REMOTE_REAPER_INITIAL=old", "REMOTE_REAPER_AFTER=" + reaper,
-		"WAS_RUNNING=yes", "DAEMON_MODE=already",
+		"REMOTE_HASH_INITIAL=" + bundle, "REMOTE_VMCTL_INITIAL=old", "REMOTE_VMCTL_AFTER=" + launcher,
+		"REMOTE_VMWT_INITIAL=old", "REMOTE_VMWT_AFTER=" + wrapper,
+		"REMOTE_REAPER_INITIAL=old", "REMOTE_REAPER_AFTER=" + reaper, "WAS_RUNNING=yes", "DAEMON_MODE=already",
 	}, "cockpit")
-	if result.err != nil || !strings.Contains(result.stdout, "slice reaper updated and verified ("+reaper+"); agentd restart not required") {
+	if result.err != nil {
 		t.Fatalf("result=%+v", result)
 	}
+	for _, want := range []string{"vmctl launcher updated and verified (" + launcher + ")", "vm-wt wrapper updated and verified (" + wrapper + ")", "slice reaper updated and verified (" + reaper + ")"} {
+		if !strings.Contains(result.stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, result.stdout)
+		}
+	}
 	calls := readLog(t, log)
-	for _, want := range []string{"rsync|-az -e", ".local/bin/.vm-slice-reaper-" + reaper + ".tmp", "chmod 0755", "mv -f"} {
+	for _, want := range []string{"rsync|-az -e", binary, ".local/bin/.vmctl-" + launcher + ".tmp", ".local/bin/.vm-wt-" + wrapper + ".tmp", ".local/bin/.vm-slice-reaper-" + reaper + ".tmp", "chmod 0755", "mv -f"} {
 		if !strings.Contains(calls, want) {
 			t.Errorf("calls missing %q:\n%s", want, calls)
 		}
@@ -263,11 +271,23 @@ case "$name" in
  op) printf '%s\n' "${SLACK_VALUE-}" ;;
  rsync)
    [ "${FAIL_RSYNC-}" = yes ] && exit 1
-   case "$*" in *".vm-slice-reaper-"*) : > "$HOME/reaper-seen" ;; *) : > "$HOME/rsync-seen" ;; esac ;;
+   case "$*" in
+     *".vm-slice-reaper-"*) : > "$HOME/reaper-seen" ;; *".vmctl-"*) : > "$HOME/vmctl-seen" ;;
+     *".vm-wt-"*)
+       previous=; source=; for arg do previous=$source; source=$arg; done
+       content=$(while IFS= read -r line; do printf '%s\n' "$line"; done < "$previous")
+       [ "$content" = '#!/bin/sh
+exec "$HOME/.local/bin/vmctl" --native worktree "$@"' ] || exit 1
+       : > "$HOME/vmwt-seen" ;; *) : > "$HOME/rsync-seen" ;;
+   esac ;;
  ssh)
    case "$*" in
      *"pi --version"*) printf '%s\n' "${PI_REMOTE-}" ;;
-     *"sha256sum "*"vm-slice-reaper"*)
+     *"sha256sum "*"vmctl 2>/dev/null"*)
+       if [ -f "$HOME/vmctl-seen" ]; then echo "${REMOTE_VMCTL_AFTER-}"; else echo "${REMOTE_VMCTL_INITIAL-}"; fi ;;
+     *"sha256sum "*"vm-wt 2>/dev/null"*)
+       if [ -f "$HOME/vmwt-seen" ]; then echo "${REMOTE_VMWT_AFTER-}"; else echo "${REMOTE_VMWT_INITIAL-}"; fi ;;
+     *"sha256sum "*"vm-slice-reaper 2>/dev/null"*)
        if [ -f "$HOME/reaper-seen" ]; then echo "${REMOTE_REAPER_AFTER-}"; else echo "${REMOTE_REAPER_INITIAL-}"; fi ;;
      *"python3 - instructions.md"*)
        if [ -f "$HOME/rsync-seen" ]; then echo "${REMOTE_HASH_AFTER-}"; else echo "${REMOTE_HASH_INITIAL-}"; fi ;;
@@ -309,7 +329,12 @@ func cockpitHealthySocket(t *testing.T, path string) net.Listener {
 
 func cockpitReaperHash(t *testing.T, home string) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(home, "nixos/dotfiles/niri/.config/niri/scripts/vm-slice-reaper"))
+	return cockpitFileHash(t, filepath.Join(home, "nixos/dotfiles/niri/.config/niri/scripts/vm-slice-reaper"))
+}
+
+func cockpitFileHash(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,6 +345,7 @@ func runCockpitBinary(t *testing.T, home, path string, extra []string, args ...s
 	t.Helper()
 	cmd := exec.Command(binary, args...)
 	base := []string{"HOME=" + home, "PATH=" + path, "VMCTL_LOG=" + filepath.Join(home, "calls.log"), "XDG_RUNTIME_DIR=" + filepath.Join(home, "run"),
+		"REMOTE_VMCTL_INITIAL=" + cockpitFileHash(t, binary), "REMOTE_VMCTL_AFTER=" + cockpitFileHash(t, binary), "REMOTE_VMWT_INITIAL=" + fmt.Sprintf("%x", sha256.Sum256([]byte(vmWorktreeWrapper))), "REMOTE_VMWT_AFTER=" + fmt.Sprintf("%x", sha256.Sum256([]byte(vmWorktreeWrapper))),
 		"REMOTE_REAPER_INITIAL=" + cockpitReaperHash(t, home), "REMOTE_REAPER_AFTER=" + cockpitReaperHash(t, home)}
 	cmd.Env = append(os.Environ(), append(base, extra...)...)
 	var stdout, stderr strings.Builder

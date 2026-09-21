@@ -25,6 +25,16 @@ type app struct {
 	user     string
 	vm       string
 	host     string
+	native   bool
+}
+
+func (a app) nativeVM() bool { return a.native }
+
+func (a app) vmRepo() string {
+	if a.nativeVM() {
+		return filepath.Join(a.home, "src", "lovable")
+	}
+	return "/home/" + a.user + "/src/lovable"
 }
 
 func main() {
@@ -39,6 +49,10 @@ func main() {
 }
 
 func command(args []string, out, errOut io.Writer) error {
+	native := len(args) > 0 && args[0] == "--native"
+	if native {
+		args = args[1:]
+	}
 	if len(args) == 0 {
 		return fmt.Errorf("usage: vmctl <sync|worktree|cockpit> [arguments]")
 	}
@@ -46,6 +60,7 @@ func command(args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
+	a.native = native
 	switch args[0] {
 	case "cockpit":
 		if len(args) > 2 || (len(args) == 2 && args[1] != "--restart") {
@@ -56,10 +71,12 @@ func command(args []string, out, errOut io.Writer) error {
 		return syncCommand(a, args[1:])
 	case "worktree":
 		teardown := len(args) == 3 && args[1] == "--teardown"
+		off := len(args) == 3 && args[1] == "--off"
+		reap := len(args) == 3 && args[1] == "--reap"
 		scriptTag := len(args) == 3 && args[1] == "--script-tag"
 		startApp := scriptTag || (len(args) == 3 && args[1] == "--app")
-		if len(args) != 2 && !teardown && !startApp {
-			return fmt.Errorf("usage: vmctl worktree [--teardown | --app | --script-tag] EVERY-N")
+		if len(args) != 2 && !teardown && !off && !reap && !startApp {
+			return fmt.Errorf("usage: vmctl worktree [--off | --reap | --teardown | --app | --script-tag] EVERY-N")
 		}
 		raw := args[len(args)-1]
 		ticket, err := parseTicket(raw)
@@ -69,6 +86,9 @@ func command(args []string, out, errOut io.Writer) error {
 		if teardown {
 			return teardownWorktreeTunnel(a, ticket)
 		}
+		if off || reap {
+			return finishWorktree(a, ticket, reap)
+		}
 		return runWorktree(a, ticket, raw, startApp, scriptTag)
 	default:
 		return fmt.Errorf("usage: vmctl <sync|worktree|cockpit> [arguments]")
@@ -76,6 +96,9 @@ func command(args []string, out, errOut io.Writer) error {
 }
 
 func syncCommand(a app, args []string) error {
+	if len(args) == 1 && args[0] == "--drafts" {
+		return a.syncDrafts()
+	}
 	if len(args) == 5 && args[0] == "--refresh-ignored" {
 		ticket, err := parseTicket(args[4])
 		if err != nil {
@@ -88,12 +111,17 @@ func syncCommand(a app, args []string) error {
 		return s.refreshIgnoredAsset(args[1], args[2], args[3])
 	}
 	align, prepare, repair := false, false, false
-	remoteCwd, repairPath, repairOID, repairSize := "", "", "", int64(0)
+	alignRebased, remoteCwd, repairPath, repairOID, repairSize := "", "", "", "", int64(0)
 	for len(args) > 0 {
 		switch args[0] {
 		case "--align":
 			align = true
 			args = args[1:]
+		case "--align-rebased":
+			if len(args) < 2 || args[1] == "" {
+				return fmt.Errorf("usage: vmctl sync --align-rebased EXPECTED_OLD EVERY-N")
+			}
+			alignRebased, args = args[1], args[2:]
 		case "--prepare":
 			prepare = true
 			args = args[1:]
@@ -120,15 +148,18 @@ func syncCommand(a app, args []string) error {
 		}
 	}
 parsed:
-	if len(args) != 1 || boolCount(align, prepare, repair) > 1 {
-		return fmt.Errorf("usage: vmctl sync [--prepare | --align | --repair PATH LFS_SHA256 SIZE] [--remote-cwd VM_CHECKOUT] EVERY-N")
+	if len(args) != 1 || boolCount(align, alignRebased != "", prepare, repair) > 1 {
+		return fmt.Errorf("usage: vmctl sync [--prepare | --align | --align-rebased EXPECTED_OLD | --repair PATH LFS_SHA256 SIZE] [--remote-cwd VM_CHECKOUT] EVERY-N")
 	}
 	ticket, err := parseTicket(args[0])
 	if err != nil {
 		return err
 	}
 	if align {
-		return a.align(ticket, args[0], remoteCwd)
+		return a.align(ticket, args[0], remoteCwd, "")
+	}
+	if alignRebased != "" {
+		return a.align(ticket, args[0], remoteCwd, alignRebased)
 	}
 	if repair {
 		s, err := newSyncRun(a, ticket, args[0], remoteCwd)
@@ -181,7 +212,7 @@ func envFallback(primary, legacy, fallback string) string {
 	return fallback
 }
 
-func (a app) align(ticket, raw, remoteCwd string) error {
+func (a app) align(ticket, raw, remoteCwd, expectedOld string) error {
 	s, err := newSyncRun(a, ticket, raw, remoteCwd)
 	if err != nil {
 		return err
@@ -192,10 +223,29 @@ func (a app) align(ticket, raw, remoteCwd string) error {
 	if !pathExists(filepath.Join(s.local, ".git")) {
 		return fmt.Errorf("mirror missing: %s", s.local)
 	}
+	if expectedOld != "" {
+		if err := s.alignHead(expectedOld, false); err != nil {
+			return err
+		}
+	}
 	if err := s.fetchVMBranch(); err != nil {
 		return err
 	}
-	return s.alignHead()
+	if expectedOld == "" {
+		return s.alignHead("", true)
+	}
+	current, err := a.output("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user+"@"+a.host, "git -C '"+s.vmwt+"' rev-parse HEAD")
+	if err != nil || strings.TrimSpace(current) != s.vmhead {
+		return fmt.Errorf("VM HEAD moved during alignment; captured %s, now %s", prefix(s.vmhead, 11), prefix(strings.TrimSpace(current), 11))
+	}
+	if err := s.alignHead(expectedOld, false); err != nil {
+		return err
+	}
+	backup := "refs/heidr/vm-sync-rebase-backups/" + ticket + "/" + expectedOld
+	if err := s.a.quiet(nil, "git", "-C", s.local, "update-ref", backup, expectedOld); err != nil {
+		return fmt.Errorf("could not retain old mirror HEAD at %s: %w", backup, err)
+	}
+	return s.alignHead(expectedOld, true)
 }
 
 func (a app) prepareMirrorDependencies(local string) error {
@@ -233,7 +283,7 @@ type syncRun struct {
 }
 
 func explicitSyncPaths(a app, ticket, remoteCwd string) (string, string, string, error) {
-	root := "/home/" + a.user + "/src"
+	root := filepath.Dir(a.vmRepo())
 	clean := filepath.Clean(remoteCwd)
 	base := filepath.Base(clean)
 	marker := "-" + ticket
@@ -323,7 +373,7 @@ func (a app) sync(ticket, raw, remoteCwd string, prepareOnly bool) error {
 		return fmt.Errorf("VM HEAD moved during sync; captured %s, now %s; retry preparation", prefix(s.vmhead, 11), prefix(strings.TrimSpace(current), 11))
 	}
 	if !created {
-		if err := s.alignHead(); err != nil {
+		if err := s.alignHead("", true); err != nil {
 			return err
 		}
 	}
@@ -436,20 +486,26 @@ func (s syncRun) fetchVMBranch() error {
 	return nil
 }
 
-func (s syncRun) alignHead() error {
+func (s syncRun) alignHead(expectedOld string, mutate bool) error {
 	cur, err := s.a.output("git", "-C", s.local, "rev-parse", "HEAD")
 	if err != nil {
 		return err
 	}
 	cur = strings.TrimSpace(cur)
+	if expectedOld != "" && cur != expectedOld {
+		return fmt.Errorf("mirror HEAD %s is not expected old HEAD %s; files and metadata left untouched", prefix(cur, 11), prefix(expectedOld, 11))
+	}
 	if cur == s.vmhead {
 		return nil
 	}
-	if s.a.quiet(nil, "git", "-C", s.local, "merge-base", "--is-ancestor", cur, s.vmhead) != nil {
+	if expectedOld == "" && s.a.quiet(nil, "git", "-C", s.local, "merge-base", "--is-ancestor", cur, s.vmhead) != nil {
 		return fmt.Errorf("mirror HEAD %s diverges from VM HEAD %s; files and metadata left untouched", prefix(cur, 11), prefix(s.vmhead, 11))
 	}
 	if s.a.quiet(nil, "git", "-C", s.local, "diff", "--cached", "--quiet") != nil {
 		return fmt.Errorf("mirror has staged changes; refusing HEAD/index alignment so staging is preserved")
+	}
+	if !mutate {
+		return nil
 	}
 	if err := s.a.quiet(nil, "git", "-C", s.local, "reset", "--mixed", s.vmhead); err != nil {
 		return err
@@ -459,8 +515,9 @@ func (s syncRun) alignHead() error {
 }
 
 type mutagenEndpoint struct {
-	Protocol, User, Host, Path string
-	Connected, Scanned         bool
+	Protocol, User, Host, Path       string
+	Connected, Scanned               bool
+	ScanProblems, TransitionProblems []json.RawMessage
 }
 
 type mutagenListing struct {
@@ -730,7 +787,7 @@ func (s syncRun) requireReadyMutagen() error {
 
 var mutagenIgnores = []string{
 	".git", "node_modules", ".devenv", ".direnv", ".wrangler", ".envrc.local", ".env.local", ".env", "*.sqlite", "*.sqlite-shm", "*.sqlite-wal",
-	".next", ".turbo", "target", "dist", "__pycache__", ".venv", "/bazel-*", "*.log", "*.png", "*.jpg",
+	".next", ".turbo", "target", "dist", "__pycache__", ".venv", "/bazel-*", "/.bazel-user-root", "*.log", "*.png", "*.jpg",
 	"*.jpeg", "*.gif", "*.webp", "*.ico", "*.icns", "*.pdf", "*.mp4", "*.woff", "*.woff2", "*.ttf", "!.heidr-pastes/**",
 }
 

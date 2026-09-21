@@ -1,0 +1,83 @@
+--- a/src/input/source/hidraw/steam_deck.rs
++++ b/src/input/source/hidraw/steam_deck.rs
+@@ -573,12 +573,14 @@
+                 Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::RightTrigger)),
+                 normalize_trigger_value(trigg),
+             ),
+-            steam_deck::event::TriggerEvent::LPadForce(_) => {
+-                NativeEvent::new(Capability::NotImplemented, normalize_trigger_value(trigg))
+-            }
+-            steam_deck::event::TriggerEvent::RPadForce(_) => {
+-                NativeEvent::new(Capability::NotImplemented, normalize_trigger_value(trigg))
+-            }
++            steam_deck::event::TriggerEvent::LPadForce(_) => NativeEvent::new(
++                Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::LeftTouchpadForce)),
++                normalize_trigger_value(trigg),
++            ),
++            steam_deck::event::TriggerEvent::RPadForce(_) => NativeEvent::new(
++                Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::RightTouchpadForce)),
++                normalize_trigger_value(trigg),
++            ),
+             steam_deck::event::TriggerEvent::LStickForce(_) => {
+                 NativeEvent::new(Capability::NotImplemented, normalize_trigger_value(trigg))
+             }
+@@ -619,7 +621,9 @@
+     Capability::Gamepad(Gamepad::Button(GamepadButton::Start)),
+     Capability::Gamepad(Gamepad::Button(GamepadButton::West)),
+     Capability::Gamepad(Gamepad::Gyro),
++    Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::LeftTouchpadForce)),
+     Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::LeftTrigger)),
++    Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::RightTouchpadForce)),
+     Capability::Gamepad(Gamepad::Trigger(GamepadTrigger::RightTrigger)),
+     Capability::Touchpad(Touchpad::LeftPad(Touch::Button(TouchButton::Press))),
+     Capability::Touchpad(Touchpad::LeftPad(Touch::Button(TouchButton::Touch))),
+@@ -634,3 +638,49 @@
+     OutputCapability::Haptics(Haptic::TrackpadLeft),
+     OutputCapability::Haptics(Haptic::TrackpadRight),
+ ];
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::{
++        drivers::steam_deck::event::TriggerInput,
++        input::target::TargetInputDevice,
++    };
++
++    #[test]
++    fn pad_force_routes_from_deck_source_to_uhid_target() {
++        let cases = [
++            (
++                steam_deck::event::TriggerEvent::LPadForce(TriggerInput { value: 2222 }),
++                GamepadTrigger::LeftTouchpadForce,
++                "l_pad_force: 2222",
++            ),
++            (
++                steam_deck::event::TriggerEvent::RPadForce(TriggerInput { value: 2304 }),
++                GamepadTrigger::RightTouchpadForce,
++                "r_pad_force: 2304",
++            ),
++        ];
++        let mut target = crate::input::target::steam_deck_uhid::SteamDeckUhidDevice::new().unwrap();
++
++        for (source, capability, expected_state) in cases {
++            let expected_capability = Capability::Gamepad(Gamepad::Trigger(capability));
++            assert!(CAPABILITIES.contains(&expected_capability));
++            let expected_value = match source {
++                steam_deck::event::TriggerEvent::LPadForce(ref value)
++                | steam_deck::event::TriggerEvent::RPadForce(ref value) => {
++                    value.value as f64 / steam_deck::hid_report::PAD_FORCE_MAX
++                }
++                _ => unreachable!(),
++            };
++            let event = translate_event(steam_deck::event::Event::Trigger(source));
++            assert_eq!(event.as_capability(), expected_capability);
++            match event.get_value() {
++                InputValue::Float(value) => assert_eq!(value, expected_value),
++                value => panic!("unexpected force value: {value:?}"),
++            }
++            target.write_event(event).unwrap();
++            assert!(format!("{target:?}").contains(expected_state));
++        }
++    }
++}

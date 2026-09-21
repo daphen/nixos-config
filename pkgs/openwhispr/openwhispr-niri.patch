@@ -1,0 +1,147 @@
+--- a/src/helpers/hotkeyManager.js
++++ b/src/helpers/hotkeyManager.js
+@@ -604,6 +604,18 @@
+     const slot = this._ensureSlot(slotName);
+     const desired = parseHotkeyList(hotkeyInput);
+
++    if (
++      slotName === "dictation" &&
++      process.env.OPENWHISPR_EXTERNAL_HOTKEY === "1"
++    ) {
++      const hotkey = process.env.OPENWHISPR_EXTERNAL_DICTATION_KEY || desired[0] || DEFAULT_HOTKEY;
++      slot.hotkeys = [hotkey];
++      slot.accelerators = [];
++      slot.callback = callback;
++      this.currentHotkey = hotkey;
++      return { success: true, hotkey, hotkeys: [hotkey] };
++    }
++
+     debugLogger.log(
+       `[HotkeyManager] Setting up hotkeys: "${desired.join(", ")}" for slot "${slotName}"`
+     );
+@@ -816,6 +829,7 @@
+     const isLinux = process.platform === "linux";
+     const isWayland = HyprlandShortcutManager.isWayland();
+     const isHyprland = HyprlandShortcutManager.isHyprland();
++    const useExternalHotkey = process.env.OPENWHISPR_EXTERNAL_HOTKEY === "1";
+
+     debugLogger.log("[HotkeyManager] Hyprland detection", {
+       isLinux,
+@@ -830,8 +843,8 @@
+       return false;
+     }
+
+-    if (isHyprland) {
+-      if (!HyprlandShortcutManager.isHyprctlAvailable()) {
++    if (isHyprland || useExternalHotkey) {
++      if (isHyprland && !HyprlandShortcutManager.isHyprctlAvailable()) {
+         debugLogger.log("[HotkeyManager] Hyprland detected but hyprctl not available");
+         return false;
+       }
+@@ -909,11 +922,18 @@
+     if (
+       process.platform === "linux" &&
+       HyprlandShortcutManager.isWayland() &&
+-      HyprlandShortcutManager.isHyprland()
++      (HyprlandShortcutManager.isHyprland() ||
++        process.env.OPENWHISPR_EXTERNAL_HOTKEY === "1")
+     ) {
+       const hyprlandOk = await this.initializeHyprlandShortcuts(callback);
+
+       if (hyprlandOk) {
++        if (process.env.OPENWHISPR_EXTERNAL_HOTKEY === "1") {
++          this.currentHotkey = process.env.OPENWHISPR_EXTERNAL_DICTATION_KEY || DEFAULT_HOTKEY;
++          this.notifyActiveHotkey(this.currentHotkey);
++          this.isInitialized = true;
++          return;
++        }
+         const registerHyprlandHotkey = async () => {
+           try {
+             // DE backends bind one accelerator per slot — use the primary hotkey.
+@@ -1285,6 +1305,15 @@
+           message: i18nMain.t("hotkey.errors.registrationFailed", { hotkey: "" }),
+         };
+       }
++
++      if (process.env.OPENWHISPR_EXTERNAL_HOTKEY === "1") {
++        const externalHotkey = process.env.OPENWHISPR_EXTERNAL_DICTATION_KEY || DEFAULT_HOTKEY;
++        this.currentHotkey = externalHotkey;
++        this.notifyActiveHotkey(externalHotkey);
++        await this.saveHotkeyToRenderer(externalHotkey);
++        return { success: true, message: `External hotkey: ${externalHotkey}` };
++      }
++
+       const hotkeyStr = hotkeys.join(",");
+       // DE backends bind one accelerator per slot; extras stay in storage.
+       const primary = hotkeys[0];
+--- a/src/helpers/ipcHandlers.js
++++ b/src/helpers/ipcHandlers.js
+@@ -31,6 +31,20 @@
+ } = require("./policyResponseError");
+ const { classifyAndLog } = require("./networkErrors");
+ const { resolveSystemDefaultMicrophone } = require("./systemDefaultMicrophone");
++
++function writeExternalDictationState(state) {
++  if (process.env.OPENWHISPR_EXTERNAL_OVERLAY !== "1") return;
++  const runtimeDir = process.env.XDG_RUNTIME_DIR;
++  if (!runtimeDir) return;
++  const stateFile = path.join(runtimeDir, "openwhispr-dictation-state");
++  const temporary = `${stateFile}.${process.pid}`;
++  try {
++    fs.writeFileSync(temporary, `${state}\n`, { mode: 0o600 });
++    fs.renameSync(temporary, stateFile);
++  } catch (error) {
++    debugLogger.warn("Failed to publish dictation lifecycle", { error: error.message });
++  }
++}
+ // The renderer's ModelRegistry is not main-loadable; the raw registry data is
+ // packaged, and the route resolver only needs {id, baseUrl} per provider.
+ const transcriptionProviderBaseUrls = () =>
+@@ -1831,6 +1845,7 @@
+         return;
+       }
+       this.windowManager.setDictationLifecycleState(state, inputKind);
++      writeExternalDictationState(state);
+     });
+
+     ipcMain.on("show-agent-dictation-final-transcript", (event, text) => {
+--- a/src/helpers/windowManager.js
++++ b/src/helpers/windowManager.js
+@@ -89,7 +89,8 @@
+     this.loadErrorShown = false;
+     this.macCompoundPushState = null;
+     this.winPushState = null;
+-    this._cachedActivationMode = "tap";
++    this._cachedActivationMode =
++      process.env.OPENWHISPR_FORCE_PUSH_TO_TALK === "1" ? "push" : "tap";
+     this._floatingIconAutoHide = false;
+     this._panelStartPosition = "bottom-right";
+     this._activeHorizontalDirection = null;
+@@ -1101,11 +1102,17 @@
+   }
+
+   getActivationMode() {
+-    return this._cachedActivationMode;
++    return process.env.OPENWHISPR_FORCE_PUSH_TO_TALK === "1"
++      ? "push"
++      : this._cachedActivationMode;
+   }
+
+   async setActivationModeCache(mode) {
+-    const nextMode = mode === "push" ? "push" : "tap";
++    const nextMode = process.env.OPENWHISPR_FORCE_PUSH_TO_TALK === "1"
++      ? "push"
++      : mode === "push"
++        ? "push"
++        : "tap";
+     const success = await this.hotkeyManager.setActivationMode(nextMode);
+     if (!success) return false;
+     this._cachedActivationMode = nextMode;
+@@ -1556,6 +1563,7 @@
+     if (reposition) {
+       void this._repositionToActiveDisplay(targetPidPromise);
+     }
++    if (process.env.OPENWHISPR_EXTERNAL_OVERLAY === "1") return;
+     if (this.mainWindow.isMinimized()) {
+       this.mainWindow.restore();
+     }

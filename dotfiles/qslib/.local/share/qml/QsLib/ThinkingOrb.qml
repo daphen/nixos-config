@@ -36,10 +36,11 @@ Item {
   // running flaps or delegate recreation) and BOUNDED (radians, so the shader
   // never sees coordinates big enough to break float32 noise). flow scales the
   // clock, keeping continuity. Prime-ish periods so the composite never loops.
-  property real ph1: 0
-  property real ph2: 0
-  property real ph3: 0
-  property real ph4: 0
+  readonly property real clockNow: running ? OrbClock.now : 0
+  readonly property real ph1: _ph(clockNow, 47000) + seed * 6.2832
+  readonly property real ph2: _ph(clockNow, 61000) + seed * 17.9
+  readonly property real ph3: _ph(clockNow, 83000) + seed * 29.3
+  readonly property real ph4: _ph(clockNow, 29000) + seed * 41.7
   // Per-instance random seed: every orb starts at its own point in the cycle.
   // The wall clock still drives the motion (reset-proof), but identical phases
   // made all visible orbs move in lockstep, which read as one cheap loop.
@@ -65,7 +66,7 @@ Item {
       seed = Math.random()
     }
   }
-  function _ph(P) { return ((Date.now() * flow) % P) / P * 2 * Math.PI }
+  function _ph(now, period) { return ((now * flow) % period) / period * 2 * Math.PI }
   function activityBucket(bucket, lightnessShift) {
     const colors = activityColors
     if (!colors.length) return glow
@@ -81,18 +82,6 @@ Item {
     return Qt.hsla(mixed.hslHue < 0 ? 0 : mixed.hslHue,
                    Math.max(0.65, mixed.hslSaturation),
                    Math.max(0.18, Math.min(0.82, mixed.hslLightness + lightnessShift)), 1)
-  }
-  Timer {
-    interval: orb.width >= 40 ? 33 : 50
-    repeat: true
-    triggeredOnStart: true
-    running: orb.running
-    onTriggered: {
-      orb.ph1 = orb._ph(47000) + orb.seed * 6.2832
-      orb.ph2 = orb._ph(61000) + orb.seed * 17.9
-      orb.ph3 = orb._ph(83000) + orb.seed * 29.3
-      orb.ph4 = orb._ph(29000) + orb.seed * 41.7
-    }
   }
   // Big badge flows livelier; the small roster orbs stay calm. A constant
   // multiplier on the wall clock keeps continuity (no resets, ever).

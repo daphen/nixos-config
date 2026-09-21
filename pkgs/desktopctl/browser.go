@@ -282,5 +282,9 @@ func runBrowser(args []string) error {
 	if err := redirectOutput(quiet); err != nil {
 		return err
 	}
-	return syscall.Exec(path, append([]string{config.bin}, launch...), os.Environ())
+	launcher, err := exec.LookPath("desktop-launch")
+	if err != nil {
+		return err
+	}
+	return syscall.Exec(launcher, append([]string{"desktop-launch", path}, launch...), os.Environ())
 }

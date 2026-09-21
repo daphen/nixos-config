@@ -24,6 +24,7 @@ func startDetached(command string) {
 	if len(fields) == 0 {
 		return
 	}
+	fields = append([]string{"desktop-launch"}, fields...)
 	cmd := exec.Command(fields[0], fields[1:]...)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
@@ -39,6 +40,7 @@ func startBackground(command string) {
 	if len(fields) == 0 {
 		return
 	}
+	fields = append([]string{"desktop-launch"}, fields...)
 	cmd := exec.Command(fields[0], fields[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if cmd.Start() == nil {

@@ -13,6 +13,9 @@ import (
 var binary string
 
 func TestMain(m *testing.M) {
+	for _, key := range []string{"COCKPIT_AGENT_PROFILE", "HEIDR_AGENT_PROFILE"} {
+		os.Unsetenv(key)
+	}
 	dir, err := os.MkdirTemp("", "vmctl-test-")
 	if err != nil {
 		panic(err)
@@ -147,8 +150,9 @@ func TestSuccessfulEmptyMutagenListCreatesSession(t *testing.T) {
 	home, path, log := mirrorFixture(t)
 	extra := []string{"VMHEAD=2222222222222222222222222222222222222222", "VMBRANCH=daphen/every-3315", "MUTAGEN_MODE=empty-success"}
 	result := runEnv(t, home, path, extra, "sync", "--prepare", "EVERY-3315")
-	if result.err != nil || !strings.Contains(readLog(t, log), "mutagen|sync create") {
-		t.Fatalf("result=%+v calls=%s", result, readLog(t, log))
+	calls := readLog(t, log)
+	if result.err != nil || !strings.Contains(calls, "mutagen|sync create") || !strings.Contains(calls, "--ignore=/.bazel-user-root") {
+		t.Fatalf("result=%+v calls=%s", result, calls)
 	}
 }
 
@@ -409,9 +413,17 @@ func TestAlignRefusesToDiscardIntentionalStaging(t *testing.T) {
 	home, path, log := mirrorFixture(t)
 	makeGitMarker(t, filepath.Join(home, "work/lovable.daphen-every-3315"))
 	extra := []string{"VMHEAD=4444444444444444444444444444444444444444", "LOCALHEAD=1111111111111111111111111111111111111111", "VMBRANCH=daphen/every-3315", "MUTAGEN_MODE=matching", "STAGED=yes"}
-	result := runEnv(t, home, path, extra, "sync", "--align", "EVERY-3315")
-	if result.err == nil || !strings.Contains(result.stderr, "staged changes") || strings.Contains(readLog(t, log), "reset --mixed") {
-		t.Fatalf("result=%+v calls=%s", result, readLog(t, log))
+	for _, args := range [][]string{{"sync", "--align", "EVERY-3315"}, {"sync", "--align-rebased", "1111111111111111111111111111111111111111", "EVERY-3315"}} {
+		result := runEnv(t, home, path, extra, args...)
+		if result.err == nil || !strings.Contains(result.stderr, "staged changes") || strings.Contains(readLog(t, log), "reset --mixed") {
+			t.Fatalf("result=%+v calls=%s", result, readLog(t, log))
+		}
+	}
+	for _, tc := range []struct{ old, want string }{{"", "usage"}, {"0000000000000000000000000000000000000000", "not expected old HEAD"}} {
+		result := runEnv(t, home, path, extra, "sync", "--align-rebased", tc.old, "EVERY-3315")
+		if result.err == nil || !strings.Contains(result.stderr, tc.want) {
+			t.Fatalf("old=%q result=%+v", tc.old, result)
+		}
 	}
 }
 
@@ -489,12 +501,29 @@ func TestRealLifecycleCreatesSeedsAlignsAndReusesCanonicalMirror(t *testing.T) {
 	if status := runGit(t, local, "status", "--porcelain"); status != "" {
 		t.Fatalf("repeat status:\n%s", status)
 	}
-	if got, want := strings.TrimSpace(runGit(t, local, "rev-parse", "HEAD")), strings.TrimSpace(runGit(t, vm, "rev-parse", "HEAD")); got != want {
+	old := strings.TrimSpace(runGit(t, local, "rev-parse", "HEAD"))
+	if got, want := old, strings.TrimSpace(runGit(t, vm, "rev-parse", "HEAD")); got != want {
 		t.Fatalf("heads local=%s VM=%s", got, want)
 	}
+	rebased := strings.TrimSpace(runGit(t, vm, "commit-tree", "HEAD^{tree}", "-m", "rebased"))
+	runGit(t, vm, "reset", "--hard", rebased)
+	for name, content := range map[string]string{"kept.ts": "local bytes\n", "untracked.ts": "untracked bytes\n"} {
+		if err := os.WriteFile(filepath.Join(local, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	third := runEnv(t, home, bin, nil, "sync", "--align-rebased", old, "EVERY-3064")
+	if third.err != nil {
+		t.Fatalf("rebased align=%+v", third)
+	}
+	backup := strings.TrimSpace(runGit(t, local, "rev-parse", "refs/heidr/vm-sync-rebase-backups/every-3064/"+old))
+	head := strings.TrimSpace(runGit(t, local, "rev-parse", "HEAD"))
+	if backup != old || head != rebased || string(mustRead(t, filepath.Join(local, "kept.ts"))) != "local bytes\n" || string(mustRead(t, filepath.Join(local, "untracked.ts"))) != "untracked bytes\n" {
+		t.Fatalf("backup=%s head=%s bytes changed=%t", backup, head, head == rebased)
+	}
 	calls, _ := os.ReadFile(log)
-	if strings.Count(string(calls), "rsync|") != 1 || strings.Count(string(calls), "sync create") != 1 {
-		t.Fatalf("repeat recreated/reseeded:\n%s", calls)
+	if strings.Count(string(calls), "rsync|") != 1 || strings.Count(string(calls), "sync create") != 1 || strings.Count(string(calls), "sync flush") != 2 {
+		t.Fatalf("repeat recreated/synced:\n%s", calls)
 	}
 }
 
@@ -643,6 +672,10 @@ func TestPrepareMovedVMHeadDoesNotAlignOrReportReady(t *testing.T) {
 	calls := readLog(t, log)
 	if result.err == nil || !strings.Contains(result.stderr, "VM HEAD moved during sync") || strings.Contains(calls, "reset --mixed") || strings.Contains(result.stdout, "prepared files") {
 		t.Fatalf("result=%+v calls=%s", result, calls)
+	}
+	rebased := runEnv(t, home, path, extra, "sync", "--align-rebased", "1111111111111111111111111111111111111111", "EVERY-3315")
+	if rebased.err == nil || !strings.Contains(rebased.stderr, "VM HEAD moved during alignment") || strings.Contains(readLog(t, log), "update-ref") {
+		t.Fatalf("rebased result=%+v calls=%s", rebased, readLog(t, log))
 	}
 }
 
