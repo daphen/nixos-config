@@ -5,7 +5,8 @@ import checkpoint from "../scoped/no-summary-rollover/index.ts";
 import contextWindow from "../scoped/work-context-window/index.ts";
 
 export default function nixosRollover(pi: ExtensionAPI) {
-  if (process.cwd() !== path.join(os.homedir(), "nixos")) return;
+  const projects = ["nixos", "personal/ai-cockpit"];
+  if (!projects.some((project) => process.cwd() === path.join(os.homedir(), project))) return;
   checkpoint(pi);
   contextWindow(pi);
 }
