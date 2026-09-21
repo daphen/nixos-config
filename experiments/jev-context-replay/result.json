@@ -1,0 +1,177 @@
+{
+  "runs": [
+    {
+      "case": "baseline",
+      "estimated_request_tokens": 195207,
+      "rollovers": 1,
+      "context_usage": {
+        "tokens": null,
+        "contextWindow": 200000,
+        "percent": null
+      },
+      "required_evidence_kept": true,
+      "old_outputs_omitted": 0
+    },
+    {
+      "case": "oracle",
+      "estimated_request_tokens": 9548,
+      "rollovers": 0,
+      "context_usage": {
+        "tokens": 9560,
+        "contextWindow": 200000,
+        "percent": 4.78
+      },
+      "required_evidence_kept": true,
+      "old_outputs_omitted": 15
+    },
+    {
+      "case": "bad-scores",
+      "estimated_request_tokens": 9548,
+      "rollovers": 0,
+      "context_usage": {
+        "tokens": 9560,
+        "contextWindow": 200000,
+        "percent": 4.78
+      },
+      "required_evidence_kept": false,
+      "old_outputs_omitted": 15
+    },
+    {
+      "case": "unavailable",
+      "estimated_request_tokens": 195208,
+      "rollovers": 1,
+      "context_usage": {
+        "tokens": null,
+        "contextWindow": 200000,
+        "percent": null
+      },
+      "required_evidence_kept": true,
+      "old_outputs_omitted": 0
+    },
+    {
+      "case": "invalid",
+      "estimated_request_tokens": 195207,
+      "rollovers": 1,
+      "context_usage": {
+        "tokens": null,
+        "contextWindow": 200000,
+        "percent": null
+      },
+      "required_evidence_kept": true,
+      "old_outputs_omitted": 0
+    },
+    {
+      "case": "jev",
+      "estimated_request_tokens": 9547,
+      "rollovers": 0,
+      "context_usage": {
+        "tokens": 9559,
+        "contextWindow": 200000,
+        "percent": 4.7795
+      },
+      "required_evidence_kept": true,
+      "old_outputs_omitted": 15
+    }
+  ],
+  "jev": {
+    "elapsed_ms": 1120,
+    "request_bytes": 24052,
+    "model": "jev-1.13.0",
+    "usage": {
+      "input_tokens": 6477,
+      "output_tokens": 363
+    },
+    "answers": {
+      "archive_0": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "archive_1": {
+        "type": "noul",
+        "noul": 0.1
+      },
+      "archive_2": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "archive_3": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "archive_4": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "archive_5": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "archive_6": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "archive_7": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "archive_8": {
+        "type": "noul",
+        "noul": 0.08
+      },
+      "archive_9": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "archive_10": {
+        "type": "noul",
+        "noul": 0.08
+      },
+      "archive_11": {
+        "type": "noul",
+        "noul": 0.08
+      },
+      "archive_12": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "archive_13": {
+        "type": "noul",
+        "noul": 0.08
+      },
+      "archive_14": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "payment_schema": {
+        "type": "noul",
+        "noul": 0.86
+      },
+      "failed_check": {
+        "type": "noul",
+        "noul": 0.67
+      },
+      "migration_write": {
+        "type": "noul",
+        "noul": 0.29
+      },
+      "approval": {
+        "type": "noul",
+        "noul": 0.36
+      },
+      "recent_read": {
+        "type": "noul",
+        "noul": 0.71
+      }
+    }
+  },
+  "source_sha256": {
+    "experiments/jev-context-replay/replay.py": "4afc664f41765db987f2f54070bd10b64cc2e842a6da8459ef935fafdee9907c",
+    "experiments/jev-context-replay/filter.ts": "9febe7796fb15bcd3aa605be8cab95659aaf7d7f4744aebfcd8a941440068e83",
+    "tests/test_context_rollover.py": "d7ff73baf1b7b1107d9ad01ba16ca25b0d367177ad5cfa7cff8a109988a3bf42",
+    "dotfiles/ai/pi-extensions/scoped/no-summary-rollover/index.ts": "ab37f8b1d3e2822549b9e300bbe34b954ba1e3a1f34ab9c4ac2d0d9c144241dd"
+  },
+  "pi_executable": "/nix/store/s8r8x6j993gmv0dqjvh3xs1nwjqdhh9q-pi-coding-agent-0.84.2/bin/pi",
+  "pi_version": "0.84.2",
+  "base_sha": "9f2a611313dbd5e9a98403842238635cfad2f8fd",
+  "passed": true
+}
