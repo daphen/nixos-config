@@ -4,7 +4,7 @@
   "profiles": {
     "lovable-orchestrator": {
       "prompt": "lovable-orchestrator.md",
-      "model": "openai/gpt-5.6-sol",
+      "model": "openai/gpt-6-sol",
       "reasoning": "medium",
       "tools": [
         "read",
@@ -52,7 +52,7 @@
     },
     "lovable-worker": {
       "prompt": "lovable-worker.md",
-      "model": "openai/gpt-5.6-sol",
+      "model": "openai/gpt-6-sol",
       "reasoning": "medium",
       "tools": [
         "read",
@@ -99,7 +99,7 @@
     },
     "lovable-reviewer": {
       "prompt": "lovable-reviewer.md",
-      "model": "openai/gpt-5.6-sol",
+      "model": "openai/gpt-6-sol",
       "reasoning": "medium",
       "tools": [
         "read",
@@ -140,7 +140,7 @@
     },
     "lovable-watcher": {
       "prompt": "lovable-watcher.md",
-      "model": "openai/gpt-5.6-sol",
+      "model": "openai/gpt-6-sol",
       "reasoning": "medium",
       "tools": [
         "bash",
