@@ -5,6 +5,7 @@ singleton Motion Motion.qml
 singleton AgentActivity AgentActivity.qml
 singleton OrbClock OrbClock.qml
 Icon Icon.qml
+PrimaryButton PrimaryButton.qml
 KeyCap KeyCap.qml
 CapLabel CapLabel.qml
 FeedbackPill FeedbackPill.qml
