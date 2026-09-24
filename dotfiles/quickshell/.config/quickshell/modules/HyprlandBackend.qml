@@ -6,6 +6,8 @@ import Quickshell.Io
 Item {
     id: state
 
+    readonly property var deckPalette: Hyprland.toplevels.values.find(window => window.title === "deck-radial-palette") || null
+
     property int version: 0
     property string activeStack: ""
     property var canvasSnapshot: null

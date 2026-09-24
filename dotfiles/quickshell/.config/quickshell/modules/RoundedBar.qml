@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
@@ -7,6 +8,16 @@ import "../QsLib" as Lib
 
 PanelWindow {
     id: bar
+    readonly property bool deckGaming: Quickshell.env("HYPR_CANVAS_PROFILE") === "deck"
+        && Modules.NiriState.focusedWorkspaceName() === "gaming"
+    visible: !deckGaming
+
+    readonly property color hoverSurface: Modules.Theme.mode === "dark" ? "#0F0F0F" : "#F7F9FA"
+    readonly property bool deckPaletteOpen: {
+        const backend = Modules.NiriState.hyprland
+        const window = backend ? backend.deckPalette : null
+        return !!window && !!window.monitor && !!screen && window.monitor.name === screen.name
+    }
 
     readonly property bool pickerActive: Modules.ControlCenterState.open
         || Modules.LauncherState.open
@@ -93,22 +104,14 @@ PanelWindow {
     readonly property var metricTooltipTarget: weatherHover.hovered ? weatherMetric
         : cpuHover.hovered ? cpuMetric
         : memoryHover.hovered ? memoryMetric
-        : networkHover.hovered ? networkMetric
         : audioHover.hovered ? audioMetric
-        : batteryHover.hovered ? batteryMetric
         : null
     readonly property string metricTooltipText: metricTooltipTarget === weatherMetric
         ? Qt.formatDate(tooltipClock.date, "dddd, MMMM d")
         : metricTooltipTarget === cpuMetric ? cpuMetric.usage + "%"
         : metricTooltipTarget === memoryMetric ? memoryMetric.percentage + "%"
-        : metricTooltipTarget === networkMetric ? networkMetric.label
         : metricTooltipTarget === audioMetric
             ? Math.round((audioMetric.muted ? 0 : audioMetric.volume) * 100) + "%"
-        : metricTooltipTarget === batteryMetric
-            ? Math.round(batteryMetric.percentage) + "% · "
-                + (batteryMetric.powerDraw >= 0.05
-                    ? batteryMetric.powerDraw.toFixed(1) + " W"
-                    : batteryMetric.onBattery ? "0.0 W" : "on AC")
         : ""
 
     SystemClock { id: tooltipClock; precision: SystemClock.Minutes }
@@ -147,7 +150,7 @@ PanelWindow {
     WlrLayershell.keyboardFocus: pickerVisible
         ? WlrKeyboardFocus.Exclusive
         : WlrKeyboardFocus.None
-    mask: Region { item: capsule }
+    mask: Region { item: bar.deckPaletteOpen ? null : capsule }
 
     readonly property string worktreeStack: {
         const _ = Modules.NiriState.version
@@ -158,6 +161,7 @@ PanelWindow {
 
     Lib.ExpandableContainer {
         id: capsule
+        visible: !bar.deckPaletteOpen
         anchors {
             top: parent.top
             horizontalCenter: parent.horizontalCenter
@@ -179,13 +183,27 @@ PanelWindow {
                 + Modules.Theme.notchPadH * 2,
             Modules.Theme.notchMinWidth
         ))
-        color: Modules.Theme.hairline
+        color: "transparent"
+        border.width: 1
+        border.color: Modules.Theme.mode === "dark" ? "#282828" : "#C4CBD2"
+        gradient: Gradient {
+            orientation: Gradient.Vertical
+            GradientStop { position: 0; color: Modules.Theme.mode === "dark" ? "#2B2B2B" : "#FFFFFF" }
+            GradientStop { position: 1; color: Modules.Theme.mode === "dark" ? "#222222" : "#C9D1D8" }
+        }
 
         Rectangle {
             anchors.fill: parent
-            anchors.margins: 1
-            radius: Math.max(0, capsule.radius - 1)
-            color: Modules.Theme.bgDim
+            anchors.margins: 2
+            radius: Math.max(0, capsule.radius - anchors.margins)
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0; color: Modules.Theme.mode === "dark" ? "#121212" : "#FBFCFD" }
+                GradientStop { position: 0.12; color: Modules.Theme.mode === "dark" ? "#101010" : "#FAFBFC" }
+                GradientStop { position: 0.35; color: Modules.Theme.mode === "dark" ? "#0F0F0F" : "#F7F9FA" }
+                GradientStop { position: 0.70; color: Modules.Theme.mode === "dark" ? "#0D0D0D" : "#F4F6F8" }
+                GradientStop { position: 1; color: Modules.Theme.mode === "dark" ? "#0D0D0D" : "#F4F6F8" }
+            }
         }
 
         Row {
@@ -319,6 +337,12 @@ PanelWindow {
             Modules.Audio {
                 id: audioMetric
                 HoverHandler { id: audioHover }
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: Quickshell.env("HYPR_CANVAS_PROFILE") === "deck"
+                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: Quickshell.execDetached([Quickshell.env("HOME") + "/.config/hypr/scripts/deck-haptics-toggle"])
+                }
             }
             Modules.Battery {
                 id: batteryMetric
@@ -443,7 +467,7 @@ PanelWindow {
         width: metricTooltipLabel.implicitWidth + 20
         height: 30
         radius: 10
-        color: Modules.Theme.surface2
+        color: bar.hoverSurface
         border.width: 1
         border.color: Modules.Theme.hairline
         z: 10
@@ -471,6 +495,80 @@ PanelWindow {
     }
 
     Rectangle {
+        id: deviceCard
+        readonly property var target: networkHover.hovered ? networkMetric
+            : batteryHover.hovered ? batteryMetric : null
+        readonly property real targetCenterX: target
+            ? capsule.x + rightGroup.x + target.x + target.width / 2 : 0
+        visible: target !== null || opacity > 0
+        opacity: target !== null ? 1 : 0
+        x: Math.max(12, Math.min(bar.width - width - 12, targetCenterX - width / 2))
+        y: capsule.y + Modules.Theme.barHeight + (target !== null ? 2 : -3)
+        width: 300
+        height: deviceList.implicitHeight + 20
+        radius: 12
+        color: bar.hoverSurface
+        border.width: 1
+        border.color: Modules.Theme.hairline
+        z: 10
+
+        Behavior on opacity {
+            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+        }
+        Behavior on y {
+            NumberAnimation {
+                duration: Lib.Motion.med
+                easing.type: Lib.Motion.easeEmphasized
+                easing.bezierCurve: Lib.Motion.curveEmphasized
+            }
+        }
+
+        Column {
+            id: deviceList
+            anchors.left: parent.left
+            anchors.leftMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+
+            Repeater {
+                model: deviceCard.target ? deviceCard.target.tooltipRows : []
+
+                RowLayout {
+                    required property var modelData
+                    width: deviceCard.width - 24
+                    height: 24
+                    spacing: 8
+
+                    Lib.Icon {
+                        name: parent.modelData.icon
+                        Layout.preferredWidth: 18
+                        Layout.preferredHeight: 18
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                    Text {
+                        text: parent.modelData.label
+                        color: Modules.Theme.fg
+                        font.family: Modules.Theme.fontFamily
+                        font.pixelSize: Modules.Theme.fontSize - 1
+                        font.weight: Modules.Theme.fontWeight
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                    Text {
+                        text: parent.modelData.detail
+                        color: Modules.Theme.fg_muted
+                        font.family: Modules.Theme.fontFamily
+                        font.pixelSize: Modules.Theme.fontSize - 2
+                        horizontalAlignment: Text.AlignRight
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
         id: activityCard
         readonly property real orbCenterX: capsule.x + leftGroup.x + activitySwap.x + activitySwap.width / 2
         readonly property real rowOrbSize: 18
@@ -481,7 +579,7 @@ PanelWindow {
         width: Math.max(190, activityList.implicitWidth + 24)
         height: activityList.implicitHeight + 20
         radius: 12
-        color: Modules.Theme.surface2
+        color: bar.hoverSurface
         border.width: 1
         border.color: Modules.Theme.hairline
         z: 10

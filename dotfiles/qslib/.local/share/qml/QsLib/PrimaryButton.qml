@@ -24,14 +24,15 @@ Item {
     implicitWidth: Math.max(36, label.implicitWidth + (icon.visible ? icon.width + 18 : 0) + 48)
     implicitHeight: 38
     opacity: enabled ? 1 : 0.38
+    Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.InOutQuad } }
 
     Rectangle {
         anchors.fill: parent
         anchors.topMargin: 2
         radius: root.radius
         color: Qt.rgba(0, 0, 0, root.primary
-            ? (Theme.mode === "dark" ? 0.28 : 0.18)
-            : (Theme.mode === "dark" ? 0.20 : 0.12))
+            ? (Theme.mode === "dark" ? 0.28 : 0.01)
+            : (Theme.mode === "dark" ? 0.20 : 0))
     }
 
     Rectangle {

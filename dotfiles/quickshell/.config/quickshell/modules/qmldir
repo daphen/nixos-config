@@ -57,6 +57,7 @@ NotificationJumpPicker 1.0 NotificationJumpPicker.qml
 singleton AgentAskState 1.0 AgentAskState.qml
 AgentAskPicker 1.0 AgentAskPicker.qml
 singleton PaletteState 1.0 PaletteState.qml
+HyprlandBackend 1.0 HyprlandBackend.qml
 CmdPalette 1.0 CmdPalette.qml
 DeckRadialPalette 1.0 DeckRadialPalette.qml
 NotificationIsland 1.0 NotificationIsland.qml

@@ -132,6 +132,8 @@ Picker {
     subtitleField: "subtitle"
     trailingField: "shortcut"
     trailingKeycaps: true
+    rowFontSize: Quickshell.env("HYPR_CANVAS_PROFILE") === "deck" ? 13 : 15
+    rowSubtitleFontSize: Quickshell.env("HYPR_CANVAS_PROFILE") === "deck" ? 10 : 12
 
     items: {
         const out = [{ divider: true, label: "Actions" }]

@@ -10,6 +10,8 @@ KeyCap KeyCap.qml
 CapLabel CapLabel.qml
 FeedbackPill FeedbackPill.qml
 Card Card.qml
+ContrastCard ContrastCard.qml
+ContrastSurface ContrastSurface.qml
 ExpandableContainer ExpandableContainer.qml
 Crossfade Crossfade.qml
 Dropdown Dropdown.qml

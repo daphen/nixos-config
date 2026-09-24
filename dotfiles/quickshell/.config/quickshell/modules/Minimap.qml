@@ -189,13 +189,11 @@ Item {
             }
         }
 
-        MouseArea {
-            anchors.centerIn: parent
-            width: 20
-            height: 20
-            enabled: NotificationJumpPickerState.total > 0
-            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/inbox-jump"])
-        }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: NotificationJumpPickerState.show()
     }
 }

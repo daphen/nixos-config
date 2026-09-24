@@ -11,6 +11,7 @@ Item {
   property color glow: Theme.fg
   property var activityColors: []
   readonly property bool combined: activityColors.length > 1
+  readonly property real ringWidth: Math.max(1.25, Math.min(width, height) * 0.065) + (Theme.mode === "light" ? 1 : 0)
   // Flip the ring's light/dark pick — for orbs sitting on an inverted ground
   // (the roster's cursor pill), where the normal ring melts into the fill.
   property bool invertRing: false
@@ -101,10 +102,20 @@ Item {
   property real swirl: 1.2
   property real plasma: 0.05 // crease/seam intensity (aura = no line)
 
+  Rectangle {
+    anchors.fill: parent
+    radius: width / 2
+    visible: Theme.mode === "light"
+    color: orb.invertRing
+      ? "#FAFAFA"
+      : Qt.hsla(orb.hu, orb.sat * 0.5, 0.34, 1)
+    antialiasing: true
+  }
+
   ShaderEffect {
     id: field
     anchors.fill: parent
-    anchors.margins: ring.border.width / 2
+    anchors.margins: Theme.mode === "light" ? orb.ringWidth : orb.ringWidth / 2
     fragmentShader: Qt.resolvedUrl("aurora.frag.qsb")
     property real ph1: orb.ph1
     property real ph2: orb.ph2
@@ -158,19 +169,19 @@ Item {
     Behavior on colC { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
   }
 
-  // The ring rides the action hue — bright tint on dark, deep shade on light —
-  // so the frame belongs to the aurora instead of cutting against it.
+  // Light surfaces need a neutral dark perimeter; the action hue remains in the
+  // aurora field. Inverted cursor rows flip that perimeter back to light.
   Rectangle {
     id: ring
     anchors.fill: parent
     radius: width / 2
     color: "transparent"
-    border.width: Math.max(1.25, Math.min(width, height) * 0.065) + (Theme.mode === "light" ? 1 : 0)
-    // Dark-mode orange ring at L .82 / half-sat drifted PINK: pale desaturated
-    // orange loses its hue identity. Warmer nudge + more sat keeps it peach.
-    border.color: field._orange && (Theme.mode === "light") === orb.invertRing
-      ? Qt.hsla((orb.hu + 0.03) % 1, orb.sat * 0.75, 0.78, 1)
-      : Qt.hsla(orb.hu, orb.sat * 0.5, (Theme.mode === "light") !== orb.invertRing ? 0.34 : 0.82, 1)
+    border.width: orb.ringWidth
+    border.color: Theme.mode === "light"
+      ? (orb.invertRing ? "#FAFAFA" : Qt.hsla(orb.hu, orb.sat * 0.5, 0.34, 1))
+      : (field._orange && !orb.invertRing
+        ? Qt.hsla((orb.hu + 0.03) % 1, orb.sat * 0.75, 0.78, 1)
+        : Qt.hsla(orb.hu, orb.sat * 0.5, orb.invertRing ? 0.34 : 0.82, 1))
     Behavior on border.color { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
     antialiasing: true
   }
