@@ -64,14 +64,18 @@
         "rio": "rio"
       },
       "locked": {
-        "lastModified": 1789479863,
-        "narHash": "sha256-5gY4jH5pxg2BVSEVg7yK2mwHNrS8KJ7QIw/T5fYC30E=",
-        "path": "/home/daphen/personal/ai-cockpit",
-        "type": "path"
+        "lastModified": 1790282624,
+        "narHash": "sha256-ZOatBqRa5omw49AL/0MwqrQ4Gsz961lH+G9iKsSz9+w=",
+        "ref": "main",
+        "rev": "3372c134fa322940d349f064e8e4e530f2cc90c4",
+        "revCount": 402,
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/ai-cockpit"
       },
       "original": {
-        "path": "/home/daphen/personal/ai-cockpit",
-        "type": "path"
+        "ref": "main",
+        "type": "git",
+        "url": "ssh://git@github.com/daphen/ai-cockpit"
       }
     },
     "crane": {
@@ -96,15 +100,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1788948438,
-        "narHash": "sha256-G96V4DNtAZ0bZOscZ0Eozgj5RDGuk4VMGVgmc22mzOU=",
-        "ref": "refs/heads/main",
-        "rev": "a24488a1430b70a4d0b316a784226a9b13854c18",
-        "revCount": 267,
+        "lastModified": 1790282624,
+        "narHash": "sha256-Rmbs7wI2DtrGBrGHFKMSedynbWiNCjoGpMjwWYdyg/4=",
+        "ref": "daphen/client-mouse-support",
+        "rev": "f85d99f9839c9df62462d522ae3bf6df73cf1598",
+        "revCount": 283,
         "type": "git",
         "url": "ssh://git@github.com/daphen/dsqrd"
       },
       "original": {
+        "ref": "daphen/client-mouse-support",
         "type": "git",
         "url": "ssh://git@github.com/daphen/dsqrd"
       }
@@ -635,15 +640,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1788947436,
-        "narHash": "sha256-egZdzEhKEUqapUzEEwoht+OCnHAVf1r6sdFYjQksFdE=",
-        "ref": "refs/heads/main",
-        "rev": "f8e308bb1cefb07fbf86d72ce56a7cb8364d80c3",
-        "revCount": 243,
+        "lastModified": 1790282624,
+        "narHash": "sha256-X46i+HIh2GKryjFKM9q21leu7ComsNuF876gDsQhysI=",
+        "ref": "daphen/client-mouse-support",
+        "rev": "d31bf804f0ab76047df06aa39470d9f8ef3cfd96",
+        "revCount": 263,
         "type": "git",
         "url": "ssh://git@github.com/daphen/mlqs"
       },
       "original": {
+        "ref": "daphen/client-mouse-support",
         "type": "git",
         "url": "ssh://git@github.com/daphen/mlqs"
       }
