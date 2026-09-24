@@ -10,7 +10,7 @@ let
     ln -sfn "$XDG_RUNTIME_DIR/agentd-proart-work.sock" "$XDG_RUNTIME_DIR/agentd-work.sock"
     export COCKPIT_NEW_CWD="$HOME/personal"
     mkdir -p "$COCKPIT_NEW_CWD"
-    exec "$HOME/.config/hypr/scripts/jump-or-exec" "cockpit-qs · private" \
+    exec "$HOME/.config/hypr/scripts/jump-or-exec" "title:^cockpit-qs · personal" \
       "$HOME/.config/hypr/scripts/desktop-launch cockpit-qs"
   '';
 in
