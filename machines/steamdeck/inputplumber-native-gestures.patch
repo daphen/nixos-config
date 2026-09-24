@@ -34,7 +34,7 @@
          output_event::UinputOutputEvent,
          source::{
              evdev::EventDevice, hidraw::HidRawDevice, iio::IioDevice, led::LedDevice,
-@@ -53,6 +61,217 @@
+@@ -53,6 +61,215 @@
  /// Size of the command channel buffer for processing input events and commands.
  const BUFFER_SIZE: usize = 16384;
  
@@ -71,6 +71,9 @@
 +        if *is_touching && self.physical_contact != Some(*index) {
 +            self.scrolling = modifier_active;
 +            self.clear_scroll();
++        }
++        if !modifier_active {
++            self.scrolling = false;
 +        }
 +        let route_to_scroll = self.scrolling;
 +        self.physical_contact = is_touching.then_some(*index);
@@ -207,11 +210,6 @@
 +                value,
 +            )]);
 +        }
-+        if !scroll_active {
-+            state.clear_scroll();
-+            return Some(Vec::new());
-+        }
-+
 +        let speed = scroll_mapping
 +            .source_event
 +            .touchpad
@@ -252,7 +250,7 @@
  /// The [InterceptMode] defines whether or not inputs should be routed over
  /// DBus instead of to the target devices. This can be used by overlays to
  /// intercept input.
-@@ -97,6 +316,7 @@
+@@ -97,6 +314,7 @@
      /// Map of profile source events to translate to one or more profile mapping
      /// configs that define how the source event should be translated.
      device_profile_config_map: HashMap<Capability, Vec<ProfileMapping>>,
@@ -260,7 +258,7 @@
      /// List of input capabilities that can be translated by the capability map
      translatable_capabilities: Vec<Capability>,
      /// List of currently "pressed" actions used to translate multiple input
-@@ -190,6 +410,7 @@
+@@ -190,6 +408,7 @@
              device_profile: None,
              device_profile_path: None,
              device_profile_config_map: HashMap::new(),
@@ -268,7 +266,7 @@
              translatable_capabilities: Vec::new(),
              translatable_active_inputs: Vec::new(),
              translated_recent_events: HashSet::new(),
-@@ -910,6 +1131,8 @@
+@@ -910,6 +1129,8 @@
          // Track the delay for chord events.
          let mut sleep_time = 0;
  
@@ -277,7 +275,7 @@
          // Translate the event using the device profile.
          let mut events = if self.device_profile.is_some() {
              self.translate_event(&event)
-@@ -922,7 +1145,7 @@
+@@ -922,7 +1143,7 @@
          };
  
          // Check if we need to reverse the event list.
@@ -286,7 +284,7 @@
              //log::trace!("Got chord: {events:?}");
              is_chord = true;
              if !is_pressed {
-@@ -938,6 +1161,7 @@
+@@ -938,6 +1159,7 @@
  
          for event in events {
              let cap = event.as_capability();
@@ -294,7 +292,7 @@
  
              // Track what is currently active so we can ignore extra events.
              match cap {
-@@ -947,11 +1171,11 @@
+@@ -947,11 +1169,11 @@
                  | Capability::Sync
                  | Capability::DBus(_) => {}
                  Capability::Keyboard(_) => {
@@ -308,7 +306,7 @@
                          .await?
                      {
                          continue;
-@@ -1472,12 +1696,51 @@
+@@ -1472,12 +1694,52 @@
      /// Translates the given event into a Vec of events based on the currently loaded
      /// [DeviceProfile]
      async fn translate_event(
@@ -332,6 +330,7 @@
 +                    })
 +                });
 +        if releases_scroll_modifier {
++            self.touchpad_scroll.scrolling = false;
 +            self.touchpad_scroll.clear_scroll();
 +        }
 +        if let Some(events) = translate_desktop_pads(
@@ -361,7 +360,7 @@
          if let Some(mappings) = self.device_profile_config_map.get(&source_cap) {
              // Find which mappings in the device profile matches this source event
              let matched_mappings = mappings
-@@ -1850,6 +2113,7 @@
+@@ -1850,6 +2112,7 @@
          // Remove all outdated capability mappings.
          log::debug!("Clearing old device profile mappings");
          self.device_profile_config_map.clear();
@@ -369,7 +368,7 @@
  
          // Load the device profile
          self.device_profile = profile;
-@@ -2219,3 +2483,541 @@
+@@ -2219,3 +2482,550 @@
          });
      }
  }
@@ -704,11 +703,20 @@
 +        assert_eq!(drain_haptics(&mut source_events), vec![CommandType::Tick]);
 +        client.handle_event(lt(false)).await.unwrap();
 +        client
++            .handle_event(pad_motion(Touchpad::RightPad, 0.6, true))
++            .await
++            .unwrap();
++        let (resumed, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert!(steam.is_empty());
++        assert_eq!(resumed.iter().map(NativeEvent::as_capability).collect::<Vec<_>>(),
++            vec![Capability::Touchpad(Touchpad::CenterPad(Touch::Motion))]);
++        client
 +            .handle_event(pad_motion(Touchpad::RightPad, 0.4, false))
 +            .await
 +            .unwrap();
 +        let (release, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
-+        assert!(release.is_empty());
++        assert_eq!(release.iter().map(NativeEvent::as_capability).collect::<Vec<_>>(),
++            vec![Capability::Touchpad(Touchpad::CenterPad(Touch::Motion))]);
 +        assert!(steam.is_empty());
 +        assert_eq!(drain_haptics(&mut source_events), vec![CommandType::Off]);
 +
