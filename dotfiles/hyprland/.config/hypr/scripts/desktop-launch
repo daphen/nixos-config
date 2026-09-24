@@ -4,6 +4,10 @@ set -euo pipefail
 if [[ ${HYPR_CANVAS_PROFILE:-} != deck ]]; then
     exec "$@"
 fi
+case ${1##*/} in
+    kitty) set -- "$1" --override font_size=11 "${@:2}" ;;
+    deck-cockpit|cockpit-qs) export COCKPIT_FONT_PX=14 COCKPIT_DECK=1 ;;
+esac
 slice=deck-work.slice
 case ${1##*/} in
     steam|deck-gaming-mode) slice=app.slice ;;

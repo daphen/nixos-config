@@ -4,8 +4,7 @@ from pathlib import Path
 
 REPORT_SIZE = 64
 REPORT_HEADER = bytes((1, 0, 9))
-RIGHT_STICK = struct.Struct("<hh")
-RIGHT_STICK_OFFSET = 52
+STICK_AXES = struct.Struct("<hh")
 AXIS_SCALE = 32767
 
 
@@ -31,12 +30,13 @@ def emit(x, y):
 
 
 def main():
+    offset = {"left": 48, "right": 52}[sys.argv[1] if len(sys.argv) > 1 else "right"]
     with find_controller().open("rb", buffering=0) as device:
         previous = None
         while data := device.read(REPORT_SIZE):
             if len(data) < REPORT_SIZE or data[:3] != REPORT_HEADER:
                 continue
-            axes = RIGHT_STICK.unpack_from(data, RIGHT_STICK_OFFSET)
+            axes = STICK_AXES.unpack_from(data, offset)
             if axes == previous:
                 continue
             previous = axes

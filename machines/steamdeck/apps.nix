@@ -2,10 +2,12 @@
 
 let
   paletteDaemon = inputs.palette-daemon.packages.${pkgs.system}.default;
+  openwhispr = pkgs.callPackage ../../pkgs/openwhispr { };
   agentd = import ../../pkgs/agentd { pkgs = applicationPkgs; src = inputs.agentd; };
   cockpit = pkgs.writeShellScriptBin "deck-cockpit" ''
-    export COCKPIT_INSTANCE=personal COCKPIT_SCOPE=personal
-    export COCKPIT_AGENTD_SOCKS="$XDG_RUNTIME_DIR/agentd-personal.sock"
+    export COCKPIT_INSTANCE=personal COCKPIT_SCOPE=personal COCKPIT_DECK=1
+    export COCKPIT_AGENTD_SOCKS="$XDG_RUNTIME_DIR/agentd-personal.sock,$XDG_RUNTIME_DIR/agentd-proart-personal.sock"
+    ln -sfn "$XDG_RUNTIME_DIR/agentd-proart-work.sock" "$XDG_RUNTIME_DIR/agentd-work.sock"
     export COCKPIT_NEW_CWD="$HOME/personal"
     mkdir -p "$COCKPIT_NEW_CWD"
     exec "$HOME/.config/hypr/scripts/jump-or-exec" "cockpit-qs · private" \
@@ -38,8 +40,27 @@ in
     home.packages = [
       cockpit
       applicationPkgs.python3
+      pkgs.gnome-keyring
+      pkgs.gcr
       (import ../../pkgs/desktopctl { pkgs = applicationPkgs; })
     ];
+    xdg.dataFile."dbus-1/services/org.freedesktop.secrets.service".text = ''
+      [D-BUS Service]
+      Name=org.freedesktop.secrets
+      Exec=${pkgs.gnome-keyring}/bin/gnome-keyring-daemon --start --foreground --components=secrets
+    '';
+    xdg.configFile."hypr/deck-share-picker" = {
+      executable = true;
+      text = ''
+        #!/bin/sh
+        printf '[SELECTION]/screen:eDP-1\n'
+      '';
+    };
+    xdg.configFile."hypr/xdph.conf".text = ''
+      screencopy {
+          custom_picker_binary = ${config.xdg.configHome}/hypr/deck-share-picker
+      }
+    '';
     xdg.configFile."quickmarks".source = config.lib.file.mkOutOfStoreSymlink
       "${config.home.homeDirectory}/nixos/dotfiles/quickmarks/.config/quickmarks";
     xdg.configFile."helium-personal/NativeMessagingHosts/com.daphen.quickmarks.json".source =
@@ -88,6 +109,37 @@ in
       terminal = false;
       type = "Application";
       categories = [ "Utility" ];
+    };
+
+    systemd.user.services.openwhispr = {
+      Unit = {
+        Description = "OpenWhispr local voice dictation";
+        PartOf = [ "graphical-session.target" ];
+        After = [ "graphical-session.target" ];
+      };
+      Service = {
+        Type = "simple";
+        ExecStartPre = "/bin/sh -c '[ -n \"$WAYLAND_DISPLAY\" ] && (${pkgs.procps}/bin/pkill -u %U -f \"openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64\" || true)'";
+        ExecStart = "${openwhispr}/bin/openwhispr --no-sandbox --ozone-platform=wayland";
+        ExecStopPost = "/bin/sh -c '${pkgs.procps}/bin/pkill -u %U -f \"openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64\" || true; ${pkgs.coreutils}/bin/rm -f %t/openwhispr-dictation-state'";
+        Environment = [
+          "DICTATION_KEY=Super+F9"
+          "OPENWHISPR_EXTERNAL_DICTATION_KEY=Super+F9"
+          "OPENWHISPR_EXTERNAL_HOTKEY=1"
+          "OPENWHISPR_EXTERNAL_OVERLAY=1"
+          "OPENWHISPR_FORCE_PUSH_TO_TALK=1"
+          "LOCAL_TRANSCRIPTION_PROVIDER=nvidia"
+          "PARAKEET_MODEL=orukeet-v0.1.0"
+          "DICTATION_LANGUAGE=auto"
+          "CLEANUP_PROVIDER=local"
+          "LOCAL_CLEANUP_MODEL=lfm2.5-1.2b-instruct-q4_k_m"
+          "DICTATION_AGENT_PROVIDER=local"
+          "LOCAL_DICTATION_AGENT_MODEL=lfm2.5-1.2b-instruct-q4_k_m"
+        ];
+        Restart = "on-failure";
+        RestartSec = 3;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
     };
 
     systemd.user.services.palette-daemon = {
