@@ -50,6 +50,7 @@ in {
       force = true;
     };
     "hypr/scripts".source = link "${dotfiles}/hyprland/.config/hypr/scripts";
+    "hypr/modules".source = link "${dotfiles}/hyprland/.config/hypr/modules";
     # Instance config for the cockpit engine (niri/scripts/cockpit-open|add|switch).
     # The scripts are generic; everything Lovable-specific lives in this one file.
     "cockpit".source = link "${dotfiles}/niri/.config/cockpit";

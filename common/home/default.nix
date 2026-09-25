@@ -46,6 +46,7 @@ in
     "git/ignore".source = link "${dotfiles}/git/.config/git/ignore";
     "hypr/hyprland.lua".source = link "${dotfiles}/hyprland/.config/hypr/hyprland.lua";
     "hypr/scripts".source = link "${dotfiles}/hyprland/.config/hypr/scripts";
+    "hypr/modules".source = link "${dotfiles}/hyprland/.config/hypr/modules";
     "quickshell".source = link "${dotfiles}/quickshell/.config/quickshell";
     "themes".source = link "${dotfiles}/themes/.config/themes";
     "starship.toml".source = link "${dotfiles}/starship/.config/starship/starship.toml";
