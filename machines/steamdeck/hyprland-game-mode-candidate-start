@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+self=$(readlink -f -- "${BASH_SOURCE[0]}")
+root=$(cd -- "$(dirname -- "$self")" && pwd)
+package=$(readlink -f -- "$root/package")
+if [[ ${1:-} == --check ]]; then
+    test -x "$package/bin/start-hyprland"
+    test -f "$root/config/hyprland.lua"
+    test -x "$root/scripts/deck-gaming-mode"
+    printf '%s\n' "$root" "$package"
+    exit 0
+fi
+inputplumber=/run/current-system/sw/bin/inputplumber
+release() {
+    "$root/scripts/deck-gaming-mode" cleanup || true
+    if "$inputplumber" device 0 info >/dev/null 2>&1; then
+        "$inputplumber" device 0 profile load /run/current-system/sw/share/inputplumber/profiles/default.yaml || true
+    fi
+    "$inputplumber" devices manage-all || true
+}
+trap release EXIT
+trap 'exit 1' INT TERM
+"$root/scripts/deck-gaming-mode" cleanup
+"$inputplumber" devices manage-all --enable
+for _ in $(seq 1 30); do
+    if "$inputplumber" device 0 info >/dev/null 2>&1; then
+        "$inputplumber" device 0 profile load /etc/inputplumber/profiles/hyprland-canvas.yaml
+        break
+    fi
+    sleep 0.2
+done
+export HYPR_CANVAS_REAL=1 HYPR_CANVAS_CAMERA=1 HYPR_CANVAS_PROFILE=deck
+export HYPR_SCRIPTS="$root/scripts/"
+"$package/bin/start-hyprland" -- --config "$root/config/hyprland.lua"
