@@ -10,7 +10,7 @@ return function(ctx)
 			local startup = {
 				"sh -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE && systemctl --user start nixos-fake-graphical-session.target'",
 				SCRIPTS .. "start-quickshell-desktop >> /tmp/hyprland-quickshell-main.log 2>&1",
-				SCRIPTS .. "desktop-launch cockpit-qs",
+				"deck-cockpit",
 				"wl-clip-persist --clipboard regular",
 				"wvkbd-mobintl -H 280 -L 280 --hidden",
 				"steam -silent",
