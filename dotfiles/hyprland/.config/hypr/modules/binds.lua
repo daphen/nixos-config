@@ -107,7 +107,7 @@ return function(ctx)
 	end
 
 	if DECK_MODE then
-		hl.workspace_rule({ workspace = "name:gaming", layout = "dwindle" })
+		hl.workspace_rule({ workspace = "name:gaming", layout = "lua:canvas" })
 		hl.window_rule({
 			name = "deck-big-picture-fullscreen",
 			match = { class = "(?i)^steam$", title = "^Steam Big Picture Mode$" },

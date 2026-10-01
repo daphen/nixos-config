@@ -1,0 +1,13 @@
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -257,6 +257,10 @@
+ }
+ 
+ bool IHyprRenderer::shouldRenderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor) {
++    if (canvasOverviewActive(pMonitor) && pWindow->m_workspace && pWindow->m_workspace->addressableName() == "gaming" &&
++        pWindow->m_workspace != pMonitor->m_activeWorkspace)
++        return false;
++
+     if (canvasOverviewActive(pMonitor) && !pWindow->isFloating()) {
+         if (pWindow->getFullWindowBoundingBox().intersection(canvasLogicalBox(pMonitor)).empty())
+             return false;

@@ -30,8 +30,12 @@ if name == 'hyprctl':
                 ('gaming', state['workspace']) if 'name:gaming' in args[-1]
                 else (state['previous'], state['workspace']))
             print('ok')
+    elif state.get('fail') == 'launch' and 'steam://open/bigpicture' in args[-1]:
+        print('error: launch rejected')
+    elif state.get('fail') == 'camera' and 'hl.dsp.layout' in args[-1]:
+        print('error: camera rejected')
     else:
-        print('error: launch rejected' if state.get('fail') == 'launch' else 'ok')
+        print('ok')
 elif name == 'readlink':
     assert args[0] == '-f' and pathlib.Path(args[-1]).parent == pathlib.Path('/etc/inputplumber/profiles')
     print(root / 'profiles' / pathlib.Path(args[-1]).name)
@@ -132,6 +136,32 @@ class ModeCommandTest(unittest.TestCase):
         self.assertEqual(self.state()['workspace'], 'work-project')
         self.assertEqual(self.state()['profile'], self.profile('canvas'))
         self.assertFalse(any(call[0] == 'busctl' for call in self.calls()))
+
+    def test_both_directions_zoom_travel_and_zoom_in(self):
+        self.configure(workspace='work-project')
+        self.run_mode('enter')
+        enter = [call[-1] for call in self.calls() if call[:2] == ['hyprctl', 'dispatch']]
+        self.assertLess(enter.index('hl.dsp.layout("overview")'),
+                        enter.index('hl.dsp.layout("pan 720 0")'))
+        self.assertLess(enter.index('hl.dsp.layout("pan 720 0")'),
+                        enter.index('hl.dsp.focus({workspace="name:gaming"})'))
+        self.assertGreater(enter.count('hl.dsp.layout("overview")'), 1)
+
+        (self.root / 'calls').write_text('')
+        self.run_mode('return')
+        returned = [call[-1] for call in self.calls() if call[:2] == ['hyprctl', 'dispatch']]
+        self.assertLess(returned.index('hl.dsp.layout("overview")'),
+                        returned.index('hl.dsp.layout("pan -720 0")'))
+        self.assertLess(returned.index('hl.dsp.layout("pan -720 0")'),
+                        returned.index('hl.dsp.focus({workspace="previous"})'))
+        self.assertGreater(returned.count('hl.dsp.layout("overview")'), 1)
+
+    def test_camera_failure_does_not_switch_or_launch(self):
+        self.configure(fail='camera')
+        self.run_mode('enter', success=False)
+        self.assertEqual(self.state()['workspace'], '1')
+        self.assertEqual(self.state()['profile'], self.profile('canvas'))
+        self.assertFalse(any('steam://open/bigpicture' in str(call) for call in self.calls()))
 
     def test_gaming_tap_forwards_one_guide_chord(self):
         self.configure('gaming', 'gaming')

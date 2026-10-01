@@ -2,7 +2,10 @@
 
 let
   canvas = inputs.hyprland-canvas.packages.${pkgs.system}.default.overrideAttrs (old: {
-    patches = (old.patches or []) ++ [ ./hyprland-deck.patch ];
+    patches = (old.patches or []) ++ [
+      ./hyprland-deck.patch
+      ./hyprland-game-mode-transition.patch
+    ];
   });
 
   deckInputPlumber = pkgs.inputplumber.overrideAttrs (old: {

@@ -74,7 +74,22 @@ dispatch() {
     result=$(hyprctl dispatch "$1")
     [[ $result == ok ]]
 }
+camera() { dispatch "hl.dsp.layout(\"$1\")"; }
 focus() { dispatch "hl.dsp.focus({workspace=\"$1\"})"; }
+transition_focus() {
+    local target=$1 travel=$2
+    camera overview || return 1
+    sleep 0.14
+    camera "pan $travel 0" || { camera pan-cancel || true; return 1; }
+    sleep 0.14
+    if ! focus "$target"; then
+        camera pan-cancel || true
+        camera overview || true
+        return 1
+    fi
+    sleep 0.08
+    camera overview
+}
 fullscreen_big_picture() {
     local address
     address=$(hyprctl -j activewindow | jq -r 'select(.class == "steam" and .title == "Steam Big Picture Mode" and .fullscreen == 0) | .address // empty') || return 1
@@ -109,7 +124,7 @@ case ${1:-enter} in
         if [[ $workspace != gaming ]]; then thaw_work; exit; fi
         thaw_work
         if ! profile canvas; then profile gaming; exit 1; fi
-        if ! focus previous; then
+        if ! transition_focus previous -720; then
             profile gaming
             exit 1
         fi
@@ -121,7 +136,7 @@ esac
 
 if [[ $workspace != gaming ]]; then
     if ! profile gaming; then profile canvas; exit 1; fi
-    if ! focus name:gaming; then
+    if ! transition_focus name:gaming 720; then
         profile canvas
         exit 1
     fi
@@ -133,7 +148,7 @@ if ! freeze_work || ! dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/des
     notify-send 'Game Mode' 'Could not pause work or open Steam; returning to work.' || true
     if [[ $workspace != gaming ]]; then
         profile canvas
-        focus previous
+        transition_focus previous -720 || true
     fi
     exit 1
 fi
