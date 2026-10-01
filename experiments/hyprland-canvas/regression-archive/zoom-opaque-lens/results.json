@@ -1,0 +1,256 @@
+{
+  "outcome": "rejected; shipping patch and native cache restored to baseline",
+  "source_base": "bb755898fce128a759e7f2f6bb7fc5979a306ae8",
+  "native_base": "12f3780fae50a2edf8c50587bd052e95b8bfe652",
+  "upstream": "f05d73f35795ded80d7e1264a37e41b461625f9f",
+  "baseline_native_diff": "9ee99e15979745e5816cdf04a61f48a6d2e61f253c8e9d961d91c65ec39a02f4",
+  "candidate_native_diff": "a0109536fdc2c407fcc8becf1da5eddbdc55e91a452d406569f6b9e8ff845076",
+  "baseline_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+  "candidate_binary": "62e51941c17b216afef76032233a436b33c3a600174ca946d11ada17c1529ef5",
+  "canonical_patch_sha256": "93276f3cab0aa7e79e1b365eba9c0a04b91797a2c72fbaf98b02ab00096297d5",
+  "runner_sha256": "b753ffca905964018e78f56b9150bd49096182a4ff99a88307a8084e792ae464",
+  "renderer": [
+    "AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0)"
+  ],
+  "platform_profile": "quiet",
+  "power": {
+    "ucsi-source-psy-USBC000:002": {
+      "online": "0",
+      "type": "USB",
+      "status": "Discharging"
+    },
+    "BAT1": {
+      "type": "Battery",
+      "capacity": "100",
+      "status": "Full"
+    },
+    "ucsi-source-psy-USBC000:001": {
+      "online": "1",
+      "type": "USB",
+      "status": "Charging"
+    },
+    "ACAD": {
+      "online": "1",
+      "type": "Mains"
+    }
+  },
+  "cpus": {
+    "candidate": 2,
+    "bridge": 0,
+    "weston": 1
+  },
+  "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+  "weston_sha256": "20b3b967d31ad6d44ed9ae75cd36066947e9a2ca4d23368446e9863c537dcf7a",
+  "bootstrap_shim_sha256": "8fae9aae75be85ab0003e97917f729410650d481f5d1221ed2765852e3a9d246",
+  "config_sha256": {
+    "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+    "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+    "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+    "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+    "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+    "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+    "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+    "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+    "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+  },
+  "fixture_sha256": {
+    "test-canvas-visuals.py": "d4b0da574006eee60bdf225f5d14fb896c1bafa25dec553af1379b9b601a0fac",
+    "test-canvas-rendering.py": "04323079b03d57395f6d3d1447ad2b50e75cda73278609c15cc90d5958633716"
+  },
+  "geometry": {
+    "width": 800,
+    "height": 1280,
+    "scale": 1,
+    "transform": 3,
+    "refreshRate": 60.0
+  },
+  "identical_captures": {
+    "normal": "11c9ad97e0b21e573b513c575b0c562956c768db2d45cfeff21dfcb0a26de243",
+    "returned": "11c9ad97e0b21e573b513c575b0c562956c768db2d45cfeff21dfcb0a26de243",
+    "static-overview": "ebb2efb73f99fe5e08c079ce81b0e7f86a5e107eb849b8f65017f1e05ba68a6d",
+    "static-panned": "8905e8ef33d4da1924f19f1e1c831fdf7baf06334ab78cf9d58e95d7d53d4cad",
+    "translucent": "581656ac9688f0da48b9de30e73fc916fd9874df7d70f64b288d2cde6f97d202",
+    "lens-options": "b112a16876975b0f92bc6c48d8269736e82ce11a021aef516d40d367b5678d9a",
+    "locked": "5953735255071edfd10072c60d862c2c49d32aa1ca620025d3f890101a7a4d8a",
+    "locked-late-client": "5953735255071edfd10072c60d862c2c49d32aa1ca620025d3f890101a7a4d8a"
+  },
+  "runs": {
+    "control-a3": {
+      "raw_result_sha256": "51230f2705b727ff84dc272b7c99d558d15075e78a16e99daa14d7dda03482ad",
+      "passed": true,
+      "trials": [
+        {
+          "repeat": 0,
+          "frames": 888,
+          "seconds": 16.807565053983126,
+          "cpu_ms": 240.0,
+          "gpu_ms": 574.090498,
+          "cpu_ms_per_frame": 0.2702702702702703,
+          "gpu_ms_per_frame": 0.6464983085585586
+        },
+        {
+          "repeat": 1,
+          "frames": 888,
+          "seconds": 16.808626156009268,
+          "cpu_ms": 230.0,
+          "gpu_ms": 564.10952,
+          "cpu_ms_per_frame": 0.25900900900900903,
+          "gpu_ms_per_frame": 0.6352584684684685
+        },
+        {
+          "repeat": 2,
+          "frames": 888,
+          "seconds": 16.80834687699098,
+          "cpu_ms": 230.0,
+          "gpu_ms": 557.685554,
+          "cpu_ms_per_frame": 0.25900900900900903,
+          "gpu_ms_per_frame": 0.6280242725225226
+        }
+      ],
+      "gpu_median_ms_per_frame": 0.6352584684684685,
+      "cpu_median_ms_per_frame": 0.25900900900900903,
+      "native_log_sha256": "6654a5515ffdd097527b9c2f20434e91583bd0f35d357f88e6cf8fa9789e917b"
+    },
+    "candidate-b3": {
+      "raw_result_sha256": "615a4cb4e1eae2bec1352906d8ccc6798b051b4cb859c7ab3ae4cbaa7f3b5301",
+      "passed": true,
+      "trials": [
+        {
+          "repeat": 0,
+          "frames": 888,
+          "seconds": 16.807760508992942,
+          "cpu_ms": 230.0,
+          "gpu_ms": 566.531377,
+          "cpu_ms_per_frame": 0.25900900900900903,
+          "gpu_ms_per_frame": 0.63798578490991
+        },
+        {
+          "repeat": 1,
+          "frames": 888,
+          "seconds": 16.806823243008694,
+          "cpu_ms": 250.0,
+          "gpu_ms": 554.442463,
+          "cpu_ms_per_frame": 0.28153153153153154,
+          "gpu_ms_per_frame": 0.624372143018018
+        },
+        {
+          "repeat": 2,
+          "frames": 888,
+          "seconds": 16.80692259297939,
+          "cpu_ms": 240.0,
+          "gpu_ms": 553.801713,
+          "cpu_ms_per_frame": 0.2702702702702703,
+          "gpu_ms_per_frame": 0.6236505777027026
+        }
+      ],
+      "gpu_median_ms_per_frame": 0.624372143018018,
+      "cpu_median_ms_per_frame": 0.2702702702702703,
+      "native_log_sha256": "f9fccb7abedbf5ac9a08809439c23cf2238270cbd5e555bf77730d2a34e06f4e"
+    },
+    "control-a4": {
+      "raw_result_sha256": "3ad63723d2d26b5abd1a7476a47733e24efb8efed223316639e06da967171665",
+      "passed": true,
+      "trials": [
+        {
+          "repeat": 0,
+          "frames": 888,
+          "seconds": 16.80746411398286,
+          "cpu_ms": 230.0,
+          "gpu_ms": 561.200293,
+          "cpu_ms_per_frame": 0.25900900900900903,
+          "gpu_ms_per_frame": 0.6319823119369369
+        },
+        {
+          "repeat": 1,
+          "frames": 888,
+          "seconds": 16.807900907995645,
+          "cpu_ms": 220.0,
+          "gpu_ms": 561.800342,
+          "cpu_ms_per_frame": 0.24774774774774774,
+          "gpu_ms_per_frame": 0.6326580427927928
+        },
+        {
+          "repeat": 2,
+          "frames": 887,
+          "seconds": 16.80898774799425,
+          "cpu_ms": 230.0,
+          "gpu_ms": 562.599506,
+          "cpu_ms_per_frame": 0.2593010146561443,
+          "gpu_ms_per_frame": 0.6342722728297633
+        }
+      ],
+      "gpu_median_ms_per_frame": 0.6326580427927928,
+      "cpu_median_ms_per_frame": 0.25900900900900903,
+      "native_log_sha256": "a4d9693e2289f60a385e5f3688d75c11a02eeba614c0a6da642341e5a228bcfb"
+    },
+    "candidate-b4": {
+      "raw_result_sha256": "ece8991467313e77b76b5388194ae505a7083972b90dfd3db9c86e611d4478ba",
+      "passed": true,
+      "trials": [
+        {
+          "repeat": 0,
+          "frames": 888,
+          "seconds": 16.806941204005852,
+          "cpu_ms": 250.0,
+          "gpu_ms": 547.96251,
+          "cpu_ms_per_frame": 0.28153153153153154,
+          "gpu_ms_per_frame": 0.6170748986486486
+        },
+        {
+          "repeat": 1,
+          "frames": 888,
+          "seconds": 16.80761771701509,
+          "cpu_ms": 230.0,
+          "gpu_ms": 556.761176,
+          "cpu_ms_per_frame": 0.25900900900900903,
+          "gpu_ms_per_frame": 0.6269833063063063
+        },
+        {
+          "repeat": 2,
+          "frames": 888,
+          "seconds": 16.808458579005674,
+          "cpu_ms": 240.0,
+          "gpu_ms": 548.300804,
+          "cpu_ms_per_frame": 0.2702702702702703,
+          "gpu_ms_per_frame": 0.6174558603603604
+        }
+      ],
+      "gpu_median_ms_per_frame": 0.6174558603603604,
+      "cpu_median_ms_per_frame": 0.2702702702702703,
+      "native_log_sha256": "08b825afb39c1e54a21ddc7550ec238c20966ab5168880ee26ffb2c288342a2b"
+    }
+  },
+  "totals": {
+    "baseline": {
+      "frames": 5327,
+      "gpu_ms": 3381.485713,
+      "cpu_ms": 1380.0,
+      "gpu_ms_per_frame": 0.634782375258119,
+      "cpu_ms_per_frame": 0.2590576309367374
+    },
+    "candidate": {
+      "frames": 5328,
+      "gpu_ms": 3327.8000429999997,
+      "cpu_ms": 1440.0,
+      "gpu_ms_per_frame": 0.6245870951576576,
+      "cpu_ms_per_frame": 0.2702702702702703
+    }
+  },
+  "gpu_ms_per_frame_change_percent": -1.6061063598868275,
+  "cpu_ms_per_frame_change_percent": 4.3282412847630125,
+  "acceptance": {
+    "gpu_run_median_improvement_ms": 0.013044253941441486,
+    "twice_larger_same_binary_run_median_spread_ms": 0.013832565315315293,
+    "passes": false
+  },
+  "restoration": {
+    "source_diff_sha256": "9ee99e15979745e5816cdf04a61f48a6d2e61f253c8e9d961d91c65ec39a02f4",
+    "rebuilt_binary_sha256": "6b290f43a2aa10875bb6282da0cefff176cccc4d4b6105247f7a926c0be08736",
+    "public_regression_passed": true,
+    "identical_captures": true,
+    "raw_result_sha256": "49aede54a868b75dd75cee5b42e2e272b77035853146fd86ff5e25b4db00f830",
+    "runner_sha256": "b753ffca905964018e78f56b9150bd49096182a4ff99a88307a8084e792ae464",
+    "native_log_sha256": "ae7dbafa1c770e69e835d7184098193391515e547f4218034334b5d4ee6309be",
+    "game_mode_tests": "15/15 passed; mocks only; no real freezer changes"
+  }
+}
