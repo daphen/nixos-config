@@ -662,14 +662,24 @@ if REAL_MODE then
     if DECK_MODE then
         hl.window_rule({
             name = "deck-radial-overlay",
-            match = { title = "^quickshell$", xwayland = true },
+            match = { title = "^deck-radial-palette$", xwayland = true },
             float = true,
             size = "monitor_w monitor_h",
             move = "0 0",
             border_size = 0,
             rounding = 0,
             no_anim = true,
+            no_blur = true,
         })
+        hl.on("window.open", function(window)
+            if window.title ~= "deck-radial-palette" then return end
+            hl.dispatch(hl.dsp.window.set_prop({ prop = "no_blur", value = "1", window = window }))
+            hl.timer(function()
+                if window.mapped then
+                    hl.dispatch(hl.dsp.window.set_prop({ prop = "no_blur", value = "0", window = window }))
+                end
+            end, { timeout = 220, type = "oneshot" })
+        end)
     end
 
     floating_rule("picture-in-picture", { class = "firefox$", title = "^Picture-in-Picture$" })
@@ -940,16 +950,16 @@ if DECK_MODE then
             hl.exec_cmd(string.format("%spalette-toggle %d", SCRIPTS, direction + (radial_outer and 8 or 0)))
         end
     end
-    local function apps_radial_press(index)
+    local function apps_radial_press(index, analog)
         if deck_dictation_active then return end
         cancel_radial_release()
-        apps_held[index] = true
+        if not analog then apps_held[index] = true end
         if radial_open and radial_kind == "browser" then
             if index == 1 then radial_ipc("step", -1)
             elseif index == 4 then radial_ipc("step", 1) end
             return
         end
-        local direction = update_radial_direction(apps_held)
+        local direction = analog and ({6, 4, 0, 2})[index] or update_radial_direction(apps_held)
         if not radial_open then
             radial_open, radial_kind = true, "apps"
             set_radial_pointer_blocked(true)
@@ -1017,6 +1027,14 @@ if DECK_MODE then
         hl.bind("SUPER + " .. key, function() apps_radial_press(apps_index) end, { repeating = true })
         hl.bind("SHIFT + " .. key, hl.dsp.layout("move " .. direction), { repeating = true })
         hl.bind("CTRL + " .. key, hl.dsp.layout("resize " .. direction), { repeating = true })
+    end
+    for index, key in ipairs({ "F17", "F18", "F19", "F20" }) do
+        hl.bind(key, function() end, { ignore_mods = true })
+        hl.bind("SUPER + " .. key, function() apps_radial_press(index, true) end, { repeating = true })
+    end
+    -- Steam owns normal stick arrows; LT selection must not also send arrows.
+    for _, key in ipairs({ "Left", "Down", "Up", "Right" }) do
+        hl.bind("SUPER + " .. key, function() end, { device = { list = { "extest-fake-device" } } })
     end
     for _, axis in ipairs({ "mouse_up", "mouse_down", "mouse_left", "mouse_right" }) do
         hl.bind("SUPER + " .. axis, function()

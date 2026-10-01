@@ -141,11 +141,9 @@ Singleton {
             root.tabCycleRequested(direction, commit)
         }
         function radial(action: string, value: int, output: string) {
-            if (action === "open") {
-                if (output) root.targetOutput = output
-                root.show()
-            }
+            if (action === "open" && output) root.targetOutput = output
             root.radialRequested(action, value)
+            if (action === "open") root.show()
         }
     }
 }

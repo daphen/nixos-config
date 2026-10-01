@@ -3,8 +3,9 @@ import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import "."
+import "../QsLib" as Lib
 
-PanelWindow {
+FloatingWindow {
     id: root
 
     screen: Quickshell.screens.length ? Quickshell.screens[0] : null
@@ -15,14 +16,14 @@ PanelWindow {
     readonly property var tabs: allTabs.slice(tabPage * 8, tabPage * 8 + 8)
     readonly property int tabPageCount: Math.max(1, Math.ceil(allTabs.length / 8))
     readonly property var apps: [
-        { title: "Slack", subtitle: "Messages", glyph: "S", command: [home + "/.config/hypr/scripts/desktop-launch", "slqs-client"] },
-        { title: "Discord", subtitle: "dsqrd", glyph: "D", command: [home + "/.config/hypr/scripts/desktop-launch", "dsqrd-client"] },
-        { title: "Cockpit", subtitle: "Personal cockpit", glyph: "C", command: [home + "/.config/hypr/scripts/desktop-launch", "deck-cockpit"] },
-        { title: "Helium", subtitle: "Personal browser", glyph: "H", command: [home + "/.config/hypr/scripts/desktop-launch", home + "/.config/hypr/scripts/chromium-launch"] },
-        { title: "Spotify", subtitle: "Music", glyph: "♫", command: [home + "/.config/hypr/scripts/desktop-launch", "kitty", "--class", "spotify_player", home + "/.config/hypr/scripts/spotify-player-launch"] },
-        { title: "Mail", subtitle: "mlqs", glyph: "M", command: [home + "/.config/hypr/scripts/desktop-launch", "mlqs-client"] },
-        { title: "Passwords", subtitle: "1Password", glyph: "1", command: [home + "/.config/hypr/scripts/desktop-launch", "opqs-client"] },
-        { title: "Terminal", subtitle: "Kitty", glyph: ">", command: [home + "/.config/hypr/scripts/desktop-launch", "kitty"] }
+        { title: "Slack", subtitle: "Messages", brand: "file://" + home + "/.config/quickshell/assets/slack.svg", tint: true, command: [home + "/.config/hypr/scripts/desktop-launch", "slqs-client"] },
+        { title: "Discord", subtitle: "dsqrd", brand: "file://" + home + "/.config/quickshell/assets/discord.svg", tint: true, command: [home + "/.config/hypr/scripts/desktop-launch", "dsqrd-client"] },
+        { title: "Cockpit", subtitle: "Personal cockpit", icon: "window-pointer", command: [home + "/.config/hypr/scripts/desktop-launch", "deck-cockpit"] },
+        { title: "Helium", subtitle: "Personal browser", brand: Quickshell.iconPath("helium"), command: [home + "/.config/hypr/scripts/desktop-launch", home + "/.config/hypr/scripts/chromium-launch"] },
+        { title: "Spotify", subtitle: "Music", brand: Quickshell.iconPath("spotify-client"), command: [home + "/.config/hypr/scripts/desktop-launch", "kitty", "--class", "spotify_player", home + "/.config/hypr/scripts/spotify-player-launch"] },
+        { title: "Mail", subtitle: "mlqs", icon: "envelope", command: [home + "/.config/hypr/scripts/desktop-launch", "mlqs-client"] },
+        { title: "Passwords", subtitle: "1Password", brand: Quickshell.iconPath("1password"), command: [home + "/.config/hypr/scripts/desktop-launch", "opqs-client"] },
+        { title: "Terminal", subtitle: "Kitty", icon: "keyboard", command: [home + "/.config/hypr/scripts/desktop-launch", "kitty"] }
     ]
     readonly property var actions: [
         { title: "Launcher", subtitle: "Applications and actions", glyph: "⌕", command: ["qs", "ipc", "call", "--", "launcher", "toggle"] },
@@ -34,6 +35,26 @@ PanelWindow {
         { title: "Emoji", subtitle: "Emoji picker", glyph: "☺", command: ["qs", "ipc", "call", "--", "emoji", "toggle"] },
         { title: "Wallpaper", subtitle: "Choose wallpaper", glyph: "◫", command: ["qs", "ipc", "call", "--", "wallpaper-picker", "toggle"] }
     ]
+    component AppIcon: Item {
+        id: appIcon
+        required property var entry
+        property color color: Theme.fg
+        Image {
+            anchors.fill: parent
+            source: appIcon.entry && appIcon.entry.brand ? appIcon.entry.brand : ""
+            sourceSize.width: width * 2
+            sourceSize.height: height * 2
+            fillMode: Image.PreserveAspectFit
+            layer.enabled: !!appIcon.entry && !!appIcon.entry.tint
+            layer.effect: MultiEffect { colorization: 1; colorizationColor: appIcon.color }
+        }
+        Lib.Icon {
+            anchors.fill: parent
+            name: appIcon.entry && appIcon.entry.icon ? appIcon.entry.icon : ""
+            color: appIcon.color
+        }
+    }
+
     property int tabPage: 0
     property real direction: -1
     property int selectedOuterIndex: -1
@@ -46,19 +67,16 @@ PanelWindow {
     readonly property var selectedEntry: outerActive ? itemAt(outerItems, selectedOuterIndex) : ringItem(innerItems)
 
     visible: PaletteState.open
-    anchors { top: true; bottom: true; left: true; right: true }
+    title: "deck-radial-palette"
+    implicitWidth: screen ? screen.width : 1280
+    implicitHeight: screen ? screen.height : 800
     color: "transparent"
-    exclusionMode: ExclusionMode.Ignore
     mask: Region { item: dial }
 
-    Component.onCompleted: {
-        width = screen.width; height = screen.height; aboveWindows = true; focusable = true
-    }
-
-    function ringIndex(items) {
-        if (direction < 0 || !items.length) return -1
+    function ringIndex(items, value = direction) {
+        if (value < 0 || !items.length) return -1
         if (items === innerItems && items.length === 8) {
-            const target = direction * Math.PI / 4 - Math.PI / 2
+            const target = value * Math.PI / 4 - Math.PI / 2
             let nearest = 0
             let nearestDistance = Infinity
             for (let index = 0; index < items.length; index++) {
@@ -71,11 +89,23 @@ PanelWindow {
             }
             return nearest
         }
-        return Math.round(direction * items.length / 8) % items.length
+        return Math.round(value * items.length / 8) % items.length
+    }
+
+    function acceptedDirection(items, value) {
+        if (value < 0) return value
+        const current = ringIndex(items)
+        const candidate = ringIndex(items, value)
+        if (current < 0 || candidate < 0 || current === candidate) return value
+        const target = value * Math.PI / 4 - Math.PI / 2
+        const angle = index => items === innerItems
+            ? tabAngle(index, items.length)
+            : index * Math.PI * 2 / items.length - Math.PI / 2
+        const distance = index => Math.abs(Math.atan2(Math.sin(target - angle(index)), Math.cos(target - angle(index))))
+        return distance(candidate) + Math.PI / 18 < distance(current) ? value : direction
     }
 
     function updateStick(data) {
-        if (appsMode) return
         const parts = String(data).trim().split(/\s+/); if (parts.length !== 2 || parts[0] !== "direction") return
         const value = Number(parts[1]); if (Number.isFinite(value)) radial(parts[0], value)
     }
@@ -130,7 +160,7 @@ PanelWindow {
             selectedOuterIndex = ringIndex(outerItems)
             if (!outerActive && !appsMode) previewTab()
         } else if (action === "direction") { if (!visible) return
-            const previousIndex = ringIndex(innerItems); direction = value
+            const previousIndex = ringIndex(innerItems); direction = acceptedDirection(outerActive ? outerItems : innerItems, value)
             if (outerActive) selectedOuterIndex = ringIndex(outerItems)
             else if (!appsMode && ringIndex(innerItems) !== previousIndex) previewTab()
         } else if (action === "outer") {
@@ -160,26 +190,44 @@ PanelWindow {
     Connections {
         target: PaletteState
         function onRadialRequested(action, value) {
-            if (action !== "direction" || root.appsMode) root.radial(action, value)
+            if (action !== "direction") root.radial(action, value)
         }
     }
 
     Process {
-        running: root.visible && !root.appsMode
-        command: [root.home + "/.config/hypr/scripts/deck-radial-stick"]
+        running: root.visible
+        command: [root.home + "/.config/hypr/scripts/deck-radial-stick", root.appsMode ? "left" : "right"]
         stdout: SplitParser { onRead: data => root.updateStick(data) }
         onExited: {
-            if (root.visible && !root.appsMode) root.radial("direction", -1)
+            if (root.visible) root.radial("direction", -1)
         }
     }
 
     Rectangle {
+        id: backdrop
         anchors.fill: parent; color: Theme.mode === "light" ? "#F2F2F4" : "#08090B"
-        opacity: Theme.mode === "light" ? 0.9 : 0.86
+        opacity: 0
     }
 
     Item {
         id: dial
+        opacity: 0
+        states: State {
+            name: "open"
+            when: root.visible
+            PropertyChanges { target: dial; opacity: 1 }
+            PropertyChanges { target: backdrop; opacity: Theme.mode === "light" ? 0.48 : 0.38 }
+        }
+        transitions: Transition {
+            to: "open"
+            ParallelAnimation {
+                NumberAnimation { target: dial; property: "opacity"; duration: 120; easing.type: Easing.OutCubic }
+                SequentialAnimation {
+                    PauseAnimation { duration: 220 }
+                    NumberAnimation { target: backdrop; property: "opacity"; duration: 320; easing.type: Easing.OutCubic }
+                }
+            }
+        }
         anchors.centerIn: parent
         anchors.verticalCenterOffset: -24
         width: Math.min(parent.width - 48, 760)
@@ -324,12 +372,12 @@ PanelWindow {
                         sourceSize.height: 60
                     }
 
-                    Text {
+                    AppIcon {
                         anchors.centerIn: parent
+                        width: 32; height: width
                         visible: root.appsMode
-                        text: String(parent.parent.entry.glyph || parent.parent.entry.title || "?").slice(0, 1)
+                        entry: parent.parent.entry
                         color: parent.parent.selected ? Theme.orange : Theme.fg
-                        font { family: Theme.fontFamily; pixelSize: 28; weight: 700 }
                     }
                 }
             }
@@ -381,7 +429,7 @@ PanelWindow {
 
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: hubIcon.visible ? 38 : modeLabel.implicitWidth + 20
+                    width: hubIcon.visible || hubAppIcon.visible ? 38 : modeLabel.implicitWidth + 20
                     height: 28
                     radius: 14
                     color: root.outerActive ? Theme.orange : Theme.surface2
@@ -400,10 +448,18 @@ PanelWindow {
                         visible: status === Image.Ready
                     }
 
+                    AppIcon {
+                        id: hubAppIcon
+                        anchors.centerIn: parent
+                        width: 18; height: width
+                        visible: root.appsMode && !root.outerActive && !!root.selectedEntry
+                        entry: root.selectedEntry
+                    }
+
                     Text {
                         id: modeLabel
                         anchors.centerIn: parent
-                        visible: !hubIcon.visible
+                        visible: !hubIcon.visible && !hubAppIcon.visible
                         text: root.appsMode
                             ? (root.outerActive ? "ACTION" : "APP")
                             : (root.outerActive ? "QUICKMARK" : "TAB")
