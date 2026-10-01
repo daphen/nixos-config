@@ -8,6 +8,7 @@ if [[ ${1:-} == --check ]]; then
     test -x "$package/bin/start-hyprland"
     test -f "$root/config/hyprland.lua"
     test -x "$root/scripts/deck-gaming-mode"
+    "$package/bin/start-hyprland" --path "$package/bin/Hyprland" -- --version
     printf '%s\n' "$root" "$package"
     exit 0
 fi
@@ -32,4 +33,5 @@ for _ in $(seq 1 30); do
 done
 export HYPR_CANVAS_REAL=1 HYPR_CANVAS_CAMERA=1 HYPR_CANVAS_PROFILE=deck
 export HYPR_SCRIPTS="$root/scripts/"
-"$package/bin/start-hyprland" -- --config "$root/config/hyprland.lua"
+export PATH="$package/bin:/etc/profiles/per-user/daphen/bin:/run/current-system/sw/bin:$HOME/.local/bin:$PATH"
+"$package/bin/start-hyprland" --path "$package/bin/Hyprland" -- --config "$root/config/hyprland.lua"
