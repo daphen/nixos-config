@@ -33,5 +33,5 @@ for _ in $(seq 1 30); do
 done
 export HYPR_CANVAS_REAL=1 HYPR_CANVAS_CAMERA=1 HYPR_CANVAS_PROFILE=deck
 export HYPR_SCRIPTS="$root/scripts/"
-export PATH="$package/bin:/etc/profiles/per-user/daphen/bin:/run/current-system/sw/bin:$HOME/.local/bin:$PATH"
+export PATH="$package/bin:$HOME/.nix-profile/bin:$HOME/.local/bin:/etc/profiles/per-user/daphen/bin:/run/current-system/sw/bin:$PATH"
 "$package/bin/start-hyprland" --path "$package/bin/Hyprland" -- --config "$root/config/hyprland.lua"
