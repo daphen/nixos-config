@@ -176,8 +176,7 @@ Item {
             height: 4
             radius: 2
             color: Theme.cursor
-            opacity: NotificationJumpPickerState.needsAttention ? pulseOpacity
-                : NotificationJumpPickerState.total > 0 ? 0.35 : 1
+            opacity: NotificationJumpPickerState.needsAttention ? pulseOpacity : 1
             property real pulseOpacity: 1
             Behavior on color { ColorAnimation { duration: 110 } }
 

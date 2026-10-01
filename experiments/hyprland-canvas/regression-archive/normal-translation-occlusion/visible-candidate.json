@@ -1,0 +1,367 @@
+{
+  "visible": true,
+  "headless": false,
+  "pan_only": true,
+  "hashes": {
+    "/home/daphen/.cache/canvas-occlusion-20260922/Hyprland-refactored": "3bcddd41ed5075dd18c18f13ae135f626c5947c39fbceb2369b10ce7c4989d7f",
+    "/home/daphen/nixos/dotfiles/hyprland/.config/hypr/hyprland.lua": "ae3bc0a9e58eda1c426c56311ffe0aeabc2ff5bb954596c71e79ce39a683815e",
+    "/home/daphen/nixos/experiments/hyprland-canvas/regression-archive/hyprland-canvas-resize/client.py": "447e87cb4721472b7164c927f0cb8e2f4c0422b08d067ff7d50bc91aab81a394",
+    "/home/daphen/nixos/experiments/hyprland-canvas/test-canvas-rendering.py": "8835b15486e7bfbcd45d3e21e6e943f92e62219c0e9a06e4118c5b094c9bd50a",
+    "/home/daphen/.cache/canvas-occlusion-20260922/visible-internal-candidate/hyprland.lua": "c4777fdae03710785a205517f8c79e9b6683d614ba8869687fb64031136b252f",
+    "/home/daphen/nixos/dotfiles/hyprland/.config/hypr/canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+    "/home/daphen/nixos/experiments/hyprland-canvas/whole-canvas-camera.patch": "e28bd00f477569883174885f7dfd916d1088245e5aba6bec22592d28b361db2f",
+    "/home/daphen/.cache/canvas-occlusion-20260922/wallpaper.png": "c005d6016d9d867f470fd4706dd546d38e714e318029c5b2eaf3a437ac5b0c63"
+  },
+  "git_head": "fcc8ee42308f275444eedbd92b0904271603981b",
+  "measurement": "nested compositor; GPU busy time per submitted commit is NOT physical presentation/FPS",
+  "parent_pid": 3989150,
+  "parent_binary_sha256": "c0a395955d988eaac8a31a6de11330a4aa29080ac12547fd82c3879191a1d7ad",
+  "scale": 1.6666666,
+  "repeats": 3,
+  "log_damage": false,
+  "trials": [
+    {
+      "mode": "normal",
+      "repeat": 0,
+      "workload": "pan",
+      "seconds": 2.30168130598031,
+      "gfx_ms": 118.78845,
+      "cpu_ms": 240.0,
+      "surface_damage_events": null,
+      "full_monitor_invalidations": null,
+      "outer_commits": 279,
+      "nested_commit_gap_ms_p95": 8.837000004947186,
+      "client_configures": 0,
+      "client_commits": 0,
+      "client_damage_rectangles": [],
+      "frame_measurement": "nested outer surface commits",
+      "gfx_ms_per_outer_commit": 0.42576505376344087
+    },
+    {
+      "mode": "normal",
+      "repeat": 1,
+      "workload": "pan",
+      "seconds": 2.3017116120026913,
+      "gfx_ms": 127.908526,
+      "cpu_ms": 210.0,
+      "surface_damage_events": null,
+      "full_monitor_invalidations": null,
+      "outer_commits": 278,
+      "nested_commit_gap_ms_p95": 8.979999996721745,
+      "client_configures": 0,
+      "client_commits": 0,
+      "client_damage_rectangles": [],
+      "frame_measurement": "nested outer surface commits",
+      "gfx_ms_per_outer_commit": 0.46010261151079135
+    },
+    {
+      "mode": "normal",
+      "repeat": 2,
+      "workload": "pan",
+      "seconds": 2.3017175199929625,
+      "gfx_ms": 139.077012,
+      "cpu_ms": 190.0,
+      "surface_damage_events": null,
+      "full_monitor_invalidations": null,
+      "outer_commits": 275,
+      "nested_commit_gap_ms_p95": 9.111000001430511,
+      "client_configures": 0,
+      "client_commits": 0,
+      "client_damage_rectangles": [],
+      "frame_measurement": "nested outer surface commits",
+      "gfx_ms_per_outer_commit": 0.5057345890909091
+    },
+    {
+      "mode": "overview",
+      "repeat": 0,
+      "workload": "pan",
+      "seconds": 2.3017517300031614,
+      "gfx_ms": 203.93886,
+      "cpu_ms": 190.0,
+      "surface_damage_events": null,
+      "full_monitor_invalidations": null,
+      "outer_commits": 274,
+      "nested_commit_gap_ms_p95": 9.225999996066093,
+      "client_configures": 0,
+      "client_commits": 0,
+      "client_damage_rectangles": [],
+      "frame_measurement": "nested outer surface commits",
+      "gfx_ms_per_outer_commit": 0.7443024087591241
+    },
+    {
+      "mode": "overview",
+      "repeat": 1,
+      "workload": "pan",
+      "seconds": 2.301557294005761,
+      "gfx_ms": 186.657988,
+      "cpu_ms": 170.0,
+      "surface_damage_events": null,
+      "full_monitor_invalidations": null,
+      "outer_commits": 273,
+      "nested_commit_gap_ms_p95": 9.081000000238419,
+      "client_configures": 0,
+      "client_commits": 0,
+      "client_damage_rectangles": [],
+      "frame_measurement": "nested outer surface commits",
+      "gfx_ms_per_outer_commit": 0.6837288937728937
+    },
+    {
+      "mode": "overview",
+      "repeat": 2,
+      "workload": "pan",
+      "seconds": 2.3025245299795642,
+      "gfx_ms": 176.058575,
+      "cpu_ms": 230.0,
+      "surface_damage_events": null,
+      "full_monitor_invalidations": null,
+      "outer_commits": 278,
+      "nested_commit_gap_ms_p95": 8.969999998807907,
+      "client_configures": 0,
+      "client_commits": 0,
+      "client_damage_rectangles": [],
+      "frame_measurement": "nested outer surface commits",
+      "gfx_ms_per_outer_commit": 0.633304226618705
+    },
+    {
+      "mode": "normal-returned",
+      "repeat": 0,
+      "workload": "pan",
+      "seconds": 2.3019116109935567,
+      "gfx_ms": 126.384562,
+      "cpu_ms": 170.0,
+      "surface_damage_events": null,
+      "full_monitor_invalidations": null,
+      "outer_commits": 277,
+      "nested_commit_gap_ms_p95": 9.118000000715256,
+      "client_configures": 0,
+      "client_commits": 0,
+      "client_damage_rectangles": [],
+      "frame_measurement": "nested outer surface commits",
+      "gfx_ms_per_outer_commit": 0.4562619566787004
+    },
+    {
+      "mode": "normal-returned",
+      "repeat": 1,
+      "workload": "pan",
+      "seconds": 2.301621521997731,
+      "gfx_ms": 140.462321,
+      "cpu_ms": 170.0,
+      "surface_damage_events": null,
+      "full_monitor_invalidations": null,
+      "outer_commits": 276,
+      "nested_commit_gap_ms_p95": 8.975000001490116,
+      "client_configures": 0,
+      "client_commits": 0,
+      "client_damage_rectangles": [],
+      "frame_measurement": "nested outer surface commits",
+      "gfx_ms_per_outer_commit": 0.5089214528985507
+    },
+    {
+      "mode": "normal-returned",
+      "repeat": 2,
+      "workload": "pan",
+      "seconds": 2.30178286798764,
+      "gfx_ms": 131.500202,
+      "cpu_ms": 170.0,
+      "surface_damage_events": null,
+      "full_monitor_invalidations": null,
+      "outer_commits": 277,
+      "nested_commit_gap_ms_p95": 9.01799999922514,
+      "client_configures": 0,
+      "client_commits": 0,
+      "client_damage_rectangles": [],
+      "frame_measurement": "nested outer surface commits",
+      "gfx_ms_per_outer_commit": 0.47472997111913356
+    }
+  ],
+  "visual": [
+    {
+      "mode": "normal",
+      "freshness_checked": false,
+      "settled_image": "normal.ppm",
+      "settled_sha256": "66bb35c561435b8a330a6f0e2e352b0b99f4595a89cfee0ae797cec841a63e79",
+      "reference_changed_pixels": 0
+    },
+    {
+      "mode": "overview",
+      "freshness_checked": false,
+      "settled_image": "overview.ppm",
+      "settled_sha256": "56449a5c45ead7fd9a93e45ad552d02c8a3df11e7656e1aab8d15c9bd6e26216",
+      "reference_changed_pixels": 0
+    },
+    {
+      "mode": "normal-returned",
+      "freshness_checked": false,
+      "settled_image": "normal-returned.ppm",
+      "settled_sha256": "66bb35c561435b8a330a6f0e2e352b0b99f4595a89cfee0ae797cec841a63e79",
+      "reference_changed_pixels": 0
+    }
+  ],
+  "passed": true,
+  "parent_monitors": [
+    {
+      "id": 0,
+      "name": "eDP-1",
+      "description": "Samsung Display Corp. ATNA60HC03-0",
+      "make": "Samsung Display Corp.",
+      "model": "ATNA60HC03-0 ",
+      "serial": "",
+      "width": 3840,
+      "height": 2400,
+      "physicalWidth": 350,
+      "physicalHeight": 220,
+      "refreshRate": 120.0,
+      "x": 0,
+      "y": 0,
+      "activeWorkspace": {
+        "address": "2",
+        "type": "numbered",
+        "name": "2"
+      },
+      "specialWorkspace": {
+        "address": "",
+        "type": "",
+        "name": ""
+      },
+      "reserved": [
+        0,
+        52,
+        0,
+        0
+      ],
+      "scale": 1.6666666,
+      "transform": 0,
+      "focused": true,
+      "dpmsStatus": true,
+      "vrr": false,
+      "solitary": "0",
+      "solitaryBlockedBy": [
+        "WINDOWED",
+        "CANDIDATE"
+      ],
+      "activelyTearing": false,
+      "tearingBlockedBy": [
+        "NOT_TORN",
+        "USER",
+        "CANDIDATE"
+      ],
+      "directScanoutTo": "0",
+      "directScanoutBlockedBy": [
+        "USER",
+        "RECORD",
+        "CANDIDATE"
+      ],
+      "disabled": true,
+      "currentFormat": "XRGB8888",
+      "mirrorOf": "none",
+      "availableModes": [
+        "3840x2400@120.00Hz",
+        "3840x2400@60.00Hz",
+        "1920x1200@120.00Hz",
+        "1920x1080@120.00Hz",
+        "1600x1200@120.00Hz",
+        "1680x1050@120.00Hz",
+        "1280x1024@120.00Hz",
+        "1440x900@120.00Hz",
+        "1280x800@120.00Hz",
+        "1280x720@120.00Hz",
+        "1024x768@120.00Hz",
+        "800x600@120.00Hz",
+        "640x480@120.00Hz"
+      ],
+      "colorManagementPreset": "srgb",
+      "sdrBrightness": 1,
+      "sdrSaturation": 1,
+      "sdrMinLuminance": 0.2,
+      "sdrMaxLuminance": 80,
+      "hardwareCursorsInUse": true,
+      "hardwareDetails": {
+        "backend": "drm",
+        "hdr": true,
+        "chroma": true,
+        "bt2020": true,
+        "vrrCapable": true
+      }
+    }
+  ],
+  "platform_profile": "quiet",
+  "capture_tools": {
+    "/nix/store/8s3h27dpxqqbvb6by2v5c3lfj7vs8v8y-ffmpeg-headless-8.1.1-bin/bin/ffmpeg": "ffmpeg version 8.1.1 Copyright (c) 2000-2026 the FFmpeg developers",
+    "wf-recorder": "wf-recorder 0.6.0"
+  },
+  "monitors": [
+    {
+      "id": 0,
+      "name": "WAYLAND-1",
+      "description": "",
+      "make": "",
+      "model": "",
+      "serial": "",
+      "width": 2295,
+      "height": 1380,
+      "physicalWidth": 0,
+      "physicalHeight": 0,
+      "refreshRate": 60.0,
+      "x": 0,
+      "y": 0,
+      "activeWorkspace": {
+        "address": "1",
+        "type": "numbered",
+        "name": "1"
+      },
+      "specialWorkspace": {
+        "address": "",
+        "type": "",
+        "name": ""
+      },
+      "reserved": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "scale": 1.6666666,
+      "transform": 0,
+      "focused": true,
+      "dpmsStatus": true,
+      "vrr": false,
+      "solitary": "0",
+      "solitaryBlockedBy": [
+        "NOTIFICATION",
+        "WINDOWED",
+        "CANDIDATE"
+      ],
+      "activelyTearing": false,
+      "tearingBlockedBy": [
+        "NOT_TORN",
+        "USER",
+        "SUPPORT",
+        "CANDIDATE"
+      ],
+      "directScanoutTo": "0",
+      "directScanoutBlockedBy": [
+        "USER",
+        "CANDIDATE"
+      ],
+      "disabled": true,
+      "currentFormat": "XRGB8888",
+      "mirrorOf": "none",
+      "availableModes": [],
+      "colorManagementPreset": "srgb",
+      "sdrBrightness": 1,
+      "sdrSaturation": 1,
+      "sdrMinLuminance": 0.2,
+      "sdrMaxLuminance": 80,
+      "hardwareCursorsInUse": true,
+      "hardwareDetails": {
+        "backend": "wayland",
+        "hdr": false,
+        "chroma": false,
+        "bt2020": false,
+        "vrrCapable": false
+      }
+    }
+  ],
+  "parent_binary_unchanged": true,
+  "cleanup_errors": []
+}

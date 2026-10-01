@@ -42,11 +42,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     dsqrd = {
-      url = "git+ssh://git@github.com/daphen/dsqrd";
+      url = "git+ssh://git@github.com/daphen/dsqrd?ref=daphen/client-mouse-support";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     mlqs = {
-      url = "git+ssh://git@github.com/daphen/mlqs";
+      url = "git+ssh://git@github.com/daphen/mlqs?ref=daphen/client-mouse-support";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     opqs = {
@@ -54,10 +54,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Cockpit: nvim terminal + agentd rail in one Quickshell window. Local path;
-    # follows system nixpkgs + Quickshell so the plugin uses the running Qt.
+    # Cockpit: nvim terminal + agentd rail in one Quickshell window.
+    # Follows system nixpkgs + Quickshell so the plugin uses the running Qt.
     cockpit = {
-      url = "path:/home/daphen/personal/ai-cockpit";
+      url = "git+ssh://git@github.com/daphen/ai-cockpit?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.quickshell.follows = "quickshell";
     };

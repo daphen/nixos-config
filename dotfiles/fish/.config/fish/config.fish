@@ -91,3 +91,7 @@ alias drag='dragon-drop -x -T -i -s 48'
 # The next line updates PATH for the Google Cloud SDK.
 if [ -f '/home/daphen/google-cloud-sdk/path.fish.inc' ]; . '/home/daphen/google-cloud-sdk/path.fish.inc'; end
 fish_add_path ~/google-cloud-sdk/bin
+
+if status is-login; and status is-interactive; and test (tty) = /dev/tty1
+    $HOME/.local/bin/hypr-session
+end

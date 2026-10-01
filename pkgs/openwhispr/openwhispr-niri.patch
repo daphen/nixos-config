@@ -105,6 +105,53 @@
      });
 
      ipcMain.on("show-agent-dictation-final-transcript", (event, text) => {
+--- a/main.js
++++ b/main.js
+@@ -1069,7 +1069,9 @@
+   // A login launch goes to the tray whatever the preference says: the user asked
+   // the OS to start us, not to put a window in front of them at every login.
+   const launchedHidden = wasLaunchedAtLoginHidden();
+-  const startMinimized = environmentManager.getStartMinimized() || launchedHidden;
++  const startMinimized =
++    process.env.OPENWHISPR_START_MINIMIZED === "1" ||
++    environmentManager.getStartMinimized() || launchedHidden;
+   if (debugLogger) debugLogger.info("Start minimized", { enabled: startMinimized, launchedHidden });
+   await windowManager.createMainWindow();
+   // The activation mode was cached before the hotkey was registered, so a saved
+--- a/src/helpers/meetingDetectionEngine.js
++++ b/src/helpers/meetingDetectionEngine.js
+@@ -163,6 +163,11 @@
+   }
+
+   _syncAudioActivityDetector() {
++    if (process.env.OPENWHISPR_DISABLE_MEETING_FEATURES === "1") {
++      this.audioActivityDetector.stop();
++      return undefined;
++    }
++
+     if (this.preferences.audioDetection || this._isAutoEndWanted()) {
+       return this.audioActivityDetector.start();
+     }
+@@ -174,6 +179,11 @@
+   // The process-exit fast path needs the detector even when the user has turned
+   // process detection off for meeting prompts.
+   _syncMeetingProcessDetector() {
++    if (process.env.OPENWHISPR_DISABLE_MEETING_FEATURES === "1") {
++      this.meetingProcessDetector.stop();
++      return;
++    }
++
+     if (this.preferences.processDetection || this._isAutoEndWanted()) {
+       this.meetingProcessDetector.start();
+       return;
+@@ -369,6 +379,7 @@
+   }
+
+   _notificationsEnabledFor(source) {
++    if (process.env.OPENWHISPR_DISABLE_MEETING_FEATURES === "1") return false;
+     const nPrefs = this.windowManager.notificationPrefs || {};
+     if (nPrefs.notificationsEnabled === false) return false;
+     const prefKey = source === "calendar" ? "notifyCalendarReminders" : "notifyMeetingDetection";
 --- a/src/helpers/windowManager.js
 +++ b/src/helpers/windowManager.js
 @@ -89,7 +89,8 @@
@@ -137,7 +184,15 @@
      const success = await this.hotkeyManager.setActivationMode(nextMode);
      if (!success) return false;
      this._cachedActivationMode = nextMode;
-@@ -1556,6 +1563,7 @@
+@@ -1274,6 +1281,7 @@
+   }
+
+   async createControlPanelWindow() {
++    if (process.env.OPENWHISPR_START_MINIMIZED === "1") return;
+     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
+       if (this.controlPanelWindow.isMinimized()) {
+         this.controlPanelWindow.restore();
+@@ -1556,6 +1564,7 @@
      if (reposition) {
        void this._repositionToActiveDisplay(targetPidPromise);
      }

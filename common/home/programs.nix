@@ -26,6 +26,13 @@ let
   agentd = import ../../pkgs/agentd { inherit pkgs; src = inputs.agentd; };
   mediactl = import ../../pkgs/mediactl { inherit pkgs; };
   mutagenEvented = import ../../pkgs/mutagen-evented.nix { inherit pkgs; };
+  entropyLauncher = pkgs.writeShellScriptBin "entropy-k04" ''
+    export APPIMAGE_EXTRACT_AND_RUN=1
+    export LD_LIBRARY_PATH="${pkgs.libglvnd}/lib:/run/opengl-driver/lib:${pkgs.wayland}/lib:${pkgs.libxkbcommon}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export LIBGL_DRIVERS_PATH=/run/opengl-driver/lib/dri
+    export __EGL_VENDOR_LIBRARY_DIRS=/run/opengl-driver/share/glvnd/egl_vendor.d
+    exec /home/daphen/.local/share/entropy/entropy.AppImage "$@"
+  '';
   # nvim — the converged config (exact 0.13, lz.n, native LSP), with the desktop
   # "full" profile (extras like pyright gated behind NVIM_PROFILE=full and
   # layered onto PATH). Lua lives in ~/nixos/pkgs/neovim and is read live from
@@ -66,7 +73,7 @@ in
   # Editor — neovim installed directly rather than via programs.neovim, since HM's
   # module generates its own init.lua which conflicts with the dotfile-based config
   # symlinked through symlinks.nix.
-  home.packages = [ nvim nvim-next ] ++ (with pkgs; [
+  home.packages = [ nvim nvim-next entropyLauncher ] ++ (with pkgs; [
     # LSP/formatter tooling expected on PATH by the nvim config
     prettier
     black
@@ -106,6 +113,15 @@ in
     agentd
     mediactl
   ];
+
+  xdg.desktopEntries.entropy = {
+    name = "Entropy (K:04 Mini)";
+    comment = "Configure the Ergohaven K:04 Mini keyboard";
+    exec = "${entropyLauncher}/bin/entropy-k04";
+    icon = "/home/daphen/.local/share/icons/hicolor/scalable/apps/entropy.svg";
+    terminal = false;
+    categories = [ "Settings" "HardwareSettings" ];
+  };
 
   home.sessionVariables.EDITOR = "nvim";
   programs.fish.shellAliases = {

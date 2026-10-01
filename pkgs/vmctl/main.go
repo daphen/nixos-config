@@ -54,7 +54,7 @@ func command(args []string, out, errOut io.Writer) error {
 		args = args[1:]
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: vmctl <sync|worktree|cockpit> [arguments]")
+		return fmt.Errorf("usage: vmctl <sync|worktree|cockpit|connect> [arguments]")
 	}
 	a, err := newApp(out, errOut)
 	if err != nil {
@@ -62,6 +62,11 @@ func command(args []string, out, errOut io.Writer) error {
 	}
 	a.native = native
 	switch args[0] {
+	case "connect":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: vmctl connect")
+		}
+		return ensureDevProxyTunnel(a)
 	case "cockpit":
 		if len(args) > 2 || (len(args) == 2 && args[1] != "--restart") {
 			return fmt.Errorf("usage: vmctl cockpit [--restart]")
@@ -91,7 +96,7 @@ func command(args []string, out, errOut io.Writer) error {
 		}
 		return runWorktree(a, ticket, raw, startApp, scriptTag)
 	default:
-		return fmt.Errorf("usage: vmctl <sync|worktree|cockpit> [arguments]")
+		return fmt.Errorf("usage: vmctl <sync|worktree|cockpit|connect> [arguments]")
 	}
 }
 
@@ -248,14 +253,21 @@ func (a app) align(ticket, raw, remoteCwd, expectedOld string) error {
 	return s.alignHead(expectedOld, true)
 }
 
-func (a app) prepareMirrorDependencies(local string) error {
-	if !isFile(filepath.Join(local, "package.json")) {
-		return fmt.Errorf("mirror dependency setup refused: %s/package.json is missing", local)
-	}
+func (a app) allowMirrorEnvrc(local string) error {
 	allow := exec.Command("direnv", "allow", local)
 	allow.Stdout, allow.Stderr = a.out, a.err
 	if err := allow.Run(); err != nil {
 		return fmt.Errorf("direnv allow failed in %s: %w", local, err)
+	}
+	return nil
+}
+
+func (a app) prepareMirrorDependencies(local string) error {
+	if !isFile(filepath.Join(local, "package.json")) {
+		return fmt.Errorf("mirror dependency setup refused: %s/package.json is missing", local)
+	}
+	if err := a.allowMirrorEnvrc(local); err != nil {
+		return err
 	}
 	steps := []struct {
 		name string
@@ -382,6 +394,15 @@ func (a app) sync(ticket, raw, remoteCwd string, prepareOnly bool) error {
 		return fmt.Errorf("mirror head verification failed for %s: expected %s, got %s", s.local, prefix(s.vmhead, 11), prefix(strings.TrimSpace(localHead), 11))
 	}
 	if prepareOnly {
+		if isFile(filepath.Join(s.local, ".envrc")) {
+			if a.quiet(nil, "git", "-C", s.local, "diff", "--quiet", "origin/main", "--", ".envrc") == nil {
+				if err := a.allowMirrorEnvrc(s.local); err != nil {
+					return err
+				}
+			} else {
+				a.say(".envrc differs from origin/main; run direnv allow after reviewing it")
+			}
+		}
 		a.say("prepared files, Git metadata, and sync without dependency or environment execution")
 		return a.report(s.local)
 	}

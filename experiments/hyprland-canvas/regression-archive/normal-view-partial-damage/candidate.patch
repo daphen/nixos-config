@@ -1,0 +1,58 @@
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -93,6 +93,12 @@
+     return monitor->canvasTransformed();
+ }
+ 
++static bool canvasPartialDamage(PHLMONITORREF monitor) {
++    return !monitor->m_canvasOverview && !monitor->m_canvasCommitting && monitor->m_canvasZoom->value() == 1.F &&
++        !monitor->m_canvasZoom->isBeingAnimated() && !monitor->m_canvasX->isBeingAnimated() && !monitor->m_canvasY->isBeingAnimated() &&
++        !monitor->m_activeWorkspace->m_renderOffset->isBeingAnimated() && !monitor->m_activeWorkspace->m_alpha->isBeingAnimated();
++}
++
+ static CBox canvasLogicalBox(PHLMONITORREF monitor) {
+     const auto zoom = canvasZoom(monitor);
+     return {monitor->m_position - monitor->canvasOffset() / zoom, monitor->m_size / zoom};
+@@ -2267,7 +2273,7 @@
+         elementRenderer()->clearCanvasWindowCache();
+ 
+     // if we have no tracking or full tracking, invalidate the entire monitor
+-    if (RENDER_CANVAS || *PDAMAGETRACKINGMODE == DAMAGE_TRACKING_NONE || *PDAMAGETRACKINGMODE == DAMAGE_TRACKING_MONITOR || pMonitor->m_forceFullFrames > 0 ||
++    if ((RENDER_CANVAS && !canvasPartialDamage(pMonitor)) || *PDAMAGETRACKINGMODE == DAMAGE_TRACKING_NONE || *PDAMAGETRACKINGMODE == DAMAGE_TRACKING_MONITOR || pMonitor->m_forceFullFrames > 0 ||
+         damageBlinkCleanup > 0 || ZOOM_DAMAGE_ENTIRE)
+         damage = {0, 0, sc<int>(pMonitor->m_transformedSize.x) * 10, sc<int>(pMonitor->m_transformedSize.y) * 10};
+ 
+@@ -2904,6 +2910,22 @@
+     for (auto const& m : State::monitorState()->monitors()) {
+         if (!m->m_output)
+             continue;
++        if (canvasOverviewActive(m) && canvasPartialDamage(m)) {
++            if (!canvasWindowAcceptsUpdates(WINDOW, m))
++                continue;
++            if (!WINDOW || WINDOW->isFloating() || WINDOW->effects().hasActiveTransformers() || WINDOW->positionAnimation()->isBeingAnimated() ||
++                WINDOW->sizeAnimation()->isBeingAnimated()) {
++                damageMonitor(m);
++                continue;
++            }
++
++            damageBoxForEach.set(damageBox);
++            damageBoxForEach.translate(-m->m_position).scale(m->m_scale);
++            // Fractional camera translation can cover an extra pixel at either edge.
++            damageBoxForEach.translate(m->canvasOffset() * m->m_scale).expand(1);
++            m->addDamage(damageBoxForEach);
++            continue;
++        }
+         if (!canvasWindowAcceptsUpdates(WINDOW, m) || !EXTENTS.overlaps(canvasOverviewActive(m) ? canvasLogicalBox(m) : m->logicalBox()))
+             continue;
+         if (canvasOverviewActive(m)) {
+@@ -2969,6 +2991,10 @@
+             continue; // don't damage mirrors traditionally
+ 
+         if (!skipFrameSchedule) {
++            if (canvasOverviewActive(m) && canvasPartialDamage(m)) {
++                damageMonitor(m);
++                continue;
++            }
+             CBox damageBox = box.copy().translate(-m->m_position).scale(m->m_scale).round();
+             m->addDamage(damageBox);
+         }

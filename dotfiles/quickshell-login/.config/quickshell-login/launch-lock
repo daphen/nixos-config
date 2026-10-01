@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="${QUICKSHELL_LOGIN_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
+qs_bin="${QS_BIN:-qs}"
+quickshell_bin="${QUICKSHELL_BIN:-quickshell}"
+timeout_bin="${TIMEOUT_BIN:-timeout}"
+hide_pid=
+restore_bar() {
+  [[ -z "$hide_pid" ]] || wait "$hide_pid" 2>/dev/null || true
+  "$timeout_bin" 0.2 "$qs_bin" ipc call -- bar show >/dev/null 2>&1 || true
+}
+trap restore_bar EXIT
+"$timeout_bin" 0.2 "$qs_bin" ipc call -- bar hide >/dev/null 2>&1 &
+hide_pid=$!
+"$quickshell_bin" -p "$root/lock"

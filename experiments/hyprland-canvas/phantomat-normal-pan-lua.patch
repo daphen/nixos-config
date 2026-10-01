@@ -1,0 +1,29 @@
+--- a/hyprland.lua
++++ b/hyprland.lua
+@@ -1549,26 +1549,17 @@
+ end, { release = true, ignore_mods = true })
+ hl.bind("Super_R", hl.dsp.layout("pan-end"), { release = true, ignore_mods = true })
+ 
+-local overview_timer
+ hl.gesture({
+ 	fingers = 3,
+ 	direction = "swipe",
+ 	action = {
+ 		start = function()
+ 			hl.dispatch(hl.dsp.layout("pan-begin"))
+-			overview_timer = hl.timer(function()
+-				overview_timer = nil
+-				hl.dispatch(hl.dsp.layout("pan-overview"))
+-			end, { timeout = 350, type = "oneshot" })
+ 		end,
+ 		update = function(e)
+ 			hl.dispatch(hl.dsp.layout(string.format("pan %.6f %.6f", e.delta.x * PAN_GAIN, e.delta.y * PAN_GAIN)))
+ 		end,
+ 		finish = function()
+-			if overview_timer then
+-				overview_timer:set_enabled(false)
+-				overview_timer = nil
+-			end
+ 			hl.dispatch(hl.dsp.layout("pan-end"))
+ 		end,
+ 	},

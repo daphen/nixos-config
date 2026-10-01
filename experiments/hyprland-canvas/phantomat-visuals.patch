@@ -1,0 +1,205 @@
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -70,6 +70,7 @@
+ #include <optional>
+ #include <pango/pangocairo.h>
+ #include <type_traits>
++#include <tuple>
+ #include <unordered_map>
+ 
+ #include <hyprutils/utils/ScopeGuard.hpp>
+@@ -97,6 +98,144 @@
+     const auto zoom = canvasZoom(monitor);
+     return {monitor->m_position - monitor->canvasOffset() / zoom, monitor->m_size / zoom};
+ }
++
++static float canvasReveal(PHLMONITORREF monitor) {
++    const float amount = std::clamp((1.F - canvasZoom(monitor)) / 0.25F, 0.F, 1.F);
++    return amount * amount * (3.F - 2.F * amount);
++}
++
++class CCanvasChromeElement : public IPassElement {
++  public:
++    CCanvasChromeElement(PHLMONITOR monitor, bool foreground) : m_monitor(monitor), m_foreground(foreground) {}
++    bool needsLiveBlur() override {
++        return false;
++    }
++    bool needsPrecomputeBlur() override {
++        return false;
++    }
++    const char* passName() override {
++        return "CCanvasChromeElement";
++    }
++    ePassElementType type() override {
++        return EK_CUSTOM;
++    }
++    std::optional<CBox> boundingBox() override {
++        return CBox{{}, m_monitor->m_size};
++    }
++    CRegion opaqueRegion() override {
++        return {};
++    }
++
++    std::vector<UP<IPassElement>> draw() override {
++        const auto monitor = m_monitor.lock();
++        if (!monitor)
++            return {};
++        const float reveal = canvasReveal(monitor);
++        if (reveal <= 0.F)
++            return {};
++        const auto size = monitor->m_size * monitor->m_scale;
++        const CBox screen{{}, size};
++        const auto damage = g_pHyprRenderer->m_renderData.damage;
++        if (!m_foreground) {
++            g_pHyprRenderer->draw(CRectPassElement::SRectData{.box = screen, .color = CHyprColor{0.015F, 0.02F, 0.035F, 0.35F * reveal}}, damage);
++            const double cell    = 96.0 * canvasZoom(monitor) * monitor->m_scale;
++            const double minimum = 24.0 * monitor->m_scale;
++            const double                           t      = std::clamp((cell / minimum - 1.0) * 2.0, 0.0, 1.0);
++            const double                           fine   = std::round(t * t * (3.0 - 2.0 * t) * 32.0) / 32.0;
++            const int                              pixels = std::max(2, sc<int>(std::round(cell * 2.0)));
++            const double                           radius = std::max(1.5, 1.4 * monitor->m_scale);
++            static std::tuple<int, double, double> tileKey;
++            static SP<ITexture>                    tile;
++            const auto                             key = std::tuple{pixels, fine, radius};
++            if (!tile || key != tileKey) {
++                auto surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pixels, pixels);
++                auto cr      = cairo_create(surface);
++                for (int row = 0; row < 2; ++row) {
++                    for (int col = 0; col < 2; ++col) {
++                        cairo_set_source_rgba(cr, 0.75, 0.8, 0.9, row == 0 && col == 0 ? 1.0 : fine);
++                        cairo_arc(cr, (col + 0.5) * pixels / 2.0, (row + 0.5) * pixels / 2.0, radius, 0, 2.0 * M_PI);
++                        cairo_fill(cr);
++                    }
++                }
++                cairo_surface_flush(surface);
++                tile    = g_pHyprRenderer->createTexture(surface);
++                tileKey = key;
++                cairo_destroy(cr);
++                cairo_surface_destroy(surface);
++            }
++            auto&       data  = g_pHyprRenderer->m_renderData;
++            const auto  oldTL = data.primarySurfaceUVTopLeft;
++            const auto  oldBR = data.primarySurfaceUVBottomRight;
++            CScopeGuard restoreUV([&] {
++                data.primarySurfaceUVTopLeft     = oldTL;
++                data.primarySurfaceUVBottomRight = oldBR;
++            });
++            const auto  origin               = monitor->canvasOffset() * monitor->m_scale;
++            data.primarySurfaceUVTopLeft     = (Vector2D{cell * 0.5, cell * 0.5} - origin) / (cell * 2.0);
++            data.primarySurfaceUVBottomRight = data.primarySurfaceUVTopLeft + size / (cell * 2.0);
++            g_pHyprRenderer->draw(CTexPassElement::SRenderData{.tex = tile, .box = screen, .a = 0.22F * reveal, .allowCustomUV = true, .wrapX = WRAP_REPEAT, .wrapY = WRAP_REPEAT},
++                                  damage);
++            return {};
++        }
++        static auto      focusColor = CConfigValue<Config::INTEGER>("experimental:canvas_focus_color");
++        const CHyprColor accent{sc<uint64_t>(*focusColor)};
++        const auto       selected = monitor->canvasNearest(true);
++        const double     unit     = monitor->m_scale;
++        const double     margin   = 24.0 * unit;
++        const double     width    = std::min(240.0 * unit, size.x * 0.23);
++        const CBox       panel{size.x - margin - width, size.y - margin - width * 0.625, width, width * 0.625};
++        g_pHyprRenderer->draw(CRectPassElement::SRectData{.box = panel, .color = CHyprColor{0.025F, 0.03F, 0.045F, 0.9F * reveal}, .round = sc<int>(12 * unit)}, damage);
++        const auto             viewport = canvasLogicalBox(monitor);
++        CBox                   bounds   = viewport;
++        std::vector<PHLWINDOW> windows;
++        for (const auto& window : Desktop::windowState()->windows()) {
++            if (!validMapped(window) || window->isHidden() || window->isFloating() || window->m_workspace != monitor->m_activeWorkspace)
++                continue;
++            windows.push_back(window);
++            const auto   box = window->geometricBox(IGeometric::GEOMETRIC_CURRENT);
++            const double x = std::min(bounds.x, box.x), y = std::min(bounds.y, box.y);
++            bounds = {x, y, std::max(bounds.x + bounds.w, box.x + box.w) - x, std::max(bounds.y + bounds.h, box.y + box.h) - y};
++        }
++        bounds.expand(80.0);
++        const double fit     = std::min((panel.w - margin) / bounds.w, (panel.h - margin) / bounds.h);
++        const auto   origin  = panel.middle() - bounds.size() * fit / 2.0;
++        const auto   project = [&](const CBox& box) { return CBox{origin + (box.pos() - bounds.pos()) * fit, box.size() * fit}; };
++        for (const auto& window : windows) {
++            auto color = window == selected ? accent : CHyprColor{0.55F, 0.59F, 0.66F, 0.55F};
++            color.a *= reveal;
++            g_pHyprRenderer->draw(CRectPassElement::SRectData{.box = project(window->geometricBox(IGeometric::GEOMETRIC_CURRENT)), .color = color, .round = sc<int>(2 * unit)},
++                                  damage);
++        }
++        auto viewportColor = accent;
++        viewportColor.a *= 0.1F * reveal;
++        g_pHyprRenderer->draw(CRectPassElement::SRectData{.box = project(viewport), .color = viewportColor}, damage);
++        g_pHyprRenderer->draw(
++            CBorderPassElement::SBorderData{
++                .box = project(viewport), .grad1 = Config::CGradientValueData{accent}, .a = 0.8F * reveal, .round = sc<float>(3 * unit), .borderSize = 1},
++            damage);
++        const auto                                     label    = std::format("CANVAS  /  {}", selected ? selected->metadata().title() : "");
++        const auto                                     labelKey = std::tuple{label, unit, size.x};
++        static std::tuple<std::string, double, double> previousLabel;
++        static SP<ITexture>                            labelTexture;
++        if (!labelTexture || previousLabel != labelKey) {
++            labelTexture  = g_pHyprRenderer->renderText(label, CHyprColor{0.9F, 0.92F, 0.96F, 1.F}, sc<int>(13 * unit), false, "monospace", sc<int>(size.x * 0.5), 500);
++            previousLabel = labelKey;
++        }
++        if (labelTexture) {
++            const Vector2D labelPosition{margin + 14.0 * unit, margin + 10.0 * unit - (1.0 - reveal) * 12.0 * unit};
++            g_pHyprRenderer->draw(CRectPassElement::SRectData{.box   = {labelPosition - Vector2D{14.0, 10.0} * unit, labelTexture->m_size + Vector2D{28.0, 20.0} * unit},
++                                                              .color = CHyprColor{0.025F, 0.03F, 0.045F, 0.9F * reveal},
++                                                              .round = sc<int>(8 * unit)},
++                                  damage);
++            g_pHyprRenderer->draw(CTexPassElement::SRenderData{.tex = labelTexture, .box = {labelPosition, labelTexture->m_size}, .a = reveal}, damage);
++        }
++        return {};
++    }
++
++  private:
++    PHLMONITORREF m_monitor;
++    bool          m_foreground;
++};
+ 
+ static std::optional<CScopeGuard> canvasFloatingPass(PHLMONITOR monitor, bool floating) {
+     if (!floating)
+@@ -2300,6 +2439,8 @@
+             CBox renderBox = {0, 0, sc<int>(pMonitor->m_transformedSize.x), sc<int>(pMonitor->m_transformedSize.y)};
+             if (RENDER_CANVAS) {
+                 renderAllClientsForWorkspace(pMonitor, pMonitor->m_activeWorkspace, NOW, {}, 1.F, true, false, false);
++                if (canvasReveal(pMonitor) > 0.F)
++                    m_renderPass.add(makeUnique<CCanvasChromeElement>(pMonitor, false));
+                 const auto canvasTranslate = pMonitor->canvasOffset() * pMonitor->m_scale / CANVAS_ZOOM;
+                 renderAllClientsForWorkspace(pMonitor, pMonitor->m_activeWorkspace, NOW, canvasTranslate, CANVAS_ZOOM, false, true, false, true);
+                 if (pMonitor->m_canvasOverview) {
+@@ -2307,20 +2448,25 @@
+                         static auto PCANVASFOCUSCOLOR = CConfigValue<Config::INTEGER>("experimental:canvas_focus_color");
+                         auto        box               = window->geometricBox(IGeometric::GEOMETRIC_CURRENT);
+                         box.translate(-pMonitor->m_position).scale(CANVAS_ZOOM).translate(pMonitor->canvasOffset()).scale(pMonitor->m_scale);
+-                        const auto radius     = window->presentation().rounding() * pMonitor->m_scale * CANVAS_ZOOM;
+-                        const auto borderSize = std::max(1, sc<int>(std::round(3 * pMonitor->m_scale)));
++                        const auto reveal     = canvasReveal(pMonitor);
++                        const auto gap        = 4.0 * pMonitor->m_scale * reveal;
++                        box.expand(gap);
++                        const auto radius     = window->presentation().rounding() * pMonitor->m_scale * CANVAS_ZOOM + gap;
++                        const auto borderSize = std::max(1, sc<int>(std::round(2 * pMonitor->m_scale)));
+                         m_renderPass.add(makeUnique<CBorderPassElement>(CBorderPassElement::SBorderData{
+                             .box           = box,
+                             .grad1         = Config::CGradientValueData{CHyprColor(sc<uint64_t>(*PCANVASFOCUSCOLOR))},
+-                            .a             = 1.F,
++                            .a             = 0.7F + 0.3F * reveal,
+                             .round         = sc<float>(radius),
+-                            .borderSize    = 3,
++                            .borderSize    = 2,
+                             .outerRound    = sc<float>(radius + borderSize),
+                             .roundingPower = window->presentation().roundingPower(),
+                             .window        = window,
+                         }));
+                     }
+                 }
++                if (canvasReveal(pMonitor) > 0.F)
++                    m_renderPass.add(makeUnique<CCanvasChromeElement>(pMonitor, true));
+                 renderAllClientsForWorkspace(pMonitor, pMonitor->m_activeWorkspace, NOW, {}, 1.F, false, false, true);
+             } else
+                 renderWorkspace(pMonitor, pMonitor->m_activeWorkspace, NOW, renderBox);
+--- a/src/config/values/ConfigValues.cpp
++++ b/src/config/values/ConfigValues.cpp
+@@ -817,7 +817,7 @@
+          */
+ 
+         MS<Bool>("experimental:wp_cm_1_2", "Allow wp-cm-v1 version 2", true),
+-        MS<Color>("experimental:canvas_focus_color", "Focused window border color in canvas overview", 0xFF0000F2, {.refresh = Supplementary::REFRESH_WINDOW_STATES}),
++        MS<Color>("experimental:canvas_focus_color", "Focused window border color in canvas overview", 0xFFFF6B1A, {.refresh = Supplementary::REFRESH_WINDOW_STATES}),
+ 
+         /*
+ 		 * input_capture:

@@ -759,7 +759,7 @@ binds {
     Super+P hotkey-overlay-title="1Password credential picker" { spawn-sh "$HOME/.config/hypr/scripts/desktop-launch opqs-client"; }
     Super+Shift+P hotkey-overlay-title="Open 1Password" { spawn-sh "$HOME/.config/niri/scripts/niri-jump-or-exec 1password 1password"; }
     Super+Ctrl+q hotkey-overlay-title="Force Kill Focused Window" { spawn "/home/daphen/.config/niri/scripts/force-kill-focused"; }
-    Super+Shift+Ctrl+q hotkey-overlay-title="Lock the Screen" { spawn "swaylock"; }
+    Super+Shift+Ctrl+q hotkey-overlay-title="Lock the Screen" { spawn "/home/daphen/nixos/dotfiles/quickshell-login/.config/quickshell-login/launch-lock"; }
 
     // Use spawn-sh to run a shell command. Do this if you need pipes, multiple commands, etc.
     // Note: the entire command goes as a single argument. It's passed verbatim to `sh -c`.

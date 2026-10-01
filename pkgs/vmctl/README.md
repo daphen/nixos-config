@@ -4,6 +4,33 @@
 `vmctl --native worktree`; source-only startup does not start the app or require
 a desktop mirror. `--app` explicitly starts/reuses the ticket's tmux session.
 
+## VM-launched apps and desktop access
+
+Run `vm-cockpit` from the desktop when provisioning or reconnecting a VM. It
+installs the same `vmctl` binary and native `vm-wt` wrapper on that VM, and
+provisions `vm-dev-tunnel.service` on the desktop. The tunnel forwards only
+loopback port 2015 to the existing `devenv` worktree router, which already
+routes each ticket's web and `/go-api/*` traffic. It is enabled at desktop login
+and reconnects after SSH failures; ticket launches need no new desktop port
+mapping.
+
+For an already-provisioned VM, `vmctl connect` installs/enables just this
+tunnel, without syncing instructions or restarting agents. Select the VM using
+the existing `COCKPIT_VM_HOST` and `COCKPIT_VM_USER` variables (legacy `HEIDR_*`
+variables also work). The selected endpoint is stored in the user service; a
+different existing service is rejected rather than silently redirected. SSH
+trust and authentication must already work. No VM-to-desktop SSH access, new
+public listener, or router administration port is exposed.
+
+On the VM, `vm-wt --app EVERY-N` reuses the normal app lifecycle, finds the
+existing router entry by its generated web/API ports, checks the routed page,
+client asset and API health, and prints that entry's hostname. It does not claim
+desktop verification. The desktop must have run the connection setup; HTTP
+checks from the VM cannot establish desktop reachability. A missing router or
+mismatched route fails explicitly rather than advertising a direct VM-only port
+as desktop-ready. `--script-tag` still requires its explicit desktop
+`vm-wt --script-tag EVERY-N` forward for port 8001.
+
 ## Ticket retirement ownership
 
 The orchestrator owns full ticket shutdown and retirement. Workers save a

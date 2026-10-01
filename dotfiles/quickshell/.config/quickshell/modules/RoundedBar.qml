@@ -8,6 +8,7 @@ import "../QsLib" as Lib
 
 PanelWindow {
     id: bar
+    property bool lockHidden: false
     readonly property bool deckGaming: Quickshell.env("HYPR_CANVAS_PROFILE") === "deck"
         && Modules.NiriState.focusedWorkspaceName() === "gaming"
     visible: !deckGaming
@@ -95,6 +96,7 @@ PanelWindow {
     readonly property bool pickerVisible: pickerActive && focusedOutput
     readonly property bool fullscreen: !pickerVisible && Modules.NiriState.outputIsFullscreen(
         screen ? screen.name : "", screen ? screen.height : 0)
+    readonly property bool hideRequested: fullscreen || lockHidden
     readonly property var workingActivities: {
         const activities = []
         for (const root of workingRoots)
@@ -165,7 +167,7 @@ PanelWindow {
         anchors {
             top: parent.top
             horizontalCenter: parent.horizontalCenter
-            topMargin: bar.fullscreen ? -height : 4
+            topMargin: bar.hideRequested ? -height : 4
         }
         Behavior on anchors.topMargin {
             NumberAnimation {
@@ -498,11 +500,17 @@ PanelWindow {
         id: deviceCard
         readonly property var target: networkHover.hovered ? networkMetric
             : batteryHover.hovered ? batteryMetric : null
-        readonly property real targetCenterX: target
-            ? capsule.x + rightGroup.x + target.x + target.width / 2 : 0
+        property var retainedTarget: null
+        property real retainedCenterX: 0
+        onTargetChanged: {
+            if (target !== null) {
+                retainedTarget = target
+                retainedCenterX = capsule.x + rightGroup.x + target.x + target.width / 2
+            }
+        }
         visible: target !== null || opacity > 0
         opacity: target !== null ? 1 : 0
-        x: Math.max(12, Math.min(bar.width - width - 12, targetCenterX - width / 2))
+        x: Math.max(12, Math.min(bar.width - width - 12, retainedCenterX - width / 2))
         y: capsule.y + Modules.Theme.barHeight + (target !== null ? 2 : -3)
         width: 300
         height: deviceList.implicitHeight + 20
@@ -531,7 +539,7 @@ PanelWindow {
             spacing: 6
 
             Repeater {
-                model: deviceCard.target ? deviceCard.target.tooltipRows : []
+                model: deviceCard.retainedTarget ? deviceCard.retainedTarget.tooltipRows : []
 
                 RowLayout {
                     required property var modelData

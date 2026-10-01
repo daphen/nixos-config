@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+import glob
+import os
+import re
+import select
+import socket
+import subprocess
+import time
+from pathlib import Path
+
+
+def halves(device):
+    try:
+        descriptor = (device / "device/report_descriptor").read_bytes()
+        if b"\x06\x60\xff\x09\x61\xa1\x01" not in descriptor:
+            return None
+        report_id = 5 if b"\x85\x05" in descriptor else 0
+        fd = os.open("/dev/" + device.name, os.O_RDWR | os.O_NONBLOCK)
+    except OSError:
+        return None
+
+    try:
+        os.write(fd, bytes([report_id, 0x08, 0xE8, 0x01]) + bytes(29))
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            if not select.select([fd], [], [], max(0, deadline - time.monotonic()))[0]:
+                break
+            response = os.read(fd, 64)
+            if len(response) == 33 and response[0] == report_id:
+                response = response[1:]
+            if len(response) != 32 or response[:4] != b"\x08\xe8\x01\x01":
+                continue
+            flags = response[4]
+            return (response[5] if flags & 1 and response[5] <= 100 else None,
+                    response[6] if flags & 2 and response[6] <= 100 else None)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+    return None
+
+
+def k04_halves():
+    for path in glob.glob("/sys/class/hidraw/hidraw*"):
+        device = Path(path)
+        try:
+            identity = (device / "device/uevent").read_text()
+        except OSError:
+            continue
+        if "0000E126:00000075" not in identity:
+            continue
+        values = halves(device)
+        if values and any(value is not None for value in values):
+            return values
+    return None
+
+
+def command(*args):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=2, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def airpods_halves(mac):
+    handshake = bytes([0, 0, 4, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    notifications = bytes([4, 0, 4, 0, 0x0F, 0, 0xFF, 0xFF, 0xFF, 0xFF])
+    try:
+        with socket.socket(socket.AF_BLUETOOTH, socket.SOCK_SEQPACKET, socket.BTPROTO_L2CAP) as channel:
+            channel.settimeout(2)
+            channel.connect((mac, 0x1001))
+            channel.send(handshake)
+            time.sleep(0.3)
+            channel.send(notifications)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                try:
+                    packet = channel.recv(1024)
+                except socket.timeout:
+                    break
+                if not packet:
+                    break
+                if packet[:6] != b"\x04\x00\x04\x00\x04\x00" or len(packet) < 7 + packet[6] * 5:
+                    continue
+                values = {}
+                for offset in range(7, 7 + packet[6] * 5, 5):
+                    part, _, percent, state, _ = packet[offset:offset + 5]
+                    label = {4: "AirPods left", 2: "AirPods right", 8: "AirPods case"}.get(part)
+                    if label and percent <= 100 and state in (1, 2):
+                        values[label] = percent
+                if values:
+                    return values
+    except OSError:
+        pass
+    return {}
+
+
+def airpods_battery():
+    for mac, name in re.findall(r"Device ([0-9A-F:]{17}) ([^\n]+)", command("bluetoothctl", "devices")):
+        if "AirPods" not in name:
+            continue
+        path = "/org/bluez/hci0/dev_" + mac.replace(":", "_")
+        if command("busctl", "get-property", "org.bluez", path, "org.bluez.Device1", "Connected").strip() == "b true":
+            return airpods_halves(mac)
+    return None
+
+
+def main():
+    values = k04_halves()
+    if values:
+        for name, value in zip(("K:04 left", "K:04 right"), values):
+            if value is not None:
+                print(f"{name}\t{value}")
+    airpods = airpods_battery()
+    if airpods is not None:
+        if not airpods:
+            print("AirPods\t—")
+        for name in ("AirPods left", "AirPods right", "AirPods case"):
+            if name in airpods:
+                print(f"{name}\t{airpods[name]}")
+
+
+if __name__ == "__main__":
+    main()

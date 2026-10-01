@@ -1,0 +1,14 @@
+[Unit]
+Description=Prompt for the saved keyring at graphical login or after resume if locked
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sh -c '[ -n "$WAYLAND_DISPLAY" ]'
+ExecStart=%h/.config/hypr/scripts/keyring-prompt-watch
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

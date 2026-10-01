@@ -107,10 +107,11 @@ release, runs local transcription and cleanup, then pastes through `uinput`.
 `openwhispr.service` owns the app and removes stale state on exit. Confirmed
 lifecycle changes are written atomically to
 `$XDG_RUNTIME_DIR/openwhispr-dictation-state`; `DictationState.qml` watches that
-file and `DictationOverlay.qml` maps the click-through bottom-center ThinkingOrb.
-Models and provider choices remain in OpenWhispr's settings. For recovery, check
-`systemctl --user status openwhispr`, D-Bus name `com.openwhispr.App`, membership
-in `input`, `uinput`, and `ydotool`, then the runtime state file.
+file and `DictationOverlay.qml` maps the click-through bottom-center
+ThinkingOrb. Models and provider choices remain in OpenWhispr's settings. For
+recovery, check `systemctl --user status openwhispr`, D-Bus name
+`com.openwhispr.App`, membership in `input`, `uinput`, and `ydotool`, then the
+runtime state file.
 
 ## Theme system
 
@@ -196,16 +197,19 @@ pickers only.
 ## Hyprland canvas
 
 `~/nixos/dotfiles/hyprland/.config/hypr/` is the canonical Hyprland desktop:
-`hyprland.lua` owns the canvas layout and compositor configuration, while
-`scripts/` contains Hyprland-only ports of the desktop launchers. It must not
-source or execute files under `.config/niri`; shared behavior is copied only
-when it has an independent Hyprland entrypoint.
+`hyprland.lua` owns the canvas layout and loads `modules/` for monitors, input,
+appearance, window rules, animations, bindings and autostart. Camera/window
+motion lives in `modules/animations.lua`; decoration and lens settings live in
+`modules/appearance.lua`. `scripts/` contains Hyprland-only desktop launchers.
+It must not source or execute files under `.config/niri`; shared behavior is
+copied only when it has an independent Hyprland entrypoint.
 
-Home Manager maps this tree to `~/.config/hypr/`. From a Linux TTY, run
-`hypr-session` to start the canvas directly; Niri need not be running. The old
-`~/hypr-real` entrypoint still works. Both load the canonical config directly.
-When handing over from an active Niri session, the launcher restores Niri on
-exit; a standalone launch returns to the TTY instead.
+Home Manager maps this tree to `~/.config/hypr/` and installs `hypr-session`
+with the exact Canvas store package plus its store-packaged native lock UI. On
+proart, the interactive TTY1 login starts that wrapper automatically; exiting
+or failing returns to the shell. On other TTYs, run `hypr-session` manually.
+Niri need not be running. Direct `run-login` remains the isolated dev path. When handing over from an active Niri session, the launcher restores
+Niri on exit; a standalone launch returns to the TTY instead.
 
 ## Notifications
 

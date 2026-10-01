@@ -69,6 +69,10 @@ check(wait(function() return preview():find("+committed", 1, true) ~= nil end), 
 select("gone.txt")
 vim.wait(100)
 select("new ü.txt")
+check(wait(function()
+  local buf = picker.list.win.buf
+  return buf and api.nvim_buf_is_valid(buf) and table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n"):find("[not in PR · untracked]", 1, true) ~= nil
+end), "untracked row visibly says it is not in the PR")
 check(wait(function() return preview():find("new file", 1, true) ~= nil end), "untracked preview shows file contents")
 vim.wait(800)
 check(preview():find("new file", 1, true) ~= nil and not preview():find("-deleted", 1, true), "late preview cannot replace current row")

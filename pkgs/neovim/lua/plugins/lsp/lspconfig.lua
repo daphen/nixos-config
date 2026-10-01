@@ -147,6 +147,14 @@ return {
 			},
 		})
 
+		vim.lsp.config("nil_ls", {
+			settings = {
+				["nil"] = {
+					nix = { flake = { autoArchive = false } },
+				},
+			},
+		})
+
 		local environment_config = require("lsp-environment")
 		vim.lsp.config("gopls", { cmd = { "gopls" } })
 

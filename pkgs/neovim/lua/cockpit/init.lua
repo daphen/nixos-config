@@ -311,6 +311,7 @@ local function set_hl()
   -- (distinct from needs-input=accent and streaming=electric).
   hl("CockpitSwatchIdle", { fg = elec_soft })
   hl("CockpitAccent", { fg = accent, bold = true })
+  hl("CockpitAgentEdit", { fg = api.nvim_get_hl(0, { name = "Cursor", link = false }).bg or accent })
   -- Electric: the dashboard's own accent (matches the HEIÐR banner ink). Scoped to
   -- the resting view so the rail's orange signal stays untouched everywhere else.
   hl("CockpitElectric", { fg = "#5566ff", bold = true })
@@ -1870,12 +1871,12 @@ local function edit_abs(cwd, path)
   return fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
 end
 
-handle = function(obj)
+handle = function(obj, reply_scope)
   if obj.type == "changes" and obj.session then
     local w = S.workspace
-    if w and w.remoteCwd and w.remoteCwd ~= "" and (obj.session == w.id or obj.cwd == w.remoteCwd) then
-      local request = S.diff_jobs[w.remoteCwd] or S.diff_jobs[w.cwd]
-      if not obj.id or (request and request.id == obj.id) then
+    local request = w and (S.diff_jobs[w.remoteCwd] or S.diff_jobs[w.cwd])
+    if request and reply_scope == request.scope and obj.id == request.id
+        and obj.session == request.session and obj.cwd == request.cwd then
         local files, bypath = {}, {}
         for _, source in ipairs(obj.files or {}) do
           local parsed = parse_git_diff(vim.split(source.patch or "", "\n", { plain = true }))
@@ -1890,11 +1891,11 @@ handle = function(obj)
           base = obj.base, branch = obj.branch, diff = obj.diff, error = obj.error }
         S.gitdiff[w.remoteCwd], S.gitdiff[w.cwd] = snapshot, snapshot
         S.diff_jobs[w.remoteCwd], S.diff_jobs[w.cwd] = nil, nil
-        if request and request.done then request.done(snapshot) end
+        if request.pipe and not request.pipe:is_closing() then request.pipe:close() end
+        if request.done then request.done(snapshot) end
         if S.view == "changes" then render_changes() else render_chat(false) end
         if refresh_dashboard then refresh_dashboard() end
         pcall(function() require("cockpit.chin").refresh() end)
-      end
     end
     return
   end
@@ -1924,7 +1925,7 @@ handle = function(obj)
     if cockpit_env("COCKPIT") == "1" and not S._landed_default then
       S._landed_default = true
       vim.schedule(function()
-        if fn.argc() ~= 0 then return end
+        if S.workspace or fn.argc() ~= 0 then return end
         local b = api.nvim_get_current_buf()
         if api.nvim_buf_get_name(b) ~= "" or vim.bo[b].modified then return end
         if api.nvim_buf_line_count(b) > 1 or (api.nvim_buf_get_lines(b, 0, 1, false)[1] or "") ~= "" then return end
@@ -3535,14 +3536,155 @@ end
 -- plan while other files were edited). Only fires when focus is in the rail (an
 -- agent-* window): if you've clicked into the code to read/edit, it leaves you
 -- alone. Skips when the target buffer has unsaved changes. Toggle: S.follow_edits.
-follow_edit = function(cwd, path, line, external, external_force, snippet)
+local function edit_mark_state(workspace)
+  workspace = workspace or S.workspace
+  if not workspace then return end
+  local key = workspace.scope .. "/" .. workspace.id
+  S.workspace_editors = S.workspace_editors or {}
+  local state = S.workspace_editors[key] or {}
+  state.edit_ns = state.edit_ns or api.nvim_create_namespace("cockpit-edit-flash:" .. key)
+  S.workspace_editors[key] = state
+  return state
+end
+
+local function clear_edit_highlight(ns)
+  if not ns then return end
+  for _, buf in ipairs(api.nvim_list_bufs()) do
+    if api.nvim_buf_is_loaded(buf) then api.nvim_buf_clear_namespace(buf, ns, 0, -1) end
+  end
+end
+
+local function edit_mark_opts(id)
+  return { id = id, sign_text = "▌", sign_hl_group = "CockpitAgentEdit", priority = 5000 }
+end
+
+local function mark_edit(buf, ns, added_lines)
+  if not ns or type(added_lines) ~= "table" or #added_lines == 0 then return end
+  local marked = {}
+  for _, extmark in ipairs(api.nvim_buf_get_extmarks(buf, ns, 0, -1, {})) do
+    marked[extmark[2] + 1] = true
+  end
+  for _, row in ipairs(added_lines) do
+    row = tonumber(row)
+    if row and not marked[row] and row >= 1 and row <= api.nvim_buf_line_count(buf) then
+      api.nvim_buf_set_extmark(buf, ns, row - 1, 0, edit_mark_opts())
+      marked[row] = true
+    end
+  end
+end
+
+local function checktime_preserving_edit_marks(buf, ns)
+  local marks = ns and api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}) or {}
+  if #marks == 0 then vim.cmd.checktime(); return end
+  local before = api.nvim_buf_get_lines(buf, 0, -1, false)
+  vim.cmd.checktime()
+  local after = api.nvim_buf_get_lines(buf, 0, -1, false)
+  if vim.deep_equal(before, after) then return end
+  local ok, hunks = pcall(vim.diff, table.concat(before, "\n") .. "\n",
+    table.concat(after, "\n") .. "\n", { result_type = "indices", algorithm = "histogram" })
+  if not ok then return end
+  for _, mark in ipairs(marks) do
+    local row, shift, mapped = mark[2] + 1, 0
+    for _, hunk in ipairs(hunks) do
+      local old_start, old_count, new_start, new_count = unpack(hunk)
+      if old_count == 0 then
+        if row > old_start then shift = shift + new_count end
+      elseif row < old_start then
+        break
+      elseif row >= old_start + old_count then
+        shift = shift + new_count - old_count
+      elseif new_count > 0 then
+        mapped = new_start + math.min(row - old_start, new_count - 1)
+        break
+      else
+        mapped = false
+        break
+      end
+    end
+    mapped = mapped == nil and row + shift or mapped
+    if mapped then
+      api.nvim_buf_set_extmark(buf, ns, mapped - 1, 0, edit_mark_opts(mark[1]))
+    else
+      api.nvim_buf_del_extmark(buf, ns, mark[1])
+    end
+  end
+end
+
+local function ignored_edit_path(path)
+  return path:match("%.progress%.json$") or path:match("%.review%.json$")
+    or path:match("/plans/.*%.diagram%.html$")
+end
+
+local function edit_timestamp(at)
+  if type(at) == "number" then return at end
+  if type(at) ~= "string" then return nil end
+  local numeric = tonumber(at)
+  if numeric then return numeric end
+  local base, fraction = at:match("^(%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%d)%.?(%d*)[Zz]$")
+  if not base then return nil end
+  local seconds = fn.strptime("%Y-%m-%dT%H:%M:%S%z", base .. "+0000")
+  if seconds < 0 then return nil end
+  local millis = tonumber((fraction .. "000"):sub(1, 3)) or 0
+  return seconds * 1000 + millis
+end
+
+local function record_edit(workspace_scope, id, cwd, path, added_lines, replace, at, line, edit_id)
+  if not workspace_scope or not id or not path or S.follow_edits == false
+    or ignored_edit_path(path) then return false end
+  local timestamp = edit_timestamp(at)
+  if not timestamp then return false end
+  local state = edit_mark_state({ scope = workspace_scope, id = id })
+  if not state then return false end
+  local stale = state.edit_at
+    and (timestamp < state.edit_at or (replace and timestamp == state.edit_at))
+  if stale and not (replace and edit_id and edit_id == state.last_edit_id) then return false end
+  local file = resolvable(cwd, path)
+  if not file then return false end
+  file = fn.fnamemodify(file, ":p")
+  local buf = fn.bufnr(file)
+  if buf >= 0 and vim.bo[buf].modified then return false end
+  if buf < 0 then buf = fn.bufadd(file) end
+  if not api.nvim_buf_is_loaded(buf) then fn.bufload(buf) end
+  if not api.nvim_buf_is_valid(buf) or vim.bo[buf].modified then return false end
+  local file_changed = state.follow_file ~= file
+  if replace or file_changed then
+    clear_edit_highlight(state.edit_ns)
+    state.follow_file = file
+  end
+  local program_nav = S._program_nav
+  S._program_nav = true
+  local ok = pcall(api.nvim_buf_call, buf, function()
+    checktime_preserving_edit_marks(buf, state.edit_ns)
+    if replace then api.nvim_buf_clear_namespace(buf, state.edit_ns, 0, -1) end
+    mark_edit(buf, state.edit_ns, added_lines)
+  end)
+  S._program_nav = program_nav
+  if not ok then return false end
+  state.edit_at = math.max(state.edit_at or timestamp, timestamp)
+  state.last_edit_id = edit_id
+  local current = S.workspace
+  if not (current and current.scope == workspace_scope and current.id == id) then
+    local row = (type(line) == "number" or type(line) == "string") and tonumber(line) or nil
+    if not row and type(added_lines) == "table" then row = tonumber(added_lines[1]) end
+    row = math.max(1, math.min(row or 1, api.nvim_buf_line_count(buf)))
+    state.buf = buf
+    state.view = { lnum = row, col = 0,
+      topline = math.max(1, row - math.floor(api.nvim_win_get_height(api.nvim_get_current_win()) / 2)) }
+  end
+  return true, file_changed
+end
+
+function M.record_edit(workspace_scope, id, cwd, path, added_lines, replace, at, line, edit_id)
+  return record_edit(workspace_scope, id, cwd, path, added_lines, replace == true, at, line, edit_id)
+end
+
+follow_edit = function(cwd, path, line, external, external_force, snippet, added_lines)
   if not path or S.follow_edits == false then return end
   -- Never follow into plan machinery sidecars: a /plan-ticket turn writes the
   -- reviewable .md and THEN its progress.json, so following the last edit would
   -- dump you in raw JSON instead of the rendered plan. Skipping them keeps the
   -- editor on the .md (which plan-nvim renders) — the thing you actually review.
-  if path:match("%.progress%.json$") or path:match("%.review%.json$")
-    or path:match("/plans/.*%.diagram%.html$") then return end
+  if ignored_edit_path(path) then return end
   local cur = api.nvim_get_current_win()
   -- "You're in the code" gate — only for the in-nvim rail, where browsing the rail is
   -- what current-buffer==agent-* means. An EXTERNAL driver (the cockpit rail) has no
@@ -3579,21 +3721,44 @@ follow_edit = function(cwd, path, line, external, external_force, snippet)
     local change = S.gitdiff[cwd] and S.gitdiff[cwd].bypath[rel]
     if change and change.hunks and change.hunks[1] then line = change.hunks[1].l1 end
   end
+  line = tonumber(line)
   local target = target_editor_win()
-  if not target or vim.bo[api.nvim_win_get_buf(target)].modified then return end
+  local destination = fn.bufnr(file)
+  if not target or vim.bo[api.nvim_win_get_buf(target)].modified
+    or (destination >= 0 and vim.bo[destination].modified) then return end
   -- The user took the wheel: any buffer they opened THEMSELVES pauses follow
   -- until they return to rest (dashboard) or switch sessions. Programmatic opens
   -- (this function) are marked so the BufEnter watcher can tell them apart.
-  if S._follow_paused and not external_force then return end
-  local key = file .. ":" .. tostring(line or 0)
-  if S._follow == key and fn.fnamemodify(api.nvim_buf_get_name(api.nvim_win_get_buf(target)), ":p") == file then return end
-  S._follow = key
+  local edit_state = edit_mark_state()
+  local function adopt_edit_file()
+    if edit_state and edit_state.follow_file ~= file then
+      clear_edit_highlight(edit_state.edit_ns)
+      edit_state.follow_file = file
+    end
+  end
+  if S._follow_paused and not external_force then
+    if fn.fnamemodify(api.nvim_buf_get_name(api.nvim_win_get_buf(target)), ":p") == file then
+      adopt_edit_file()
+      api.nvim_win_call(target, function()
+        checktime_preserving_edit_marks(api.nvim_get_current_buf(), edit_state and edit_state.edit_ns)
+        mark_edit(api.nvim_get_current_buf(), edit_state and edit_state.edit_ns, added_lines)
+      end)
+    end
+    return
+  end
+  adopt_edit_file()
   S._program_nav = true
   api.nvim_win_call(target, function()
     if fn.fnamemodify(api.nvim_buf_get_name(0), ":p") ~= file then
-      pcall(vim.cmd, "edit " .. fn.fnameescape(file))
+      pcall(function() vim.cmd.edit(fn.fnameescape(file)) end)
     end
-    if line then pcall(api.nvim_win_set_cursor, target, { tonumber(line), 0 }); vim.cmd("normal! zz") end
+    checktime_preserving_edit_marks(api.nvim_get_current_buf(), edit_state and edit_state.edit_ns)
+    if line then
+      local row = math.max(1, math.min(line, api.nvim_buf_line_count(0)))
+      api.nvim_win_set_cursor(target, { row, 0 })
+      vim.cmd("normal! zz")
+    end
+    mark_edit(api.nvim_get_current_buf(), edit_state and edit_state.edit_ns, added_lines)
   end)
   vim.schedule(function() S._program_nav = nil end)
   editor_gutter(target, true) -- a real file is showing → restore number/sign/fold cols (the dashboard turned them off)
@@ -4385,7 +4550,7 @@ end
 local function to_dashboard()
   if S.workspace then
     local w = S.workspace
-    return M.workspace(w.scope, w.id, w.cwd, w.plan, "dashboard", "", w.profile)
+    return M.workspace(w.scope, w.id, w.cwd, w.plan, "dashboard", "", w.profile, w.sourceScope, w.remoteCwd)
   end
   if scope == "personal" then
     local ed = target_editor_win()
@@ -4436,13 +4601,14 @@ local function follow_pause_expired()
   return S._follow_paused and (os.time() - (S._follow_paused_at or 0)) > FOLLOW_PAUSE_TTL
 end
 
-function M.follow_remote(cwd, path, force, line, needle_b64)
+function M.follow_remote(cwd, path, force, line, needle_b64, added_lines)
   if follow_pause_expired() then S._follow_paused, S._follow_paused_at = nil, nil end
   -- v:null over --remote-expr arrives as vim.NIL, which is TRUTHY in Lua —
   -- unnormalized it read as "a line was given", skipping both the snippet
   -- search and the git fallback (every follow landed at the file top).
   if line == vim.NIL or line == 0 then line = nil end
   if needle_b64 == vim.NIL then needle_b64 = nil end
+  if added_lines == vim.NIL then added_lines = nil end
   -- Optional hunk locator from the rail: the edit's most distinctive inserted
   -- line, base64ed so quoting can't break the --remote-expr transport.
   local snippet
@@ -4453,21 +4619,7 @@ function M.follow_remote(cwd, path, force, line, needle_b64)
   local ed = target_editor_win()
   if not ed then return "" end
   if force then
-    -- A forced follow is the rail SWITCHING to a streaming session: adopt it
-    -- (capturing the outgoing session's file first). Without this the viewed
-    -- session changed while S.selected didn't, and the next capture filed the
-    -- new session's buffer under the old session's memory.
-    if cwd and cwd ~= "" then
-      local want = fn.fnamemodify(cwd, ":t")
-      for _, a in ipairs(S.roster or {}) do
-        if a.cwd and fn.fnamemodify(a.cwd, ":t") == want then
-          if S.selected and S.selected ~= a.id then capture_editor(S.selected) end
-          S.selected = a.id
-          break
-        end
-      end
-    end
-    S._follow_paused = nil; follow_edit(cwd, path, line, true, true, snippet); return ""
+    S._follow_paused = nil; follow_edit(cwd, path, line, true, true, snippet, added_lines); return ""
   end
   local bn = api.nvim_buf_get_name(api.nvim_win_get_buf(ed))
   -- Follow only while the editor rests on session context — never yank the user out
@@ -4476,12 +4628,13 @@ function M.follow_remote(cwd, path, force, line, needle_b64)
   -- the follow use-case, not a detour), or whatever file the follow itself opened
   -- last (a multi-repo plan otherwise self-blocks after its first out-of-repo edit).
   local plans = fn.expand("~/personal/notes/storage/plans/")
-  local ours = S._follow and S._follow:gsub(":%d+$", "")
+  local mark_state = edit_mark_state()
+  local ours = mark_state and mark_state.follow_file
   local stale = (os.time() - (S._follow_paused_at or 0)) > FOLLOW_PAUSE_TTL
   if bn ~= "" and not stale and not (cwd and cwd ~= "" and bn:sub(1, #cwd) == cwd)
      and bn:sub(1, #plans) ~= plans and not bn:find("/%.plans/")
      and bn ~= ours then return "" end
-  follow_edit(cwd, path, line, true, nil, snippet)
+  follow_edit(cwd, path, line, true, nil, snippet, added_lines)
   return ""
 end
 
@@ -4538,18 +4691,24 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
   S.workspace_editors = S.workspace_editors or {}
   if previous and vim.bo[buf].buftype == "" and path:sub(1, #previous.cwd + 1) == previous.cwd .. "/"
       and not path:find("/%.plans/") then
-    S.workspace_editors[previous.scope .. "/" .. previous.id] = {
-      buf = buf, view = api.nvim_win_call(ed, fn.winsaveview),
-    }
+    local key = previous.scope .. "/" .. previous.id
+    local state = S.workspace_editors[key] or {}
+    state.buf, state.view = buf, api.nvim_win_call(ed, fn.winsaveview)
+    S.workspace_editors[key] = state
   end
   local same = previous and previous.scope == workspace_scope and previous.id == id
-  if previous and previous.cwd ~= cwd then
-    local pending = S.diff_jobs[previous.cwd]; if pending and pending.job then pcall(fn.jobstop, pending.job) end
+    and previous.sourceScope == source_scope and previous.remoteCwd == remote_cwd
+  if previous and (not same or previous.cwd ~= cwd) then
+    local pending = S.diff_jobs[previous.cwd]
+    if pending and pending.job then pcall(fn.jobstop, pending.job) end
+    if pending and pending.pipe and not pending.pipe:is_closing() then pending.pipe:close() end
     S.diff_jobs[previous.cwd] = nil
+    if previous.remoteCwd then S.diff_jobs[previous.remoteCwd] = nil end
   end
   if remote_cwd and remote_cwd ~= "" and not (same and previous.remoteCwd == remote_cwd) then
     local pending = S.diff_jobs[cwd]
     if pending and pending.job then pcall(fn.jobstop, pending.job) end
+    if pending and pending.pipe and not pending.pipe:is_closing() then pending.pipe:close() end
     S.gitdiff[cwd], S.gitdiff[remote_cwd], S.diff_jobs[cwd] = nil, nil, nil
   end
   S.workspace = { scope = workspace_scope, id = id, cwd = cwd, plan = plan, profile = profile,
@@ -4567,7 +4726,11 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
   S._follow_paused_at = os.time()
   S._program_nav = true
   local function open_file(file)
-    api.nvim_win_call(ed, function() vim.cmd.edit(fn.fnameescape(file)) end)
+    api.nvim_win_call(ed, function()
+      if fn.fnamemodify(api.nvim_buf_get_name(0), ":p") ~= fn.fnamemodify(file, ":p") then
+        vim.cmd.edit(fn.fnameescape(file))
+      end
+    end)
     editor_gutter(ed, true)
     if hide_banner then hide_banner() end
   end
@@ -4587,11 +4750,12 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
     end
     local saved = S.workspace_editors[workspace_scope .. "/" .. id]
     local restored = false
-    if view ~= "" and saved and api.nvim_buf_is_valid(saved.buf) then
+    if view ~= "" and saved and saved.buf and api.nvim_buf_is_valid(saved.buf) then
       local name = api.nvim_buf_get_name(saved.buf)
-      if name:sub(1, #cwd + 1) == cwd .. "/" and fn.filereadable(name) == 1 then
+      local owned = name:sub(1, #cwd + 1) == cwd .. "/" or name == saved.follow_file
+      if owned and fn.filereadable(name) == 1 then
         api.nvim_win_set_buf(ed, saved.buf)
-        api.nvim_win_call(ed, function() fn.winrestview(saved.view) end)
+        if saved.view then api.nvim_win_call(ed, function() fn.winrestview(saved.view) end) end
         restored = true
       end
     end
@@ -4694,6 +4858,7 @@ end
 -- against reacting to the rail's own cockpit_sync writes (no ping-pong).
 local cockpit_watch
 on_cockpit_active = function()
+  if S.workspace then return end
   local home = os.getenv("HOME") or ""
   local ok, lines = pcall(fn.readfile, home .. "/.local/state/cockpit/active")
   if not ok or not lines[1] then return end
@@ -4806,18 +4971,44 @@ refresh_git_changes = function(cwd, path, done)
   if remote then
     local previous = S.diff_jobs[w.remoteCwd] or S.diff_jobs[w.cwd]
     if previous then previous.done = done or previous.done; return end
-    local request = { id = string.format("nvim-diff-%d-%d", fn.getpid(), uv.hrtime()), done = done }
+    local source_scope = w.sourceScope
+    local request = { id = string.format("nvim-diff-%d-%d", fn.getpid(), uv.hrtime()), done = done,
+      scope = source_scope, session = w.id, cwd = w.remoteCwd }
     S.gitdiff[w.remoteCwd], S.gitdiff[w.cwd] = nil, nil
     S.diff_jobs[w.remoteCwd], S.diff_jobs[w.cwd] = request, request
-    send({ type = "get_changes", session = w.id, id = request.id })
-    vim.defer_fn(function()
+    local function fail(message)
       if S.diff_jobs[w.remoteCwd] ~= request then return end
-      local snapshot = { files = {}, bypath = {}, at = os.time(), error = "VM diff request timed out" }
+      local snapshot = { files = {}, bypath = {}, at = os.time(), error = message }
       S.gitdiff[w.remoteCwd], S.gitdiff[w.cwd] = snapshot, snapshot
       S.diff_jobs[w.remoteCwd], S.diff_jobs[w.cwd] = nil, nil
+      if request.pipe and not request.pipe:is_closing() then request.pipe:close() end
       if request.done then request.done(snapshot) end
       if S.view == "changes" then render_changes() end
       pcall(function() require("cockpit.chin").refresh() end)
+    end
+    if not source_scope or source_scope == "" then fail("VM diff source scope unavailable"); return end
+    local pipe, pending = uv.new_pipe(false), ""
+    request.pipe = pipe
+    pipe:connect((os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/agentd-" .. source_scope .. ".sock", function(err)
+      vim.schedule(function()
+        if S.diff_jobs[w.remoteCwd] ~= request then return end
+        if err then fail("VM diff connection failed: " .. tostring(err)); return end
+        pipe:read_start(vim.schedule_wrap(function(read_err, chunk)
+          if S.diff_jobs[w.remoteCwd] ~= request then return end
+          if read_err or not chunk then fail("VM diff connection closed"); return end
+          pending = pending .. chunk
+          while pending:find("\n", 1, true) do
+            local line; line, pending = pending:match("^(.-)\n(.*)$")
+            local ok, reply = pcall(vim.json.decode, line)
+            if ok and type(reply) == "table" and reply.type == "changes" then handle(reply, source_scope) end
+          end
+        end))
+        pipe:write(vim.json.encode({ type = "get_changes", session = w.id, id = request.id }) .. "\n")
+      end)
+    end)
+    vim.defer_fn(function()
+      if S.diff_jobs[w.remoteCwd] ~= request then return end
+      fail("VM diff request timed out")
     end, 10000)
     return
   end
@@ -6042,6 +6233,7 @@ end
 -- open / close
 --------------------------------------------------------------------------------
 function M.open()
+  if cockpit_env("COCKPIT") == "1" then return end
   ensure_buf()
   if S.win and api.nvim_win_is_valid(S.win) then api.nvim_set_current_win(S.win); return end
 
@@ -6244,7 +6436,8 @@ vim.api.nvim_create_autocmd("BufEnter", {
       S._follow_paused = nil                                  -- scratch/dash = at rest
       return
     end
-    local ours = S._follow and S._follow:gsub(":%d+$", "")
+    local state = edit_mark_state()
+    local ours = state and state.follow_file
     -- Plan buffers are spectating, not working — they must never pause follow
     -- (watching the plan of a working session is follow's main use-case).
     if name:find("/notes/storage/plans/", 1, true) or name:find("/%.plans/") then return end
@@ -6301,7 +6494,9 @@ function M.setup(opts)
   api.nvim_create_autocmd("ColorScheme", {
     callback = function() set_hl(); vim.defer_fn(set_hl, 120) end,
   })
-  api.nvim_create_user_command("CockpitRail", function() M.toggle() end, {})
+  if cockpit_env("COCKPIT") ~= "1" then
+    api.nvim_create_user_command("CockpitRail", function() M.toggle() end, {})
+  end
   api.nvim_create_user_command("CockpitReconnect", function()
     S.connected = false
     pcall(function() if S.pipe then S.pipe:close() end end)
@@ -6487,9 +6682,11 @@ function M.setup(opts)
         { desc = "Window " .. d .. " (rail-aware)" })
     end
   end
-  vim.keymap.set("n", "<leader>a", function() M.toggle() end, { desc = "Toggle agent rail" })
-  vim.keymap.set("n", "<leader>A", function() M.send_message() end, { desc = "Quick-message the active agent" })
-  vim.keymap.set("x", "<leader>as", ":<C-u>lua require('cockpit').send_range()<CR>", { silent = true, desc = "Send selection to agent" })
+  if cockpit_env("COCKPIT") ~= "1" then
+    vim.keymap.set("n", "<leader>a", function() M.toggle() end, { desc = "Toggle agent rail" })
+    vim.keymap.set("n", "<leader>A", function() M.send_message() end, { desc = "Quick-message the active agent" })
+    vim.keymap.set("x", "<leader>as", ":<C-u>lua require('cockpit').send_range()<CR>", { silent = true, desc = "Send selection to agent" })
+  end
 
   -- Autostart only when launched via `cockpit-rail` (legacy `heidr` also sets the alias).
   -- or the cockpit nvim leg. A plain `nvim` stays dormant — quicknotes, config edits,
@@ -6499,7 +6696,7 @@ function M.setup(opts)
   -- Force either way with setup({ autostart = true|false }).
   local autostart = opts.autostart
   if autostart == nil then autostart = cockpit_env("OPEN") ~= nil end
-  if autostart then
+  if autostart and cockpit_env("COCKPIT") ~= "1" then
     -- The rail owns the editor's default view (per-session dashboard), so tell
     -- plan-nvim not to auto-open the plan on boot (it raced boot and clobbered the
     -- roster). The plan is still one keypress away — `p` on the dashboard.
@@ -6532,7 +6729,7 @@ function M.setup(opts)
   elseif cockpit_env("TITLE") then
     -- Cockpit-shell nvim (QML rail drives it over RPC): render the at-rest home
     -- dash on boot so the pane is never blank before the rail's first drive.
-    local function first_dash() vim.schedule(function() M.dashboard(scope_root()) end) end
+    local function first_dash() vim.schedule(function() if not S.workspace then M.dashboard(scope_root()) end end) end
     if vim.v.vim_did_enter == 1 then first_dash()
     else api.nvim_create_autocmd("VimEnter", { once = true, callback = first_dash }) end
   end
