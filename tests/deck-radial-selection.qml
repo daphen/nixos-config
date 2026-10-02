@@ -15,6 +15,22 @@ ShellRoot {
         Quickshell.execDetached([Quickshell.env("QS_BIN"), "-p", Quickshell.env("RADIAL_TEST_CONFIG"),
             "ipc", "call", "--", "palette", "radial", "open", String(value), ""])
     }
+    function visualEntries(node = radial.contentItem) {
+        let entries = typeof node.selected === "boolean" && node.entry !== undefined ? [node] : []
+        for (const child of node.children || []) entries = entries.concat(visualEntries(child))
+        return entries
+    }
+    function checkMagnetism(width) {
+        const entries = visualEntries()
+        const selected = entries.filter(item => item.selected && item.width === width)
+        check(selected.length === 1, "active ring must have one visual selection")
+        const item = selected[0]
+        check(item.scale > 1.005 && item.scale <= 1.065, "selected item did not gently spring forward: " + item.scale)
+        const resting = width === 140 ? item.radialDistance : item.parent.width / 2 - (width === 48 ? 104 : 36)
+        const distance = Math.hypot(item.x + item.width / 2 - item.parent.width / 2,
+                                   item.y + item.height / 2 - item.parent.height / 2)
+        check(distance < resting - 0.5 && distance >= resting - 6.5, "selected item pull exceeded its six-pixel bound")
+    }
     function directions() {
         const entries = radial.middleActive ? radial.middleItems : radial.outerRingActive ? radial.outerItems : radial.innerItems
         const visited = new Set()
@@ -82,7 +98,23 @@ ShellRoot {
                 } else if (phase === 3) {
                     Modules.PaletteState.radialRequested("finish", 0)
                     check(!Modules.PaletteState.open, "release/finish did not close menu")
-                    console.log("PASS radial public IPC and analog packets: debounced directions, fractional angles, rings, activation, cancel, release, invalid/late guards")
+                    open(16)
+                } else if (phase === 4) {
+                    checkMagnetism(64)
+                    radial.updateStick("direction 7.90")
+                    radial.updateStick("direction 7.95")
+                    check(radial.selectedEntry.title === "Slack", "wraparound activation must not wait for visual motion")
+                } else if (phase === 5) {
+                    checkMagnetism(64)
+                    Modules.PaletteState.radialRequested("cycle", 0)
+                } else if (phase === 6) {
+                    if (radial.innerItems.length) checkMagnetism(140)
+                    Modules.PaletteState.radialRequested("cycle", 0)
+                } else if (phase === 7) {
+                    checkMagnetism(48)
+                    Modules.PaletteState.radialRequested("cancel", 0)
+                    check(!Modules.PaletteState.open, "spring motion must not delay cancel")
+                    console.log("PASS radial public IPC and analog packets: debounced directions, fractional angles, rings, activation, cancel, release, invalid/late guards, bounded spring attraction and wraparound")
                     Qt.quit()
                 }
                 phase++

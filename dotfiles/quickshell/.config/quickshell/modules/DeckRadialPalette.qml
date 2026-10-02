@@ -297,11 +297,15 @@ FloatingWindow {
                 readonly property var entry: root.middleItems[index]
                 readonly property real angle: index * Math.PI * 2 / root.middleItems.length - Math.PI / 2
                 readonly property bool selected: root.middleActive && root.selectedMiddleIndex === index
+                property real attraction: root.visible && selected ? 6 : 0
+                Behavior on attraction { enabled: root.visible; SpringAnimation { spring: 4; damping: 0.8; epsilon: 0.02 } }
+                scale: 1 + attraction / 100
+                Behavior on color { enabled: root.visible; ColorAnimation { duration: 110; easing.type: Easing.OutCubic } }
                 width: 48
                 height: width
                 radius: width / 2
-                x: dial.width / 2 + Math.cos(angle) * (dial.width / 2 - 104) - width / 2
-                y: dial.height / 2 + Math.sin(angle) * (dial.height / 2 - 104) - height / 2
+                x: dial.width / 2 + Math.cos(angle) * (dial.width / 2 - 104 - attraction) - width / 2
+                y: dial.height / 2 + Math.sin(angle) * (dial.height / 2 - 104 - attraction) - height / 2
                 color: selected ? Theme.orange : Theme.surface0
                 border.width: selected ? 2 : (Theme.mode === "light" ? 1 : 0)
                 border.color: selected ? Theme.orange : Theme.hairline
@@ -324,17 +328,19 @@ FloatingWindow {
                 readonly property real angle: index * Math.PI * 2 / root.outerItems.length - Math.PI / 2
                 readonly property bool selected: root.outerRingActive
                     && root.selectedOuterIndex === index
+                property real attraction: root.visible && selected ? 6 : 0
+                Behavior on attraction { enabled: root.visible; SpringAnimation { spring: 4; damping: 0.8; epsilon: 0.02 } }
+                scale: 1 + attraction / 100
+                Behavior on color { enabled: root.visible; ColorAnimation { duration: 110; easing.type: Easing.OutCubic } }
                 width: 64
                 height: width
                 radius: width / 2
-                x: dial.width / 2 + Math.cos(angle) * (dial.width / 2 - 36) - width / 2
-                y: dial.height / 2 + Math.sin(angle) * (dial.height / 2 - 36) - height / 2
+                x: dial.width / 2 + Math.cos(angle) * (dial.width / 2 - 36 - attraction) - width / 2
+                y: dial.height / 2 + Math.sin(angle) * (dial.height / 2 - 36 - attraction) - height / 2
                 color: selected ? Theme.orange : Theme.surface0
                 border.width: selected ? 2 : (Theme.mode === "light" ? 1 : 0)
                 border.color: selected ? Theme.orange : Theme.hairline
                 opacity: root.outerRingActive ? 1 : 0.3
-                scale: selected ? 1.06 : 1
-                Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
 
                 Image {
                     id: quickmarkIcon
@@ -371,11 +377,15 @@ FloatingWindow {
                 readonly property real radialDistance: root.cardRadius(angle, width, height, root.innerItems.length)
                 readonly property bool selected: !root.outerRingActive && !root.middleActive
                     && root.ringIndex(root.innerItems) === index
+                property real attraction: root.visible && selected ? 6 : 0
+                Behavior on attraction { enabled: root.visible; SpringAnimation { spring: 4; damping: 0.8; epsilon: 0.02 } }
+                scale: 1 + attraction / 200
+                Behavior on color { enabled: root.visible; ColorAnimation { duration: 110; easing.type: Easing.OutCubic } }
                 width: 140
                 height: 92
                 radius: 15
-                x: dial.width / 2 + Math.cos(angle) * radialDistance - width / 2
-                y: dial.height / 2 + Math.sin(angle) * radialDistance - height / 2
+                x: dial.width / 2 + Math.cos(angle) * (radialDistance - attraction) - width / 2
+                y: dial.height / 2 + Math.sin(angle) * (radialDistance - attraction) - height / 2
                 color: selected ? root.selectedSurface : (Theme.mode === "light" ? Theme.surface0 : Theme.bg)
                 border.width: selected ? 2 : (Theme.mode === "light" ? 1 : 0)
                 border.color: selected ? Theme.orange : Theme.hairline

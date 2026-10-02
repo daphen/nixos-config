@@ -27,6 +27,12 @@ assert(rules.mail == nil, 'Deck mail must use normal canvas tiling')
 assert(rules['file-chooser'].float and rules['slqs-upload'].float, 'dialogs must remain floating')
 assert(rules['deck-radial-overlay'].float, 'radial overlay must remain floating')
 calls = {}
+for number = 13, 20 do
+    local option = assert(options['SUPER + F' .. number])
+    assert(option.device and #option.device.list == 1 and option.device.list[1] == 'inputplumber-keyboard',
+        'only controller keyboard may open a radial')
+    assert(option.device.inclusive ~= false and option.repeating, 'controller-only radial must retain repeat handling')
+end
 for index, direction in ipairs({'h', 'j', 'k', 'l'}) do
     local key = 'F' .. (12 + index)
     assert(bindings[key], key .. ' missing')()

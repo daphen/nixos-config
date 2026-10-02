@@ -401,7 +401,7 @@ return function(ctx)
 			local apps_index = ({ F13 = 1, F14 = 2, F15 = 3, F16 = 4 })[key]
 			hl.bind("SUPER + " .. key, function()
 				apps_radial_press(apps_index)
-			end, { repeating = true })
+			end, { repeating = true, device = { list = { "inputplumber-keyboard" } } })
 			hl.bind("SHIFT + " .. key, hl.dsp.layout("move " .. direction), { repeating = true })
 			hl.bind("CTRL + " .. key, hl.dsp.layout("resize " .. direction), { repeating = true })
 		end
@@ -413,7 +413,7 @@ return function(ctx)
 				else
 					apps_radial_press(index, true)
 				end
-			end, { repeating = true })
+			end, { repeating = true, device = { list = { "inputplumber-keyboard" } } })
 		end
 		-- Steam owns normal stick arrows; LT selection must not also send arrows.
 		for _, key in ipairs({ "Left", "Down", "Up", "Right" }) do
