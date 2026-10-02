@@ -111,6 +111,21 @@ in
       categories = [ "Utility" ];
     };
 
+    systemd.user.services.ydotoold = {
+      Unit = {
+        Description = "User ydotool input daemon";
+        After = [ "graphical-session.target" ];
+        PartOf = [ "graphical-session.target" ];
+      };
+      Service = {
+        Type = "simple";
+        ExecStart = "${pkgs.ydotool}/bin/ydotoold --socket-path=%t/.ydotool_socket --socket-perm=0600";
+        Restart = "on-failure";
+        RestartSec = 2;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
+
     systemd.user.services.openwhispr = {
       Unit = {
         Description = "OpenWhispr local voice dictation";
