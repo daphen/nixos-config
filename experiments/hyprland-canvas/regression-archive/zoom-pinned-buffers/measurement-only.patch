@@ -1,0 +1,38 @@
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -2674,6 +2674,11 @@
+         return;
+     }
+
++    const auto profileStart = Time::steadyNow();
++    const auto profileGuard = CScopeGuard([&] {
++        fprintf(stderr, "CZFRAME %.3f %.3f %.4f %d\n", std::chrono::duration<double, std::milli>(profileStart.time_since_epoch()).count(),
++                std::chrono::duration<double, std::milli>(Time::steadyNow() - profileStart).count(), pMonitor->m_canvasZoom->value(), pMonitor->m_canvasOverview);
++    });
+     // tearing and DS first
+     bool       shouldTear              = pMonitor->updateTearing();
+     const bool canAttemptDirectScanout = !canvasOverviewActive(pMonitor) && pMonitor->canAttemptDirectScanoutFast();
+--- a/src/render/ElementRenderer.cpp
++++ b/src/render/ElementRenderer.cpp
+@@ -718,6 +718,13 @@
+         (frozenCanvasWindow || (cached->second.size == plan.sourceBox.size() && cached->second.contentSerial == PWINDOW->renderContentSerial() &&
+                                    (!COMMITTINGFOCUS || cached->second.framebuffer->m_size == SOURCECANVAS.size())));
+
++    const auto profileStart = Time::steadyNow();
++    bool profileFallback = false;
++    const auto profileGuard = CScopeGuard([&] {
++        fprintf(stderr, "CZCAP %.3f %.3f %d %d %d %.4f %.0f %.0f\n", std::chrono::duration<double, std::milli>(profileStart.time_since_epoch()).count(),
++                std::chrono::duration<double, std::milli>(Time::steadyNow() - profileStart).count(), cacheable, useCached, profileFallback,
++                pMonitor->m_canvasZoom->value(), SOURCECANVAS.w, SOURCECANVAS.h);
++    });
+     SP<IFramebuffer> fb;
+     if (useCached)
+         fb = cached->second.framebuffer;
+@@ -728,6 +735,7 @@
+     }
+     auto matteFB = element->m_data.blur ? pMonitor->resources()->getUnusedWorkBuffer(SOURCECANVAS.size()) : nullptr;
+     if (!fb || (element->m_data.blur && !matteFB)) {
++        profileFallback = true;
+         fb.reset();
+         matteFB.reset();
+         if (CACHEKEY)

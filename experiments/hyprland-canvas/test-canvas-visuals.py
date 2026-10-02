@@ -50,6 +50,7 @@ def client(folder, number):
         fn('cairo_set_font_size', None, p, d)(cr, size)
         fn('cairo_move_to', None, p, d, d)(cr, x, y)
         fn('cairo_show_text', None, p, s)(cr, value.encode())
+    damage_frame = 0
     @c.CFUNCTYPE(i, p, p, p)
     def draw(widget, cr, data):
         w = fn('gtk_widget_get_allocated_width', i, p)(widget)
@@ -63,6 +64,11 @@ def client(folder, number):
             text(cr, 28, 100 + line * 30, value, 15, accent if line == 0 else (.68,.73,.81))
         for n in range(3):
             rectangle(cr, 28, h - 120 + n * 24, min(w - 56, 270 + n * 47), 10, (.16,.18,.23))
+        if damage_frame:
+            rectangle(cr, 32, 64, 24, 24, (damage_frame % 2, .4, .6))
+            if os.getenv('CANVAS_ZOOM_DAMAGE') == 'full':
+                for row in range(10):
+                    text(cr, 28, 120 + row * 30, f'build output {damage_frame:06d} / {row}', 15, accent)
         (folder / 'size').write_text(f'{w} {h}')
         return 0
     @c.CFUNCTYPE(i, p, p, p)
@@ -85,6 +91,20 @@ def client(folder, number):
     fn('gtk_widget_add_events', None, p, i)(area, 1 << 8)
     connect(area, b'button-press-event', c.cast(click, p), None, None, 0)
     fn('gtk_widget_show_all', None, p)(window)
+    @c.CFUNCTYPE(i, p)
+    def repaint(data):
+        nonlocal damage_frame
+        active = (folder / 'animate').exists()
+        if not active and not damage_frame:
+            return 1
+        damage_frame = damage_frame + 1 if active else 0
+        if os.getenv('CANVAS_ZOOM_DAMAGE') == 'partial':
+            fn('gtk_widget_queue_draw_area', None, p, i, i, i, i)(area, 32, 64, 24, 24)
+        else:
+            fn('gtk_widget_queue_draw', None, p)(area)
+        return 1
+    if os.getenv('CANVAS_ZOOM_DAMAGE'):
+        fn('g_timeout_add', c.c_uint, c.c_uint, p, p)(16, c.cast(repaint, p), None)
     fn('gtk_main', None)()
 
 

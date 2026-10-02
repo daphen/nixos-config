@@ -1293,7 +1293,7 @@ index f8187852ad2fb6a1febbb75028934e783c1528cc..d32041a1842c6f1845900b2402c7a5e4
          // for fading in the wallpaper because it doesn't happen instantly (it's loaded async)
          PHLANIMVAR<float> m_backgroundOpacity;
 diff --git a/src/output/MonitorResources.cpp b/src/output/MonitorResources.cpp
-index a0e30242c477b73aa76a4a3b14459e8f639e0e16..6b976cb04bf042fe6fc358548565c1b08b63aa6d 100644
+index a0e30242c477b73aa76a4a3b14459e8f639e0e16..45ad4bf85394c690e291a8b428c2f773e11c1a0d 100644
 --- a/src/output/MonitorResources.cpp
 +++ b/src/output/MonitorResources.cpp
 @@ -31,6 +31,7 @@ void CMonitorResources::setImageDescription(NColorManagement::PImageDescription
@@ -1304,6 +1304,13 @@ index a0e30242c477b73aa76a4a3b14459e8f639e0e16..6b976cb04bf042fe6fc358548565c1b0
      m_blurFB->setImageDescription(imageDescription);
      for (const auto& res : m_workBuffers)
          res.buffer->setImageDescription(imageDescription);
+@@ -97,4 +98,5 @@ SP<Render::IFramebuffer> CMonitorResources::getUnusedWorkBuffer(const Vector2D& size) {
+-    if (m_sizedWorkBuffers.size() < MAX_WORK_BUFFERS) {
++    if (m_sizedWorkBuffers.size() < MAX_WORK_BUFFERS ||
++        std::ranges::none_of(m_sizedWorkBuffers, [](const auto& res) { return res.buffer.strongRef() < 2; })) {
+         auto& res = m_sizedWorkBuffers.emplace_back(g_pHyprRenderer->createFB(std::format("Monitor {} sized workbuffer", m_monitor->m_name)));
+         if (!res.buffer->alloc(size.x, size.y, m_drmFormat)) {
+             m_sizedWorkBuffers.pop_back();
 diff --git a/src/output/MonitorResources.hpp b/src/output/MonitorResources.hpp
 index 3e17a5568bdf3320b47835752a50ef188f9d2448..fbef0be5e72b471158f740b2328a705a356edda5 100644
 --- a/src/output/MonitorResources.hpp

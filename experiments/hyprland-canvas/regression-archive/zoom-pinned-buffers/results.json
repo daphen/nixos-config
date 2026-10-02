@@ -1,0 +1,1168 @@
+{
+  "source": {
+    "starting_head": "515431b869612514845e4a79b8b77ce3e66e3d53",
+    "native_base": "12f3780fae50a2edf8c50587bd052e95b8bfe652",
+    "native_baseline_diff": "9ee99e15979745e5816cdf04a61f48a6d2e61f253c8e9d961d91c65ec39a02f4",
+    "native_candidate_diff": "4970d945f3e19ff9bed00c22f901fa36ccccd67f67739cefe3de628e233821ad",
+    "native_profile_baseline_diff": "3a83509604bac3a7fd3b37a4760bf79b1b86091d45ed528c0752a8ba5de2a8c9",
+    "native_profile_candidate_diff": "f157d93d5abb11ca1b07823048cb40693cc52d64aecab8d45fe14bacd19ce70c",
+    "shipping_patch": "f76dce4b2aee125cf61c88da18b28af5b6a835545f6d7b9c6e24b8429d690334",
+    "validated_binary_unchanged": "1d5a7e4da37076cdb38f39f285b5ad4551fec56dcbe51a7171fc56f60780b611",
+    "original_deck_binary_unchanged": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+    "model": "openai/gpt-6-astra"
+  },
+  "raw_directory": "/home/daphen/.cache/canvas-zoom-round2",
+  "measurement": "Nested GPU-engine work/commit and instrumented render wall-time on AC Proart; NOT physical Deck FPS, battery or smoothness.",
+  "performance": {
+    "pan16": {
+      "runs": {
+        "a1": {
+          "binary": "6b290f43a2aa10875bb6282da0cefff176cccc4d4b6105247f7a926c0be08736",
+          "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+          "runner": "3ada07ab691e622c6533d569c47d1f08ba1ea4d37c712844a7156e6d637eb498",
+          "client_fixture": "7f50fefe09161e589648d03f5186b0da38a81d440377da5387be55ec456465a8",
+          "config": {
+            "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+            "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+            "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+            "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+            "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+            "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+            "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+            "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+            "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+          },
+          "renderer": [
+            "AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0)"
+          ],
+          "platform_profile": "quiet",
+          "cpus": {
+            "candidate": 2,
+            "bridge": 0,
+            "weston": 1
+          },
+          "workload": {
+            "clients": 16,
+            "damage": null,
+            "two_rows": true,
+            "motion": "pan"
+          },
+          "trials": [
+            {
+              "repeat": 0,
+              "frames": 972,
+              "start": 266008.705494702,
+              "end": 266023.726841563,
+              "seconds": 15.021346861030906,
+              "cpu_ms": 330.0,
+              "gpu_ms": 706.6889,
+              "cpu_ms_per_frame": 0.3395061728395062,
+              "gpu_ms_per_frame": 0.7270461934156378,
+              "commit_interval_p50_ms": 11.105999998748302,
+              "commit_interval_p95_ms": 11.302000001072884,
+              "commit_interval_p99_ms": 11.96399999782443,
+              "commit_interval_max_ms": 600.2769999951124,
+              "commits_over_25ms": 8
+            },
+            {
+              "repeat": 1,
+              "frames": 897,
+              "start": 266023.730351752,
+              "end": 266038.779339166,
+              "seconds": 15.04898741398938,
+              "cpu_ms": 1580.0,
+              "gpu_ms": 767.419441,
+              "cpu_ms_per_frame": 1.7614269788182833,
+              "gpu_ms_per_frame": 0.8555400680044594,
+              "commit_interval_p50_ms": 11.115000002086163,
+              "commit_interval_p95_ms": 20.557000000029802,
+              "commit_interval_p99_ms": 37.17899999767542,
+              "commit_interval_max_ms": 616.2630000002682,
+              "commits_over_25ms": 23
+            },
+            {
+              "repeat": 2,
+              "frames": 972,
+              "start": 266038.78416736,
+              "end": 266053.807253452,
+              "seconds": 15.02308609202737,
+              "cpu_ms": 410.0,
+              "gpu_ms": 848.082648,
+              "cpu_ms_per_frame": 0.4218106995884774,
+              "gpu_ms_per_frame": 0.8725130123456789,
+              "commit_interval_p50_ms": 11.110999997705221,
+              "commit_interval_p95_ms": 11.519999999552965,
+              "commit_interval_p99_ms": 13.60700000077486,
+              "commit_interval_max_ms": 599.7480000033975,
+              "commits_over_25ms": 8
+            }
+          ],
+          "captures": {
+            "normal": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "overview": "f49be07b07295967731c7d264d563849cad4d1ccc6a85b96e7bab6d0eb91a8cd",
+            "panned": "33c7091ad6f3ccc50a1bda537b1e072a4a062e07c1ea239e15562c5e9e9e696f",
+            "returned": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "static-overview": "8f904a66ba11a8d263f0d95baeecea0a45999283a8f77242dbc4ebc774eca23e",
+            "static-panned": "8005ed846a7d434d7e00da90c29a6b4bd83e383b6c06d00545cb75f3f314aaff",
+            "translucent": "de818f5a295ae4d11425b0c37bc8973cec685a90454b0720771f203d73cff3c4",
+            "lens-options": "125dd019e7e910217915a83ae0d05cb7f7c82990cffacb478880535054735bd1",
+            "locked": "57b7878418caf1073f41f1f3a32f6e142bbd9fdfd7bd79b97dafb9df33f6305f",
+            "locked-late-client": "57b7878418caf1073f41f1f3a32f6e142bbd9fdfd7bd79b97dafb9df33f6305f"
+          },
+          "memory_high_water_kb": 228892,
+          "passed": true
+        },
+        "b1": {
+          "binary": "10c3bcd72f8db9c352bd27fbdb19d4763d8eea25b6e6b3b29fba4f4de356c7c9",
+          "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+          "runner": "3ada07ab691e622c6533d569c47d1f08ba1ea4d37c712844a7156e6d637eb498",
+          "client_fixture": "7f50fefe09161e589648d03f5186b0da38a81d440377da5387be55ec456465a8",
+          "config": {
+            "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+            "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+            "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+            "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+            "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+            "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+            "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+            "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+            "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+          },
+          "renderer": [
+            "AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0)"
+          ],
+          "platform_profile": "quiet",
+          "cpus": {
+            "candidate": 2,
+            "bridge": 0,
+            "weston": 1
+          },
+          "workload": {
+            "clients": 16,
+            "damage": null,
+            "two_rows": true,
+            "motion": "pan"
+          },
+          "trials": [
+            {
+              "repeat": 0,
+              "frames": 971,
+              "start": 266113.213799818,
+              "end": 266128.241389701,
+              "seconds": 15.027589883015025,
+              "cpu_ms": 400.0,
+              "gpu_ms": 753.642184,
+              "cpu_ms_per_frame": 0.411946446961895,
+              "gpu_ms_per_frame": 0.7761505499485067,
+              "commit_interval_p50_ms": 11.10300000011921,
+              "commit_interval_p95_ms": 11.525999996811152,
+              "commit_interval_p99_ms": 22.909000001847744,
+              "commit_interval_max_ms": 599.9910000003874,
+              "commits_over_25ms": 9
+            },
+            {
+              "repeat": 1,
+              "frames": 972,
+              "start": 266128.246615285,
+              "end": 266143.273573883,
+              "seconds": 15.0269585979986,
+              "cpu_ms": 440.0,
+              "gpu_ms": 733.973873,
+              "cpu_ms_per_frame": 0.45267489711934156,
+              "gpu_ms_per_frame": 0.7551171532921811,
+              "commit_interval_p50_ms": 11.10700000077486,
+              "commit_interval_p95_ms": 11.572999998927116,
+              "commit_interval_p99_ms": 15.11600000038743,
+              "commit_interval_max_ms": 600.179999999702,
+              "commits_over_25ms": 8
+            },
+            {
+              "repeat": 2,
+              "frames": 971,
+              "start": 266143.276625284,
+              "end": 266158.304906377,
+              "seconds": 15.028281092992984,
+              "cpu_ms": 420.0,
+              "gpu_ms": 736.569614,
+              "cpu_ms_per_frame": 0.4325437693099897,
+              "gpu_ms_per_frame": 0.7585680885684861,
+              "commit_interval_p50_ms": 11.102000001817942,
+              "commit_interval_p95_ms": 11.572000000625849,
+              "commit_interval_p99_ms": 14.188999999314547,
+              "commit_interval_max_ms": 600.1639999970794,
+              "commits_over_25ms": 8
+            }
+          ],
+          "captures": {
+            "normal": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "overview": "3fc0d9bcc3e849ec7cdeffee794f8e246fb94da6ffff8d2833d525f5bd01c29d",
+            "panned": "e1f6d13ef597bae787d6deecf59e2772f21a256d026d179b897476a4dfc797f4",
+            "returned": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "static-overview": "b38a733df5f6ebc887bfccd1657ac773b70050c70a766068645c7c1d349c81f0",
+            "static-panned": "e41b5d82e40aa452a88e511da38b93ee0356f0884373f664daaa5ad467e7e533",
+            "translucent": "da4d52613c0c1069c452aa0b27e9174c3808e42bfe871b910a5a3ad6af1aca15",
+            "lens-options": "17311c002eff122637c9c60728d80f9aaf62263737ac06189e49ebf92e893b40",
+            "locked": "57b7878418caf1073f41f1f3a32f6e142bbd9fdfd7bd79b97dafb9df33f6305f",
+            "locked-late-client": "57b7878418caf1073f41f1f3a32f6e142bbd9fdfd7bd79b97dafb9df33f6305f"
+          },
+          "memory_high_water_kb": 229292,
+          "passed": true
+        },
+        "a2": {
+          "binary": "6b290f43a2aa10875bb6282da0cefff176cccc4d4b6105247f7a926c0be08736",
+          "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+          "runner": "3ada07ab691e622c6533d569c47d1f08ba1ea4d37c712844a7156e6d637eb498",
+          "client_fixture": "7f50fefe09161e589648d03f5186b0da38a81d440377da5387be55ec456465a8",
+          "config": {
+            "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+            "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+            "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+            "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+            "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+            "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+            "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+            "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+            "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+          },
+          "renderer": [
+            "AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0)"
+          ],
+          "platform_profile": "quiet",
+          "cpus": {
+            "candidate": 2,
+            "bridge": 0,
+            "weston": 1
+          },
+          "workload": {
+            "clients": 16,
+            "damage": null,
+            "two_rows": true,
+            "motion": "pan"
+          },
+          "trials": [
+            {
+              "repeat": 0,
+              "frames": 972,
+              "start": 266216.983957066,
+              "end": 266232.010979125,
+              "seconds": 15.027022058959119,
+              "cpu_ms": 450.0,
+              "gpu_ms": 813.539178,
+              "cpu_ms_per_frame": 0.46296296296296297,
+              "gpu_ms_per_frame": 0.836974462962963,
+              "commit_interval_p50_ms": 11.099999997764826,
+              "commit_interval_p95_ms": 11.606000002473593,
+              "commit_interval_p99_ms": 12.84800000116229,
+              "commit_interval_max_ms": 600.2809999994934,
+              "commits_over_25ms": 8
+            },
+            {
+              "repeat": 1,
+              "frames": 972,
+              "start": 266232.014334656,
+              "end": 266247.038878517,
+              "seconds": 15.024543860985432,
+              "cpu_ms": 460.0,
+              "gpu_ms": 834.063951,
+              "cpu_ms_per_frame": 0.4732510288065844,
+              "gpu_ms_per_frame": 0.8580904845679012,
+              "commit_interval_p50_ms": 11.102999996393919,
+              "commit_interval_p95_ms": 11.612999998033047,
+              "commit_interval_p99_ms": 12.563999999314547,
+              "commit_interval_max_ms": 599.9290000014007,
+              "commits_over_25ms": 8
+            },
+            {
+              "repeat": 2,
+              "frames": 972,
+              "start": 266247.043776422,
+              "end": 266262.066112456,
+              "seconds": 15.02233603404602,
+              "cpu_ms": 440.0,
+              "gpu_ms": 830.41719,
+              "cpu_ms_per_frame": 0.45267489711934156,
+              "gpu_ms_per_frame": 0.8543386728395062,
+              "commit_interval_p50_ms": 11.105000000447035,
+              "commit_interval_p95_ms": 11.577999997884035,
+              "commit_interval_p99_ms": 13.03600000217557,
+              "commit_interval_max_ms": 599.9430000036955,
+              "commits_over_25ms": 8
+            }
+          ],
+          "captures": {
+            "normal": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "overview": "9e078b1e021f2e49314156aa23e1a0688d219c53f98c3e1b804acf7a15a12723",
+            "panned": "3ad16df706b53d871d4447c17ec38f4649770cc971cb59b7b8847d31ac231fa8",
+            "returned": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "static-overview": "8f904a66ba11a8d263f0d95baeecea0a45999283a8f77242dbc4ebc774eca23e",
+            "static-panned": "8005ed846a7d434d7e00da90c29a6b4bd83e383b6c06d00545cb75f3f314aaff",
+            "translucent": "de818f5a295ae4d11425b0c37bc8973cec685a90454b0720771f203d73cff3c4",
+            "lens-options": "125dd019e7e910217915a83ae0d05cb7f7c82990cffacb478880535054735bd1",
+            "locked": "57b7878418caf1073f41f1f3a32f6e142bbd9fdfd7bd79b97dafb9df33f6305f",
+            "locked-late-client": "57b7878418caf1073f41f1f3a32f6e142bbd9fdfd7bd79b97dafb9df33f6305f"
+          },
+          "memory_high_water_kb": 228808,
+          "passed": true
+        },
+        "b2": {
+          "binary": "10c3bcd72f8db9c352bd27fbdb19d4763d8eea25b6e6b3b29fba4f4de356c7c9",
+          "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+          "runner": "3ada07ab691e622c6533d569c47d1f08ba1ea4d37c712844a7156e6d637eb498",
+          "client_fixture": "7f50fefe09161e589648d03f5186b0da38a81d440377da5387be55ec456465a8",
+          "config": {
+            "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+            "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+            "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+            "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+            "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+            "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+            "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+            "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+            "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+          },
+          "renderer": [
+            "AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0)"
+          ],
+          "platform_profile": "quiet",
+          "cpus": {
+            "candidate": 2,
+            "bridge": 0,
+            "weston": 1
+          },
+          "workload": {
+            "clients": 16,
+            "damage": null,
+            "two_rows": true,
+            "motion": "pan"
+          },
+          "trials": [
+            {
+              "repeat": 0,
+              "frames": 972,
+              "start": 266320.931471127,
+              "end": 266335.954044117,
+              "seconds": 15.022572989983018,
+              "cpu_ms": 390.0,
+              "gpu_ms": 732.62951,
+              "cpu_ms_per_frame": 0.4012345679012346,
+              "gpu_ms_per_frame": 0.7537340637860082,
+              "commit_interval_p50_ms": 11.108000002801418,
+              "commit_interval_p95_ms": 11.53099999949336,
+              "commit_interval_p99_ms": 13.105999998748302,
+              "commit_interval_max_ms": 600.7600000016391,
+              "commits_over_25ms": 8
+            },
+            {
+              "repeat": 1,
+              "frames": 972,
+              "start": 266335.957425573,
+              "end": 266350.983853249,
+              "seconds": 15.026427675969899,
+              "cpu_ms": 430.0,
+              "gpu_ms": 713.825806,
+              "cpu_ms_per_frame": 0.44238683127572015,
+              "gpu_ms_per_frame": 0.7343886893004115,
+              "commit_interval_p50_ms": 11.105999995023012,
+              "commit_interval_p95_ms": 11.552999999374151,
+              "commit_interval_p99_ms": 22.662999998778105,
+              "commit_interval_max_ms": 600.1559999994934,
+              "commits_over_25ms": 8
+            },
+            {
+              "repeat": 2,
+              "frames": 972,
+              "start": 266350.986895654,
+              "end": 266366.016338805,
+              "seconds": 15.029443151026499,
+              "cpu_ms": 430.0,
+              "gpu_ms": 743.295934,
+              "cpu_ms_per_frame": 0.44238683127572015,
+              "gpu_ms_per_frame": 0.7647077510288066,
+              "commit_interval_p50_ms": 11.107999999076128,
+              "commit_interval_p95_ms": 11.583000000566244,
+              "commit_interval_p99_ms": 11.995999999344349,
+              "commit_interval_max_ms": 599.7110000029206,
+              "commits_over_25ms": 8
+            }
+          ],
+          "captures": {
+            "normal": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "overview": "3cdfb18ac865778e19ee91bdfe5e479e2aab649d0557bf4bbbdc91d8ceaad1d9",
+            "panned": "6d07bd43c71c15605e04f6fce8433e9b3959b9d082df5302a46c0e8d5139f092",
+            "returned": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "static-overview": "b38a733df5f6ebc887bfccd1657ac773b70050c70a766068645c7c1d349c81f0",
+            "static-panned": "e41b5d82e40aa452a88e511da38b93ee0356f0884373f664daaa5ad467e7e533",
+            "translucent": "da4d52613c0c1069c452aa0b27e9174c3808e42bfe871b910a5a3ad6af1aca15",
+            "lens-options": "17311c002eff122637c9c60728d80f9aaf62263737ac06189e49ebf92e893b40",
+            "locked": "57b7878418caf1073f41f1f3a32f6e142bbd9fdfd7bd79b97dafb9df33f6305f",
+            "locked-late-client": "57b7878418caf1073f41f1f3a32f6e142bbd9fdfd7bd79b97dafb9df33f6305f"
+          },
+          "memory_high_water_kb": 229156,
+          "passed": true
+        }
+      },
+      "summary": {
+        "gpu": {
+          "run_medians": {
+            "a1": 0.8555400680044594,
+            "b1": 0.7585680885684861,
+            "a2": 0.8543386728395062,
+            "b2": 0.7537340637860082
+          },
+          "baseline_run_median_mean": 0.8549393704219828,
+          "candidate_run_median_mean": 0.7561510761772472,
+          "change_percent": -11.55500584748781,
+          "twice_larger_same_binary_spread": 0.009668049564955927,
+          "meaningful_improvement": true,
+          "meaningful_regression": false,
+          "a_pooled_ms_per_commit": 0.8338042918186556,
+          "b_pooled_ms_per_commit": 0.757107533619211
+        },
+        "cpu": {
+          "run_medians": {
+            "a1": 0.4218106995884774,
+            "b1": 0.4325437693099897,
+            "a2": 0.46296296296296297,
+            "b2": 0.44238683127572015
+          },
+          "baseline_run_median_mean": 0.4423868312757202,
+          "candidate_run_median_mean": 0.4374653002928549,
+          "change_percent": -1.1124949105453696,
+          "twice_larger_same_binary_spread": 0.08230452674897115,
+          "meaningful_improvement": false,
+          "meaningful_regression": false,
+          "a_pooled_ms_per_commit": 0.6374848011116901,
+          "b_pooled_ms_per_commit": 0.4305317324185249
+        }
+      }
+    },
+    "full8": {
+      "runs": {
+        "a1": {
+          "binary": "6b290f43a2aa10875bb6282da0cefff176cccc4d4b6105247f7a926c0be08736",
+          "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+          "runner": "3ada07ab691e622c6533d569c47d1f08ba1ea4d37c712844a7156e6d637eb498",
+          "client_fixture": "7f50fefe09161e589648d03f5186b0da38a81d440377da5387be55ec456465a8",
+          "config": {
+            "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+            "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+            "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+            "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+            "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+            "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+            "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+            "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+            "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+          },
+          "renderer": [
+            "AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0)"
+          ],
+          "platform_profile": "quiet",
+          "cpus": {
+            "candidate": 2,
+            "bridge": 0,
+            "weston": 1
+          },
+          "workload": {
+            "clients": 8,
+            "damage": "full",
+            "two_rows": true,
+            "motion": "zoom"
+          },
+          "trials": [
+            {
+              "repeat": 0,
+              "frames": 757,
+              "start": 266417.549303374,
+              "end": 266425.954381297,
+              "seconds": 8.40507792297285,
+              "cpu_ms": 880.0,
+              "gpu_ms": 419.221072,
+              "cpu_ms_per_frame": 1.1624834874504624,
+              "gpu_ms_per_frame": 0.5537926974900924,
+              "commit_interval_p50_ms": 11.115499999374151,
+              "commit_interval_p95_ms": 11.628000002354383,
+              "commit_interval_p99_ms": 12.214999996125698,
+              "commit_interval_max_ms": 13.338000003248453,
+              "commits_over_25ms": 0
+            },
+            {
+              "repeat": 1,
+              "frames": 757,
+              "start": 266425.957943192,
+              "end": 266434.362272819,
+              "seconds": 8.404329626995604,
+              "cpu_ms": 900.0,
+              "gpu_ms": 417.308496,
+              "cpu_ms_per_frame": 1.1889035667107002,
+              "gpu_ms_per_frame": 0.5512661770145311,
+              "commit_interval_p50_ms": 11.101999998092651,
+              "commit_interval_p95_ms": 11.620000001043081,
+              "commit_interval_p99_ms": 12.015999998897314,
+              "commit_interval_max_ms": 14.142000000923872,
+              "commits_over_25ms": 0
+            },
+            {
+              "repeat": 2,
+              "frames": 756,
+              "start": 266434.364632093,
+              "end": 266442.769426856,
+              "seconds": 8.40479476301698,
+              "cpu_ms": 880.0,
+              "gpu_ms": 414.643137,
+              "cpu_ms_per_frame": 1.164021164021164,
+              "gpu_ms_per_frame": 0.548469757936508,
+              "commit_interval_p50_ms": 11.12100000306964,
+              "commit_interval_p95_ms": 11.602999996393919,
+              "commit_interval_p99_ms": 12.290999997407198,
+              "commit_interval_max_ms": 12.697999998927116,
+              "commits_over_25ms": 0
+            }
+          ],
+          "captures": {
+            "normal": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "overview": "47865828860d67c9f7549e7d39d3d43bced3c48824b5cf8a73058461f70dbd17",
+            "panned": "166542b280c5508cc0b98e537a8cd76325e335a393ec88f1cc9d2c0f63e03a25",
+            "returned": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "static-overview": "7b1930839533f9847f7b132103f82de8fd6ec1f00d787044ab6830f14216c704",
+            "static-panned": "f9803cb1601775c2d7439eb7d2fadd51da2b1dd96859fe7bf2c8be48cbd339c9",
+            "translucent": "cf37c0e648255025038a06db14e6a6983b77a85abb9ff848bfc5b2f8df7fbcd0",
+            "lens-options": "018bde4983a228ccc50d0ebff5c7268604ba992071d6b781dec4821bd372b54f",
+            "locked": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954",
+            "locked-live-damage": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954",
+            "locked-late-client": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954"
+          },
+          "memory_high_water_kb": 213200,
+          "passed": true
+        },
+        "b1": {
+          "binary": "10c3bcd72f8db9c352bd27fbdb19d4763d8eea25b6e6b3b29fba4f4de356c7c9",
+          "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+          "runner": "3ada07ab691e622c6533d569c47d1f08ba1ea4d37c712844a7156e6d637eb498",
+          "client_fixture": "7f50fefe09161e589648d03f5186b0da38a81d440377da5387be55ec456465a8",
+          "config": {
+            "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+            "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+            "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+            "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+            "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+            "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+            "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+            "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+            "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+          },
+          "renderer": [
+            "AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0)"
+          ],
+          "platform_profile": "quiet",
+          "cpus": {
+            "candidate": 2,
+            "bridge": 0,
+            "weston": 1
+          },
+          "workload": {
+            "clients": 8,
+            "damage": "full",
+            "two_rows": true,
+            "motion": "zoom"
+          },
+          "trials": [
+            {
+              "repeat": 0,
+              "frames": 756,
+              "start": 266495.861850318,
+              "end": 266504.265593133,
+              "seconds": 8.403742815018632,
+              "cpu_ms": 880.0,
+              "gpu_ms": 414.597021,
+              "cpu_ms_per_frame": 1.164021164021164,
+              "gpu_ms_per_frame": 0.5484087579365079,
+              "commit_interval_p50_ms": 11.119999997317791,
+              "commit_interval_p95_ms": 11.699999999254942,
+              "commit_interval_p99_ms": 12.180000003427267,
+              "commit_interval_max_ms": 14.282000001519918,
+              "commits_over_25ms": 0
+            },
+            {
+              "repeat": 1,
+              "frames": 757,
+              "start": 266504.269052854,
+              "end": 266512.674581207,
+              "seconds": 8.40552835300332,
+              "cpu_ms": 890.0,
+              "gpu_ms": 421.400979,
+              "cpu_ms_per_frame": 1.1756935270805813,
+              "gpu_ms_per_frame": 0.5566723632760898,
+              "commit_interval_p50_ms": 11.120500000193715,
+              "commit_interval_p95_ms": 11.595999997109175,
+              "commit_interval_p99_ms": 12.095000002533197,
+              "commit_interval_max_ms": 14.399999998509884,
+              "commits_over_25ms": 0
+            },
+            {
+              "repeat": 2,
+              "frames": 757,
+              "start": 266512.677497501,
+              "end": 266521.081789051,
+              "seconds": 8.404291549988557,
+              "cpu_ms": 870.0,
+              "gpu_ms": 422.717097,
+              "cpu_ms_per_frame": 1.1492734478203435,
+              "gpu_ms_per_frame": 0.5584109603698811,
+              "commit_interval_p50_ms": 11.117499999701977,
+              "commit_interval_p95_ms": 11.725000001490116,
+              "commit_interval_p99_ms": 14.292000003159046,
+              "commit_interval_max_ms": 15.730000000447035,
+              "commits_over_25ms": 0
+            }
+          ],
+          "captures": {
+            "normal": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "overview": "50b3b59849335fd06e6dabaac734a39f6c2a8b73e0ff40d502867a30fafa9ade",
+            "panned": "54aa60b6975827b799ef6efb87174822d269db489b40f44e07214c8570f76c4f",
+            "returned": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "static-overview": "7b1930839533f9847f7b132103f82de8fd6ec1f00d787044ab6830f14216c704",
+            "static-panned": "f9803cb1601775c2d7439eb7d2fadd51da2b1dd96859fe7bf2c8be48cbd339c9",
+            "translucent": "cf37c0e648255025038a06db14e6a6983b77a85abb9ff848bfc5b2f8df7fbcd0",
+            "lens-options": "018bde4983a228ccc50d0ebff5c7268604ba992071d6b781dec4821bd372b54f",
+            "locked": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954",
+            "locked-live-damage": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954",
+            "locked-late-client": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954"
+          },
+          "memory_high_water_kb": 213664,
+          "passed": true
+        },
+        "a2": {
+          "binary": "6b290f43a2aa10875bb6282da0cefff176cccc4d4b6105247f7a926c0be08736",
+          "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+          "runner": "3ada07ab691e622c6533d569c47d1f08ba1ea4d37c712844a7156e6d637eb498",
+          "client_fixture": "7f50fefe09161e589648d03f5186b0da38a81d440377da5387be55ec456465a8",
+          "config": {
+            "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+            "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+            "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+            "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+            "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+            "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+            "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+            "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+            "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+          },
+          "renderer": [
+            "AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0)"
+          ],
+          "platform_profile": "quiet",
+          "cpus": {
+            "candidate": 2,
+            "bridge": 0,
+            "weston": 1
+          },
+          "workload": {
+            "clients": 8,
+            "damage": "full",
+            "two_rows": true,
+            "motion": "zoom"
+          },
+          "trials": [
+            {
+              "repeat": 0,
+              "frames": 756,
+              "start": 266573.882136429,
+              "end": 266582.287107692,
+              "seconds": 8.404971262963954,
+              "cpu_ms": 870.0,
+              "gpu_ms": 416.823093,
+              "cpu_ms_per_frame": 1.1507936507936507,
+              "gpu_ms_per_frame": 0.5513532976190476,
+              "commit_interval_p50_ms": 11.122999999672174,
+              "commit_interval_p95_ms": 11.736999999731779,
+              "commit_interval_p99_ms": 13.094999998807907,
+              "commit_interval_max_ms": 15.263000000268221,
+              "commits_over_25ms": 0
+            },
+            {
+              "repeat": 1,
+              "frames": 757,
+              "start": 266582.289971036,
+              "end": 266590.693914433,
+              "seconds": 8.403943396988325,
+              "cpu_ms": 910.0,
+              "gpu_ms": 408.7425,
+              "cpu_ms_per_frame": 1.202113606340819,
+              "gpu_ms_per_frame": 0.5399504623513871,
+              "commit_interval_p50_ms": 11.11200000345707,
+              "commit_interval_p95_ms": 11.901000000536442,
+              "commit_interval_p99_ms": 13.707000002264977,
+              "commit_interval_max_ms": 14.464999999850988,
+              "commits_over_25ms": 0
+            },
+            {
+              "repeat": 2,
+              "frames": 756,
+              "start": 266590.697079176,
+              "end": 266599.102441254,
+              "seconds": 8.405362077988684,
+              "cpu_ms": 890.0,
+              "gpu_ms": 416.749382,
+              "cpu_ms_per_frame": 1.1772486772486772,
+              "gpu_ms_per_frame": 0.5512557962962963,
+              "commit_interval_p50_ms": 11.100999999791384,
+              "commit_interval_p95_ms": 11.862999998033047,
+              "commit_interval_p99_ms": 13.791999999433756,
+              "commit_interval_max_ms": 15.247999999672174,
+              "commits_over_25ms": 0
+            }
+          ],
+          "captures": {
+            "normal": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "overview": "c8895207e8ff3094dffbf4045bee7fe9403cfd725fecae715398c8630f5b2143",
+            "panned": "aa9872941edcf38f01159e8bc7ec111b248be70c93610d962751637d2e73f45c",
+            "returned": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "static-overview": "7b1930839533f9847f7b132103f82de8fd6ec1f00d787044ab6830f14216c704",
+            "static-panned": "f9803cb1601775c2d7439eb7d2fadd51da2b1dd96859fe7bf2c8be48cbd339c9",
+            "translucent": "cf37c0e648255025038a06db14e6a6983b77a85abb9ff848bfc5b2f8df7fbcd0",
+            "lens-options": "018bde4983a228ccc50d0ebff5c7268604ba992071d6b781dec4821bd372b54f",
+            "locked": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954",
+            "locked-live-damage": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954",
+            "locked-late-client": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954"
+          },
+          "memory_high_water_kb": 213024,
+          "passed": true
+        },
+        "b2": {
+          "binary": "10c3bcd72f8db9c352bd27fbdb19d4763d8eea25b6e6b3b29fba4f4de356c7c9",
+          "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+          "runner": "3ada07ab691e622c6533d569c47d1f08ba1ea4d37c712844a7156e6d637eb498",
+          "client_fixture": "7f50fefe09161e589648d03f5186b0da38a81d440377da5387be55ec456465a8",
+          "config": {
+            "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+            "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+            "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+            "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+            "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+            "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+            "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+            "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+            "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+          },
+          "renderer": [
+            "AMD Radeon 890M Graphics (radeonsi, strix1, ACO, DRM 3.64, 7.0.0)"
+          ],
+          "platform_profile": "quiet",
+          "cpus": {
+            "candidate": 2,
+            "bridge": 0,
+            "weston": 1
+          },
+          "workload": {
+            "clients": 8,
+            "damage": "full",
+            "two_rows": true,
+            "motion": "zoom"
+          },
+          "trials": [
+            {
+              "repeat": 0,
+              "frames": 757,
+              "start": 266652.026012282,
+              "end": 266660.430396131,
+              "seconds": 8.404383849003352,
+              "cpu_ms": 900.0,
+              "gpu_ms": 415.884527,
+              "cpu_ms_per_frame": 1.1889035667107002,
+              "gpu_ms_per_frame": 0.549385108322325,
+              "commit_interval_p50_ms": 11.11400000192225,
+              "commit_interval_p95_ms": 11.778000000864267,
+              "commit_interval_p99_ms": 12.890000000596046,
+              "commit_interval_max_ms": 14.000999998301268,
+              "commits_over_25ms": 0
+            },
+            {
+              "repeat": 1,
+              "frames": 757,
+              "start": 266660.433073443,
+              "end": 266668.83805195,
+              "seconds": 8.404978506965563,
+              "cpu_ms": 900.0,
+              "gpu_ms": 417.725904,
+              "cpu_ms_per_frame": 1.1889035667107002,
+              "gpu_ms_per_frame": 0.551817574636724,
+              "commit_interval_p50_ms": 11.127000000327826,
+              "commit_interval_p95_ms": 11.734000001102686,
+              "commit_interval_p99_ms": 12.938999999314547,
+              "commit_interval_max_ms": 14.52699999883771,
+              "commits_over_25ms": 0
+            },
+            {
+              "repeat": 2,
+              "frames": 756,
+              "start": 266668.841825792,
+              "end": 266677.245414779,
+              "seconds": 8.40358898701379,
+              "cpu_ms": 930.0,
+              "gpu_ms": 417.784605,
+              "cpu_ms_per_frame": 1.2301587301587302,
+              "gpu_ms_per_frame": 0.5526251388888889,
+              "commit_interval_p50_ms": 11.102999996393919,
+              "commit_interval_p95_ms": 12.596999999135733,
+              "commit_interval_p99_ms": 15.274000000208616,
+              "commit_interval_max_ms": 15.953999999910593,
+              "commits_over_25ms": 0
+            }
+          ],
+          "captures": {
+            "normal": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "overview": "c7bc666ebf801c9ddf89889142b5511efe8290d0496f05ad19ff995db586b180",
+            "panned": "aeba8364ce806437e74b47c4c45647f946e08dc4c2475339ba4b4bdddc4572aa",
+            "returned": "39b2cca338f86a1789780370b2d1d4bd5569e5834eff22a32d42e49d12403e9f",
+            "static-overview": "7b1930839533f9847f7b132103f82de8fd6ec1f00d787044ab6830f14216c704",
+            "static-panned": "f9803cb1601775c2d7439eb7d2fadd51da2b1dd96859fe7bf2c8be48cbd339c9",
+            "translucent": "cf37c0e648255025038a06db14e6a6983b77a85abb9ff848bfc5b2f8df7fbcd0",
+            "lens-options": "018bde4983a228ccc50d0ebff5c7268604ba992071d6b781dec4821bd372b54f",
+            "locked": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954",
+            "locked-live-damage": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954",
+            "locked-late-client": "fa725bd40cd2a4cf492f8ad9f2532ef04e5ef3115b573ce30a7ea43eb8773954"
+          },
+          "memory_high_water_kb": 213260,
+          "passed": true
+        }
+      },
+      "summary": {
+        "gpu": {
+          "run_medians": {
+            "a1": 0.5512661770145311,
+            "b1": 0.5566723632760898,
+            "a2": 0.5512557962962963,
+            "b2": 0.551817574636724
+          },
+          "baseline_run_median_mean": 0.5512609866554137,
+          "candidate_run_median_mean": 0.5542449689564068,
+          "change_percent": 0.5413011936682643,
+          "twice_larger_same_binary_spread": 0.009709577278731674,
+          "meaningful_improvement": false,
+          "meaningful_regression": false,
+          "a_pooled_ms_per_commit": 0.5493473628552545,
+          "b_pooled_ms_per_commit": 0.5528876944933921
+        },
+        "cpu": {
+          "run_medians": {
+            "a1": 1.164021164021164,
+            "b1": 1.164021164021164,
+            "a2": 1.1772486772486772,
+            "b2": 1.1889035667107002
+          },
+          "baseline_run_median_mean": 1.1706349206349205,
+          "candidate_run_median_mean": 1.176462365365932,
+          "change_percent": 0.49780205837794966,
+          "twice_larger_same_binary_spread": 0.04976480537907246,
+          "meaningful_improvement": false,
+          "meaningful_regression": false,
+          "a_pooled_ms_per_commit": 1.174267459792906,
+          "b_pooled_ms_per_commit": 1.1828193832599119
+        }
+      }
+    }
+  },
+  "profiles": {
+    "a1": {
+      "binary": "bc2e3d85ae145766372ebec0844662707d5a652e3038ab8832e40783f0e7268e",
+      "runner": "fed8f99c1824e3db2058ac72705cc07a2755b75be167733064b2dfd68196eb03",
+      "workload": {
+        "clients": 16,
+        "damage": null,
+        "two_rows": true,
+        "motion": "pan",
+        "lifecycle": false
+      },
+      "trials": [
+        {
+          "repeat": 0,
+          "frames": 648,
+          "start": 266982.572209909,
+          "end": 266992.59634301,
+          "seconds": 10.024133101047482,
+          "cpu_ms": 340.0,
+          "gpu_ms": 546.24569,
+          "cpu_ms_per_frame": 0.5246913580246914,
+          "gpu_ms_per_frame": 0.8429717438271604,
+          "commit_interval_p50_ms": 11.10700000077486,
+          "commit_interval_p95_ms": 11.62500000372529,
+          "commit_interval_p99_ms": 14.33500000089407,
+          "commit_interval_max_ms": 599.659000005573,
+          "commits_over_25ms": 5
+        },
+        {
+          "repeat": 1,
+          "frames": 647,
+          "start": 266992.59944377,
+          "end": 267002.619067476,
+          "seconds": 10.019623706000857,
+          "cpu_ms": 320.0,
+          "gpu_ms": 533.146756,
+          "cpu_ms_per_frame": 0.4945904173106646,
+          "gpu_ms_per_frame": 0.8240289891808346,
+          "commit_interval_p50_ms": 11.108000002801418,
+          "commit_interval_p95_ms": 11.599000003188848,
+          "commit_interval_p99_ms": 13.907999996095896,
+          "commit_interval_max_ms": 599.1820000037551,
+          "commits_over_25ms": 6
+        }
+      ],
+      "passed": true,
+      "timed_render_ms": {
+        "count": 1295,
+        "mean": 0.44409266409266407,
+        "p50": 0.337,
+        "p95": 0.794,
+        "p99": 1.153,
+        "max": 22.697
+      },
+      "first_entry_800ms_render_ms": {
+        "count": 73,
+        "mean": 0.3891232876712329,
+        "p50": 0.28,
+        "p95": 0.619,
+        "p99": 0.914,
+        "max": 4.226
+      },
+      "timed_capture_calls": 11894,
+      "timed_fallbacks": 2830
+    },
+    "b1": {
+      "binary": "a0b0d98e539cf997fafcb49f3a25e6c05a5be1a4eb214a977dcef3dc0e336371",
+      "runner": "fed8f99c1824e3db2058ac72705cc07a2755b75be167733064b2dfd68196eb03",
+      "workload": {
+        "clients": 16,
+        "damage": null,
+        "two_rows": true,
+        "motion": "pan",
+        "lifecycle": false
+      },
+      "trials": [
+        {
+          "repeat": 0,
+          "frames": 648,
+          "start": 267061.653436371,
+          "end": 267071.671657924,
+          "seconds": 10.018221553007606,
+          "cpu_ms": 280.0,
+          "gpu_ms": 471.539969,
+          "cpu_ms_per_frame": 0.43209876543209874,
+          "gpu_ms_per_frame": 0.727685137345679,
+          "commit_interval_p50_ms": 11.100999999791384,
+          "commit_interval_p95_ms": 11.528999999165535,
+          "commit_interval_p99_ms": 11.858999997377396,
+          "commit_interval_max_ms": 599.9420000016689,
+          "commits_over_25ms": 5
+        },
+        {
+          "repeat": 1,
+          "frames": 648,
+          "start": 267071.675357073,
+          "end": 267081.694093418,
+          "seconds": 10.018736344994977,
+          "cpu_ms": 300.0,
+          "gpu_ms": 492.82014,
+          "cpu_ms_per_frame": 0.46296296296296297,
+          "gpu_ms_per_frame": 0.7605249074074074,
+          "commit_interval_p50_ms": 11.10700000077486,
+          "commit_interval_p95_ms": 11.545999996364117,
+          "commit_interval_p99_ms": 11.993000000715256,
+          "commit_interval_max_ms": 600.1369999982417,
+          "commits_over_25ms": 5
+        }
+      ],
+      "passed": true,
+      "timed_render_ms": {
+        "count": 1296,
+        "mean": 0.360275462962963,
+        "p50": 0.279,
+        "p95": 0.706,
+        "p99": 0.995,
+        "max": 2.505
+      },
+      "first_entry_800ms_render_ms": {
+        "count": 73,
+        "mean": 0.4755068493150685,
+        "p50": 0.301,
+        "p95": 1.055,
+        "p99": 2.144,
+        "max": 4.391
+      },
+      "timed_capture_calls": 11898,
+      "timed_fallbacks": 0
+    },
+    "a2": {
+      "binary": "bc2e3d85ae145766372ebec0844662707d5a652e3038ab8832e40783f0e7268e",
+      "runner": "fed8f99c1824e3db2058ac72705cc07a2755b75be167733064b2dfd68196eb03",
+      "workload": {
+        "clients": 16,
+        "damage": null,
+        "two_rows": true,
+        "motion": "pan",
+        "lifecycle": false
+      },
+      "trials": [
+        {
+          "repeat": 0,
+          "frames": 648,
+          "start": 267140.614501712,
+          "end": 267150.63390825,
+          "seconds": 10.019406537991017,
+          "cpu_ms": 300.0,
+          "gpu_ms": 564.177479,
+          "cpu_ms_per_frame": 0.46296296296296297,
+          "gpu_ms_per_frame": 0.8706442577160493,
+          "commit_interval_p50_ms": 11.104000002145767,
+          "commit_interval_p95_ms": 11.548000004142523,
+          "commit_interval_p99_ms": 12.810999996960163,
+          "commit_interval_max_ms": 600.1770000010729,
+          "commits_over_25ms": 5
+        },
+        {
+          "repeat": 1,
+          "frames": 648,
+          "start": 267150.637225939,
+          "end": 267160.657422993,
+          "seconds": 10.020197053963784,
+          "cpu_ms": 360.0,
+          "gpu_ms": 537.392502,
+          "cpu_ms_per_frame": 0.5555555555555556,
+          "gpu_ms_per_frame": 0.8293094166666667,
+          "commit_interval_p50_ms": 11.102000001817942,
+          "commit_interval_p95_ms": 11.687000002712011,
+          "commit_interval_p99_ms": 12.416000001132488,
+          "commit_interval_max_ms": 599.8779999986291,
+          "commits_over_25ms": 5
+        }
+      ],
+      "passed": true,
+      "timed_render_ms": {
+        "count": 1296,
+        "mean": 0.4126813271604938,
+        "p50": 0.334,
+        "p95": 0.824,
+        "p99": 1.215,
+        "max": 2.885
+      },
+      "first_entry_800ms_render_ms": {
+        "count": 73,
+        "mean": 0.4359041095890411,
+        "p50": 0.288,
+        "p95": 0.761,
+        "p99": 1.121,
+        "max": 4.417
+      },
+      "timed_capture_calls": 11900,
+      "timed_fallbacks": 2828
+    },
+    "b2": {
+      "binary": "a0b0d98e539cf997fafcb49f3a25e6c05a5be1a4eb214a977dcef3dc0e336371",
+      "runner": "fed8f99c1824e3db2058ac72705cc07a2755b75be167733064b2dfd68196eb03",
+      "workload": {
+        "clients": 16,
+        "damage": null,
+        "two_rows": true,
+        "motion": "pan",
+        "lifecycle": false
+      },
+      "trials": [
+        {
+          "repeat": 0,
+          "frames": 648,
+          "start": 267219.500721228,
+          "end": 267229.519263216,
+          "seconds": 10.018541987985373,
+          "cpu_ms": 300.0,
+          "gpu_ms": 479.547811,
+          "cpu_ms_per_frame": 0.46296296296296297,
+          "gpu_ms_per_frame": 0.7400429182098766,
+          "commit_interval_p50_ms": 11.10700000077486,
+          "commit_interval_p95_ms": 11.513999998569489,
+          "commit_interval_p99_ms": 12.266000002622604,
+          "commit_interval_max_ms": 600.0430000014603,
+          "commits_over_25ms": 5
+        },
+        {
+          "repeat": 1,
+          "frames": 638,
+          "start": 267229.522306908,
+          "end": 267239.545118724,
+          "seconds": 10.022811816015746,
+          "cpu_ms": 360.0,
+          "gpu_ms": 404.77273,
+          "cpu_ms_per_frame": 0.5642633228840125,
+          "gpu_ms_per_frame": 0.6344400156739812,
+          "commit_interval_p50_ms": 11.119999997317791,
+          "commit_interval_p95_ms": 12.078999999910593,
+          "commit_interval_p99_ms": 19.43699999898672,
+          "commit_interval_max_ms": 600.0210000015795,
+          "commits_over_25ms": 5
+        }
+      ],
+      "passed": true,
+      "timed_render_ms": {
+        "count": 1286,
+        "mean": 0.4175031104199067,
+        "p50": 0.337,
+        "p95": 0.842,
+        "p99": 1.129,
+        "max": 2.308
+      },
+      "first_entry_800ms_render_ms": {
+        "count": 73,
+        "mean": 0.40513698630136985,
+        "p50": 0.266,
+        "p95": 0.827,
+        "p99": 1.326,
+        "max": 4.092
+      },
+      "timed_capture_calls": 11856,
+      "timed_fallbacks": 0
+    }
+  },
+  "tests": {
+    "nine_exact_captures": [
+      "normal",
+      "returned",
+      "static-overview",
+      "static-panned",
+      "translucent",
+      "lens-options",
+      "locked",
+      "locked-live-damage",
+      "locked-late-client"
+    ],
+    "lifecycle-baseline": {
+      "binary": "6b290f43a2aa10875bb6282da0cefff176cccc4d4b6105247f7a926c0be08736",
+      "runner": "fed8f99c1824e3db2058ac72705cc07a2755b75be167733064b2dfd68196eb03",
+      "passed": false,
+      "focused_tile_rgb": [
+        0.180392,
+        0.231373,
+        0.290196
+      ],
+      "closed_overview_client": null,
+      "second_output_overview": null,
+      "missing_lock_fallback": null,
+      "cleanup_errors": null
+    },
+    "lifecycle-pool": {
+      "binary": "10c3bcd72f8db9c352bd27fbdb19d4763d8eea25b6e6b3b29fba4f4de356c7c9",
+      "runner": "fed8f99c1824e3db2058ac72705cc07a2755b75be167733064b2dfd68196eb03",
+      "passed": true,
+      "focused_tile_rgb": [
+        0.0745098,
+        0.0823529,
+        0.109804
+      ],
+      "closed_overview_client": true,
+      "second_output_overview": true,
+      "missing_lock_fallback": true,
+      "cleanup_errors": null
+    },
+    "gaming_mode": "15/15 passed; mocked commands, not a live freezer or Deck test.",
+    "gaming_mode_test_dirty_patch": "8b671e4685294e93aaf5d065e4aadae4dc138c5c19f5bc920969d3fefe92e01e"
+  },
+  "measurement_only_patch": "1c1777353024c86129e769780e3ffc33edf538929ccd8f3a7c4f4bf746425e0d"
+}
