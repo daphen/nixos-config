@@ -58,7 +58,6 @@ FloatingWindow {
     property int tabPage: 0
     property int windowPage: 0
     property real direction: -1
-    property int pendingStickIndex: -1
     property int selectedMiddleIndex: -1
     property int selectedOuterIndex: -1
     property bool outerActive: false
@@ -177,11 +176,10 @@ FloatingWindow {
 
     function radial(action, value) {
         if (action === "open") {
-            pendingStickIndex = -1
             originalTabId = PaletteState.currentTabId
             appsMode = value >= 16
             outerActive = value % 16 >= 8
-            appLayer = 0
+            appLayer = 2
             windowPage = 0
             direction = appsMode ? value % 8 : -1
             selectedMiddleIndex = ringIndex(middleItems)
@@ -190,13 +188,6 @@ FloatingWindow {
         } else if (action === "direction") { if (!visible) return
             const items = middleActive ? middleItems : outerRingActive ? outerItems : innerItems
             const accepted = acceptedDirection(items, value)
-            const current = ringIndex(items)
-            const candidate = ringIndex(items, accepted)
-            if (current >= 0 && candidate >= 0 && current !== candidate && pendingStickIndex !== candidate) {
-                pendingStickIndex = candidate
-                return
-            }
-            pendingStickIndex = -1
             const previousIndex = ringIndex(innerItems)
             direction = accepted
             if (middleActive) selectedMiddleIndex = ringIndex(middleItems)
@@ -204,11 +195,9 @@ FloatingWindow {
             else if (!appsMode && ringIndex(innerItems) !== previousIndex) previewTab()
         } else if (action === "cycle" && appsMode) {
             appLayer = (appLayer + 1) % 3
-            pendingStickIndex = -1
             selectedMiddleIndex = ringIndex(middleItems)
             selectedOuterIndex = ringIndex(outerItems)
         } else if (action === "outer") {
-            pendingStickIndex = -1
             outerActive = value === 1
             if (outerActive) selectedOuterIndex = ringIndex(outerItems)
             else if (!appsMode) previewTab()
