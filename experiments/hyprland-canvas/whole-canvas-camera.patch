@@ -758,7 +758,7 @@ index e7db82afb930691278ed28220a22121fbff40f02..fd21f1be1dde34be949e709ed5f57bcd
  
  WP<IFullscreenHandler> CFullscreenController::getFsHandler(const PHLWINDOW window, std::optional<bool> layoutHandled) {
 diff --git a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager.cpp
-index 6b00560276bd5e1ea85452cd8434749ea8aa0dc9..3ae7f033670c2dac7c9163d6d679560f778e04bf 100644
+index 6b00560276bd5e1ea85452cd8434749ea8aa0dc9..4d6b5705078c4c1fa3695b9d17b4086cc963caaf 100644
 --- a/src/managers/input/InputManager.cpp
 +++ b/src/managers/input/InputManager.cpp
 @@ -1,4 +1,5 @@
@@ -924,7 +924,7 @@ index 6b00560276bd5e1ea85452cd8434749ea8aa0dc9..3ae7f033670c2dac7c9163d6d679560f
  
      // some virtual pointers send smooth-only wheel events: synthesize the missing discrete value (15 smooth units per 120-unit detent)
      if (e.source == WL_POINTER_AXIS_SOURCE_WHEEL && e.deltaDiscrete == 0 && e.delta != 0)
-@@ -993,6 +1034,21 @@ void CInputManager::onMouseWheel(IPointer::SAxisEvent e, SP<IPointer> pointer) {
+@@ -993,6 +1034,24 @@ void CInputManager::onMouseWheel(IPointer::SAxisEvent e, SP<IPointer> pointer) {
      if (e.mouse)
          recheckMouseWarpOnMouseInput();
  
@@ -938,6 +938,9 @@ index 6b00560276bd5e1ea85452cd8434749ea8aa0dc9..3ae7f033670c2dac7c9163d6d679560f
 +            auto delta = e.delta * factor * 2.5;
 +            if (*PINVERTHORIZONTALSCROLL && e.axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
 +                delta = -delta;
++            if (pointer && pointer->m_deviceName == "InputPlumber Mouse" && delta != 0 && !monitor->m_canvasOverview &&
++                !g_layoutManager->dragController()->target())
++                monitor->canvasOverview();
 +            monitor->canvasPan(e.axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL ? Vector2D{delta, 0.0} : Vector2D{0.0, delta});
 +        }
 +        return;
@@ -946,7 +949,7 @@ index 6b00560276bd5e1ea85452cd8434749ea8aa0dc9..3ae7f033670c2dac7c9163d6d679560f
      PROTO::inputCapture->axis(e.axis, e.delta);
      if (e.source == 0)
          PROTO::inputCapture->axisValue120(e.axis, e.delta);
-@@ -1011,18 +1067,19 @@ void CInputManager::onMouseWheel(IPointer::SAxisEvent e, SP<IPointer> pointer) {
+@@ -1011,18 +1070,19 @@ void CInputManager::onMouseWheel(IPointer::SAxisEvent e, SP<IPointer> pointer) {
          const auto PWINDOW = Desktop::viewState()->hitTest().windowAt(MOUSECOORDS, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
  
          if (PWINDOW) {
@@ -970,7 +973,7 @@ index 6b00560276bd5e1ea85452cd8434749ea8aa0dc9..3ae7f033670c2dac7c9163d6d679560f
  
                      if (*POFFWINDOWAXIS == 3)
                          Pointer::pointerController()->warpTo({TEMPCURX, TEMPCURY}, true);
-@@ -2244,7 +2301,7 @@ void CInputManager::setCursorIconOnBorder(PHLWINDOW w) {
+@@ -2244,7 +2304,7 @@ void CInputManager::setCursorIconOnBorder(PHLWINDOW w) {
  
      // give a small leeway (10 px) for corner icon
      const auto           CORNER           = ROUNDING + BORDERSIZE + 10;

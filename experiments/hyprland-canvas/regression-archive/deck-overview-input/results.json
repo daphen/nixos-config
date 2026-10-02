@@ -1,0 +1,229 @@
+{
+  "base_commit": "5ed47fe881e59f9fdb95b671f277419d1c8f469d",
+  "native_before": "4970d945f3e19ff9bed00c22f901fa36ccccd67f67739cefe3de628e233821ad",
+  "native_after": "fa7bb1ff6a91fa57517b9993d9c5fb52e3e00ee8796d1280eb32caf83d2ba557",
+  "candidate_binary": "082fdd95eb3689425bdc94255836f8221625edaccf24fe7e300710554b3baa36",
+  "whole_canvas_patch": "ef32b0a41209b16b1ad368034c6e8f520036289e5c97a2aa244efec257567ef1",
+  "deck_patch": "306cb9ae8cd62bbb0e28ed63ec17d9fef01f7b305353165fec2b79ab4137335f",
+  "model": "openai/gpt-6-astra",
+  "raw_directory": "/home/daphen/.cache/canvas-deck-overview-input",
+  "hardware_exercised": false,
+  "steam_relative_motion_exercised": false,
+  "runs": {
+    "baseline-inputplumber": {
+      "passed": false,
+      "binary": "10c3bcd72f8db9c352bd27fbdb19d4763d8eea25b6e6b3b29fba4f4de356c7c9",
+      "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+      "runner": "165d570496eeb3b8573da825b75a6070808e34b3eed8977eb7eff6d4c55211a2",
+      "config": {
+        "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+        "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+        "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+        "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+        "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+        "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+        "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+        "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+        "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+      },
+      "input_fixture": {
+        "/home/daphen/nixos.candidate-canvas-zoom-performance/experiments/hyprland-canvas/canvas_deck_input_test.py": "ecaceeacd9486625a15051779915e492f194511c09c5392623832616c800e187",
+        "/home/daphen/.cache/canvas-deck-overview-input/pointer-name.so": "3881a3bebc8241de3d63984d238b6a19ff023f8fb734db79f058fc504da71dc7",
+        "/home/daphen/.cache/canvas-deck-overview-input/canvas-key-sequence": "1aa48249f15399ca3e3c0b46c5c446c6f8e7143e8a81624c3208bbf36ca5ef05"
+      },
+      "controller_input": null,
+      "controller_locked": null,
+      "captures": {},
+      "cleanup_errors": null,
+      "input_result": {
+        "device_name": "InputPlumber Mouse",
+        "locked": false,
+        "passed": false,
+        "devices": [
+          {
+            "address": "0x55c9e5501e60",
+            "name": "inputplumber-mouse",
+            "defaultSpeed": 0.0,
+            "scrollFactor": -1.0
+          }
+        ]
+      }
+    },
+    "candidate-inputplumber": {
+      "passed": true,
+      "binary": "082fdd95eb3689425bdc94255836f8221625edaccf24fe7e300710554b3baa36",
+      "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+      "runner": "165d570496eeb3b8573da825b75a6070808e34b3eed8977eb7eff6d4c55211a2",
+      "config": {
+        "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+        "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+        "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+        "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+        "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+        "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+        "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+        "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+        "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+      },
+      "input_fixture": {
+        "/home/daphen/nixos.candidate-canvas-zoom-performance/experiments/hyprland-canvas/canvas_deck_input_test.py": "ecaceeacd9486625a15051779915e492f194511c09c5392623832616c800e187",
+        "/home/daphen/.cache/canvas-deck-overview-input/pointer-name.so": "3881a3bebc8241de3d63984d238b6a19ff023f8fb734db79f058fc504da71dc7",
+        "/home/daphen/.cache/canvas-deck-overview-input/canvas-key-sequence": "1aa48249f15399ca3e3c0b46c5c446c6f8e7143e8a81624c3208bbf36ca5ef05"
+      },
+      "controller_input": {
+        "device_name": "InputPlumber Mouse",
+        "locked": false,
+        "passed": true,
+        "devices": [
+          {
+            "address": "0x55e648ab08a0",
+            "name": "inputplumber-mouse",
+            "defaultSpeed": 0.0,
+            "scrollFactor": -1.0
+          }
+        ],
+        "super_alone_ignored": true,
+        "zero_delta_ignored": true,
+        "first_delta_enters": true,
+        "repeated_delta_keeps_mode": true,
+        "release_finishes": true,
+        "existing_overview_wheel_preserved": true,
+        "drag_did_not_enter": true
+      },
+      "controller_locked": {
+        "device_name": "InputPlumber Mouse",
+        "locked": true,
+        "passed": true,
+        "devices": [
+          {
+            "address": "0x55e648ab08a0",
+            "name": "inputplumber-mouse",
+            "defaultSpeed": 0.0,
+            "scrollFactor": -1.0
+          }
+        ]
+      },
+      "captures": {
+        "normal": "940d1307cc69010d55097f83809df9406055c150fed8553d6af6d589ac317a03",
+        "overview": "51f5fad7a325130beec233382f2d65a86565bfa40d06417aaa44836b76c643ad",
+        "panned": "738de385703693b84be89721568c9d6572b6159add3bf4d217683f742418e5b4",
+        "returned": "940d1307cc69010d55097f83809df9406055c150fed8553d6af6d589ac317a03",
+        "static-overview": "ff5205359174d03a0beffb4e86bfe580d6130faa1e5362bd8cb3584095a0dcba",
+        "static-panned": "07fdb1c5fe8e08f49df3eb07859b904eff3d04eefd7e093d74e9679500e44e14",
+        "translucent": "af1bc11219cb5b378167aa0c1b1b56e8c71dbcabe83e9236c99f3f94819897a2",
+        "lens-options": "d97f4741e66b17b061e62212c1baaa12e7e3784bca214dfb7274192bd2437386",
+        "locked": "f9ce93e02684dad502199ad8e205ba97f5ca723c65b4fd63c76974238bb4929f",
+        "locked-late-client": "f9ce93e02684dad502199ad8e205ba97f5ca723c65b4fd63c76974238bb4929f"
+      },
+      "cleanup_errors": null,
+      "input_result": {
+        "device_name": "InputPlumber Mouse",
+        "locked": false,
+        "passed": true,
+        "devices": [
+          {
+            "address": "0x55e648ab08a0",
+            "name": "inputplumber-mouse",
+            "defaultSpeed": 0.0,
+            "scrollFactor": -1.0
+          }
+        ],
+        "super_alone_ignored": true,
+        "zero_delta_ignored": true,
+        "first_delta_enters": true,
+        "repeated_delta_keeps_mode": true,
+        "release_finishes": true,
+        "existing_overview_wheel_preserved": true,
+        "drag_did_not_enter": true
+      }
+    },
+    "candidate-generic": {
+      "passed": true,
+      "binary": "082fdd95eb3689425bdc94255836f8221625edaccf24fe7e300710554b3baa36",
+      "parent_binary": "7f722eb8bf41453e35b931179edceb0940b0bb331328a520459f73ab9a763045",
+      "runner": "165d570496eeb3b8573da825b75a6070808e34b3eed8977eb7eff6d4c55211a2",
+      "config": {
+        "canvas-state.lua": "ffddc026d6952b6a9072680ae860788da22c7fc6b49ba37091909a46a971c268",
+        "hyprland.lua": "00f88afb9d3b981e6492b0ed01e036e118bb312c4ff54c20a3b1ba6d6028d099",
+        "modules/input.lua": "dadade7e5271e54e507fa3db317f68864234149d38a020c9c1d9cf673912798f",
+        "modules/binds.lua": "a8907089ae7951f12fa7028709c3f5d9ca875a713ed81019e31925c60d02ee47",
+        "modules/appearance.lua": "88fb8f34b40d70291a50d6056cb8d2206cdc7e6431dab668f40e9e25feef83d6",
+        "modules/autostart.lua": "dcb3ed04162be8f6e471c055a29866a1f3a14f96e2c09ffa2ef308d13a51cb85",
+        "modules/monitors.lua": "1918ba791cea93c0ba911ee9b77485b9d28e78bca3496bc06ea21deda0e4613e",
+        "modules/windowrules.lua": "c2e86663b0d1a5d52072d05582a51f4b42dadcc69eb59187cf40fa646d3ad561",
+        "modules/animations.lua": "f0545b99f74e70628da9240509e158644dcf7562c7048c413058b7de4c2cf916"
+      },
+      "input_fixture": {
+        "/home/daphen/nixos.candidate-canvas-zoom-performance/experiments/hyprland-canvas/canvas_deck_input_test.py": "ecaceeacd9486625a15051779915e492f194511c09c5392623832616c800e187",
+        "/home/daphen/.cache/canvas-deck-overview-input/pointer-name.so": "3881a3bebc8241de3d63984d238b6a19ff023f8fb734db79f058fc504da71dc7",
+        "/home/daphen/.cache/canvas-deck-overview-input/canvas-key-sequence": "1aa48249f15399ca3e3c0b46c5c446c6f8e7143e8a81624c3208bbf36ca5ef05"
+      },
+      "controller_input": {
+        "device_name": "Generic Test Mouse",
+        "locked": false,
+        "passed": true,
+        "devices": [
+          {
+            "address": "0x55ddf5078c50",
+            "name": "generic-test-mouse",
+            "defaultSpeed": 0.0,
+            "scrollFactor": -1.0
+          }
+        ],
+        "super_alone_ignored": true,
+        "zero_delta_ignored": true,
+        "first_delta_enters": false,
+        "repeated_delta_keeps_mode": true,
+        "release_finishes": true,
+        "existing_overview_wheel_preserved": true,
+        "drag_did_not_enter": true
+      },
+      "controller_locked": {
+        "device_name": "Generic Test Mouse",
+        "locked": true,
+        "passed": true,
+        "devices": [
+          {
+            "address": "0x55ddf5078c50",
+            "name": "generic-test-mouse",
+            "defaultSpeed": 0.0,
+            "scrollFactor": -1.0
+          }
+        ]
+      },
+      "captures": {
+        "normal": "3bde96ccaed1cd1fabebbced289d105b03e4b60561555f7d43086c6b266e8143",
+        "overview": "8cb81dd081e7985badd16eec5a3b9ec60be1cc4496027165e8d43bbc1e47d3f9",
+        "panned": "49048ad18341f460320aad26432de5b541ccab29d6225ff913bd2d7cbdc2e78b",
+        "returned": "3bde96ccaed1cd1fabebbced289d105b03e4b60561555f7d43086c6b266e8143",
+        "static-overview": "28c983c17f4ca0ed35f23fe6e63752fbfce0aa4ee0a32a5f8adea087464e112b",
+        "static-panned": "399673d38d4a55f187ffc07e99c1cbecd04427304e11bf8d522eb360a487cce5",
+        "translucent": "2d974a6dac3cf01de2d6ec2790d5a239c167e67d103208ddafab6b947c4497af",
+        "lens-options": "ea3c91a2f90c534bc6726bc4c7cf6d8b7242251dc57b9970e9909cc8d27f2f29",
+        "locked": "f9ce93e02684dad502199ad8e205ba97f5ca723c65b4fd63c76974238bb4929f",
+        "locked-late-client": "f9ce93e02684dad502199ad8e205ba97f5ca723c65b4fd63c76974238bb4929f"
+      },
+      "cleanup_errors": null,
+      "input_result": {
+        "device_name": "Generic Test Mouse",
+        "locked": false,
+        "passed": true,
+        "devices": [
+          {
+            "address": "0x55ddf5078c50",
+            "name": "generic-test-mouse",
+            "defaultSpeed": 0.0,
+            "scrollFactor": -1.0
+          }
+        ],
+        "super_alone_ignored": true,
+        "zero_delta_ignored": true,
+        "first_delta_enters": false,
+        "repeated_delta_keeps_mode": true,
+        "release_finishes": true,
+        "existing_overview_wheel_preserved": true,
+        "drag_did_not_enter": true
+      }
+    }
+  }
+}
