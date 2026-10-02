@@ -322,9 +322,15 @@ return function(ctx)
 					if radial_kind == "browser" then radial_press(index) end
 					return
 				end
+				if deck_rt_down and key == "F4" then return end
 				hl.dispatch(hl.dsp.layout((deck_rt_down and "resize " or "move ") .. direction))
 			end, { repeating = true })
 		end
+		hl.bind("SUPER + F4", function()
+			if not radial_open and deck_rt_down then
+				hl.dispatch(hl.dsp.layout("widen"))
+			end
+		end)
 		local function radial_outer_press()
 			if not radial_open then
 				radial_outer = true
@@ -534,7 +540,7 @@ return function(ctx)
 		hl.bind("F12", function() end, { dont_inhibit = true })
 		hl.bind("SUPER + F12", function()
 			if not radial_open and deck_rt_down then
-				hl.dispatch(hl.dsp.layout("widen"))
+				hl.dispatch(hl.dsp.window.close())
 			end
 		end, { dont_inhibit = true })
 		hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))

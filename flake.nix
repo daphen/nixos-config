@@ -46,7 +46,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     mlqs = {
-      url = "git+ssh://git@github.com/daphen/mlqs?ref=daphen/client-mouse-support";
+      url = "git+ssh://git@github.com/daphen/mlqs?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     opqs = {

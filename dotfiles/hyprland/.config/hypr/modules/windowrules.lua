@@ -59,15 +59,7 @@ return function(ctx)
 		floating_rule("file-chooser", { class = "^file-chooser$" }, "62% 72%")
 		floating_rule("media-viewer", { class = "^(imv|mpv)$" })
 		floating_rule("one-password", { class = "^1password$" }, "1400 950")
-		if DECK_MODE then
-			hl.window_rule({
-				name = "mail",
-				match = { title = "^mlqs$" },
-				float = true,
-				size = "1264 732",
-				move = "8 60",
-			})
-		else
+		if not DECK_MODE then
 			floating_rule("mail", { title = "^mlqs$" }, "1700 1100")
 		end
 		floating_rule("discord-voice", { class = "^(chrome-discord\\.com.*|dsqrd-voice)$" })

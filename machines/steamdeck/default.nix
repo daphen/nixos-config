@@ -172,7 +172,8 @@ let
     export HYPR_CANVAS_CAMERA=1
     export HYPR_CANVAS_PROFILE=deck
     export HYPR_SCRIPTS="$HOME/.config/hypr/scripts/"
-    ${canvas}/bin/start-hyprland -- --config "$HOME/.config/hypr/hyprland.lua"
+    export PATH="${canvas}/bin:$HOME/.local/bin:/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH"
+    ${canvas}/bin/start-hyprland --path ${canvas}/bin/Hyprland -- --config "$HOME/.config/hypr/hyprland.lua"
   '';
   gamingMode = pkgs.writeShellApplication {
     name = "deck-gaming-mode";
@@ -288,6 +289,7 @@ in
   };
   environment.sessionVariables = {
     HYPR_CANVAS_PROFILE = "deck";
+    COCKPIT_DECK = "1";
     NIXOS_OZONE_WL = "1";
     MOZ_ENABLE_WAYLAND = "1";
   };
