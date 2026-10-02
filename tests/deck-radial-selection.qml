@@ -22,10 +22,15 @@ ShellRoot {
         console.log("DENSE360 reached " + visited.size + "/" + entries.length + " entries")
         if (Quickshell.env("RADIAL_DENSE_ONLY") === "1") return
         for (const value of [2, 4, 6, 0, 1, 3, 5, 7]) {
+            const before = radial.direction
+            const changes = radial.ringIndex(entries) >= 0 && radial.ringIndex(entries, value) !== radial.ringIndex(entries)
             radial.updateStick("direction " + value)
-            check(radial.direction === value, "single direction packet was discarded: " + value)
+            if (changes) check(radial.direction === before, "unconfirmed candidate changed selection")
+            radial.updateStick("direction " + value)
+            check(radial.direction === value, "confirmed direction was discarded: " + value)
             check((radial.selectedEntry !== null) === (entries.length > 0), "direction lost its selected entry")
         }
+        radial.updateStick("direction 2.100")
         radial.updateStick("direction 2.125")
         check(radial.direction === 2.125, "fractional analog direction was quantized")
         for (const data of ["invalid 4", "direction NaN", "direction Infinity", "direction 2 extra"])
@@ -56,8 +61,8 @@ ShellRoot {
                     Modules.PaletteState.radialRequested("cycle", 0)
                     check(radial.outerRingActive, "cycle must return to launchers")
                     Modules.PaletteState.radialRequested("direction", 4)
-                    if (Quickshell.env("RADIAL_DENSE_ONLY") === "1") Modules.PaletteState.radialRequested("direction", 4)
-                    check(radial.direction === 4, "single IPC direction was discarded")
+                    Modules.PaletteState.radialRequested("direction", 4)
+                    check(radial.direction === 4, "confirmed IPC direction was discarded")
                     Modules.PaletteState.radialRequested("activate", 0)
                     check(!Modules.PaletteState.open, "activation did not close menu")
                     radial.updateStick("direction 6")
@@ -73,7 +78,7 @@ ShellRoot {
                 } else if (phase === 3) {
                     Modules.PaletteState.radialRequested("finish", 0)
                     check(!Modules.PaletteState.open, "release/finish did not close menu")
-                    console.log("PASS radial public IPC and analog packets: eight directions, fractional angles, rings, activation, cancel, release, invalid/late guards")
+                    console.log("PASS radial public IPC and analog packets: debounced directions, fractional angles, rings, activation, cancel, release, invalid/late guards")
                     Qt.quit()
                 }
                 phase++

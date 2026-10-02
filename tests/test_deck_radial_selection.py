@@ -10,7 +10,7 @@ BWRAP = shutil.which("bwrap") or next(Path("/nix/store").glob("*-bubblewrap-*/bi
 
 
 class DeckRadialSelectionTest(unittest.TestCase):
-    def test_single_analog_packet_changes_selection(self):
+    def test_analog_candidate_requires_confirmation(self):
         self.run_fixture(False, 8)
 
     def test_dense_rotation(self):
@@ -35,7 +35,7 @@ class DeckRadialSelectionTest(unittest.TestCase):
             scripts.mkdir(parents=True)
             for name in ("deck-radial-stick", "desktop-launch", "hypr-dispatch"):
                 path = scripts / name
-                path.write_text("#!/bin/sh\n" + ("printf 'direction 2.125\\n'\n" if name == "deck-radial-stick" else "exit 0\n"))
+                path.write_text("#!/bin/sh\n" + ("printf 'direction 2.100\\ndirection 2.125\\n'\n" if name == "deck-radial-stick" else "exit 0\n"))
                 path.chmod(0o755)
             config_dir = root / "config"
             shutil.copytree(ROOT / "dotfiles/quickshell/.config/quickshell", config_dir)
