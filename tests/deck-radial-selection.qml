@@ -5,6 +5,10 @@ import "modules" as Modules
 
 ShellRoot {
     Modules.DeckRadialPalette { id: radial }
+    Process {
+        running: radial.visible
+        command: [Quickshell.env("RADIAL_TEST_PRODUCER")]
+    }
     property int phase: 0
     function check(value, message) { if (!value) throw new Error(message) }
     function open(value) {
@@ -46,7 +50,7 @@ ShellRoot {
                     open(16)
                 } else if (phase === 1) {
                     check(radial.visible && radial.appsMode && radial.outerRingActive && radial.outerItems.length === 8, "app menu must open on its eight launchers")
-                    check(radial.direction === 2.125, "reader stdout did not reach selection through SplitParser")
+                    check(radial.direction === 2, "real reader stdout did not reach selection through SplitParser")
                     directions()
                     radial.updateStick("direction 2")
                     radial.updateStick("direction 2")
@@ -70,7 +74,7 @@ ShellRoot {
                     open(0)
                 } else if (phase === 2) {
                     check(radial.visible && !radial.appsMode, "browser menu did not open")
-                    check(radial.direction === 2.125, "reader stdout did not reach browser selection")
+                    check(radial.direction === 2, "real reader stdout did not reach browser selection")
                     directions()
                     Modules.PaletteState.radialRequested("cancel", 0)
                     check(!Modules.PaletteState.open, "cancel did not close menu")
