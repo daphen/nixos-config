@@ -65,6 +65,9 @@ assert(calls[#calls]:match("radial activate 0 ''$"), 'LT release must activate a
 bindings['F7']()
 bindings['SUPER + F19']()
 assert(calls[#calls]:match('palette%-toggle 0$'), 'RT + left stick up must open browser menu')
+events['input.keyboard.key'](69, 0, 0)
+right_stick()
+assert(calls[#calls]:match("radial direction 2 ''$"), 'RT + right-stick right must retain browser radial selection')
 bindings['SUPER + F13']()
 assert(calls[#calls]:match("radial step %-1 ''$"), 'D-pad must retain browser paging')
 events['input.keyboard.key'](73, 0, 0)
@@ -107,6 +110,7 @@ assert(calls[#calls] == 'layout:resize h', 'other RT + right-stick resize direct
 bindings['SUPER + F12']()
 assert(calls[#calls] == 'window.close', 'LT + RT + right-stick click must close, not widen')
 assert(not options['SUPER + F12'].locked, 'close chord must remain blocked while locked')
+assert(not options['SUPER + F12'].repeating, 'close click must not repeat')
 events['input.keyboard.key'](73, 0, 0)
 before = #calls
 bindings['SUPER + F12']()
