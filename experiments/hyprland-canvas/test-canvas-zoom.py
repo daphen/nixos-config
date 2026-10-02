@@ -35,12 +35,16 @@ def main():
     parser.add_argument('--two-rows', action='store_true')
     parser.add_argument('--motion', choices=('zoom', 'pan'), default='zoom')
     parser.add_argument('--lifecycle', action='store_true')
+    parser.add_argument('--input-name', choices=('InputPlumber Mouse', 'Generic Test Mouse'))
+    parser.add_argument('--input-name-shim', type=Path)
+    parser.add_argument('--input-keys', type=Path)
     parser.add_argument('--transform', type=int, choices=(0, 3), default=3)
     parser.add_argument('--cpu', type=int, required=True)
     parser.add_argument('--parent-cpu', type=int, required=True)
     parser.add_argument('--weston-cpu', type=int, required=True)
     args = parser.parse_args()
     assert not args.lifecycle or (args.clients == 16 and args.two_rows and args.transform == 3)
+    assert not args.input_name or (args.input_name_shim and args.input_keys)
     args.output.mkdir(parents=True, exist_ok=False)
     width, height = (800, 1280) if args.transform == 3 else (1280, 800)
     runtime = Path(tempfile.mkdtemp(prefix='cz-'))
@@ -100,7 +104,8 @@ def main():
         listener.bind(str(runtime / 'candidate'))
         listener.listen(16)
         child = launch([str(args.binary), '--socket', 'candidate', '--wayland-fd', str(listener.fileno()), '--config', str(wrapper)],
-                       dict(env, WAYLAND_DISPLAY='bridge', EGL_PLATFORM='wayland', AQ_DRM_DEVICES='/dev/null', LIBSEAT_BACKEND='none', WAYLAND_DEBUG='client'),
+                       dict(env, WAYLAND_DISPLAY='bridge', EGL_PLATFORM='wayland', AQ_DRM_DEVICES='/dev/null', LIBSEAT_BACKEND='none', WAYLAND_DEBUG='client',
+                            **({'LD_PRELOAD': str(args.input_name_shim), 'CANVAS_TEST_POINTER_NAME': args.input_name} if args.input_name else {})),
                        'compositor.log', pass_fds=(listener.fileno(),))
         instance = r.wait(lambda: next((p for p in (runtime / 'hypr').glob('*') if p != bridge_instance and (p / '.socket.sock').exists()), None), [child])
         ctl = lambda command: r.ipc(instance, command)
@@ -162,6 +167,13 @@ def main():
                     marker.touch() if active else marker.unlink()
                 time.sleep(.3)
 
+        if args.input_name:
+            input_path = ROOT / 'canvas_deck_input_test.py'
+            input_spec = importlib.util.spec_from_file_location('deck_input', input_path)
+            input_test = importlib.util.module_from_spec(input_spec)
+            input_spec.loader.exec_module(input_test)
+            result['input_fixture'] = {str(p): r.sha(p) for p in (input_path, args.input_name_shim, args.input_keys)}
+            result['controller_input'] = input_test.run(ctl, bctl, runtime, appenv, args.input_keys, args.output, args.input_name)
         shot('normal')
         dispatch('overview')
         time.sleep(2)
@@ -266,12 +278,18 @@ def main():
             subprocess.run(['grim', '-o', 'HEADLESS-2', str(args.output / 'second-output.png')], env=appenv, check=True, timeout=10)
             assert ctl('dispatch hl.dsp.focus({monitor="WAYLAND-1"})').strip() == 'ok'
             result['second_output_overview'] = True
-        lock = launch(['swaylock' , '--config', '/dev/null', '--color', '00000000'], dict(appenv, WAYLAND_DEBUG='client'), 'lock.log')
+        lock = launch(['swaylock', '--config', '/dev/null', '--color', '00000000'] + (['--no-unlock-indicator'] if args.input_name else []),
+                      dict(appenv, WAYLAND_DEBUG='client'), 'lock.log')
         r.wait(lambda: 'ext_session_lock_v1' in (args.output / 'lock.log').read_text() and '.locked(' in (args.output / 'lock.log').read_text(), [child, lock])
         time.sleep(2)
         locked = args.output / 'locked.png'
         subprocess.run(['grim', '-o', 'HEADLESS-1', str(locked)], env=dict(appenv, WAYLAND_DISPLAY='bridge'), check=True, timeout=10)
         result['captures']['locked'] = r.sha(locked)
+        if args.input_name:
+            result['controller_locked'] = input_test.run(ctl, bctl, runtime, appenv, args.input_keys, args.output, args.input_name, locked=True)
+            held_lock = args.output / 'locked-controller-input.png'
+            subprocess.run(['grim', '-o', 'HEADLESS-1', str(held_lock)], env=dict(appenv, WAYLAND_DISPLAY='bridge'), check=True, timeout=10)
+            assert r.sha(held_lock) == r.sha(locked), 'controller input changed locked output'
         if args.damage:
             animate(True)
             time.sleep(1)

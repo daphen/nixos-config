@@ -1,8 +1,8 @@
 diff --git a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager.cpp
-index 3ae7f033670c2dac7c9163d6d679560f778e04bf..60fe2280b4871be58bfc160f91585f374b3543a5 100644
+index 4d6b5705078c4c1fa3695b9d17b4086cc963caaf..d07975cfa2f705faa4b13b9ae942575782a86cba 100644
 --- a/src/managers/input/InputManager.cpp
 +++ b/src/managers/input/InputManager.cpp
-@@ -155,7 +155,17 @@ void CInputManager::onMouseMoved(IPointer::SMotionEvent e) {
+@@ -155,7 +155,19 @@ void CInputManager::onMouseMoved(IPointer::SMotionEvent e) {
      if (e.mouse)
          recheckMouseWarpOnMouseInput();
  
@@ -14,6 +14,8 @@ index 3ae7f033670c2dac7c9163d6d679560f778e04bf..60fe2280b4871be58bfc160f91585f37
 +        (*PDISABLEINHIBIT || !PROTO::shortcutsInhibit->isInhibited()) && (getModsFromAllKBs() & Input::HL_MODIFIER_META);
 +    if (steamCanvasPan) {
 +        Desktop::focusState()->rawMonitorFocus(monitor);
++        if (DELTA != Vector2D{} && !monitor->m_canvasOverview)
++            monitor->canvasOverview();
 +        monitor->canvasPan(DELTA);
 +        return;
 +    }
