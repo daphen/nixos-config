@@ -1,0 +1,22 @@
+--- a/src/output/Monitor.cpp
++++ b/src/output/Monitor.cpp
+@@ -220,8 +220,6 @@
+         canvasMotionConfig(*this, "canvasCamera");
+     if (m_canvasCommitting)
+         m_canvasOverview = false;
+-    if (!m_canvasOverview && !m_canvasPanning)
+-        canvasOverview();
+     m_canvasPanning = true;
+     Animation::mgr()->requestTick();
+     m_canvasCommitting = false;
+--- a/src/keybinds/Manager.cpp
++++ b/src/keybinds/Manager.cpp
+@@ -239,7 +239,7 @@
+ 
+     const auto KEY_AS_MOD = modifierFromXkb(KEYSYM);
+     if (KEY_EVENT.state == WL_KEYBOARD_KEY_STATE_RELEASED && KEY_AS_MOD == Input::HL_MODIFIER_META)
+-        if (const auto monitor = Desktop::focusState()->monitor(); monitor && monitor->m_canvasOverview)
++        if (const auto monitor = Desktop::focusState()->monitor(); monitor && (monitor->m_canvasOverview || monitor->m_canvasPanning))
+             monitor->canvasFinish();
+ 
+     const auto KEY = SResolvedKey{

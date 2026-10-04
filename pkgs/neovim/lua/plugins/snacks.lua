@@ -23,30 +23,37 @@ local function open_changed_files_picker()
 				{ win = "input", height = 1, border = "bottom" }, { win = "list", border = "none" } } },
 			finder = function(_, ctx)
 				return function(cb)
-					cockpit.git_snapshot(cwd, true, function(snapshot)
-						ctx.async:schedule(function()
-							if snapshot.error then
-								ctx.picker.title = "VM diff unavailable · " .. snapshot.error
-							else
-								local branch = snapshot.branch and snapshot.branch ~= "" and (snapshot.branch .. "  ·  ") or ""
-								ctx.picker.title = branch .. "changed vs " .. tostring(snapshot.base or "?"):sub(1, 8)
-							end
-							ctx.picker:update_titles()
-						end)
-						if snapshot.error then return end
-						for _, file in ipairs(snapshot.files or {}) do
-							if not file.path:match("^%.heidr%-pastes/") and not file.path:match("^%.cockpit%-pastes/") then
-								file.text = file.oldPath and (file.oldPath .. " → " .. file.path) or file.path
-								file.file = cwd .. "/" .. file.path
-								cb(file)
-							end
-						end
+					local snapshot, waiting
+					cockpit.git_snapshot(cwd, true, function(result)
+						snapshot = result
+						if waiting then ctx.async:resume() end
 					end)
+					if not snapshot then
+						waiting = true
+						ctx.async:suspend()
+					end
+					ctx.async:schedule(function()
+						if snapshot.error then
+							ctx.picker.title = "VM diff unavailable · " .. snapshot.error
+						else
+							local branch = snapshot.branch and snapshot.branch ~= "" and (snapshot.branch .. "  ·  ") or ""
+							ctx.picker.title = branch .. "changed vs " .. tostring(snapshot.base or "?"):sub(1, 8)
+						end
+						ctx.picker:update_titles()
+					end)
+					if snapshot.error then return end
+					for _, file in ipairs(snapshot.files or {}) do
+						if not file.path:match("^%.heidr%-pastes/") and not file.path:match("^%.cockpit%-pastes/") then
+							file.text = file.oldPath and (file.oldPath .. " → " .. file.path) or file.path
+							file.file = cwd .. "/" .. file.path
+							cb(file)
+						end
+					end
 				end
 			end,
 			format = function(item)
-				local suffix = item.binary and "  [binary]" or (item.untracked and "  [untracked]" or "")
-				return { { (item.text or "") .. suffix, "SnacksPickerFile" } }
+				local suffix = (item.untracked and "  [not in PR · untracked]" or "") .. (item.binary and "  [binary]" or "")
+				return { { item.text or "", "SnacksPickerFile" }, { suffix, "SnacksPickerComment" } }
 			end,
 			preview = function(ctx)
 				ctx.preview:reset()
@@ -135,7 +142,8 @@ local function open_changed_files_picker()
 		end,
 		-- Strip the default workspace-package prefix; show plain paths.
 		format = function(item)
-			return { { item.text or "", "SnacksPickerFile" } }
+			return { { item.text or "", "SnacksPickerFile" },
+				{ item.untracked and "  [not in PR · untracked]" or "", "SnacksPickerComment" } }
 		end,
 		preview = function(ctx)
 			ctx.preview:reset()

@@ -11,69 +11,34 @@ Item {
     property int fontPixelSize: height >= 50 ? 15 : 13
     signal clicked()
 
-    readonly property color topColor: primary
-        ? (Theme.mode === "dark" ? "#FAFAFA" : "#3D3D3D")
-        : (Theme.mode === "dark" ? Theme.surface3 : "#FFFFFF")
-    readonly property color bottomColor: primary
-        ? (Theme.mode === "dark" ? "#DDDDDD" : "#0E0E0E")
-        : (Theme.mode === "dark" ? Theme.surface1 : Theme.surface2)
-    readonly property color contentColor: primary
-        ? (Theme.mode === "dark" ? "#2D2D2B" : "#FAFAFA")
-        : Theme.fg
+    readonly property color topColor: face.topColor
+    readonly property color bottomColor: face.bottomColor
+    readonly property color contentColor: face.contentColor
 
     implicitWidth: Math.max(36, label.implicitWidth + (icon.visible ? icon.width + 18 : 0) + 48)
     implicitHeight: 38
     opacity: enabled ? 1 : 0.38
+    Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.InOutQuad } }
 
     Rectangle {
         anchors.fill: parent
         anchors.topMargin: 2
         radius: root.radius
         color: Qt.rgba(0, 0, 0, root.primary
-            ? (Theme.mode === "dark" ? 0.28 : 0.18)
-            : (Theme.mode === "dark" ? 0.20 : 0.12))
+            ? (Theme.mode === "dark" ? 0.28 : 0.01)
+            : (Theme.mode === "dark" ? 0.20 : 0))
     }
 
-    Rectangle {
+    ButtonSurface {
         id: face
         width: parent.width
         height: parent.height - 2
         radius: root.radius
+        primary: root.primary
+        inverted: Theme.mode === "dark"
+        emphasized: root.emphasized
         y: tap.pressed ? 2 : hover.hovered ? 0 : 1
-        border.width: 1
-        border.color: root.primary
-            ? (Theme.mode === "dark"
-                ? (root.emphasized ? "#969696" : "#AAAAAA")
-                : Qt.rgba(0, 0, 0, root.emphasized ? 0.62 : 0.50))
-            : (Theme.mode === "dark" ? Theme.hairline : "#C8C8C6")
-        gradient: Gradient {
-            orientation: Gradient.Vertical
-            GradientStop {
-                position: 0
-                color: root.primary
-                    ? (Theme.mode === "dark" ? "#D8D8D8" : "#666666")
-                    : (Theme.mode === "dark" ? Theme.surface3 : "#F5F5F3")
-            }
-            GradientStop {
-                position: 1
-                color: root.primary
-                    ? (Theme.mode === "dark" ? "#A9A9A9" : "#333333")
-                    : (Theme.mode === "dark" ? Theme.surface0 : "#D8D8D6")
-            }
-        }
         Behavior on y { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
-
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 2
-            radius: Math.max(0, face.radius - 2)
-            border.width: 0
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop { position: 0; color: root.topColor }
-                GradientStop { position: 1; color: root.bottomColor }
-            }
-        }
 
         Text {
             id: label

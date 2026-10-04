@@ -51,6 +51,26 @@ func TestPrepareMissingMirrorUsesWorktrunkAndNoEnvironment(t *testing.T) {
 	}
 }
 
+func TestPrepareAllowsOnlyMainEnvrcWithoutRunningIt(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		home, path, log := mirrorFixture(t)
+		local := filepath.Join(home, "work/lovable.daphen-every-3315")
+		makeGitMarker(t, local)
+		if err := os.WriteFile(filepath.Join(local, ".envrc"), []byte("use flake\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		extra := []string{"VMHEAD=2222222222222222222222222222222222222222", "LOCALHEAD=2222222222222222222222222222222222222222", "VMBRANCH=daphen/every-3315", "MUTAGEN_MODE=matching"}
+		if changed {
+			extra = append(extra, "ENVRC_CHANGED=yes")
+		}
+		result := runEnv(t, home, path, extra, "sync", "--prepare", "EVERY-3315")
+		calls := readLog(t, log)
+		if result.err != nil || strings.Contains(calls, "direnv|allow "+local) == changed || strings.Contains(calls, "direnv|exec ") {
+			t.Fatalf("changed=%t result=%+v calls=%s", changed, result, calls)
+		}
+	}
+}
+
 func TestPrepareRefreshesComparisonBaseBeforeReportingReady(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		home, path, log := mirrorFixture(t)
@@ -729,6 +749,7 @@ case "$name" in
      *"status --porcelain"*) [ "${WORKDIRTY-}" != yes ] || echo '?? local-change.ts' ;;
      *"show-ref --verify"*) exit 1 ;;
      *"merge-base --is-ancestor"*) [ "${DIVERGED-}" != yes ] ;;
+     *"diff --quiet origin/main -- .envrc"*) [ "${ENVRC_CHANGED-}" != yes ] ;;
      *"diff --cached --quiet"*) [ "${STAGED-}" != yes ] ;;
      *"diff --no-ext-diff --no-textconv --quiet"*) [ "${WORKDIRTY-}" != yes ] ;;
      *"write-tree"*) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;

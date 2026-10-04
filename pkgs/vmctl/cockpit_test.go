@@ -59,6 +59,9 @@ func TestCockpitCurrentBundleAndHealthyTunnel(t *testing.T) {
 	if strings.Contains(calls, "rsync|") || strings.Contains(calls, "setsid|") {
 		t.Fatalf("current/healthy path copied or tunneled:\n%s", calls)
 	}
+	if !strings.Contains(calls, "systemctl|--user enable --now vm-dev-tunnel.service") {
+		t.Fatalf("healthy agent tunnel skipped development tunnel setup:\n%s", calls)
+	}
 	inOrder(t, calls, "pi|--version", "ssh|-o StrictHostKeyChecking=no", "ssh|-o StrictHostKeyChecking=no", "python3 - instructions.md", "pgrep -x agentd", "fish|-c", "op|read", "export XDG_DATA_DIRS")
 }
 
@@ -300,7 +303,7 @@ exec "$HOME/.local/bin/vmctl" --native worktree "$@"' ] || exit 1
  setsid) : ;;
 esac
 `
-	for _, name := range []string{"ssh", "rsync", "pi", "fish", "op", "setsid"} {
+	for _, name := range []string{"ssh", "rsync", "pi", "fish", "op", "setsid", "systemctl"} {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
 			t.Fatal(err)
 		}

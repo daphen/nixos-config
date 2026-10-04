@@ -1,0 +1,730 @@
+{
+  "binary_sha256": "c0a395955d988eaac8a31a6de11330a4aa29080ac12547fd82c3879191a1d7ad",
+  "runner_sha256": "681bddd72bd6a9a1097768fc6d7d62acc0f24ef185c55bd7425d315a1b15bef6",
+  "fixture_sha256": "447e87cb4721472b7164c927f0cb8e2f4c0422b08d067ff7d50bc91aab81a394",
+  "config_sha256": "ae3bc0a9e58eda1c426c56311ffe0aeabc2ff5bb954596c71e79ce39a683815e",
+  "parent_sha256": "061582a337794680b9ea0b02cfea6e769fb9e9f0b899e7a16813f83e0ae07648",
+  "visible": true,
+  "samples": [
+    {
+      "delay_seconds": 0,
+      "trial": 0,
+      "input_requests": 22,
+      "configure_events": 22,
+      "input_duration_ms": 121.48716801311821,
+      "final_draw_after_input_ms": 0.2964099985547364,
+      "total_to_final_draw_ms": 121.78357801167294,
+      "last_client_draw_ms": 117.9807186126709,
+      "initial": [
+        446,
+        548
+      ],
+      "final": [
+        536,
+        548
+      ],
+      "configured_sizes": [
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          536,
+          548
+        ]
+      ]
+    },
+    {
+      "delay_seconds": 0,
+      "trial": 1,
+      "input_requests": 22,
+      "configure_events": 22,
+      "input_duration_ms": 120.87224700371735,
+      "final_draw_after_input_ms": 0.3613519947975874,
+      "total_to_final_draw_ms": 121.23359899851494,
+      "last_client_draw_ms": 117.61116981506348,
+      "initial": [
+        446,
+        548
+      ],
+      "final": [
+        536,
+        548
+      ],
+      "configured_sizes": [
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          536,
+          548
+        ]
+      ]
+    },
+    {
+      "delay_seconds": 0,
+      "trial": 2,
+      "input_requests": 22,
+      "configure_events": 22,
+      "input_duration_ms": 119.74697298137471,
+      "final_draw_after_input_ms": 0.4717000119853765,
+      "total_to_final_draw_ms": 120.21867299336009,
+      "last_client_draw_ms": 119.04072761535645,
+      "initial": [
+        446,
+        548
+      ],
+      "final": [
+        536,
+        548
+      ],
+      "configured_sizes": [
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          536,
+          548
+        ]
+      ]
+    },
+    {
+      "delay_seconds": 0.3,
+      "trial": 0,
+      "input_requests": 22,
+      "configure_events": 22,
+      "input_duration_ms": 179.24318698351271,
+      "final_draw_after_input_ms": 151.63565601687878,
+      "total_to_final_draw_ms": 330.8788430003915,
+      "last_client_draw_ms": 313.3516311645508,
+      "initial": [
+        446,
+        548
+      ],
+      "final": [
+        536,
+        548
+      ],
+      "configured_sizes": [
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          536,
+          548
+        ]
+      ]
+    },
+    {
+      "delay_seconds": 0.3,
+      "trial": 1,
+      "input_requests": 22,
+      "configure_events": 22,
+      "input_duration_ms": 165.25151702808216,
+      "final_draw_after_input_ms": 151.06124198064208,
+      "total_to_final_draw_ms": 316.31275900872424,
+      "last_client_draw_ms": 305.65929412841797,
+      "initial": [
+        446,
+        548
+      ],
+      "final": [
+        536,
+        548
+      ],
+      "configured_sizes": [
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          536,
+          548
+        ]
+      ]
+    },
+    {
+      "delay_seconds": 0.3,
+      "trial": 2,
+      "input_requests": 22,
+      "configure_events": 22,
+      "input_duration_ms": 168.26299199601635,
+      "final_draw_after_input_ms": 151.22026202152483,
+      "total_to_final_draw_ms": 319.4832540175412,
+      "last_client_draw_ms": 314.70274925231934,
+      "initial": [
+        446,
+        548
+      ],
+      "final": [
+        536,
+        548
+      ],
+      "configured_sizes": [
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          446,
+          548
+        ],
+        [
+          492,
+          548
+        ],
+        [
+          536,
+          548
+        ]
+      ]
+    }
+  ],
+  "passed": true,
+  "monitor": {
+    "id": 0,
+    "name": "WAYLAND-1",
+    "description": "",
+    "make": "",
+    "model": "",
+    "serial": "",
+    "width": 900,
+    "height": 600,
+    "physicalWidth": 0,
+    "physicalHeight": 0,
+    "refreshRate": 60.0,
+    "x": 0,
+    "y": 0,
+    "activeWorkspace": {
+      "address": "1",
+      "type": "numbered",
+      "name": "1"
+    },
+    "specialWorkspace": {
+      "address": "",
+      "type": "",
+      "name": ""
+    },
+    "reserved": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "scale": 1,
+    "transform": 0,
+    "focused": true,
+    "dpmsStatus": true,
+    "vrr": false,
+    "solitary": "0",
+    "solitaryBlockedBy": [
+      "WINDOWED",
+      "CANDIDATE"
+    ],
+    "activelyTearing": false,
+    "tearingBlockedBy": [
+      "NOT_TORN",
+      "USER",
+      "SUPPORT",
+      "CANDIDATE",
+      "HW_CURSOR"
+    ],
+    "directScanoutTo": "0",
+    "directScanoutBlockedBy": [
+      "USER",
+      "CANDIDATE"
+    ],
+    "disabled": true,
+    "currentFormat": "XRGB8888",
+    "mirrorOf": "none",
+    "availableModes": [],
+    "colorManagementPreset": "srgb",
+    "sdrBrightness": 1,
+    "sdrSaturation": 1,
+    "sdrMinLuminance": 0.2,
+    "sdrMaxLuminance": 80,
+    "hardwareCursorsInUse": true,
+    "hardwareDetails": {
+      "backend": "wayland",
+      "hdr": false,
+      "chroma": false,
+      "bt2020": false,
+      "vrrCapable": false
+    }
+  }
+}

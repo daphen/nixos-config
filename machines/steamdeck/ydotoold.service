@@ -1,0 +1,13 @@
+[Unit]
+Description=User ydotool input daemon
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/nix/store/3afwalhzj887i8zzbinm6kdbcgwy1njl-ydotool-1.0.4/bin/ydotoold --socket-path=%t/.ydotool_socket --socket-perm=0600
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

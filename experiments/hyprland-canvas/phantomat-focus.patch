@@ -1,0 +1,66 @@
+--- a/src/output/Monitor.cpp
++++ b/src/output/Monitor.cpp
+@@ -159,6 +159,20 @@
+     return nearest;
+ }
+ 
++static void canvasMotionConfig(CMonitor& monitor, const std::string& name) {
++    const auto config = Config::animationTree()->getAnimationPropertyConfig(name);
++    for (const auto animation : {monitor.m_canvasX.get(), monitor.m_canvasY.get()}) {
++        const auto previous = animation->getConfig().lock();
++        if (previous == config)
++            continue;
++        const auto goal = animation->goal();
++        if (previous->pValues.lock() != config->pValues.lock())
++            animation->setValueAndWarp(animation->value());
++        animation->setConfig(config);
++        *animation = goal;
++    }
++}
++
+ void CMonitor::canvasOverview() {
+     if (!canvasEnabled())
+         return;
+@@ -167,6 +181,7 @@
+         canvasFinish();
+         return;
+     }
++    canvasMotionConfig(*this, "canvasCamera");
+     CBox bounds;
+     bool first = true;
+     for (const auto& window : Desktop::windowState()->windows()) {
+@@ -198,6 +213,8 @@
+ void CMonitor::canvasPan(const Vector2D& delta) {
+     if (!canvasEnabled())
+         return;
++    if (delta != Vector2D{})
++        canvasMotionConfig(*this, "canvasCamera");
+     if (m_canvasCommitting)
+         m_canvasOverview = false;
+     if (!m_canvasOverview && !m_canvasPanning)
+@@ -250,6 +267,7 @@
+     const bool overview = m_canvasOverview;
+     if (overview)
+         canvasPan({});
++    canvasMotionConfig(*this, "canvasFocus");
+     Desktop::focusState()->rawWindowFocus(source, Desktop::FOCUS_REASON_KEYBIND);
+     m_activeWorkspace->space()->layoutMsg(std::format("focus {}", direction));
+     if (overview)
+@@ -260,6 +278,7 @@
+ void CMonitor::canvasFinish(bool cancel) {
+     if (!m_canvasPanning)
+         return;
++    canvasMotionConfig(*this, "canvasCamera");
+     m_canvasPanning    = false;
+     m_canvasCommitting = !cancel;
+     if (cancel) {
+--- a/src/config/shared/animation/AnimationTree.cpp
++++ b/src/config/shared/animation/AnimationTree.cpp
+@@ -27,6 +27,7 @@
+     m_animationTree.createNode("zoomFactor", "global");
+     m_animationTree.createNode("monitorAdded", "global");
+     m_animationTree.createNode("canvasCamera", "global");
++    m_animationTree.createNode("canvasFocus", "canvasCamera");
+ 
+     // layer
+     m_animationTree.createNode("layersIn", "layers");

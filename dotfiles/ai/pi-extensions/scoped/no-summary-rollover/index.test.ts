@@ -1,15 +1,208 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, spyOn } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import noSummaryRollover from "./index.ts";
 
+async function pruning(run: (h: any) => Promise<void>) {
+  const dir = mkdtempSync(join(tmpdir(), "jev-unit-"));
+  mkdirSync(join(dir, ".git"));
+  writeFileSync(join(dir, "session.jsonl"), "synthetic saved session");
+  const messages: any[] = [{ role: "user", content: "TASK " + "u".repeat(480_000), timestamp: 1 }];
+  for (let i = 0; i < 6; i++) {
+    const path = join(dir, `${i}.txt`);
+    writeFileSync(path, "fixture");
+    messages.push({ role: "assistant", content: [{ type: "toolCall", id: `t${i}`, name: "read", arguments: { path } }], timestamp: 2 + i });
+    messages.push({ role: "toolResult", toolCallId: `t${i}`, toolName: "read", content: [{ type: "text", text: `READ_${i} ` + "x".repeat(20_000) }], details: { sentinel: "preserve" }, isError: false, timestamp: 10 + i });
+  }
+  const entries: any[] = messages.map((message, i) => ({ type: "message", id: `m${i}`, message }));
+  const events: any = {}, commands: any = {}, requests: any[] = [];
+  let branch = entries, session = "original", lookups = 0;
+  const ctx = { cwd: dir, model: { contextWindow: 200_000 }, signal: new AbortController().signal,
+    ui: { notify() {} }, sessionManager: { getEntries: () => entries, getBranch: () => branch,
+      getSessionId: () => session, getSessionFile: () => join(dir, "session.jsonl") } };
+  const fetch = spyOn(globalThis, "fetch").mockImplementation((async (_url, init) => {
+    const body = JSON.parse(init!.body as string); requests.push(body);
+    return Response.json({ model: "test-jev", usage: { input_tokens: 1, output_tokens: 2 },
+      answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { noul: 0.01 }])) });
+  }) as typeof globalThis.fetch);
+  noSummaryRollover({ on: (name: string, fn: any) => { events[name] = fn; },
+    registerCommand: (name: string, fn: any) => { commands[name] = fn; },
+    getAllTools: () => [{ name: "read", sourceInfo: { source: "builtin" } }],
+    exec: async () => { lookups++; return { code: 0, killed: false, stdout: "synthetic-key" }; },
+    appendEntry: (customType: string, data: any) => {
+      const entry = { type: "custom", id: `c${entries.length}`, customType, data };
+      entries.push(entry); if (branch !== entries) branch.push(entry);
+    },
+  } as any);
+  try {
+    await run({ ctx, entries, messages, events, requests, fetch, lookups: () => lookups,
+      command: (mode: string) => commands["jev-pruning"].handler(mode, ctx),
+      context: () => events.context({ messages: structuredClone(messages) }, ctx),
+      branch: (value: any[]) => { branch = value; }, session: (value: string) => { session = value; } });
+  } finally { fetch.mockRestore(); rmSync(dir, { recursive: true, force: true }); }
+}
+
+test("off has no side effects; shadow stays intact and never becomes a live decision", async () => pruning(async h => {
+  expect(await h.context()).toBeUndefined();
+  expect(h.lookups()).toBe(0); expect(h.requests).toHaveLength(0);
+  await h.command("shadow");
+  expect(await h.context()).toBeUndefined();
+  expect(h.lookups()).toBe(0);
+  await h.command("shadow personal Cockpit composer overlap");
+  expect((await h.context()).messages).toEqual(h.messages);
+  expect(JSON.stringify(h.requests)).not.toContain("READ_0");
+  const calls = h.requests.length;
+  await h.command("on");
+  const filtered = (await h.context()).messages;
+  expect(h.requests.length).toBeGreaterThan(calls);
+  expect(JSON.stringify(h.requests.slice(calls))).toContain("READ_0");
+  expect(filtered[2].content[0].text).toContain("Jev omitted");
+  expect(filtered[2].details).toEqual(h.messages[2].details);
+  expect(filtered[1]).toEqual(h.messages[1]);
+  expect(filtered.slice(-6)).toEqual(h.messages.slice(-6));
+  expect(h.entries[2].message.content[0].text).toContain("READ_0");
+  const after = h.requests.length; await h.context(); expect(h.requests.length).toBe(after);
+}));
+
+test("shadow pairs call/result scores against approved chronological metadata, without sending outputs", async () => pruning(async h => {
+  h.fetch.mockImplementation(async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(init.body as string); h.requests.push(body);
+    return Response.json({ model: "test-jev", answers: Object.fromEntries(Object.keys(body.questions).map(key =>
+      [key, { noul: key === "call_m2" ? 0.15 : key === "result_m2" ? 0.12 : 0.72 }])) });
+  });
+  await h.command("shadow personal Cockpit composer overlap");
+  const result = await h.context();
+  expect(result.messages).toEqual(h.messages);
+  const body = h.requests[0];
+  expect(body.state.history.map((read: any) => read.id)).toEqual(["m2", "m4", "m6"]);
+  expect(body.state.history[0].result).toContain("bytes (omitted)");
+  expect(body.state.task).toBe("personal Cockpit composer overlap");
+  expect(JSON.stringify(h.requests)).not.toContain("TASK u");
+  expect(Object.keys(body.questions)).toEqual(["call_m2", "result_m2", "call_m4", "result_m4", "call_m6", "result_m6"]);
+  expect(JSON.stringify(h.requests)).not.toContain("READ_0");
+  expect(JSON.stringify(h.requests)).not.toContain("x".repeat(100));
+  const pass = h.entries.findLast((e: any) => e.data?.kind === "pass").data;
+  expect(pass.selections[0]).toMatchObject({ entry: "m2", callKeep: 0.15, keep: 0.12 });
+  expect(pass.bytes).toBeGreaterThan(20_000);
+  expect(h.entries[2].message.content[0].text).toContain("READ_0");
+}));
+
+test("missing one paired shadow score retains the original", async () => pruning(async h => {
+  h.fetch.mockImplementation(async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(init.body as string); h.requests.push(body);
+    return Response.json({ answers: Object.fromEntries(Object.keys(body.questions)
+      .filter(key => key !== "call_m2").map(key => [key, { noul: 0.01 }])) });
+  });
+  await h.command("shadow personal Cockpit composer overlap");
+  expect((await h.context()).messages).toEqual(h.messages);
+  const pass = h.entries.findLast((e: any) => e.data?.kind === "pass").data;
+  expect(pass.outcome).toBe("unavailable");
+  expect(pass.selections).toEqual([]);
+}));
+
+test("old compact permission and command cannot silently prune or transmit content", async () => pruning(async h => {
+  h.entries.push({ type: "custom", id: "old-mode", customType: "jev-pruning", data: {
+    kind: "mode", session: "original", root: h.ctx.cwd, mode: "compact", goal: "personal Cockpit" } });
+  expect(await h.context()).toBeUndefined();
+  await h.command("compact personal Cockpit implementation");
+  expect(await h.context()).toBeUndefined();
+  expect(h.requests).toHaveLength(0);
+  expect(h.lookups()).toBe(0);
+}));
+
+test("reviewed sends complete approved reads only, immediately, without filtering", async () => pruning(async h => {
+  h.ctx.model.contextWindow = 1_050_000;
+  h.messages[3].content[0].name = "bash";
+  h.messages[3].content[0].arguments = { command: "WORK_VM_SECRET command" };
+  h.messages[4].toolName = "bash";
+  h.messages[5].content[0].name = "edit";
+  h.messages[6].toolName = "edit";
+  await h.command("reviewed personal Cockpit implementation");
+  expect((await h.context()).messages).toEqual(h.messages);
+  expect(h.requests).toHaveLength(1);
+  expect(h.requests[0].state.task).toBe("personal Cockpit implementation");
+  expect(h.requests[0].state.reads.map((r: any) => r.id)).toEqual(["m2"]);
+  expect(JSON.stringify(h.requests[0])).toContain("READ_0");
+  expect(JSON.stringify(h.requests[0])).not.toContain("WORK_VM_SECRET");
+  expect(JSON.stringify(h.requests[0])).not.toContain("TASK u");
+  const pass = h.entries.findLast((e: any) => e.data?.kind === "pass").data;
+  expect(pass.selections[0].keep).toBe(0.01);
+  expect(pass.bytes).toBeGreaterThan(20_000);
+  const count = h.requests.length;
+  expect((await h.context()).messages).toEqual(h.messages);
+  expect(h.requests.length).toBe(count);
+}));
+
+test("reviewed distinguishes relevant reads in the saved pass but still retains both", async () => pruning(async h => {
+  h.fetch.mockImplementation(async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(init.body as string); h.requests.push(body);
+    return Response.json({ model: "test-jev", answers: Object.fromEntries(Object.keys(body.questions).map(key =>
+      [key, { noul: key === "r_m2" ? 0.88 : 0.39 }])) });
+  });
+  await h.command("reviewed personal Cockpit implementation");
+  expect((await h.context()).messages).toEqual(h.messages);
+  const pass = h.entries.findLast((e: any) => e.data?.kind === "pass").data;
+  expect(pass.selections.map((s: any) => s.keep)).toEqual([0.88, 0.39, 0.39]);
+  expect(pass.bytes).toBeGreaterThan(40_000);
+  expect(h.entries[2].message.content[0].text).toContain("READ_0");
+}));
+
+test("off is session-wide, fork consent is absent, and selections are branch-local", async () => pruning(async h => {
+  await h.command("on"); await h.context();
+  const earlier = h.entries.slice();
+  await h.command("off"); h.branch(earlier);
+  expect(await h.context()).toBeUndefined();
+  await h.command("on"); h.session("fork");
+  expect(await h.context()).toBeUndefined();
+  h.session("original"); h.branch(earlier.filter((e: any) => e.type === "message"));
+  const count = h.requests.length; await h.context(); expect(h.requests.length).toBeGreaterThan(count);
+}));
+
+test("changed result content is retained and a new goal expires old selections", async () => pruning(async h => {
+  await h.command("on"); await h.context();
+  h.messages[2].content[0].text = "CHANGED " + "y".repeat(20_000);
+  expect((await h.context()).messages[2]).toEqual(h.messages[2]);
+  h.messages.push({ role: "user", content: "A different task", timestamp: 100 });
+  h.entries.push({ type: "message", id: "new-user", message: h.messages.at(-1) });
+  h.fetch.mockImplementation(async () => Response.json({ answers: {} }));
+  expect((await h.context()).messages).toEqual(h.messages);
+}));
+
+test("an incomplete batch does not count toward the three protected completed exchanges", async () => pruning(async h => {
+  h.messages[11].content.push({ type: "toolCall", id: "missing", name: "read", arguments: { path: "pending.txt" } });
+  await h.command("on");
+  const filtered = (await h.context()).messages;
+  expect(filtered[2].content[0].text).toContain("Jev omitted");
+  expect(filtered[6]).toEqual(h.messages[6]);
+  expect(filtered.slice(-6)).toEqual(h.messages.slice(-6));
+}));
+
+test("automatic split checkpoint uses selections without changing native boundaries", async () => pruning(async h => {
+  await h.command("on"); await h.context();
+  const event = compactEvent("overflow", h.messages.slice(0, 1));
+  event.branchEntries = h.entries;
+  event.preparation.turnPrefixMessages = h.messages.slice(1, 3);
+  event.preparation.isSplitTurn = true;
+  const calls = h.requests.length;
+  const result = h.events.session_before_compact(event, h.ctx).compaction;
+  expect(result.summary).toContain("Jev omitted"); expect(result.summary).not.toContain("READ_0");
+  expect(result.firstKeptEntryId).toBe("kept-entry"); expect(result.tokensBefore).toBe(123_456);
+  expect(result.details.readFiles).toEqual(["read.ts"]);
+  expect(h.requests.length).toBe(calls);
+  expect(h.events.session_before_compact({ ...event, reason: "manual" }, h.ctx)).toBeUndefined();
+}));
+
 function registeredHandler() {
-  let handler: ((event: any) => any) | undefined;
+  let handler: ((event: any, ctx?: any) => any) | undefined;
   noSummaryRollover({
+    registerCommand() {},
     on(event: string, value: (event: any) => any) {
       if (event === "session_before_compact") handler = value;
     },
   } as any);
   expect(handler).toBeDefined();
-  return handler!;
+  return (event: any) => handler!(event, { sessionManager: { getEntries: () => [], getSessionFile: () => undefined } });
 }
 
 function compactEvent(reason = "threshold", messages: any[] = [], previousSummary?: string) {

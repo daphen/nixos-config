@@ -1,0 +1,83 @@
+--- a/src/config/values/ConfigValues.cpp
++++ b/src/config/values/ConfigValues.cpp
+@@ -817,6 +817,12 @@
+          */
+ 
+         MS<Bool>("experimental:wp_cm_1_2", "Allow wp-cm-v1 version 2", true),
++        MS<Float>("experimental:canvas_grid_opacity", "Canvas grid opacity", 0.22, {.min = 0, .max = 0.5, .refresh = Supplementary::REFRESH_WINDOW_STATES}),
++        MS<Float>("experimental:canvas_grid_spacing", "Canvas world grid spacing", 96, {.min = 48, .max = 144, .refresh = Supplementary::REFRESH_WINDOW_STATES}),
++        MS<Float>("experimental:canvas_backdrop_dim", "Canvas backdrop dimming", 0.35, {.min = 0, .max = 0.65, .refresh = Supplementary::REFRESH_WINDOW_STATES}),
++        MS<Float>("experimental:canvas_selection_gap", "Canvas selection outline gap", 4, {.min = 0, .max = 12, .refresh = Supplementary::REFRESH_WINDOW_STATES}),
++        MS<Float>("experimental:canvas_minimap_size", "Canvas minimap width", 240, {.min = 160, .max = 320, .refresh = Supplementary::REFRESH_WINDOW_STATES}),
++        MS<Float>("experimental:canvas_panel_opacity", "Canvas HUD and minimap opacity", 0.9, {.min = 0.3, .max = 1, .refresh = Supplementary::REFRESH_WINDOW_STATES}),
+         MS<Color>("experimental:canvas_focus_color", "Focused window border color in canvas overview", 0xFFFF6B1A, {.refresh = Supplementary::REFRESH_WINDOW_STATES}),
+ 
+         /*
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -130,15 +130,20 @@
+         const auto monitor = m_monitor.lock();
+         if (!monitor)
+             return {};
+-        const float reveal = canvasReveal(monitor);
++        static auto gridOpacity  = CConfigValue<Config::FLOAT>("experimental:canvas_grid_opacity");
++        static auto gridSpacing  = CConfigValue<Config::FLOAT>("experimental:canvas_grid_spacing");
++        static auto backdropDim  = CConfigValue<Config::FLOAT>("experimental:canvas_backdrop_dim");
++        static auto minimapSize  = CConfigValue<Config::FLOAT>("experimental:canvas_minimap_size");
++        static auto panelOpacity = CConfigValue<Config::FLOAT>("experimental:canvas_panel_opacity");
++        const float reveal       = canvasReveal(monitor);
+         if (reveal <= 0.F)
+             return {};
+         const auto size = monitor->m_size * monitor->m_scale;
+         const CBox screen{{}, size};
+         const auto damage = g_pHyprRenderer->m_renderData.damage;
+         if (!m_foreground) {
+-            g_pHyprRenderer->draw(CRectPassElement::SRectData{.box = screen, .color = CHyprColor{0.015F, 0.02F, 0.035F, 0.35F * reveal}}, damage);
+-            const double cell    = 96.0 * canvasZoom(monitor) * monitor->m_scale;
++            g_pHyprRenderer->draw(CRectPassElement::SRectData{.box = screen, .color = CHyprColor{0.015F, 0.02F, 0.035F, *backdropDim * reveal}}, damage);
++            const double cell    = *gridSpacing * canvasZoom(monitor) * monitor->m_scale;
+             const double minimum = 24.0 * monitor->m_scale;
+             const double                           t      = std::clamp((cell / minimum - 1.0) * 2.0, 0.0, 1.0);
+             const double                           fine   = std::round(t * t * (3.0 - 2.0 * t) * 32.0) / 32.0;
+@@ -173,7 +178,7 @@
+             const auto  origin               = monitor->canvasOffset() * monitor->m_scale;
+             data.primarySurfaceUVTopLeft     = (Vector2D{cell * 0.5, cell * 0.5} - origin) / (cell * 2.0);
+             data.primarySurfaceUVBottomRight = data.primarySurfaceUVTopLeft + size / (cell * 2.0);
+-            g_pHyprRenderer->draw(CTexPassElement::SRenderData{.tex = tile, .box = screen, .a = 0.22F * reveal, .allowCustomUV = true, .wrapX = WRAP_REPEAT, .wrapY = WRAP_REPEAT},
++            g_pHyprRenderer->draw(CTexPassElement::SRenderData{.tex = tile, .box = screen, .a = *gridOpacity * reveal, .allowCustomUV = true, .wrapX = WRAP_REPEAT, .wrapY = WRAP_REPEAT},
+                                   damage);
+             return {};
+         }
+@@ -182,9 +187,9 @@
+         const auto       selected = monitor->canvasNearest(true);
+         const double     unit     = monitor->m_scale;
+         const double     margin   = 24.0 * unit;
+-        const double     width    = std::min(240.0 * unit, size.x * 0.23);
++        const double     width    = std::min(*minimapSize * unit, size.x * 0.23);
+         const CBox       panel{size.x - margin - width, size.y - margin - width * 0.625, width, width * 0.625};
+-        g_pHyprRenderer->draw(CRectPassElement::SRectData{.box = panel, .color = CHyprColor{0.025F, 0.03F, 0.045F, 0.9F * reveal}, .round = sc<int>(12 * unit)}, damage);
++        g_pHyprRenderer->draw(CRectPassElement::SRectData{.box = panel, .color = CHyprColor{0.025F, 0.03F, 0.045F, *panelOpacity * reveal}, .round = sc<int>(12 * unit)}, damage);
+         const auto             viewport = canvasLogicalBox(monitor);
+         CBox                   bounds   = viewport;
+         std::vector<PHLWINDOW> windows;
+@@ -224,7 +229,7 @@
+         if (labelTexture) {
+             const Vector2D labelPosition{margin + 14.0 * unit, margin + 10.0 * unit - (1.0 - reveal) * 12.0 * unit};
+             g_pHyprRenderer->draw(CRectPassElement::SRectData{.box   = {labelPosition - Vector2D{14.0, 10.0} * unit, labelTexture->m_size + Vector2D{28.0, 20.0} * unit},
+-                                                              .color = CHyprColor{0.025F, 0.03F, 0.045F, 0.9F * reveal},
++                                                              .color = CHyprColor{0.025F, 0.03F, 0.045F, *panelOpacity * reveal},
+                                                               .round = sc<int>(8 * unit)},
+                                   damage);
+             g_pHyprRenderer->draw(CTexPassElement::SRenderData{.tex = labelTexture, .box = {labelPosition, labelTexture->m_size}, .a = reveal}, damage);
+@@ -2448,8 +2453,9 @@
+                         static auto PCANVASFOCUSCOLOR = CConfigValue<Config::INTEGER>("experimental:canvas_focus_color");
+                         auto        box               = window->geometricBox(IGeometric::GEOMETRIC_CURRENT);
+                         box.translate(-pMonitor->m_position).scale(CANVAS_ZOOM).translate(pMonitor->canvasOffset()).scale(pMonitor->m_scale);
+-                        const auto reveal     = canvasReveal(pMonitor);
+-                        const auto gap        = 4.0 * pMonitor->m_scale * reveal;
++                        const auto  reveal       = canvasReveal(pMonitor);
++                        static auto selectionGap = CConfigValue<Config::FLOAT>("experimental:canvas_selection_gap");
++                        const auto  gap          = *selectionGap * pMonitor->m_scale * reveal;
+                         box.expand(gap);
+                         const auto radius     = window->presentation().rounding() * pMonitor->m_scale * CANVAS_ZOOM + gap;
+                         const auto borderSize = std::max(1, sc<int>(std::round(2 * pMonitor->m_scale)));

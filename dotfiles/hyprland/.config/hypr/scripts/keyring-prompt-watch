@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+check() (
+  exec 9>"${XDG_RUNTIME_DIR:?}/keyring-prompt.lock"
+  flock -n 9 || exit 0
+
+  local collection owner
+  collection=$(busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service ReadAlias s default | awk -F '"' '{print $2}')
+  [[ -n $collection && $collection != / ]] || exit 0
+  if [[ $(busctl --user get-property org.freedesktop.secrets "$collection" org.freedesktop.Secret.Collection Locked) != 'b true' ]]; then
+    printf 'Keyring already unlocked; no prompt\n'
+    exit 0
+  fi
+  printf 'Keyring locked; preparing native prompt\n'
+
+  # Auto-login starts the PAM daemon before Wayland exists; replace it only while locked.
+  owner=$(busctl --user status org.freedesktop.secrets | awk -F= '$1 == "PID" {print $2; exit}')
+  if ! grep -zFxq "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:?}" "/proc/$owner/environ" 2>/dev/null; then
+    systemd-run --user --collect --unit=keyring-graphical-owner \
+      --property=PartOf=graphical-session.target \
+      --setenv="WAYLAND_DISPLAY=$WAYLAND_DISPLAY" --setenv="DISPLAY=${DISPLAY:-}" \
+      gnome-keyring-daemon --replace --foreground --components=secrets >/dev/null
+    for _ in {1..100}; do
+      owner=$(busctl --user status org.freedesktop.secrets | awk -F= '$1 == "PID" {print $2; exit}')
+      if [[ -n $owner ]] && grep -zFxq "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" "/proc/$owner/environ" 2>/dev/null \
+        && ss -xlpn | grep -F "${XDG_RUNTIME_DIR}/keyring/control" | grep -Fq "pid=$owner,"; then
+        break
+      fi
+      sleep 0.1
+    done
+    [[ -n $owner ]] && grep -zFxq "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" "/proc/$owner/environ" 2>/dev/null \
+      && ss -xlpn | grep -F "${XDG_RUNTIME_DIR}/keyring/control" | grep -Fq "pid=$owner," || exit 1
+  fi
+
+  if secret-tool search --unlock application chromium >/dev/null 2>&1; then
+    printf 'Native keyring unlock completed\n'
+  else
+    printf 'Native keyring unlock did not complete\n' >&2
+  fi
+)
+
+for _ in {1..100}; do
+  [[ -S "${XDG_RUNTIME_DIR:?}/${WAYLAND_DISPLAY:?}" ]] && break
+  sleep 0.1
+done
+check &
+dbus-monitor --system "type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'" 2>/dev/null |
+  while read -r line; do
+    case "$line" in
+      *'boolean false'*) check & ;;
+    esac
+  done
+exit 1

@@ -50,6 +50,10 @@ in {
       force = true;
     };
     "hypr/scripts".source = link "${dotfiles}/hyprland/.config/hypr/scripts";
+    "hypr/modules" = {
+      source = link "${dotfiles}/hyprland/.config/hypr/modules";
+      force = true;
+    };
     # Instance config for the cockpit engine (niri/scripts/cockpit-open|add|switch).
     # The scripts are generic; everything Lovable-specific lives in this one file.
     "cockpit".source = link "${dotfiles}/niri/.config/cockpit";
@@ -66,7 +70,6 @@ in {
     "spotify-player/keymap.toml".source = link "${dotfiles}/spotify-player/.config/spotify-player/keymap.toml";
     "spotify-player/app.toml".source = link "${dotfiles}/spotify-player/.config/spotify-player/app.toml";
     "reference/commands-reference.md".source = link "${dotfiles}/reference/.config/commands-reference.md";
-    "swaylock/config".source = link "${dotfiles}/swaylock/.config/swaylock/config";
     "starship.toml".source = link "${dotfiles}/starship/.config/starship/starship.toml";
     # Note: systemd/user services are managed by home-manager's systemd.user.services option
     # or can be manually copied to ~/.config/systemd/user/
@@ -91,8 +94,6 @@ in {
     # send/spawn), the one command replacing the wt-* scripts. Pi agents use the
     # native agent_* tools (pi-extensions/agents) instead; both speak agentd's socket.
     ".local/bin/agent".source = link "${dotfiles}/bin/.local/bin/agent";
-    ".local/bin/hypr-session".source =
-      link "${config.home.homeDirectory}/nixos/experiments/hyprland-canvas/run-login";
     ".local/bin/orchestrator-seed".source = link "${dotfiles}/bin/.local/bin/orchestrator-seed";
     # cockpit-spawn: the full ticket kickoff (cockpit context + devenv + nvim rail tab
     # + seeded roster agent) — callable by any agent, and by the rail's Enter-on-ticket.

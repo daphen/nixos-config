@@ -8,13 +8,14 @@ import "IconNames.js" as IconNames
 ShellRoot {
   FloatingWindow {
     id: win
-    title: "QsLib Gallery"
+    title: "QsLib Presentation"
     implicitWidth: 1100
     implicitHeight: 820
     color: Theme.bg
 
     property string iconFilter: ""
     function copy(s) { Quickshell.execDetached(["wl-copy", "--", String(s)]) }
+    function feedback(message) { toast.text = message; toast.active = true; toastReset.restart() }
 
     component SectionLabel: Text {
       color: Theme.fg_muted; font.family: Theme.fontFamily
@@ -22,6 +23,21 @@ ShellRoot {
     }
     component Tag: Text {
       color: Theme.fg_muted; font.family: Theme.fontFamily; font.pixelSize: Theme.fontSize - 1
+    }
+    component AttachmentBadge: ButtonSurface {
+      property string text: ""
+      property bool file: false
+      inverted: Theme.mode === "dark"
+      readonly property color accent: file ? (inverted ? "#9A6500" : "#F2C572") : (inverted ? "#3F8C69" : "#86D7B0")
+      implicitWidth: badgeContent.implicitWidth + 16
+      implicitHeight: 26
+      radius: height / 2
+      Row {
+        id: badgeContent
+        anchors.centerIn: parent; spacing: 6
+        Icon { name: file ? "file-content" : "image"; width: 12; height: 12; color: accent; anchors.verticalCenter: parent.verticalCenter }
+        Text { text: parent.parent.text; color: parent.parent.contentColor; font.family: file ? Theme.fontFamily : "Inter"; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
+      }
     }
     component Swatch: Rectangle {
       Layout.fillWidth: true
@@ -54,14 +70,102 @@ ShellRoot {
           spacing: 4
           Text { text: "QsLib"; color: Theme.fg; font.family: Theme.fontFamily; font.pixelSize: Theme.fontSize + 12; font.bold: true }
           Text {
-            text: "Quickshell design system — components + " + IconNames.names.length + " Nucleo icons. Click an icon to copy its name."
+            text: "Live orbs, cards, controls, motion, and " + IconNames.names.length + " icons. Click an icon to copy its name."
             color: Theme.fg_muted; font.family: Theme.fontFamily; font.pixelSize: Theme.fontSize
           }
         }
 
         // ── components ────────────────────────────────────────────
-        SectionLabel { text: "COMPONENTS" }
+        RowLayout {
+          SectionLabel { text: "COMPONENTS" }
+          Item { Layout.fillWidth: true }
+          PrimaryButton {
+            Layout.preferredWidth: 150; Layout.preferredHeight: 34
+            text: Theme.mode === "dark" ? "Preview light" : "Preview dark"
+            onClicked: Theme.mode = Theme.mode === "dark" ? "light" : "dark"
+          }
+        }
 
+        Swatch {
+          Tag { text: "ThinkingOrb"; Layout.preferredWidth: 130 }
+          Repeater {
+            model: [Theme.sky, Theme.green, Theme.orange, Theme.electric]
+            ThinkingOrb {
+              required property color modelData
+              required property int index
+              Layout.preferredWidth: 48; Layout.preferredHeight: 48
+              glow: modelData; seedKey: "presentation-" + index
+            }
+          }
+          ThinkingOrb {
+            Layout.preferredWidth: 24; Layout.preferredHeight: 24
+            glow: Theme.orange; seedKey: "presentation-small"
+          }
+          ThinkingOrb {
+            Layout.preferredWidth: 48; Layout.preferredHeight: 48
+            activityColors: [Theme.sky, Theme.green, Theme.orange]
+            seedKey: "presentation-combined"
+          }
+          Item { Layout.fillWidth: true }
+        }
+        Swatch {
+          Tag { text: "ContrastCard"; Layout.preferredWidth: 130 }
+          ContrastCard {
+            Layout.fillWidth: true; Layout.preferredHeight: 130
+            Column {
+              anchors.fill: parent; anchors.margins: 20; spacing: 12
+              Text { text: "Canonical card"; color: Theme.fg; font.family: "Inter"; font.pixelSize: 20; font.weight: 600 }
+              Text { text: "Live theme-aware face, bevel, outline, and shadows"; color: Theme.fg_muted; font.family: Theme.fontFamily; font.pixelSize: 12 }
+              Row {
+                spacing: 10
+                AttachmentBadge { text: "Image 1" }
+                AttachmentBadge { text: "shell.qml"; file: true }
+                CapLabel { text: "DETAILS"; anchors.verticalCenter: parent.verticalCenter }
+              }
+            }
+          }
+          ContrastCard {
+            elevated: false
+            Layout.preferredWidth: 220; Layout.preferredHeight: 130
+            Text { anchors.centerIn: parent; text: "Nested · no shadow"; color: Theme.fg; font.family: Theme.fontFamily; font.pixelSize: 12 }
+          }
+        }
+        Swatch {
+          Tag { text: "PrimaryButton"; Layout.preferredWidth: 130 }
+          PrimaryButton {
+            Layout.preferredWidth: 180; Layout.preferredHeight: 42
+            text: "Primary action"; iconName: "chevron-right"
+            onClicked: win.feedback("Primary action clicked")
+          }
+          PrimaryButton {
+            Layout.preferredWidth: 140; Layout.preferredHeight: 42
+            primary: false; text: "Secondary"
+            onClicked: win.feedback("Secondary action clicked")
+          }
+          PrimaryButton {
+            Layout.preferredWidth: 42; Layout.preferredHeight: 42
+            radius: Theme.radiusSm; iconName: "paper-plane-2"
+            onClicked: win.feedback("Send clicked")
+          }
+          PrimaryButton {
+            Layout.preferredWidth: 120; Layout.preferredHeight: 42
+            text: "Disabled"; enabled: false
+          }
+          Item { Layout.fillWidth: true }
+        }
+        Swatch {
+          Tag { text: "Crossfade"; Layout.preferredWidth: 130 }
+          Crossfade {
+            id: swapper
+            Layout.fillWidth: true; Layout.preferredHeight: 50
+            first: Text { anchors.verticalCenter: parent.verticalCenter; text: "First state"; color: Theme.fg; font.family: "Inter"; font.pixelSize: 20 }
+            second: Text { anchors.verticalCenter: parent.verticalCenter; text: "Second state"; color: Theme.sky; font.family: "Inter"; font.pixelSize: 20 }
+          }
+          PrimaryButton {
+            Layout.preferredWidth: 120; Layout.preferredHeight: 36
+            text: "Swap state"; onClicked: swapper.showSecond = !swapper.showSecond
+          }
+        }
         Swatch {
           Tag { text: "KeyCap"; Layout.preferredWidth: 130 }
           KeyCap { text: "⏎" }

@@ -78,6 +78,12 @@ if $activate; then
     /run/wrappers/bin/sudo nixos-rebuild switch --flake "$nixos#proart"
 fi
 
+for app in "${apps[@]}"; do
+    if [[ $app == dsqrd ]] && systemctl --user cat dsqrd-daemon.service >/dev/null 2>&1; then
+        systemctl --user stop dsqrd-daemon.service
+    fi
+done
+
 python3 - "${apps[@]}" <<'PY'
 import os, signal, sys, time
 apps = set(sys.argv[1:])
@@ -117,7 +123,11 @@ fi
 
 for app in "${apps[@]}"; do
     rm -f "$XDG_RUNTIME_DIR/$app.sock"
-    setsid -f "$bin/$app" >"/tmp/$app-daemon.log" 2>&1
+    if [[ $app == dsqrd ]] && systemctl --user cat dsqrd-daemon.service >/dev/null 2>&1; then
+        systemctl --user restart dsqrd-daemon.service
+    else
+        setsid -f "$bin/$app" >"/tmp/$app-daemon.log" 2>&1
+    fi
 done
 
 python3 - "${apps[@]}" <<'PY'

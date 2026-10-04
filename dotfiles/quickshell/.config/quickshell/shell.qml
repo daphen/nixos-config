@@ -7,6 +7,13 @@ import "modules"
 
 ShellRoot {
     id: root
+    property bool lockBarHidden: false
+
+    IpcHandler {
+        target: "bar"
+        function hide() { root.lockBarHidden = true }
+        function show() { root.lockBarHidden = false }
+    }
 
     Process {
         id: themeFollower
@@ -38,6 +45,7 @@ ShellRoot {
             RoundedBar {
                 id: bar
                 screen: modelData
+                lockHidden: root.lockBarHidden
             }
 
             PanelWindow {

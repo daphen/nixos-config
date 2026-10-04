@@ -1,0 +1,3 @@
+singleton Theme 1.0 Theme.qml
+singleton PaletteState 1.0 PaletteState.qml
+DeckRadialPalette 1.0 DeckRadialPalette.qml

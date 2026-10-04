@@ -1,0 +1,238 @@
+{
+  "control-1x": {
+    "trials": 36,
+    "passed": true,
+    "pixel_differences": [
+      null,
+      null,
+      null
+    ],
+    "tiny_update_invalidations": [
+      {
+        "mode": "normal",
+        "repeat": 0,
+        "full_monitor_invalidations": 10,
+        "surface_damage_events": 22,
+        "client_commits": 22,
+        "outer_commits": 35
+      },
+      {
+        "mode": "normal",
+        "repeat": 1,
+        "full_monitor_invalidations": 10,
+        "surface_damage_events": 20,
+        "client_commits": 20,
+        "outer_commits": 20
+      },
+      {
+        "mode": "normal",
+        "repeat": 2,
+        "full_monitor_invalidations": 10,
+        "surface_damage_events": 20,
+        "client_commits": 20,
+        "outer_commits": 20
+      },
+      {
+        "mode": "overview",
+        "repeat": 0,
+        "full_monitor_invalidations": 20,
+        "surface_damage_events": 30,
+        "client_commits": 30,
+        "outer_commits": 30
+      },
+      {
+        "mode": "overview",
+        "repeat": 1,
+        "full_monitor_invalidations": 20,
+        "surface_damage_events": 30,
+        "client_commits": 30,
+        "outer_commits": 25
+      },
+      {
+        "mode": "overview",
+        "repeat": 2,
+        "full_monitor_invalidations": 20,
+        "surface_damage_events": 30,
+        "client_commits": 30,
+        "outer_commits": 30
+      },
+      {
+        "mode": "normal-returned",
+        "repeat": 0,
+        "full_monitor_invalidations": 10,
+        "surface_damage_events": 21,
+        "client_commits": 21,
+        "outer_commits": 20
+      },
+      {
+        "mode": "normal-returned",
+        "repeat": 1,
+        "full_monitor_invalidations": 10,
+        "surface_damage_events": 20,
+        "client_commits": 20,
+        "outer_commits": 20
+      },
+      {
+        "mode": "normal-returned",
+        "repeat": 2,
+        "full_monitor_invalidations": 10,
+        "surface_damage_events": 20,
+        "client_commits": 20,
+        "outer_commits": 20
+      }
+    ]
+  },
+  "control-1.5x": {
+    "trials": 12,
+    "passed": true,
+    "pixel_differences": [
+      null,
+      null,
+      null
+    ],
+    "tiny_update_invalidations": [
+      {
+        "mode": "normal",
+        "repeat": 0,
+        "full_monitor_invalidations": 10,
+        "surface_damage_events": 22,
+        "client_commits": 22,
+        "outer_commits": 35
+      },
+      {
+        "mode": "overview",
+        "repeat": 0,
+        "full_monitor_invalidations": 20,
+        "surface_damage_events": 30,
+        "client_commits": 30,
+        "outer_commits": 20
+      },
+      {
+        "mode": "normal-returned",
+        "repeat": 0,
+        "full_monitor_invalidations": 10,
+        "surface_damage_events": 21,
+        "client_commits": 21,
+        "outer_commits": 11
+      }
+    ]
+  },
+  "candidate-1x": {
+    "trials": 36,
+    "passed": true,
+    "pixel_differences": [
+      0,
+      0,
+      0
+    ],
+    "tiny_update_invalidations": [
+      {
+        "mode": "normal",
+        "repeat": 0,
+        "full_monitor_invalidations": 68,
+        "surface_damage_events": 22,
+        "client_commits": 22,
+        "outer_commits": 34
+      },
+      {
+        "mode": "normal",
+        "repeat": 1,
+        "full_monitor_invalidations": 0,
+        "surface_damage_events": 20,
+        "client_commits": 20,
+        "outer_commits": 20
+      },
+      {
+        "mode": "normal",
+        "repeat": 2,
+        "full_monitor_invalidations": 0,
+        "surface_damage_events": 20,
+        "client_commits": 20,
+        "outer_commits": 11
+      },
+      {
+        "mode": "overview",
+        "repeat": 0,
+        "full_monitor_invalidations": 20,
+        "surface_damage_events": 30,
+        "client_commits": 30,
+        "outer_commits": 23
+      },
+      {
+        "mode": "overview",
+        "repeat": 1,
+        "full_monitor_invalidations": 20,
+        "surface_damage_events": 30,
+        "client_commits": 30,
+        "outer_commits": 20
+      },
+      {
+        "mode": "overview",
+        "repeat": 2,
+        "full_monitor_invalidations": 20,
+        "surface_damage_events": 30,
+        "client_commits": 30,
+        "outer_commits": 20
+      },
+      {
+        "mode": "normal-returned",
+        "repeat": 0,
+        "full_monitor_invalidations": 0,
+        "surface_damage_events": 21,
+        "client_commits": 21,
+        "outer_commits": 20
+      },
+      {
+        "mode": "normal-returned",
+        "repeat": 1,
+        "full_monitor_invalidations": 0,
+        "surface_damage_events": 20,
+        "client_commits": 20,
+        "outer_commits": 20
+      },
+      {
+        "mode": "normal-returned",
+        "repeat": 2,
+        "full_monitor_invalidations": 0,
+        "surface_damage_events": 20,
+        "client_commits": 20,
+        "outer_commits": 12
+      }
+    ]
+  },
+  "candidate-1.5x": {
+    "trials": 12,
+    "passed": true,
+    "pixel_differences": [
+      0,
+      0,
+      0
+    ],
+    "tiny_update_invalidations": [
+      {
+        "mode": "normal",
+        "repeat": 0,
+        "full_monitor_invalidations": 70,
+        "surface_damage_events": 22,
+        "client_commits": 22,
+        "outer_commits": 35
+      },
+      {
+        "mode": "overview",
+        "repeat": 0,
+        "full_monitor_invalidations": 20,
+        "surface_damage_events": 30,
+        "client_commits": 30,
+        "outer_commits": 30
+      },
+      {
+        "mode": "normal-returned",
+        "repeat": 0,
+        "full_monitor_invalidations": 0,
+        "surface_damage_events": 21,
+        "client_commits": 21,
+        "outer_commits": 20
+      }
+    ]
+  }
+}

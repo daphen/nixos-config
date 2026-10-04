@@ -24,8 +24,9 @@ mkdir -p "$state" "$bin"
 
 declare -A revisions daemon_paths client_paths
 for app in "${apps[@]}"; do
-    repo="$home/personal/$app"
-    [[ -d "$repo/.git" ]] || { echo "$app: missing repo $repo" >&2; exit 1; }
+    override="${app^^}_REPO"
+    repo="${!override:-$home/personal/$app}"
+    [[ -d "$repo/.git" || -f "$repo/.git" ]] || { echo "$app: missing repo $repo" >&2; exit 1; }
     [[ -z $(git -C "$repo" status --porcelain) ]] || { echo "$app: working tree is dirty" >&2; exit 1; }
     head=$(git -C "$repo" rev-parse HEAD)
     main=$(git -C "$repo" ls-remote origin refs/heads/main | awk '{print $1}')
@@ -51,7 +52,8 @@ if $check; then
 fi
 
 for app in "${apps[@]}"; do
-    repo="$home/personal/$app"
+    override="${app^^}_REPO"
+    repo="${!override:-$home/personal/$app}"
     mapfile -t outputs < <(cd "$repo" && nix build ".#$app" ".#$app-client" --no-link --print-out-paths)
     daemon="" client=""
     for output in "${outputs[@]}"; do

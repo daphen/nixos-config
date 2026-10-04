@@ -19,6 +19,7 @@ Singleton {
         "light": {
             "bg":          "{{light.background.primary}}",
             "bg_dim":      "{{light.background.dim}}",
+            "canvas":      "{{light.background.canvas}}",
             "bg_alt":      "{{light.background.secondary}}",
             "selection":   "{{light.background.selection}}",
             "surface":     "{{light.background.surface}}",
@@ -50,6 +51,7 @@ Singleton {
         "dark": {
             "bg":          "{{dark.background.primary}}",
             "bg_dim":      "{{dark.background.dim}}",
+            "canvas":      "{{dark.background.canvas}}",
             "bg_alt":      "{{dark.background.secondary}}",
             "selection":   "{{dark.background.selection}}",
             "surface":     "{{dark.background.surface}}",
@@ -82,6 +84,7 @@ Singleton {
 
     readonly property color bg:           palettes[mode].bg
     readonly property color bgDim:        palettes[mode].bg_dim   // rail ground, darker than the editor
+    readonly property color canvas:       palettes[mode].canvas
     readonly property color bg_alt:       palettes[mode].bg_alt
     readonly property color selection:    palettes[mode].selection
     readonly property color surface:      palettes[mode].surface
@@ -111,6 +114,8 @@ Singleton {
     readonly property color ink:          palettes[mode].ink
     readonly property color warning:      palettes[mode].warning
     readonly property color brightWhite:  palettes[mode].brightWhite
+    readonly property color contrastSurface: mode === "light" ? ink : fg
+    readonly property color onContrast: mode === "light" ? bg : ink
 
     readonly property real hairlineAlpha: palettes[mode].hairlineAlpha
     readonly property real dimmedFgAlpha: palettes[mode].dimmedFgAlpha
@@ -131,7 +136,7 @@ Singleton {
     readonly property int radiusInner: radiusCard - insetCard
     readonly property int padding:   12
     readonly property int paddingSm: 6
-    readonly property int fontSize:  14
+    readonly property int fontSize:  Quickshell.env("COCKPIT_DECK") === "1" ? 12 : 14
     function resolveFontFamily(preferred) {
         const available = Qt.fontFamilies()
         const candidates = [preferred, "GeistMono Nerd Font", "DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono"]
