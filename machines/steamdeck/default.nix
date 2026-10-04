@@ -47,16 +47,19 @@ let
         target_events: [ { keyboard: KeyF16 } ]
       - name: Left stick up
         source_event: { gamepad: { axis: { name: LeftStick, direction: up, deadzone: 0.4 } } }
-        target_events: [ { keyboard: KeyF15 } ]
+        target_events: [ { keyboard: KeyF19 } ]
       - name: Left stick down
         source_event: { gamepad: { axis: { name: LeftStick, direction: down, deadzone: 0.4 } } }
-        target_events: [ { keyboard: KeyF14 } ]
+        target_events: [ { keyboard: KeyF18 } ]
       - name: Left stick left
         source_event: { gamepad: { axis: { name: LeftStick, direction: left, deadzone: 0.4 } } }
-        target_events: [ { keyboard: KeyF13 } ]
+        target_events: [ { keyboard: KeyF17 } ]
       - name: Left stick right
         source_event: { gamepad: { axis: { name: LeftStick, direction: right, deadzone: 0.4 } } }
-        target_events: [ { keyboard: KeyF16 } ]
+        target_events: [ { keyboard: KeyF20 } ]
+      - name: Left stick analog
+        source_event: { gamepad: { axis: { name: LeftStick } } }
+        target_events: [ { gamepad: { axis: { name: LeftStick } } } ]
       - name: Right stick left
         source_event: { gamepad: { axis: { name: RightStick, direction: left, deadzone: 0.4 } } }
         target_events: [ { keyboard: KeyF1 } ]
@@ -89,7 +92,7 @@ let
         target_events: [ { keyboard: KeyF24 } ]
       - name: Super modifier
         source_event: { gamepad: { trigger: { name: LeftTrigger, deadzone: 0.3 } } }
-        target_events: [ { keyboard: KeyLeftMeta } ]
+        target_events: [ { gamepad: { trigger: { name: LeftTrigger } } }, { keyboard: KeyLeftMeta } ]
       - name: Move modifier
         source_event: { gamepad: { button: LeftPaddle1 } }
         target_events: [ { keyboard: KeyLeftShift } ]

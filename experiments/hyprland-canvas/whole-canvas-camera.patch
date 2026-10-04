@@ -284,6 +284,55 @@ index b231affdf339ebf1345f520c8e778d875abc6270..47cdc21b01d8f9e5e8534e35c74884f6
          std::string m_lastWorkspaceAddress;
          std::string m_lastWorkspaceType;
          bool        m_lastWorkspaceSpecial = false;
+diff --git a/src/desktop/view/window/X11Backend.cpp b/src/desktop/view/window/X11Backend.cpp
+index 85b47bf81578258879b87a1b6fd2b5c2495afbd1..6fe5ef29db8d627c8aa13725d83f45db6988ead4 100644
+--- a/src/desktop/view/window/X11Backend.cpp
++++ b/src/desktop/view/window/X11Backend.cpp
+@@ -268,9 +268,12 @@ SClientGeometry CX11Backend::geometry() const {
+     const auto SURFACE         = m_xwaylandSurface.lock();
+     const auto CLIENT_GEOMETRY = SURFACE ? SURFACE->m_geometry : m_geometry.box;
+     const auto SCALE           = surfaceScale();
++    const auto MONITOR         = preferredMonitor(nullptr);
++    const bool CANVAS =
++        m_window && !m_window->isFloating() && !traits().overrideRedirect && MONITOR && MONITOR->canvasEnabled() && m_window->m_workspace == MONITOR->m_activeWorkspace;
+ 
+     return {
+-        .box                   = {g_pXWaylandManager->xwaylandToWaylandCoords(CLIENT_GEOMETRY.pos()), CLIENT_GEOMETRY.size() / SCALE},
++        .box = CANVAS ? clientToLogical(CLIENT_GEOMETRY, MONITOR) : CBox{g_pXWaylandManager->xwaylandToWaylandCoords(CLIENT_GEOMETRY.pos()), CLIENT_GEOMETRY.size() / SCALE},
+         .positionAuthoritative = SURFACE ? SURFACE->m_overrideRedirect : m_geometry.positionAuthoritative,
+     };
+ }
+@@ -310,17 +313,24 @@ Vector2D CX11Backend::reportedSize() const {
+ CBox CX11Backend::clientToLogical(const CBox& box, PHLMONITOR preferredMonitor_) const {
+     static auto PXWLFORCESCALEZERO = CConfigValue<Config::INTEGER>("xwayland:force_zero_scaling");
+ 
+-    const auto  MONITOR = preferredMonitor(preferredMonitor_);
+-    const auto  SCALE   = *PXWLFORCESCALEZERO && MONITOR ? MONITOR->m_scale : 1.0;
+-    return {g_pXWaylandManager->xwaylandToWaylandCoords(box.pos(), MONITOR), box.size() / SCALE};
++    const auto  MONITOR  = preferredMonitor(preferredMonitor_);
++    const auto  SCALE    = *PXWLFORCESCALEZERO && MONITOR ? MONITOR->m_scale : 1.0;
++    auto        position = g_pXWaylandManager->xwaylandToWaylandCoords(box.pos(), MONITOR);
++    if (m_window && !m_window->isFloating() && !traits().overrideRedirect && MONITOR && MONITOR->canvasEnabled() && m_window->m_workspace == MONITOR->m_activeWorkspace)
++        position = MONITOR->m_position + (position - MONITOR->m_position - MONITOR->canvasOffset()) / MONITOR->m_canvasZoom->value();
++    return {position, box.size() / SCALE};
+ }
+ 
+ CBox CX11Backend::logicalToClient(const CBox& box, PHLMONITOR preferredMonitor_) const {
+     static auto PXWLFORCESCALEZERO = CConfigValue<Config::INTEGER>("xwayland:force_zero_scaling");
+ 
+-    const auto  MONITOR = preferredMonitor(preferredMonitor_);
+-    const auto  SCALE   = *PXWLFORCESCALEZERO && MONITOR ? MONITOR->m_scale : 1.0;
+-    return {g_pXWaylandManager->waylandToXWaylandCoords(box.pos(), MONITOR), (box.size().clamp({1, 1}) * SCALE).round()};
++    const auto  MONITOR  = preferredMonitor(preferredMonitor_);
++    const auto  SCALE    = *PXWLFORCESCALEZERO && MONITOR ? MONITOR->m_scale : 1.0;
++    auto        position = box.pos();
++    // Xwayland clips input to its root, so report the drawn position rather than canvas-world coordinates.
++    if (m_window && !m_window->isFloating() && !traits().overrideRedirect && MONITOR && MONITOR->canvasEnabled() && m_window->m_workspace == MONITOR->m_activeWorkspace)
++        position = MONITOR->m_position + (position - MONITOR->m_position) * MONITOR->m_canvasZoom->value() + MONITOR->canvasOffset();
++    return {g_pXWaylandManager->waylandToXWaylandCoords(position, MONITOR), (box.size().clamp({1, 1}) * SCALE).round()};
+ }
+ 
+ Vector2D CX11Backend::surfaceLocalToBuffer(const Vector2D& local) const {
 diff --git a/src/helpers/MiscFunctions.cpp b/src/helpers/MiscFunctions.cpp
 index 299d2199cec36326c23abf902cf5a9c84e0e11cf..706e3dae8fafb13c3da4f4b4f3e07153fdfb1d5b 100644
 --- a/src/helpers/MiscFunctions.cpp
@@ -704,7 +753,7 @@ index 176a49560d182a25c6bb2e7cf1da92832eb9feeb..2f8a7dc880c9fce01a5635b022814e9b
              local = m_touchData.touchFocusWindow->backend().surfaceLocalToBuffer(local);
  
 diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
-index 090611aba4ccdf9cb0068eba8079aa9324e4c626..9c5d30a93777e0593ff24b78dcf69e5a29064d8e 100644
+index 090611aba4ccdf9cb0068eba8079aa9324e4c626..4cae3cf6ee53b354336eb0cfd33ea715bdba2ed3 100644
 --- a/src/output/Monitor.cpp
 +++ b/src/output/Monitor.cpp
 @@ -37,6 +37,9 @@
@@ -717,20 +766,27 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..9c5d30a93777e0593ff24b78dcf69e5a
  #include "../i18n/Engine.hpp"
  #include "../helpers/cm/ColorManagement.hpp"
  #include "../state/MonitorState.hpp"
-@@ -97,6 +100,12 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
+@@ -97,6 +100,19 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
      static auto PZOOMFACTOR = CConfigValue<Config::FLOAT>("cursor:zoom_factor");
      Animation::mgr()->createAnimation(*PZOOMFACTOR, m_cursorZoom, Config::animationTree()->getAnimationPropertyConfig("zoomFactor"), AVARDAMAGE_NONE);
      m_cursorZoom->setUpdateCallback([this](auto) { g_pHyprRenderer->damageMonitor(m_self.lock()); });
++    const auto updateCanvas = [this](auto) {
++        for (const auto& window : Desktop::windowState()->windows()) {
++            if (validMapped(window) && window->m_monitor == m_self && window->backend().isX11() && !window->isFloating() && !window->backend().traits().overrideRedirect)
++                window->sendWindowSize();
++        }
++        g_pHyprRenderer->damageMonitor(m_self.lock());
++    };
 +    Animation::mgr()->createAnimation(1.F, m_canvasZoom, Config::animationTree()->getAnimationPropertyConfig("canvasCamera"), AVARDAMAGE_NONE);
-+    m_canvasZoom->setUpdateCallback([this](auto) { g_pHyprRenderer->damageMonitor(m_self.lock()); });
++    m_canvasZoom->setUpdateCallback(updateCanvas);
 +    Animation::mgr()->createAnimation(0.F, m_canvasX, Config::animationTree()->getAnimationPropertyConfig("canvasCamera"), AVARDAMAGE_NONE);
-+    m_canvasX->setUpdateCallback([this](auto) { g_pHyprRenderer->damageMonitor(m_self.lock()); });
++    m_canvasX->setUpdateCallback(updateCanvas);
 +    Animation::mgr()->createAnimation(0.F, m_canvasY, Config::animationTree()->getAnimationPropertyConfig("canvasCamera"), AVARDAMAGE_NONE);
-+    m_canvasY->setUpdateCallback([this](auto) { g_pHyprRenderer->damageMonitor(m_self.lock()); });
++    m_canvasY->setUpdateCallback(updateCanvas);
      Animation::mgr()->createAnimation(0.F, m_zoomAnimProgress, Config::animationTree()->getAnimationPropertyConfig("monitorAdded"), AVARDAMAGE_NONE);
      m_zoomAnimProgress->setUpdateCallback([this](auto) { g_pHyprRenderer->damageMonitor(m_self.lock()); });
      Animation::mgr()->createAnimation(0.F, m_backgroundOpacity, Config::animationTree()->getAnimationPropertyConfig("monitorAdded"), AVARDAMAGE_NONE);
-@@ -107,6 +116,182 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
+@@ -107,6 +123,182 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
      m_commitCoordinator = makeUnique<COutputCommitCoordinator>(this);
  }
  
@@ -1165,7 +1221,7 @@ index 6028e21a494ed05b138edf984d9c454641b59ab2..3bbaa5bfda76e07699a25bb24bcc2ff7
                                     bool fixMisalignedFSV1 = false);
  
 diff --git a/src/render/Renderer.cpp b/src/render/Renderer.cpp
-index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b01b36512 100644
+index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..dc6e959789d30b5489e6ad5af8d24e05caa2a913 100644
 --- a/src/render/Renderer.cpp
 +++ b/src/render/Renderer.cpp
 @@ -85,6 +85,31 @@ extern "C" {
@@ -1232,20 +1288,25 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
      const auto PWORKSPACE = pWindow->m_workspace;
      const auto REALPOS =
          pWindow->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT) + ((pWindow->m_state & WINDOW_STATE_PINNED) ? Vector2D{} : PWORKSPACE->m_renderOffset->value());
-@@ -646,10 +680,10 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
+@@ -646,12 +680,15 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
      // render window decorations first, if not fullscreen full
      if (mode == RENDER_PASS_ALL || mode == RENDER_PASS_MAIN) {
  
 -        const bool      TRANSFORMEDWINDOW = pWindow->effects().hasActiveTransformers();
-+        const bool      TRANSFORMEDWINDOW = canvasWindow || pWindow->effects().hasActiveTransformers();
++        const bool TRANSFORMEDWINDOW =
++            (canvasWindow && (pMonitor->m_canvasOverview || pMonitor->m_canvasCommitting || pMonitor->m_canvasZoom->isBeingAnimated() || canvasZoom(pMonitor) != 1.F)) ||
++            pWindow->effects().hasActiveTransformers();
          UP<CRenderPass> transformedPass;
          UP<CScopeGuard> passRedirect;
 -        const bool      windowBlur         = renderdata.blur;
 +        const bool      windowBlur         = renderdata.blur && !canvasWindow;
          const bool      windowBlurUsesLive = windowBlur && !shouldUseNewBlurOptimizations(nullptr, pWindow);
          const auto      backdropScope      = makeShared<SBackdropScope>();
++        renderdata.blur = windowBlur;
  
-@@ -1102,7 +1136,8 @@ void IHyprRenderer::renderSessionLockSurface(WP<SSessionLockSurface> pSurface, P
+         addPassElement(makeUnique<CBackdropScopePassElement>(CBackdropScopePassElement::eAction::BEGIN, backdropScope));
+ 
+@@ -1102,7 +1139,8 @@ void IHyprRenderer::renderSessionLockSurface(WP<SSessionLockSurface> pSurface, P
          &renderdata);
  }
  
@@ -1255,7 +1316,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
      static auto PXPMODE          = CConfigValue<Config::INTEGER>("render:xp_mode");
      static auto PSESSIONLOCKXRAY = CConfigValue<Config::INTEGER>("misc:session_lock_xray");
  
-@@ -1161,7 +1196,7 @@ void IHyprRenderer::renderAllClientsForWorkspace(PHLMONITOR pMonitor, PHLWORKSPA
+@@ -1161,7 +1199,7 @@ void IHyprRenderer::renderAllClientsForWorkspace(PHLMONITOR pMonitor, PHLWORKSPA
          return;
      }
  
@@ -1264,7 +1325,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
          renderBackground(pMonitor);
  
          for (auto const& ls : pMonitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND]) {
-@@ -1177,61 +1212,70 @@ void IHyprRenderer::renderAllClientsForWorkspace(PHLMONITOR pMonitor, PHLWORKSPA
+@@ -1177,61 +1215,70 @@ void IHyprRenderer::renderAllClientsForWorkspace(PHLMONITOR pMonitor, PHLWORKSPA
          renderFadeouts(pMonitor, Desktop::FADEOUT_PLANE_LAYER_BOTTOM);
      }
  
@@ -1377,7 +1438,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
  
      // Render surfaces above windows for monitor
      for (auto const& ls : pMonitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP]) {
-@@ -2142,7 +2186,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2142,7 +2189,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
  
      // tearing and DS first
      bool       shouldTear              = pMonitor->updateTearing();
@@ -1386,12 +1447,16 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
      const auto presentationMode =
          shouldTear ? Aquamarine::eOutputPresentationMode::AQ_OUTPUT_PRESENTATION_IMMEDIATE : Aquamarine::eOutputPresentationMode::AQ_OUTPUT_PRESENTATION_VSYNC;
      if (pMonitor->m_output->state->state().presentationMode != presentationMode)
-@@ -2210,9 +2254,14 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2210,9 +2257,18 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
          return;
      }
  
 +    const auto CANVAS_ZOOM   = canvasZoom(pMonitor);
 +    const bool RENDER_CANVAS = !pMonitor->isMirror() && canvasOverviewActive(pMonitor);
++    const bool oldNoSimplify = m_renderData.noSimplify;
++    CScopeGuard restoreSimplification([&] { m_renderData.noSimplify = oldNoSimplify; });
++    // Occlusion planning runs before the canvas camera transform is applied.
++    m_renderData.noSimplify = oldNoSimplify || RENDER_CANVAS;
 +    if (!RENDER_CANVAS || !pMonitor->m_canvasOverview)
 +        elementRenderer()->clearCanvasWindowCache();
 +
@@ -1403,7 +1468,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
          damage = {0, 0, sc<int>(pMonitor->m_transformedSize.x) * 10, sc<int>(pMonitor->m_transformedSize.y) * 10};
  
      finalDamage = damage;
-@@ -2230,7 +2279,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2230,7 +2286,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
  
      bool renderCursor = true;
  
@@ -1412,7 +1477,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
          renderWindow(pMonitor->m_solitaryClient.lock(), pMonitor, NOW, false, RENDER_PASS_MAIN /* solitary = no popups */);
      else if (!finalDamage.empty()) {
          if (pMonitor->isMirror()) {
-@@ -2241,7 +2290,32 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2241,7 +2297,32 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
              renderCursor = false;
          } else {
              CBox renderBox = {0, 0, sc<int>(pMonitor->m_transformedSize.x), sc<int>(pMonitor->m_transformedSize.y)};
@@ -1446,7 +1511,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
              renderLockscreen(pMonitor, NOW, renderBox);
  
              // render IME even above the lockscreen - allow the user to use it to potentially input stuff on it.
-@@ -2593,7 +2667,9 @@ void IHyprRenderer::sendFrameEventsToWorkspace(PHLMONITOR pMonitor, PHLWORKSPACE
+@@ -2593,7 +2674,9 @@ void IHyprRenderer::sendFrameEventsToWorkspace(PHLMONITOR pMonitor, PHLWORKSPACE
          if (alphaModifier && !alphaModifier->alphaNonZero())
              continue;
  
@@ -1457,7 +1522,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
      }
  }
  
-@@ -2792,6 +2868,7 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2792,6 +2875,7 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
      }
  
      const auto SURFACE_BOX = WLSURF->getSurfaceBoxGlobal();
@@ -1465,7 +1530,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
  
      // hack: schedule frame events
      if (!pSurface->m_current.callbacks.empty() && SURFACE_BOX && !SURFACE_BOX->empty()) {
-@@ -2799,7 +2876,7 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2799,7 +2883,7 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
              if (!m->m_output)
                  continue;
  
@@ -1474,7 +1539,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
                  m->scheduleFrame(Aquamarine::IOutput::AQ_SCHEDULE_NEEDS_FRAME);
          }
      }
-@@ -2820,8 +2897,12 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2820,8 +2904,12 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
      for (auto const& m : State::monitorState()->monitors()) {
          if (!m->m_output)
              continue;
@@ -1488,7 +1553,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
  
          damageBoxForEach.set(damageBox);
          damageBoxForEach.translate({-m->m_position.x, -m->m_position.y}).scale(m->m_scale);
-@@ -2846,6 +2927,10 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
+@@ -2846,6 +2934,10 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
  
      for (auto const& m : State::monitorState()->monitors()) {
          if (forceFull || shouldRenderWindow(pWindow, m)) { // only damage if window is rendered on monitor
@@ -1499,7 +1564,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..954532a251e35cad96b9c4b879bf284b
              CBox fixedDamageBox = {windowBox.x - m->m_position.x, windowBox.y - m->m_position.y, windowBox.width, windowBox.height};
              fixedDamageBox.scale(m->m_scale).round();
              m->addDamage(fixedDamageBox);
-@@ -3307,6 +3392,8 @@ void IHyprRenderer::renderFadeouts(PHLMONITOR monitor, Desktop::eFadeoutPlane pl
+@@ -3307,6 +3399,8 @@ void IHyprRenderer::renderFadeouts(PHLMONITOR monitor, Desktop::eFadeoutPlane pl
      if (!monitor)
          return;
  
