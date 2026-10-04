@@ -79,6 +79,9 @@ that defines a package or the system → rebuild.**
 - `wallpaper/shell.qml` — separate Quickshell instance owning the background
   surfaces, so reloading bar, picker, or notification QML cannot flash the
   compositor backdrop.
+- `dotfiles/qslib/showcase/run.sh` — the single QsLib Presentation app: live
+  shared orbs, cards, controls, motion, and searchable icons. Temporary
+  galleries under `/tmp` are historical experiments, not alternate launchers.
 - `modules/qmldir` — registers every component.
 - `modules/Bar.qml` — top-of-screen bar. Leftmost = `wpmPill`, middle =
   `Minimap`, rightmost = `worktreePill`. Mid bar = leftGroup (DateText, Weather,
@@ -206,10 +209,11 @@ copied only when it has an independent Hyprland entrypoint.
 
 Home Manager maps this tree to `~/.config/hypr/` and installs `hypr-session`
 with the exact Canvas store package plus its store-packaged native lock UI. On
-proart, the interactive TTY1 login starts that wrapper automatically; exiting
-or failing returns to the shell. On other TTYs, run `hypr-session` manually.
-Niri need not be running. Direct `run-login` remains the isolated dev path. When handing over from an active Niri session, the launcher restores
-Niri on exit; a standalone launch returns to the TTY instead.
+proart, the interactive TTY1 login starts that wrapper automatically; exiting or
+failing returns to the shell. On other TTYs, run `hypr-session` manually. Niri
+need not be running. Direct `run-login` remains the isolated dev path. When
+handing over from an active Niri session, the launcher restores Niri on exit; a
+standalone launch returns to the TTY instead.
 
 ## Notifications
 

@@ -23,6 +23,8 @@ return function(ctx)
 		}
 	end
 
+	input.float_switch_override_focus = 0
+
 	if DECK_MODE then
 		hl.device({ name = "fts3528:00-2808:1015", output = "eDP-1", transform = 3 })
 		for _, name in ipairs({ "inputplumber-mouse", "extest-fake-device-1" }) do

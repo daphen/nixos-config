@@ -713,7 +713,7 @@ index c337295aa288fd45485822149036ca1e44dcfc67..811920c4312a1ffd48993de4bfb13a85
      const bool  CONFIGURECLIENT = !(flags & TARGET_UPDATE_NO_CLIENT_CONFIGURE);
  
 diff --git a/src/managers/SessionLockManager.cpp b/src/managers/SessionLockManager.cpp
-index 960127be179d287987d9f6865a5af2a9384120c7..f8d3d0797ad061caf14f181d550ddc272d80a562 100644
+index 960127be179d287987d9f6865a5af2a9384120c7..bcf693bc9924fe75777ed8936302226b3c1b34be 100644
 --- a/src/managers/SessionLockManager.cpp
 +++ b/src/managers/SessionLockManager.cpp
 @@ -81,6 +81,8 @@ void CSessionLockManager::onNewSessionLock(SP<CSessionLock> pLock) {
@@ -745,6 +745,11 @@ index 960127be179d287987d9f6865a5af2a9384120c7..f8d3d0797ad061caf14f181d550ddc27
      const bool NOACTIVEMONS = std::ranges::all_of(State::monitorState()->monitors(), [](const auto& m) { return !m->m_enabled || !m->m_dpmsStatus; });
  
      if (NOACTIVEMONS) {
+@@ -143,3 +155,3 @@
+ bool CSessionLockManager::isSessionLocked() {
+-    return PROTO::sessionLock->isLocked();
++    return m_sessionLock != nullptr || PROTO::sessionLock->isLocked();
+ }
 diff --git a/src/managers/fullscreen/FullscreenController.cpp b/src/managers/fullscreen/FullscreenController.cpp
 index e7db82afb930691278ed28220a22121fbff40f02..fd21f1be1dde34be949e709ed5f57bcd8737fc0d 100644
 --- a/src/managers/fullscreen/FullscreenController.cpp
@@ -1046,7 +1051,7 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..d9658e9713c4aee7f77d74c0f16315c7
      Animation::mgr()->createAnimation(0.F, m_zoomAnimProgress, Config::animationTree()->getAnimationPropertyConfig("monitorAdded"), AVARDAMAGE_NONE);
      m_zoomAnimProgress->setUpdateCallback([this](auto) { g_pHyprRenderer->damageMonitor(m_self.lock()); });
      Animation::mgr()->createAnimation(0.F, m_backgroundOpacity, Config::animationTree()->getAnimationPropertyConfig("monitorAdded"), AVARDAMAGE_NONE);
-@@ -107,6 +125,216 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
+@@ -107,6 +125,219 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
      m_commitCoordinator = makeUnique<COutputCommitCoordinator>(this);
  }
  
@@ -1128,9 +1133,12 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..d9658e9713c4aee7f77d74c0f16315c7
 +        bounds            = {left, top, right - left, bottom - top};
 +        first             = false;
 +    }
-+    if (first)
-+        return;
-+    const auto  area   = m_activeWorkspace->space()->workArea();
++    const auto area = m_activeWorkspace->space()->workArea();
++    if (first) {
++        if (!g_pSessionLockManager->isSessionLocked())
++            return;
++        bounds = area;
++    }
 +    const float zoom   = std::clamp(std::min(area.w / (bounds.w + 96.0), area.h / (bounds.h + 96.0)), 0.25, 1.0);
 +    const auto  center = m_canvasPanning ? m_position + (area.middle() - m_position - canvasOffset(true)) / m_canvasZoom->goal() : bounds.middle();
 +    const auto  camera = center - m_position - m_size / 2.0 + (m_size / 2.0 - area.middle() + m_position) / zoom;

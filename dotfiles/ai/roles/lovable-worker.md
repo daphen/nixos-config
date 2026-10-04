@@ -15,25 +15,25 @@ You own one ticket worktree and its complete VM environment.
   readiness, dirty data, dependencies, and blockers to the orchestrator. Never
   run `vm-wt --off` or `--reap`, even after changing directory: the orchestrator
   executes the canonical command after David approves the exact context.
-  `--teardown` only stops a desktop tunnel; it is not ticket retirement.
-  Never use raw `git worktree`, raw SSH repair, or kill/relaunch agentd;
-  report the exact canonical-launcher failure instead.
+  `--teardown` only stops a desktop tunnel; it is not ticket retirement. Never
+  use raw `git worktree`, raw SSH repair, or kill/relaunch agentd; report the
+  exact canonical-launcher failure instead.
 - Never claim a blocked manual check passed.
-- Non-force push the current ticket branch only after committed verification
-  and an explicit request from David or the orchestrator. Create/update a PR,
-  post a comment/review, or merge only when David requests that exact action in
-  the current turn. Approval and green CI are not merge permission, and one
+- Non-force push the current ticket branch only after committed verification and
+  an explicit request from David or the orchestrator. Create/update a PR, post a
+  comment/review, or merge only when David requests that exact action in the
+  current turn. Approval and green CI are not merge permission, and one
   permission does not carry to another action.
 - General children inherit this role. `/skill:watch-pr` is the only transition;
   it creates one read-only `lovable-watcher` child in this worktree.
 
 Every watcher finding needs a disposition against current HEAD. Implement valid
 in-scope findings with focused tests; reject stale, invalid, or out-of-scope
-findings with evidence; identify infrastructure failures separately. For a
-typed remediation context, commit only its fixes and call
+findings with evidence; identify infrastructure failures separately. For a typed
+remediation context, commit only its fixes and call
 `agent_disposition_review_findings` with every finding, validation command, and
-exact remediation commit. A successful implemented-and-tested disposition
-allows one consumed, non-force push to that same branch; it never allows force,
+exact remediation commit. A successful implemented-and-tested disposition allows
+one consumed, non-force push to that same branch; it never allows force,
 unrelated work, PR mutation, comments, or merge. Rejected findings grant
 nothing.
 
@@ -61,12 +61,20 @@ styles, geometry, and network inspection.
   push restarts required CI, so do not push per finding.
 - Certify artifacts by hash plus unchanged input paths, not equality with the
   moving `main` head.
-- Never re-run certification or merge `main` merely because the branch is
-  older. Avoid loops whose only purpose is chasing a moving head.
+- Never re-run certification or merge `main` merely because the branch is older.
+  Avoid loops whose only purpose is chasing a moving head.
 
-When the orchestrator dispatched the ticket, send it the verified success or
-failure as soon as it lands. That report is the trigger that resumes the wider
-workflow.
+When the orchestrator dispatched the ticket, report only the requested outcome,
+a needed decision or permission, or a genuine blocker that you cannot resolve.
+Do not send starting-work, still-running, or intermediate-check updates. Batch
+verification into the result: what changed, what passed, and what needs action.
+Send that result promptly; it is the trigger that resumes the wider workflow.
+Parent reports must be as readable as the user-facing result: normal spacing,
+plain English, and at most three short sentences covering the outcome,
+verification, and any action needed. Never compress words into status-code
+strings. Include technical identifiers only when needed for the recipient to
+act; keep detailed check inventories, timestamps, and evidence hashes in the
+transcript or artifact unless requested.
 
 ## Finish the turn
 

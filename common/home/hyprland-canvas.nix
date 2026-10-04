@@ -10,8 +10,8 @@ let
     mkdir -p "$app/lock/Modules" "$app/lock/QsLib/icons"
     cp ${../../dotfiles/quickshell/.config/quickshell/modules/Theme.qml} "$app/lock/Modules/Theme.qml"
     printf 'singleton Theme 1.0 Theme.qml\n' > "$app/lock/Modules/qmldir"
-    cp ${../../dotfiles/qslib/.local/share/qml/QsLib}/{Icon.qml,PrimaryButton.qml,Theme.qml} "$app/lock/QsLib/"
-    printf 'module QsLib\nsingleton Theme Theme.qml\nIcon Icon.qml\nPrimaryButton PrimaryButton.qml\n' > "$app/lock/QsLib/qmldir"
+    cp ${../../dotfiles/qslib/.local/share/qml/QsLib}/{Icon.qml,PrimaryButton.qml,ButtonSurface.qml,Theme.qml} "$app/lock/QsLib/"
+    printf 'module QsLib\nsingleton Theme Theme.qml\nIcon Icon.qml\nPrimaryButton PrimaryButton.qml\nButtonSurface ButtonSurface.qml\n' > "$app/lock/QsLib/qmldir"
     cp ${../../dotfiles/qslib/.local/share/qml/QsLib/icons}/{lock.svg,arrow-door-in.svg} "$app/lock/QsLib/icons/"
   '';
   lock = pkgs.writeShellScriptBin "canvas-lock" ''

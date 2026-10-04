@@ -6,8 +6,8 @@ local PROFILE = os.getenv("HYPR_CANVAS_PROFILE") or "workstation"
 local DECK_MODE = PROFILE == "deck"
 local SCRIPTS = os.getenv("HYPR_SCRIPTS") or "/home/daphen/.config/hypr/scripts/"
 local ROW_COUNT = 3
-local OUTER_GAP = DECK_MODE and 4 or 24
-local INNER_GAP = DECK_MODE and 4 or 64
+local OUTER_GAP = 24
+local INNER_GAP = 64
 local TILE_WIDTH = 0.9
 local PAN_GAIN = 8.0
 
