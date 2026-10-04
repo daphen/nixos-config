@@ -39,6 +39,12 @@ case "$*" in
   "msg --json workspaces") printf '%s' "${FAKE_WORKSPACES:-[]}" ;;
 esac
 `)
+	writeExecutable(t, filepath.Join(dir, "hyprctl"), "#!"+shell+"\n"+`printf '%s\n' "$*" >> "$FAKE_ACTION_LOG"
+case "$*" in
+  "-j clients") printf '%s' "${FAKE_HYPR_WINDOWS:-[]}" ;;
+  "-j activewindow") printf '%s' "${FAKE_HYPR_ACTIVE:-{}}" ;;
+esac
+`)
 	writeExecutable(t, filepath.Join(dir, "ss"), "#!"+shell+"\n"+`n=0; [[ -f "$FAKE_SS_COUNT" ]] && read -r n < "$FAKE_SS_COUNT"; n=$((n+1)); printf %s "$n" > "$FAKE_SS_COUNT"
 if (( n >= ${FAKE_SS_READY_AT:-1} )); then printf 'UNCONN 0 0 127.0.0.1:24915 0.0.0.0:* '; fi
 `)
@@ -73,7 +79,13 @@ func (f *fakeBrowserDesktop) run(t *testing.T, binary string, extra []string, ar
 	_ = os.Remove(f.actionLog)
 	_ = os.Remove(f.toolLog)
 	cmd := exec.Command(binary, append([]string{"browser-dispatch"}, args...)...)
-	cmd.Env = append(os.Environ(), "HOME="+f.home, "PATH="+f.dir, "FAKE_BROWSER_LOG="+f.browserLog, "FAKE_ACTION_LOG="+f.actionLog, "FAKE_TOOL_LOG="+f.toolLog, "FAKE_SS_COUNT="+filepath.Join(f.dir, "ss-count"), "FAKE_WINDOWS=[]", "FAKE_WORKSPACES=[]")
+	env := make([]string, 0, len(os.Environ()))
+	for _, value := range os.Environ() {
+		if !strings.HasPrefix(value, "HYPRLAND_INSTANCE_SIGNATURE=") {
+			env = append(env, value)
+		}
+	}
+	cmd.Env = append(env, "HOME="+f.home, "PATH="+f.dir, "FAKE_BROWSER_LOG="+f.browserLog, "FAKE_ACTION_LOG="+f.actionLog, "FAKE_TOOL_LOG="+f.toolLog, "FAKE_SS_COUNT="+filepath.Join(f.dir, "ss-count"), "FAKE_WINDOWS=[]", "FAKE_WORKSPACES=[]")
 	cmd.Env = append(cmd.Env, extra...)
 	return cmd.CombinedOutput()
 }
@@ -107,8 +119,11 @@ func TestBrowserProfilePrecedenceAndArgv(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"last URL and YouTube beat work workspace", []string{`FAKE_WORKSPACES=[{"name":"lovable-ticket","is_focused":true}]`}, []string{"ignored", "--new-window", "https://youtube.com/watch?v=x"}, "--base two words --user-data-dir=/data/personal --profile-directory=Default --class=" + personal + " --new-window https://youtube.com/watch?v=x"},
-		{"work URL", nil, []string{"--new-window", "https://github.com/lovablelabs/repo"}, "--base two words --work-a --work-b=value --user-data-dir=/data/work --profile-directory=Default --class=" + work + " --new-window https://github.com/lovablelabs/repo"},
+		{"YouTube stays personal on a work workspace", []string{`FAKE_WORKSPACES=[{"name":"lovable-ticket","is_focused":true}]`}, []string{"ignored", "--new-window", "https://youtube.com/watch?v=x"}, "--base two words --user-data-dir=/data/personal --profile-directory=Default --class=" + personal + " --new-window https://youtube.com/watch?v=x"},
+		{"all GitHub routes to work", nil, []string{"--new-window", "https://github.com/other/repo"}, "--base two words --work-a --work-b=value --user-data-dir=/data/work --profile-directory=Default --class=" + work + " --new-window https://github.com/other/repo"},
+		{"Linear routes to work", nil, []string{"--new-window", "https://linear.app/acme/issue/ONE-1"}, "--base two words --work-a --work-b=value --user-data-dir=/data/work --profile-directory=Default --class=" + work + " --new-window https://linear.app/acme/issue/ONE-1"},
+		{"localhost routes to work", nil, []string{"--new-window", "http://localhost:3000"}, "--base two words --work-a --work-b=value --user-data-dir=/data/work --profile-directory=Default --class=" + work + " --new-window http://localhost:3000"},
+		{"other URLs stay personal on a work workspace", []string{`FAKE_WORKSPACES=[{"name":"lovable-ticket","is_focused":true}]`}, []string{"--new-window", "https://example.com"}, "--base two words --user-data-dir=/data/personal --profile-directory=Default --class=" + personal + " --new-window https://example.com"},
 		{"forced profile beats URL", nil, []string{"--profile=work", "--new-window", "https://youtu.be/x"}, "--base two words --work-a --work-b=value --user-data-dir=/data/work --profile-directory=Default --class=" + work + " --new-window https://youtu.be/x"},
 		{"app omits class work flags and new window", nil, []string{"--profile=work", "--app", "--new-window", "https://example.com"}, "--base two words --user-data-dir=/data/work --profile-directory=Default --app=https://example.com"},
 	} {
@@ -183,7 +198,7 @@ func TestBrowserLastFocusAndHomeWindow(t *testing.T) {
 	windows := fmt.Sprintf(`[{"id":22,"app_id":%q,"workspace_id":2},{"id":33,"app_id":%q,"workspace_id":1,"is_focused":true}]`, work, work)
 	spaces := `[{"id":1,"name":"lovable-main"},{"id":2,"name":"lovable-ticket"}]`
 	start := time.Now()
-	if output, err := f.run(t, binary, []string{"FAKE_WINDOWS=" + windows, "FAKE_WORKSPACES=" + spaces}, "https://example.com"); err != nil {
+	if output, err := f.run(t, binary, []string{"FAKE_WINDOWS=" + windows, "FAKE_WORKSPACES=" + spaces}, "--profile=work", "https://example.com"); err != nil {
 		t.Fatalf("run: %v: %s", err, output)
 	}
 	if actions := readOptional(f.actionLog); !strings.Contains(actions, "msg action focus-window --id 33") {
@@ -191,6 +206,19 @@ func TestBrowserLastFocusAndHomeWindow(t *testing.T) {
 	}
 	if time.Since(start) < 400*time.Millisecond {
 		t.Fatal("browser launched before focus confirmation delay")
+	}
+}
+
+func TestBrowserFocusesHyprlandProfileWindow(t *testing.T) {
+	f := newFakeBrowserDesktop(t)
+	_, work := browserClasses()
+	windows := fmt.Sprintf(`[{"address":"0x1","class":%q,"focusHistoryID":4},{"address":"0x2","class":%q,"focusHistoryID":0}]`, work, work)
+	active := `{"address":"0x2"}`
+	if output, err := f.run(t, testBinary, []string{"HYPRLAND_INSTANCE_SIGNATURE=test", "FAKE_HYPR_WINDOWS=" + windows, "FAKE_HYPR_ACTIVE=" + active}, "--profile=work", "https://example.com"); err != nil {
+		t.Fatalf("run: %v: %s", err, output)
+	}
+	if actions := readOptional(f.actionLog); !strings.Contains(actions, `eval hl.dispatch(hl.dsp.focus({ window = "address:0x2" }))`) {
+		t.Fatalf("Hyprland work window was not focused:\n%s", actions)
 	}
 }
 

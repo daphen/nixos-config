@@ -6,6 +6,8 @@ import Quickshell.Io
 Item {
     id: state
 
+    readonly property var deckPalette: Hyprland.toplevels.values.find(window => window.title === "deck-radial-palette") || null
+
     property int version: 0
     property string activeStack: ""
     property var canvasSnapshot: null
@@ -26,12 +28,16 @@ Item {
 
     Process {
         id: canvasQuery
+        property bool monitorsOnly: false
         running: true
-        command: ["sh", "-c", "printf '{\"clients\":'; hyprctl -j clients; printf ',\"monitors\":'; hyprctl -j monitors; printf ',\"workspaces\":'; hyprctl -j workspaces; printf '}'"]
+        command: monitorsOnly ? ["hyprctl", "-j", "monitors"]
+            : ["sh", "-c", "printf '{\"clients\":'; hyprctl -j clients; printf ',\"monitors\":'; hyprctl -j monitors; printf ',\"workspaces\":'; hyprctl -j workspaces; printf '}'"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
-                    state.canvasSnapshot = JSON.parse(text)
+                    const response = JSON.parse(text)
+                    state.canvasSnapshot = canvasQuery.monitorsOnly && state.canvasSnapshot
+                        ? Object.assign({}, state.canvasSnapshot, { monitors: response }) : response
                     state.version += 1
                 } catch (error) {
                     console.warn("Failed to read Hyprland canvas state:", error)
@@ -49,7 +55,22 @@ Item {
     Timer {
         id: refreshTimer
         interval: 40
-        onTriggered: canvasQuery.running = true
+        onTriggered: {
+            canvasQuery.monitorsOnly = false
+            canvasQuery.running = true
+        }
+    }
+
+    Timer {
+        running: true
+        repeat: true
+        interval: state.canvasSnapshot && (state.canvasSnapshot.monitors || []).some(monitor => !!monitor.canvasNearest) ? 200 : 1000
+        onTriggered: {
+            if (!canvasQuery.running) {
+                canvasQuery.monitorsOnly = true
+                canvasQuery.running = true
+            }
+        }
     }
 
     Connections {
@@ -190,7 +211,9 @@ Item {
                     id: client.address,
                     app_id: client.class || client.initialClass || "",
                     title: client.title || "",
-                    is_focused: Number(client.focusHistoryID) === 0,
+                    is_focused: group.monitor && group.monitor.canvasNearest
+                        ? client.address === group.monitor.canvasNearest
+                        : Number(client.focusHistoryID) === 0,
                     is_floating: client.floating === true,
                     layout: { pos_in_scrolling_layout: [column + 1, row + 1], canvas_row: row },
                 }))

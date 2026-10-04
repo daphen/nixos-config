@@ -73,6 +73,20 @@ in
     Install.WantedBy = [ "graphical-session.target" ];
   };
 
+  systemd.user.services.dsqrd-daemon = {
+    Unit = {
+      Description = "Dsqrd Discord daemon";
+      After = [ "network-online.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "%h/.local/bin/dsqrd";
+      Restart = "on-failure";
+      RestartSec = 3;
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+
   systemd.user.services.openwhispr = {
     Unit = {
       Description = "OpenWhispr local voice dictation";
@@ -90,6 +104,8 @@ in
         "OPENWHISPR_EXTERNAL_HOTKEY=1"
         "OPENWHISPR_EXTERNAL_OVERLAY=1"
         "OPENWHISPR_FORCE_PUSH_TO_TALK=1"
+        "OPENWHISPR_START_MINIMIZED=1"
+        "OPENWHISPR_DISABLE_MEETING_FEATURES=1"
       ];
       Restart = "on-failure";
       RestartSec = 3;

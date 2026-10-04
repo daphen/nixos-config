@@ -16,6 +16,8 @@ Item {
     property bool refreshing: false
     property var items: []
     property string subtitleField: ""
+    property int rowFontSize: 15
+    property int rowSubtitleFontSize: 12
     // Opt-in per-item subtitle color (item[subtitleColorField] = a color);
     // rows without it keep fg_muted.
     property string subtitleColorField: ""
@@ -328,11 +330,11 @@ Item {
                 Rectangle {
                     id: searchField
                     anchors.fill: parent
-                    anchors.leftMargin: 14
-                    anchors.rightMargin: 14
-                    anchors.topMargin: 14
+                    anchors.leftMargin: Theme.insetCard
+                    anchors.rightMargin: Theme.insetCard
+                    anchors.topMargin: Theme.insetCard
                     anchors.bottomMargin: 6
-                    radius: 15
+                    radius: Theme.radiusInner
                     color: Theme.surface0
                     border.width: 1
                     border.color: Theme.hairline
@@ -584,8 +586,8 @@ Item {
                 // structural padding: header/footer are part of the content, so
                 // model resets and positionViewAt* respect them natively (topMargin
                 // lives outside the coordinate system and every reset ignored it)
-                header: Item { width: 1; height: 14 }
-                footer: Item { width: 1; height: 14 }
+                header: Item { width: 1; height: Theme.insetCard }
+                footer: Item { width: 1; height: Theme.insetCard }
                 opacity: root.loading ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
                 add: Transition {
@@ -615,9 +617,9 @@ Item {
                     Rectangle {
                         visible: !rowItem.isDivider
                         anchors.fill: parent
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 14
-                        radius: 13
+                        anchors.leftMargin: Theme.insetCard
+                        anchors.rightMargin: Theme.insetCard
+                        radius: Theme.radiusInner
                         color: rowItem.index === root.selectedIndex ? Theme.bg
                              : rowHover.hovered ? Theme.itemHover
                              : "transparent"
@@ -813,7 +815,7 @@ Item {
                             text: rowItem.modelData ? String(rowItem.modelData.label || "?") : "?"
                             color: Theme.fg
                             font.family: notch.sans
-                            font.pixelSize: 15
+                            font.pixelSize: root.rowFontSize
                             font.weight: 500
                             maximumLineCount: 1
                             wrapMode: Text.NoWrap
@@ -839,7 +841,7 @@ Item {
                                      ? rowItem.modelData[root.subtitleColorField]
                                      : Theme.fg_muted
                                 font.family: notch.sans
-                                font.pixelSize: 12
+                                font.pixelSize: root.rowSubtitleFontSize
                             }
                             Rectangle {
                                 id: subBadge
@@ -967,9 +969,9 @@ Item {
                 }
                 Rectangle {
                     anchors.fill: parent
-                    anchors.margins: 14
+                    anchors.margins: Theme.insetCard
                     anchors.topMargin: 12
-                    radius: 13
+                    radius: Theme.radiusInner
                     color: Theme.surface0
                     border.color: Theme.hairline
                     border.width: 1

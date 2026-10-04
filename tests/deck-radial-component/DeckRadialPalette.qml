@@ -1,0 +1,1 @@
+../../dotfiles/quickshell/.config/quickshell/modules/DeckRadialPalette.qml

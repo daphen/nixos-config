@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,8 +65,19 @@ printf '%s\0' "$BROWSER_BIN" "$BROWSER_CLASS_PERSONAL" "$BROWSER_CLASS_WORK" "$B
 var spotifyURI = regexp.MustCompile(`spotify:([a-z]+):([A-Za-z0-9]+)`)
 var spotifyWeb = regexp.MustCompile(`open\.spotify\.com/(?:intl-[a-z-]+/)?([a-z]+)/([A-Za-z0-9]+)`)
 var spotifyType = regexp.MustCompile(`^(track|album|playlist|artist)$`)
-var workURL = regexp.MustCompile(`^https?://(www\.)?github\.com/lovablelabs(/|$)`)
 var youtubeURL = regexp.MustCompile(`^https?://((www|m|music)\.)?youtube\.com|^https?://youtu\.be`)
+
+func workBrowserURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" ||
+		host == "github.com" || strings.HasSuffix(host, ".github.com") ||
+		host == "linear.app" || strings.HasSuffix(host, ".linear.app") ||
+		strings.Contains(host, "lovable")
+}
 
 func spotifyTarget(url string) (string, string, bool) {
 	if !strings.HasPrefix(url, "spotify:") &&
@@ -130,60 +142,69 @@ func readShellValue(path string) string {
 	return strings.TrimRight(string(data), "\n")
 }
 
-func lastBrowserProfile(config browserConfig) string {
-	personal, _ := os.ReadFile("/tmp/niri-focus-tracker/app-" + config.personalClass)
-	work, _ := os.ReadFile("/tmp/niri-focus-tracker/app-" + config.workClass)
-	last := strings.TrimRight(string(append(personal, work...)), "\n")
-	if newline := strings.LastIndexByte(last, '\n'); newline >= 0 {
-		last = last[newline+1:]
+func browserMainWindow(class string) string {
+	if usingHyprland() {
+		windows, err := desktopWindows()
+		if err != nil {
+			return ""
+		}
+		var target string
+		var recency int64
+		for _, window := range windows {
+			if window.AppID != class {
+				continue
+			}
+			if target == "" || window.RecencySeconds > recency {
+				target, recency = window.ID, window.RecencySeconds
+			}
+		}
+		return target
 	}
-	if last != "" && last == readShellValue("/tmp/"+config.workClass+"-window-id") {
-		return "work"
-	}
-	return "personal"
-}
 
-func browserMainWindow(class string, workspaces []niriWorkspace) uint64 {
+	workspaces, err := niriWorkspaces()
+	if err != nil {
+		return ""
+	}
 	windows, err := niriWindows()
 	if err != nil {
-		return 0
+		return ""
 	}
 	names := make(map[uint64]string, len(workspaces))
 	for _, workspace := range workspaces {
 		names[workspace.ID] = workspace.Name
 	}
-	stored, _ := strconv.ParseUint(readShellValue("/tmp/"+class+"-window-id"), 10, 64)
-	var fallback, first uint64
+	stored := readShellValue("/tmp/" + class + "-window-id")
+	var fallback, first string
 	for _, window := range windows {
 		if window.AppID != class {
 			continue
 		}
+		id := strconv.FormatUint(window.ID, 10)
 		name := names[window.WorkspaceID]
 		if name == "lovable-main" {
-			return window.ID
+			return id
 		}
-		if window.ID == stored {
-			fallback = window.ID
+		if id == stored {
+			fallback = id
 		}
-		if first == 0 && !strings.HasPrefix(name, "lovable-") {
-			first = window.ID
+		if first == "" && !strings.HasPrefix(name, "lovable-") {
+			first = id
 		}
 	}
-	if fallback != 0 {
+	if fallback != "" {
 		return fallback
 	}
 	return first
 }
 
-func focusBrowserHome(class string, workspaces []niriWorkspace) {
-	target := browserMainWindow(class, workspaces)
-	if target == 0 {
+func focusBrowserHome(class string) {
+	target := browserMainWindow(class)
+	if target == "" {
 		return
 	}
-	id := strconv.FormatUint(target, 10)
-	_ = niriAction(io.Discard, io.Discard, "focus-window", "--id", id)
+	_ = focusJumpWindow(io.Discard, io.Discard, target)
 	for i := 0; i < 20; i++ {
-		windows, _ := niriWindows()
+		windows, _ := desktopWindows()
 		found := false
 		for _, window := range windows {
 			found = found || window.Focused && window.ID == target
@@ -226,23 +247,11 @@ func runBrowser(args []string) error {
 		return nil
 	}
 	profile := forced
-	var workspaces []niriWorkspace
-	var workspaceErr error
 	if profile == "" {
-		switch {
-		case youtubeURL.MatchString(url):
-			profile = "personal"
-		case strings.Contains(url, "lovable") || workURL.MatchString(url):
+		if !youtubeURL.MatchString(url) && workBrowserURL(url) {
 			profile = "work"
-		default:
-			profile = lastBrowserProfile(config)
-			workspaces, workspaceErr = niriWorkspaces()
-			for _, workspace := range workspaces {
-				if workspace.Focused && strings.HasPrefix(workspace.Name, "lovable-") {
-					profile = "work"
-					break
-				}
-			}
+		} else {
+			profile = "personal"
 		}
 	}
 	data, class := config.personalData, config.personalClass
@@ -257,12 +266,7 @@ func runBrowser(args []string) error {
 			launch = append(launch, config.workFlags...)
 		}
 		if !newWindow {
-			if workspaces == nil {
-				workspaces, workspaceErr = niriWorkspaces()
-			}
-			if workspaceErr == nil {
-				focusBrowserHome(class, workspaces)
-			}
+			focusBrowserHome(class)
 		}
 		launch = append(launch, "--user-data-dir="+data, "--profile-directory="+config.profile, "--class="+class)
 		if newWindow {

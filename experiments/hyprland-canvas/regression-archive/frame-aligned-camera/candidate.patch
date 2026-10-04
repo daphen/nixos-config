@@ -1,0 +1,16 @@
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -2160,8 +2160,12 @@
+ 
+     Event::bus()->m_events.render.preChecks.emit(pMonitor);
+ 
+-    if (Animation::mgr())
++    if (Animation::mgr()) {
++        if (pMonitor->canvasEnabled() && !pMonitor->m_canvasOverview &&
++            (pMonitor->m_canvasX->isBeingAnimated() || pMonitor->m_canvasY->isBeingAnimated()))
++            Animation::mgr()->resetTickState();
+         Animation::mgr()->frameTick();
++    }
+ 
+     {
+         static bool once = true;

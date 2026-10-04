@@ -1,0 +1,83 @@
+{
+  "passed": true,
+  "provenance": {
+    "repo_head": "13055a25137e023ca4b2a9ede35587e4a86684aa",
+    "source_head": "12f3780fae50a2edf8c50587bd052e95b8bfe652",
+    "dirty_source_patch_sha256": "63920277391de2a5a47134c4f618d933c67397ab8e1a1f1b21859d586e6decd6",
+    "renderer_sha256": "b971b55699270e4dd227ca3c1cb8d931456ee54f283ce9ef47719613e8d34b73",
+    "binary_sha256": "7706b87a3054febeffcb38e32f367ca9d417619cbb2b008e92dcc7f32f79c0f0",
+    "shipping_patch_sha256": "c0a1b596f0a9acf63209e72fbbda3a5de3773362c2c9bc0bebf898dacc1cfdab",
+    "current_source_delta_sha256": "8b3a36eb8dc623b9c89466685e03fbbafcde7c7a93de71e51903b6a17820bfe6"
+  },
+  "comparison": [
+    {
+      "workload": "roi",
+      "stock": {
+        "gpu_ms_per_second": 9.655956000602112,
+        "fps": 119.78363876020249,
+        "cadence_p95_ms": 8.614753998699598
+      },
+      "canvas": {
+        "gpu_ms_per_second": 269.2565802931805,
+        "fps": 119.87811098432563,
+        "cadence_p95_ms": 8.556042492273264
+      },
+      "fixed": {
+        "gpu_ms_per_second": 8.441262039657422,
+        "fps": 120.07496781976556,
+        "cadence_p95_ms": 8.517775015207008
+      }
+    },
+    {
+      "workload": "full",
+      "stock": {
+        "gpu_ms_per_second": 133.27538044796034,
+        "fps": 115.16584094480879,
+        "cadence_p95_ms": 9.99440198938828
+      },
+      "canvas": {
+        "gpu_ms_per_second": 268.7339534039201,
+        "fps": 115.70951029806665,
+        "cadence_p95_ms": 9.8889884975506
+      },
+      "fixed": {
+        "gpu_ms_per_second": 142.6634150309904,
+        "fps": 116.51042912725369,
+        "cadence_p95_ms": 10.046996496384963
+      }
+    }
+  ],
+  "visual": [
+    {
+      "phase": 1,
+      "differing_pixels": "0 (0)",
+      "partial_pixels": [
+        23084
+      ],
+      "partial": "/home/daphen/.cache/hyprland-canvas-dev/partial-damage-implementation/visual/run-20261001-193022/0-fixed/partial-1.ppm",
+      "reference": "/home/daphen/.cache/hyprland-canvas-dev/partial-damage-implementation/visual/run-20261001-193022/0-fixed/reference-1.ppm"
+    },
+    {
+      "phase": 4,
+      "differing_pixels": "0 (0)",
+      "partial_pixels": [
+        33524
+      ],
+      "partial": "/home/daphen/.cache/hyprland-canvas-dev/partial-damage-implementation/visual/run-20261001-193022/0-fixed/partial-4.ppm",
+      "reference": "/home/daphen/.cache/hyprland-canvas-dev/partial-damage-implementation/visual/run-20261001-193022/0-fixed/reference-4.ppm"
+    },
+    {
+      "phase": 8,
+      "differing_pixels": "0 (0)",
+      "partial_pixels": [
+        47444
+      ],
+      "partial": "/home/daphen/.cache/hyprland-canvas-dev/partial-damage-implementation/visual/run-20261001-193022/0-fixed/partial-8.ppm",
+      "reference": "/home/daphen/.cache/hyprland-canvas-dev/partial-damage-implementation/visual/run-20261001-193022/0-fixed/reference-8.ppm"
+    }
+  ],
+  "navigation_passed": true,
+  "comparison_path": "/home/daphen/.cache/hyprland-canvas-dev/partial-damage-implementation/compare/run-20261001-192921",
+  "visual_path": "/home/daphen/.cache/hyprland-canvas-dev/partial-damage-implementation/visual/run-20261001-193022",
+  "navigation_path": "/home/daphen/.cache/hyprland-canvas-dev/partial-damage-implementation/navigation-final-module-path"
+}

@@ -176,8 +176,7 @@ Item {
             height: 4
             radius: 2
             color: Theme.cursor
-            opacity: NotificationJumpPickerState.needsAttention ? pulseOpacity
-                : NotificationJumpPickerState.total > 0 ? 0.35 : 1
+            opacity: NotificationJumpPickerState.needsAttention ? pulseOpacity : 1
             property real pulseOpacity: 1
             Behavior on color { ColorAnimation { duration: 110 } }
 
@@ -189,13 +188,11 @@ Item {
             }
         }
 
-        MouseArea {
-            anchors.centerIn: parent
-            width: 20
-            height: 20
-            enabled: NotificationJumpPickerState.total > 0
-            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: Quickshell.execDetached([Quickshell.env("HOME") + "/.config/niri/scripts/inbox-jump"])
-        }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: NotificationJumpPickerState.show()
     }
 }

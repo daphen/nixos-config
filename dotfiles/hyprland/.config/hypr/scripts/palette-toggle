@@ -47,7 +47,7 @@ if [[ -n $radial_value ]]; then
 else
     "$palette_ipc" toggleOn "$output"
 fi
-if [[ ${HYPR_CANVAS_PROFILE:-} == deck && -z $palette_was_open ]]; then
+if [[ ${HYPR_CANVAS_PROFILE:-} == deck && -z $radial_value && -z $palette_was_open ]]; then
     palette=$(hyprctl -j clients | jq -r '[.[] | select(.xwayland and .title == "quickshell")][0].address // empty')
     if [[ -n $palette ]]; then
         "$scripts/hypr-dispatch" focuswindow "address:$palette" >/dev/null

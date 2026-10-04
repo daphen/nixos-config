@@ -135,7 +135,6 @@
     # Background & Idle
     swaybg
     swayidle
-    swaylock-effects
 
     # Launchers & Menus
     rofimoji            # shipped emoji CSVs read by the QS emoji picker

@@ -1,0 +1,22 @@
+--- a/src/output/Monitor.cpp
++++ b/src/output/Monitor.cpp
+@@ -136,7 +136,7 @@
+ 
+ Vector2D CMonitor::canvasOffset() const {
+     const Vector2D offset = {m_canvasX->value(), m_canvasY->value()};
+-    if (m_canvasZoom->value() != 1.F || m_canvasZoom->isBeingAnimated() || m_canvasX->isBeingAnimated() || m_canvasY->isBeingAnimated())
++    if (m_canvasPanning || m_canvasZoom->value() != 1.F || m_canvasZoom->isBeingAnimated() || m_canvasX->isBeingAnimated() || m_canvasY->isBeingAnimated())
+         return offset;
+     return (offset * m_scale).round() / m_scale;
+ }
+@@ -217,6 +217,10 @@
+             *m_canvasX        = m_canvasX->goal() - pull.x;
+             *m_canvasY        = m_canvasY->goal() - pull.y;
+         }
++        if (!m_canvasOverview) {
++            m_canvasX->setValueAndWarp(m_canvasX->goal());
++            m_canvasY->setValueAndWarp(m_canvasY->goal());
++        }
+     }
+ }
+ 

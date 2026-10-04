@@ -100,6 +100,9 @@ func runCockpit(a app, restart bool) error {
 	if err := c.ensureTunnel(); err != nil {
 		return err
 	}
+	if err := ensureDevProxyTunnel(a); err != nil {
+		return err
+	}
 	c.say("done — launch Cockpit (./run-qs.sh picks up lovable + work automatically)")
 	return nil
 }

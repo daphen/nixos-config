@@ -60,6 +60,10 @@
             });
             hyprland = prev.hyprland.overrideAttrs (old: {
               patches = (old.patches or [ ]) ++ [ ./whole-canvas-camera.patch ];
+              preBuild = (old.preBuild or "") + ''
+                ${prev.util-linux}/bin/renice -n 10 -p $$
+                ${prev.util-linux}/bin/ionice -c3 -p $$
+              '';
             });
           })
         ];

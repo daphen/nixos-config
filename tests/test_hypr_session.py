@@ -13,7 +13,7 @@ BWRAP = shutil.which("bwrap") or next(Path("/nix/store").glob("*-bubblewrap-*/bi
 
 @unittest.skipUnless(BWRAP, "bubblewrap is required to isolate session commands")
 class HyprSessionTests(unittest.TestCase):
-    def launch(self, niri_active, canvas_exit=0, name="hypr-session", graphical=False):
+    def launch(self, niri_active, canvas_exit=0, name="hypr-session", graphical=False, args=(), system_package=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             launcher = root / "experiments/hyprland-canvas/run-login"
@@ -54,13 +54,15 @@ exit "$CANVAS_EXIT"''',
                 env.pop(key, None)
             if graphical:
                 env["WAYLAND_DISPLAY"] = "test-wayland"
+            if system_package:
+                env["HYPRLAND_CANVAS_SYSTEM_PACKAGE"] = str(package)
             master, slave = pty.openpty()
             try:
                 os.write(master, b"n\n")
                 result = subprocess.run([
                     str(BWRAP), "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--bind", directory, directory,
                     "--dev", "/dev", "--dir", "/dev/dri/by-path", "--ro-bind", str(gpu),
-                    "/dev/dri/by-path/pci-0000:65:00.0-card", "--", str(bindir / name),
+                    "/dev/dri/by-path/pci-0000:65:00.0-card", "--", str(bindir / name), *args,
                 ], env=env, stdin=slave, capture_output=True, text=True, timeout=10)
             finally:
                 os.close(master)
@@ -87,6 +89,18 @@ exit "$CANVAS_EXIT"''',
                     if active:
                         expected += ["systemctl --user start niri.service"]
                     self.assertEqual(calls, expected)
+
+    def test_system_package_is_selected_explicitly(self):
+        result, calls = self.launch(False, args=("--real", "--system"), system_package=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Using the Home Manager Canvas package.", result.stdout)
+        self.assertEqual(calls, ["systemctl --user is-active --quiet niri.service", "canvas mode=1"])
+
+    def test_missing_system_package_fails_closed(self):
+        result, calls = self.launch(False, args=("--real", "--system"))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("system Canvas package is unavailable", result.stderr)
+        self.assertEqual(calls, [])
 
     def test_graphical_launch_is_rejected_without_touching_services(self):
         result, calls = self.launch(True, graphical=True)

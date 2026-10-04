@@ -224,7 +224,8 @@ CSS Loader for two thumb panels with a clear center in the desktop Steam
 keyboard; the Deck's keyboard window rule disables blur only for that window.
 Select Swedish in Steam's keyboard settings for åäö and keep English selectable
 with the globe key. This changes neither the OS locale nor Steam's interface
-language.
+language. Hold both triggers and press X to lift the canvas 280 pixels for text
+entry; repeat the chord to return it to its original position.
 
 The hardware file names only the new `NIXOS_DECK_ROOT` and `NIXOS_DECK_EFI`
 labels; they are placeholders until the real partition table is inspected.

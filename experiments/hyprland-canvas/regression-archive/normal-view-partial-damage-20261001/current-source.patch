@@ -1,0 +1,84 @@
+diff --git a/src/render/Renderer.cpp b/src/render/Renderer.cpp
+index b980b9ccaac8a3a0a80fcb83045864d4eee30f34..b1ed5f82dcbee443f1a7bb0ceac2b3de511dab67 100644
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -96,6 +96,13 @@ static bool canvasOverviewActive(PHLMONITORREF monitor) {
+     return monitor->canvasTransformed();
+ }
+ 
++static bool canvasPartialDamage(PHLMONITORREF monitor) {
++    return canvasOverviewActive(monitor) && !monitor->m_canvasOverview && !monitor->m_canvasCommitting &&
++        monitor->m_canvasTransition->value() == 0.F && canvasZoom(monitor) == 1.F && !monitor->m_canvasZoom->isBeingAnimated() &&
++        !monitor->m_canvasX->isBeingAnimated() && !monitor->m_canvasY->isBeingAnimated() &&
++        !monitor->m_activeWorkspace->m_renderOffset->isBeingAnimated() && !monitor->m_activeWorkspace->m_alpha->isBeingAnimated();
++}
++
+ static CBox canvasLogicalBox(PHLMONITORREF monitor) {
+     const auto zoom = canvasZoom(monitor);
+     return {monitor->m_position - monitor->canvasOffset() / zoom, monitor->m_size / zoom};
+@@ -1650,7 +1657,7 @@ void IHyprRenderer::renderAllClientsForWorkspace(PHLMONITOR pMonitor, PHLWORKSPA
+     }
+ 
+     if LIKELY (renderBackdrop && !*PXPMODE) {
+-        const auto backdrop = canvasOverviewActive(pMonitor) && prepareCanvasBackdrop(pMonitor) ? makeShared<SCanvasBackdropFrame>() : nullptr;
++        const auto backdrop = canvasOverviewActive(pMonitor) && canvasReveal(pMonitor) > 0.F && prepareCanvasBackdrop(pMonitor) ? makeShared<SCanvasBackdropFrame>() : nullptr;
+         if (backdrop) {
+             backdrop->refresh = pMonitor->resources()->m_canvasBackdropDirty;
+             backdrop->time = time;
+@@ -2725,7 +2732,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+         elementRenderer()->clearCanvasWindowCache();
+ 
+     // if we have no tracking or full tracking, invalidate the entire monitor
+-    if (RENDER_CANVAS || *PDAMAGETRACKINGMODE == DAMAGE_TRACKING_NONE || *PDAMAGETRACKINGMODE == DAMAGE_TRACKING_MONITOR || pMonitor->m_forceFullFrames > 0 ||
++    if ((RENDER_CANVAS && !canvasPartialDamage(pMonitor)) || *PDAMAGETRACKINGMODE == DAMAGE_TRACKING_NONE || *PDAMAGETRACKINGMODE == DAMAGE_TRACKING_MONITOR || pMonitor->m_forceFullFrames > 0 ||
+         damageBlinkCleanup > 0 || ZOOM_DAMAGE_ENTIRE)
+         damage = {0, 0, sc<int>(pMonitor->m_transformedSize.x) * 10, sc<int>(pMonitor->m_transformedSize.y) * 10};
+ 
+@@ -3408,13 +3415,16 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+             continue;
+         if (!canvasWindowAcceptsUpdates(WINDOW, m) || !EXTENTS.overlaps(canvasOverviewActive(m) ? canvasLogicalBox(m) : m->logicalBox()))
+             continue;
+-        if (canvasOverviewActive(m)) {
++        if (canvasOverviewActive(m) && (!canvasPartialDamage(m) || !WINDOW || WINDOW->isFloating() || WINDOW->effects().hasActiveTransformers() ||
++            WINDOW->positionAnimation()->isBeingAnimated() || WINDOW->sizeAnimation()->isBeingAnimated())) {
+             damageMonitor(m);
+             continue;
+         }
+ 
+         damageBoxForEach.set(damageBox);
+         damageBoxForEach.translate({-m->m_position.x, -m->m_position.y}).scale(m->m_scale);
++        if (canvasPartialDamage(m))
++            damageBoxForEach.translate(m->canvasOffset() * m->m_scale).expand(1);
+ 
+         m->addDamage(damageBoxForEach);
+     }
+@@ -3436,12 +3446,16 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
+ 
+     for (auto const& m : State::monitorState()->monitors()) {
+         if (forceFull || shouldRenderWindow(pWindow, m)) { // only damage if window is rendered on monitor
+-            if (canvasOverviewActive(m)) {
++            if (canvasOverviewActive(m) && (!canvasPartialDamage(m) || pWindow->isFloating() || pWindow->effects().hasActiveTransformers() ||
++                pWindow->positionAnimation()->isBeingAnimated() || pWindow->sizeAnimation()->isBeingAnimated())) {
+                 damageMonitor(m);
+                 continue;
+             }
+             CBox fixedDamageBox = {windowBox.x - m->m_position.x, windowBox.y - m->m_position.y, windowBox.width, windowBox.height};
+-            fixedDamageBox.scale(m->m_scale).round();
++            fixedDamageBox.scale(m->m_scale);
++            if (canvasPartialDamage(m))
++                fixedDamageBox.translate(m->canvasOffset() * m->m_scale).expand(1);
++            fixedDamageBox.round();
+             m->addDamage(fixedDamageBox);
+         }
+     }
+@@ -3471,6 +3485,10 @@ void IHyprRenderer::damageBox(const CBox& box, bool skipFrameSchedule) {
+             continue; // don't damage mirrors traditionally
+ 
+         if (!skipFrameSchedule) {
++            if (canvasPartialDamage(m)) {
++                damageMonitor(m);
++                continue;
++            }
+             CBox damageBox = box.copy().translate(-m->m_position).scale(m->m_scale).round();
+             m->addDamage(damageBox);
+         }

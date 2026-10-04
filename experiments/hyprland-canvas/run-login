@@ -17,9 +17,20 @@ readonly GPU_LINK=/dev/dri/by-path/pci-0000:65:00.0-card
 readonly PACKAGE_LINK="$HOME/.cache/hyprland-canvas-package"
 readonly CANVAS_BIN="$HOME/.cache/hyprland-canvas-bin"
 readonly DEV_PACKAGE="${HYPRLAND_CANVAS_DEV_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/hyprland-canvas-dev}/validated"
-if [[ ${1:-} == --stable ]]; then
+readonly SYSTEM_PACKAGE="${HYPRLAND_CANVAS_SYSTEM_PACKAGE:-}"
+if [[ ${1:-} == --real ]]; then
+  shift
+fi
+if [[ ${1:-} == --system ]]; then
+  readonly SYSTEM_MODE=1
   readonly DEV_MODE=0
+  shift
+elif [[ ${1:-} == --stable ]]; then
+  readonly SYSTEM_MODE=0
+  readonly DEV_MODE=0
+  shift
 else
+  readonly SYSTEM_MODE=0
   readonly DEV_MODE=1
 fi
 
@@ -47,7 +58,14 @@ fi
 
 runtime_path=()
 
-if (( DEV_MODE )); then
+if (( SYSTEM_MODE )); then
+  if [[ -z $SYSTEM_PACKAGE || ! -x $SYSTEM_PACKAGE/bin/Hyprland || ! -x $SYSTEM_PACKAGE/bin/start-hyprland ]]; then
+    printf 'The system Canvas package is unavailable. Activate the Home Manager generation first.\n' >&2
+    exit 1
+  fi
+  printf 'Using the Home Manager Canvas package.\n'
+  package="$SYSTEM_PACKAGE"
+elif (( DEV_MODE )); then
   if [[ ! -x $DEV_PACKAGE/bin/Hyprland || ! -x $DEV_PACKAGE/bin/start-hyprland ]]; then
     printf 'No validated dev package. Run: %s/dev build\n' "$ROOT" >&2
     exit 1
@@ -88,7 +106,7 @@ export HYPR_SCRIPTS="$HYPR_CONFIG_ROOT/scripts/"
 
 while true; do
   status=0
-  if (( DEV_MODE )); then
+  if (( DEV_MODE || SYSTEM_MODE )); then
     "$package/bin/start-hyprland" --path "$package/bin/Hyprland" -- --config "$CONFIG" 2>&1 | tee "$LOG" || status=$?
   else
     "$package/bin/start-hyprland" -- --config "$CONFIG" 2>&1 | tee "$LOG" || status=$?
