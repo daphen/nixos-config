@@ -27,6 +27,7 @@ PanelWindow {
     property bool gestureActive: false
     property bool gestureSettling: false
     property bool tabCycleActive: false
+    property bool closing: false
     property real slideProgress: 0
     visible: active
     readonly property bool open: PaletteState.open
@@ -37,17 +38,24 @@ PanelWindow {
         property: "slideProgress"
         from: 0
         to: 1
-        duration: 280
+        duration: 140
         easing.type: Easing.BezierSpline
-        easing.bezierCurve: [0.16, 1, 0.3, 1, 1, 1]
+        easing.bezierCurve: [0.22, 1, 0.36, 1, 1, 1]
     }
     NumberAnimation {
         id: closeSlide
         target: root
         property: "slideProgress"
         to: 0
-        duration: 220
-        easing.type: Easing.InCubic
+        duration: 150
+        easing.type: Easing.BezierSpline
+        easing.bezierCurve: [0.22, 1, 0.36, 1, 1, 1]
+        onFinished: {
+            if (!root.open) {
+                closeDelay.stop()
+                root.active = false
+            }
+        }
     }
     NumberAnimation {
         id: gestureSlide
@@ -111,6 +119,7 @@ PanelWindow {
 
     onOpenChanged: {
         if (open) {
+            closing = false
             closeDelay.stop()
             closeSlide.stop()
             reassert.stop()
@@ -135,6 +144,7 @@ PanelWindow {
                 })
             })
         } else {
+            closing = true
             tabCycleActive = false
             openSlide.stop()
             if (!gestureSettling) {
@@ -162,7 +172,7 @@ PanelWindow {
             if (scopedWindowId != null && scopedWindowProfile) reassert.restart()
         }
     }
-    Timer { id: closeDelay; interval: 240; onTriggered: root.active = false }
+    Timer { id: closeDelay; interval: 180; onTriggered: root.active = false }
     Timer { id: closeScrollTimeout; interval: 1000; onTriggered: root.preservingCloseScroll = false }
     Timer {
         id: reassert
@@ -1068,7 +1078,7 @@ PanelWindow {
         anchors.fill: parent
         color: "#000000"
         opacity: root.open ? 0.30 : 0
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
         MouseArea { anchors.fill: parent; onClicked: PaletteState.hide() }
     }
 
@@ -1095,11 +1105,12 @@ PanelWindow {
         readonly property real targetBottom: Math.min(parent.height - 48,
             parent.height * 0.70 + 310)
         readonly property real settledY: Math.max(48, targetBottom - height)
-        readonly property real startY: parent.height + 24
         x: targetX
-        y: startY + (settledY - startY) * root.slideProgress
+        y: settledY
         width: targetWidth
         height: targetHeight
+        opacity: root.closing ? root.slideProgress : Math.min(1, root.slideProgress * 3)
+        scale: 0.98 + root.slideProgress * 0.02
         Behavior on height {
             enabled: root.open && root.slideProgress > 0.99
             NumberAnimation {
@@ -1112,7 +1123,7 @@ PanelWindow {
         color: Theme.bg
         // Radii measured off the reference palette: panel 24, field 15,
         // cards 13, tiles 10, keycaps 7.
-        radius: 24
+        radius: Theme.radiusCard
         border.color: root.panelBorder
         border.width: 1
         clip: true
@@ -1129,11 +1140,11 @@ PanelWindow {
                 Rectangle {
                     id: searchField
                     anchors.fill: parent
-                    anchors.leftMargin: 14
-                    anchors.rightMargin: 14
-                    anchors.topMargin: 14
+                    anchors.leftMargin: Theme.insetCard
+                    anchors.rightMargin: Theme.insetCard
+                    anchors.topMargin: Theme.insetCard
                     anchors.bottomMargin: 6
-                    radius: 15
+                    radius: Theme.radiusInner
                     color: Theme.surface1
                     border.width: 1
                     border.color: Theme.hairline
@@ -1528,13 +1539,12 @@ PanelWindow {
                         font.pixelSize: 11
                     }
 
-                    // Entry: inset 6px, radius 8, padding 8 12.
                     Rectangle {
                         visible: !rowItem.isDivider
                         anchors.fill: parent
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 14
-                        radius: 13
+                        anchors.leftMargin: Theme.insetCard
+                        anchors.rightMargin: Theme.insetCard
+                        radius: Theme.radiusInner
                         color: rowItem.index === root.selectedIndex && !root.filmFocused
                             ? Theme.itemCursor
                             : rowItem.isPreviewedTab ? Theme.itemSelected

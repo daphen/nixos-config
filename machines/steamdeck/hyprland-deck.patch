@@ -1,20 +1,3 @@
-diff --git a/src/layout/LayoutManager.cpp b/src/layout/LayoutManager.cpp
-index 5ae1576c25b4b337db49f76991e0ed7ff87c6d17..be20984f5f08896a1d65870ed7dd1f48c2ee103f 100644
---- a/src/layout/LayoutManager.cpp
-+++ b/src/layout/LayoutManager.cpp
-@@ -116,9 +116,10 @@ Config::ErrorResult CLayoutManager::layoutMsg(const std::string_view& sv) {
-             if (MONITOR->m_canvasPanning && !MONITOR->m_canvasOverview)
-                 MONITOR->canvasOverview();
-         } else if (sv == "camera-center") {
--            if (!MONITOR->m_canvasOverview)
-+            if (!MONITOR->m_canvasOverview) {
-                 MONITOR->m_canvasCommitting = true;
--            MONITOR->canvasCenter(Desktop::focusState()->window());
-+                MONITOR->canvasCenter(Desktop::focusState()->window());
-+            }
-         } else if (sv.starts_with("pan ")) {
-             std::istringstream input{std::string{sv.substr(4)}};
-             double             x = 0, y = 0;
 diff --git a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager.cpp
 index 3ae7f033670c2dac7c9163d6d679560f778e04bf..60fe2280b4871be58bfc160f91585f374b3543a5 100644
 --- a/src/managers/input/InputManager.cpp

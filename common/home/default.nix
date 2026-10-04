@@ -15,6 +15,8 @@ in
   imports = [
     ./theme-system.nix
     inputs.worktrunk.homeModules.default
+  ] ++ lib.optionals isDeck [
+    ./openwhispr.nix
   ] ++ lib.optionals (!isDeck) [
     ./symlinks.nix
     ./programs.nix

@@ -1,0 +1,36 @@
+--- a/src/desktop/view/window/WaylandBackend.cpp
++++ b/src/desktop/view/window/WaylandBackend.cpp
+@@ -4,6 +4,8 @@
+ 
+ #include "Window.hpp"
+ #include "../popup/WaylandPopupBackend.hpp"
++#include "../../../output/Monitor.hpp"
++#include "../../../render/Renderer.hpp"
+ #include "../../../protocols/XDGDialog.hpp"
+ #include "../../../protocols/XDGShell.hpp"
+ #include "../../../protocols/core/Compositor.hpp"
+@@ -309,6 +311,12 @@
+     if (!force && m_pendingReportedSize == CLIENT_BOX.size())
+         return;
+ 
++    const auto WINDOW = TOPLEVEL->m_window.lock();
++    if (!force && m_mapped && WINDOW && !WINDOW->isFloating() && !Fullscreen::controller()->isFullscreen(WINDOW) && preferredMonitor && preferredMonitor->canvasEnabled() &&
++        !preferredMonitor->m_canvasOverview && preferredMonitor->m_canvasZoom->goal() == 1.F &&
++        g_pHyprRenderer->shouldRenderWindow(WINDOW, preferredMonitor) && m_pendingReportedSize && reportedSize() != m_pendingReportedSize->floor())
++        return;
++
+     m_pendingReportedSize = CLIENT_BOX.size();
+     m_configureAcks.add(TOPLEVEL->setSize(CLIENT_BOX.size()), CLIENT_BOX.size().floor());
+ }
+--- a/src/desktop/view/window/Window.cpp
++++ b/src/desktop/view/window/Window.cpp
+@@ -1792,6 +1792,9 @@
+     if (!m_workspace->visible())
+         return;
+ 
++    if (!m_backend->isX11() && !m_target->floating() && PMONITOR && PMONITOR->canvasEnabled())
++        sendWindowSize();
++
+     // damageSurface consumes damage, so snapshot it for the tearing check below
+     const bool HADDAMAGE = !wlSurface()->resource()->m_current.damage.empty() || !wlSurface()->resource()->m_current.bufferDamage.empty();
+     if (HADDAMAGE)

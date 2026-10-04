@@ -17,10 +17,12 @@ in
 {
   programs.dconf.enable = true;
   environment.systemPackages = [ pkgs.wvkbd osk oskEntry ];
-  home-manager.users.daphen = { config, lib, ... }: let
+  home-manager.users.daphen = { config, lib, osConfig, ... }: let
     theme = "${config.home.homeDirectory}/nixos/machines/steamdeck/split-keyboard";
     link = config.lib.file.mkOutOfStoreSymlink;
   in {
+    home.file.".local/bin/steam".source = "${osConfig.programs.steam.package}/bin/steam";
+    home.file.".local/bin/deck-osk-toggle".source = "${osk}/bin/deck-osk-toggle";
     home.activation.deckCssPreload = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       hook="${config.home.homeDirectory}/homebrew/plugins/SDH-CssLoader/css_browserhook.py"
       if test -f "$hook"; then

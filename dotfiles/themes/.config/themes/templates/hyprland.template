@@ -1,1 +1,4 @@
-return { experimental = { canvas_focus_color = "{{semantic.canvas_focus}}" } }
+return {
+    general = { col = { active_border = "{{foreground.primary}}" } },
+    experimental = { canvas_focus_color = "{{semantic.canvas_focus}}" },
+}

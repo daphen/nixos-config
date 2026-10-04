@@ -1,0 +1,27 @@
+[Unit]
+Description=OpenWhispr local voice dictation
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sh -c '[ -n "$WAYLAND_DISPLAY" ] && (/run/current-system/sw/bin/pkill -u %U -f "openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64" || true)'
+ExecStart=/nix/store/gjbbr1lpyrmbsfrkdfjvisha6pq3qarn-openwhispr-1.10.2/bin/openwhispr --no-sandbox --ozone-platform=wayland
+ExecStopPost=/bin/sh -c '/run/current-system/sw/bin/pkill -u %U -f "openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64" || true; /run/current-system/sw/bin/rm -f %t/openwhispr-dictation-state'
+Environment=DICTATION_KEY=Super+F9
+Environment=OPENWHISPR_EXTERNAL_DICTATION_KEY=Super+F9
+Environment=OPENWHISPR_EXTERNAL_HOTKEY=1
+Environment=OPENWHISPR_EXTERNAL_OVERLAY=1
+Environment=OPENWHISPR_FORCE_PUSH_TO_TALK=1
+Environment=LOCAL_TRANSCRIPTION_PROVIDER=nvidia
+Environment=PARAKEET_MODEL=orukeet-v0.1.0
+Environment=DICTATION_LANGUAGE=auto
+Environment=CLEANUP_PROVIDER=local
+Environment=LOCAL_CLEANUP_MODEL=lfm2.5-1.2b-instruct-q4_k_m
+Environment=DICTATION_AGENT_PROVIDER=local
+Environment=LOCAL_DICTATION_AGENT_MODEL=lfm2.5-1.2b-instruct-q4_k_m
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

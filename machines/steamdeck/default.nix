@@ -9,6 +9,7 @@ let
     patches = (old.patches or []) ++ [
       ./inputplumber-native-gestures.patch
       ./inputplumber-pad-force.patch
+      ./inputplumber-night-clicks.patch
     ];
     nativeCheckInputs = (old.nativeCheckInputs or []) ++ [ (lib.getBin pkgs.dbus) ];
     preCheck = (old.preCheck or "") + ''
@@ -47,16 +48,19 @@ let
         target_events: [ { keyboard: KeyF16 } ]
       - name: Left stick up
         source_event: { gamepad: { axis: { name: LeftStick, direction: up, deadzone: 0.4 } } }
-        target_events: [ { keyboard: KeyF15 } ]
+        target_events: [ { keyboard: KeyF19 } ]
       - name: Left stick down
         source_event: { gamepad: { axis: { name: LeftStick, direction: down, deadzone: 0.4 } } }
-        target_events: [ { keyboard: KeyF14 } ]
+        target_events: [ { keyboard: KeyF18 } ]
       - name: Left stick left
         source_event: { gamepad: { axis: { name: LeftStick, direction: left, deadzone: 0.4 } } }
-        target_events: [ { keyboard: KeyF13 } ]
+        target_events: [ { keyboard: KeyF17 } ]
       - name: Left stick right
         source_event: { gamepad: { axis: { name: LeftStick, direction: right, deadzone: 0.4 } } }
-        target_events: [ { keyboard: KeyF16 } ]
+        target_events: [ { keyboard: KeyF20 } ]
+      - name: Left stick analog
+        source_event: { gamepad: { axis: { name: LeftStick } } }
+        target_events: [ { gamepad: { axis: { name: LeftStick } } } ]
       - name: Right stick left
         source_event: { gamepad: { axis: { name: RightStick, direction: left, deadzone: 0.4 } } }
         target_events: [ { keyboard: KeyF1 } ]
@@ -69,13 +73,13 @@ let
       - name: Right stick right
         source_event: { gamepad: { axis: { name: RightStick, direction: right, deadzone: 0.4 } } }
         target_events: [ { keyboard: KeyF4 } ]
-      - name: Right stick analog
-        source_event: { gamepad: { axis: { name: RightStick } } }
-        target_events: [ { gamepad: { axis: { name: RightStick } } } ]
       - name: Close chord
         source_event: { gamepad: { button: RightStick } }
         target_events: [ { keyboard: KeyF12 } ]
-      - name: Radial outer ring
+      - name: App radial ring click
+        source_event: { gamepad: { button: LeftStick } }
+        target_events: [ { keyboard: KeyF8 } ]
+      - name: Desktop modifier
         source_event: { gamepad: { button: LeftBumper } }
         target_events: [ { keyboard: KeyF11 } ]
       - name: Left click
@@ -89,7 +93,10 @@ let
         target_events: [ { keyboard: KeyF24 } ]
       - name: Super modifier
         source_event: { gamepad: { trigger: { name: LeftTrigger, deadzone: 0.3 } } }
-        target_events: [ { keyboard: KeyLeftMeta } ]
+        target_events: [ { gamepad: { trigger: { name: LeftTrigger } } }, { keyboard: KeyLeftMeta } ]
+      - name: Right trigger movement modifier
+        source_event: { gamepad: { trigger: { name: RightTrigger, deadzone: 0.3 } } }
+        target_events: [ { keyboard: KeyF7 } ]
       - name: Move modifier
         source_event: { gamepad: { button: LeftPaddle1 } }
         target_events: [ { keyboard: KeyLeftShift } ]
@@ -186,7 +193,7 @@ let
     name = "gaming-mode";
     desktopName = "Gaming Mode";
     comment = "Open Steam Big Picture without ending the work session";
-    exec = "${gamingMode}/bin/deck-gaming-mode";
+    exec = "/home/daphen/.config/hypr/scripts/deck-gaming-mode";
     icon = "steam";
     categories = [ "Game" ];
   };
@@ -196,6 +203,11 @@ in
 
   networking.hostName = "steamdeck";
   networking.networkmanager.enable = true;
+  services.tailscale = {
+    enable = true;
+    package = inputs.nixpkgs-latest.legacyPackages.${pkgs.system}.tailscale;
+    extraUpFlags = [ "--accept-routes" ];
+  };
   time.timeZone = "Europe/Stockholm";
   i18n.defaultLocale = "en_US.UTF-8";
   console.keyMap = "us";
@@ -227,6 +239,7 @@ in
   };
   services.dbus.enable = true;
   services.openssh.enable = true;
+  services.openssh.settings.StreamLocalBindUnlink = true;
   services.upower.enable = true;
   services.fwupd.enable = true;
   services.getty.autologinUser = null;

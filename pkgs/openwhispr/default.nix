@@ -24,8 +24,10 @@ let
     asar_path=$out/resources/app.asar
     work=$(mktemp -d)
     for file in \
+      main.js \
       src/helpers/hotkeyManager.js \
       src/helpers/ipcHandlers.js \
+      src/helpers/meetingDetectionEngine.js \
       src/helpers/windowManager.js
     do
       mkdir -p "$work/$(dirname "$file")"
@@ -47,8 +49,10 @@ const fd = fs.openSync(archive, "r+");
 const dataStart = 8 + header.headerSize;
 
 for (const name of [
+  "main.js",
   "src/helpers/hotkeyManager.js",
   "src/helpers/ipcHandlers.js",
+  "src/helpers/meetingDetectionEngine.js",
   "src/helpers/windowManager.js",
 ]) {
   const info = filesystem.getFile(name, false);

@@ -17,3 +17,4 @@ done
 
 qs kill "${selection[@]}" >/dev/null 2>&1 || true
 qs kill "${selection[@]}" -p "$HOME/.config/quickshell/wallpaper" >/dev/null 2>&1 || true
+QT_QPA_PLATFORM=xcb qs kill "${selection[@]}" -p "$HOME/.config/quickshell/palette-x11" >/dev/null 2>&1 || true

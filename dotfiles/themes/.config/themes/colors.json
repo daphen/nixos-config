@@ -77,7 +77,8 @@
         "error": "#462B2A",
         "warning": "#462415",
         "info": "#45474B",
-        "dim": "#0a0a0a"
+        "dim": "#0a0a0a",
+        "canvas": "#0a0a0a"
       },
       "foreground": {
         "primary": "#EDEDED",
@@ -166,7 +167,8 @@
         "error": "#F9CFC1",
         "warning": "#F5DECE",
         "info": "#D2D9CF",
-        "dim": "#F5F5F7"
+        "dim": "#F5F5F7",
+        "canvas": "#ECEFF1"
       },
       "foreground": {
         "primary": "#10100E",

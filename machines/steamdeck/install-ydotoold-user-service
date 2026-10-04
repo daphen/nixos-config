@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+unit="$HOME/nixos/machines/steamdeck/ydotoold.service"
+legacy="$HOME/.config/systemd/user/ydotoold.service"
+bootstrap="$HOME/.local/share/systemd/user/ydotoold.service"
+enablement="$HOME/.config/systemd/user/graphical-session.target.wants/ydotoold.service"
+test -x /nix/store/3afwalhzj887i8zzbinm6kdbcgwy1njl-ydotool-1.0.4/bin/ydotoold
+test -w /dev/uinput
+
+owns_legacy=false
+if [ -L "$legacy" ] && [ "$(readlink "$legacy")" = "$unit" ]; then
+  owns_legacy=true
+elif [ -e "$legacy" ] || [ -L "$legacy" ]; then
+  printf 'refusing to replace unowned unit: %s\n' "$legacy" >&2
+  exit 1
+fi
+
+owns_enablement=false
+if [ -L "$enablement" ]; then
+  enablement_target="$(readlink "$enablement")"
+  if [ "$enablement_target" = "$unit" ] ||
+    [ "$enablement_target" = "$legacy" ] ||
+    [ "$enablement_target" = "$bootstrap" ] ||
+    { [ "$enablement_target" = "../ydotoold.service" ] &&
+      { [ "$owns_legacy" = true ] ||
+        { [ -L "$bootstrap" ] && [ "$(readlink "$bootstrap")" = "$unit" ]; }; }; }; then
+    owns_enablement=true
+  else
+    printf 'refusing to replace unowned enablement: %s\n' "$enablement" >&2
+    exit 1
+  fi
+elif [ -e "$enablement" ]; then
+  printf 'refusing to replace unowned enablement: %s\n' "$enablement" >&2
+  exit 1
+fi
+
+mkdir -p "$HOME/.local/bin" "$(dirname "$bootstrap")"
+ln -sfn /nix/store/3afwalhzj887i8zzbinm6kdbcgwy1njl-ydotool-1.0.4/bin/ydotool "$HOME/.local/bin/ydotool"
+ln -sfn /nix/store/3afwalhzj887i8zzbinm6kdbcgwy1njl-ydotool-1.0.4/bin/ydotoold "$HOME/.local/bin/ydotoold"
+ln -sfn "$unit" "$bootstrap"
+if [ "$owns_enablement" = true ]; then
+  rm -f "$enablement"
+fi
+if [ "$owns_legacy" = true ]; then
+  rm -f "$legacy"
+fi
+systemctl --user daemon-reload
+systemctl --user cat ydotoold.service >/dev/null

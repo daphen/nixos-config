@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -136,15 +137,32 @@ func runWorktree(a app, ticket, raw string, startApp, scriptTag bool) error {
 	if err != nil {
 		return devURLFailure(a, ticket, "runtime configuration", err)
 	}
-	if !a.nativeVM() {
+	routeHost := ""
+	if a.nativeVM() {
+		routeHost, err = worktreeProxyHost(ports)
+		if err != nil {
+			return devURLFailure(a, ticket, "VM router", err)
+		}
+	} else {
 		if err := ensureWorktreeTunnel(a, ticket, ports, scriptTag); err != nil {
 			return devURLFailure(a, ticket, "loopback forwarding", err)
 		}
+		if err := ensureDevProxyTunnel(a); err != nil {
+			return devURLFailure(a, ticket, "shared development tunnel", err)
+		}
 	}
-	if err := awaitWorktreeHTTP(ports, scriptTag); err != nil {
-		return devURLFailure(a, ticket, "laptop HTTP readiness", err)
+	if err := awaitWorktreeHTTP(ports, scriptTag, routeHost); err != nil {
+		return devURLFailure(a, ticket, "HTTP readiness", err)
 	}
-	worktreeSay(a, fmt.Sprintf("HTTP ready — testable URL: http://localhost:%d/ (API http://127.0.0.1:%d/health)", ports.web, ports.api))
+	if a.nativeVM() {
+		worktreeSay(a, fmt.Sprintf("VM HTTP ready — routed URL: http://%s:2015/ (API /go-api/health)", routeHost))
+		worktreeSay(a, "Desktop access requires vmctl connect (also provisioned by vm-cockpit); VM checks do not verify the desktop connection.")
+		if scriptTag {
+			worktreeSay(a, "Desktop script_tag access additionally requires vm-wt --script-tag "+strings.ToUpper(ticket)+" on the desktop.")
+		}
+	} else {
+		worktreeSay(a, fmt.Sprintf("HTTP ready — testable URL: http://localhost:%d/ (API http://127.0.0.1:%d/health)", ports.web, ports.api))
+	}
 	return nil
 }
 
@@ -287,11 +305,16 @@ func ensureWorktreeTunnel(a app, ticket string, ports worktreePorts, scriptTag b
 	return nil
 }
 
-func awaitWorktreeHTTP(ports worktreePorts, scriptTag bool) error {
+func awaitWorktreeHTTP(ports worktreePorts, scriptTag bool, routeHost string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	client := &http.Client{Timeout: 5 * time.Second}
-	urls := []string{fmt.Sprintf("http://127.0.0.1:%d/health", ports.api), fmt.Sprintf("http://localhost:%d/", ports.web)}
+	webURL := fmt.Sprintf("http://localhost:%d", ports.web)
+	apiURL := fmt.Sprintf("http://127.0.0.1:%d/health", ports.api)
+	if routeHost != "" {
+		webURL, apiURL = "http://127.0.0.1:2015", "http://127.0.0.1:2015/go-api/health"
+	}
+	urls := []string{apiURL, webURL + "/"}
 	if scriptTag {
 		urls = append(urls, "http://127.0.0.1:8001/lovable.js")
 	}
@@ -299,6 +322,9 @@ func awaitWorktreeHTTP(ports worktreePorts, scriptTag bool) error {
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, err
+		}
+		if routeHost != "" && request.URL.Port() == "2015" {
+			request.Host = routeHost + ":2015"
 		}
 		return client.Do(request)
 	}
@@ -324,7 +350,7 @@ func awaitWorktreeHTTP(ports worktreePorts, scriptTag bool) error {
 				if asset == "" {
 					return fmt.Errorf("%s returned no root-relative script or modulepreload asset", url)
 				}
-				assetURL := fmt.Sprintf("http://localhost:%d%s", ports.web, asset)
+				assetURL := webURL + asset
 				assetResponse, assetErr := get(assetURL)
 				if assetErr != nil {
 					return fmt.Errorf("client asset %s failed: %w", assetURL, assetErr)

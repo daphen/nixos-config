@@ -12,12 +12,13 @@ readonly BLOCKING_BUILD_PID=669935
 
 usage() {
   cat <<'EOF'
-Usage: ./dev bootstrap | build | export | sync [--force] | status
+Usage: ./dev bootstrap | build [--no-publish] | export | sync [--force] | status
 
   bootstrap    Create the pinned editable source, apply the shipping patch,
                configure Ninja, compile once, verify the config, and publish it.
   build        Incrementally compile edits, verify the config, and atomically
                refresh the validated package for `run-login --dev`.
+               --no-publish compiles only, leaving the validated package intact.
   export       Replace whole-canvas-camera.patch with the editable source diff.
   sync         Reapply the shipping patch to a clean editable source.
   status       Show the pin, source changes, and validated binary.
@@ -104,11 +105,17 @@ bootstrap() {
 }
 
 build() {
+  if [[ $# -gt 1 || ( $# -eq 1 && $1 != --no-publish ) ]]; then
+    usage >&2
+    return 2
+  fi
   refuse_while_bounded_build_runs
   require_bootstrapped
   [[ -f $BUILD/build.ninja ]] || configure
   cmake --build "$BUILD" --parallel "${HYPRLAND_BUILD_JOBS:-2}"
-  publish_validated
+  if [[ ${1:-} != --no-publish ]]; then
+    publish_validated
+  fi
 }
 
 export_patch() {
@@ -171,7 +178,7 @@ esac
 
 case "$command" in
   bootstrap) bootstrap ;;
-  build) build ;;
+  build) build "$@" ;;
   export) export_patch ;;
   sync) sync_patch "$@" ;;
   status) status ;;

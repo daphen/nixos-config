@@ -30,6 +30,8 @@ height = fn('gtk_widget_get_allocated_height', i, p)
 color = fn('cairo_set_source_rgb', None, p, d, d, d)
 rect = fn('cairo_rectangle', None, p, d, d, d, d)
 fill = fn('cairo_fill', None, p)
+partial = os.getenv('CANVAS_PARTIAL_DAMAGE') == '1'
+patch_state = '0'
 @c.CFUNCTYPE(i, p, p, p)
 def draw(widget, cr, data):
     w, h = width(widget), height(widget)
@@ -51,6 +53,11 @@ def draw(widget, cr, data):
         fill(cr)
         rect(cr, 0, h * fraction, w, 3)
         fill(cr)
+    if partial:
+        color(cr, int(patch_state) % 2, 1 - int(patch_state) % 2, int(patch_state) % 2)
+        rect(cr, 32, 32, 24, 24)
+        fill(cr)
+        (root / 'patch-drawn').write_text(patch_state)
     if changed and not (root / 'frame-ready').exists():
         (root / 'frame-ready').write_text(str(time.monotonic()))
     (root / 'client-size').write_text(f'{w} {h}')
@@ -59,8 +66,16 @@ fn('g_signal_connect_data', c.c_ulong, p, c.c_char_p, p, p, p, i)(area, b'draw',
 fn('gtk_widget_show_all', None, p)(window)
 @c.CFUNCTYPE(i, p)
 def repaint(data):
-    fn('gtk_widget_queue_draw', None, p)(area)
+    global patch_state
+    if partial:
+        command = root / 'patch-state'
+        value = command.read_text() if command.exists() else '0'
+        if value != patch_state:
+            patch_state = value
+            fn('gtk_widget_queue_draw_area', None, p, i, i, i, i)(area, 32, 32, 24, 24)
+    else:
+        fn('gtk_widget_queue_draw', None, p)(area)
     return 1
-if not os.getenv('RESIZE_NO_REPAINT'):
+if partial or not os.getenv('RESIZE_NO_REPAINT'):
     fn('g_timeout_add', c.c_uint, c.c_uint, p, p)(100, c.cast(repaint, p), None)
 fn('gtk_main', None)()

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Categories=Game
+Comment=Open Steam Big Picture without ending the work session
+Exec=/home/daphen/.config/hypr/scripts/deck-gaming-mode
+Icon=steam
+Name=Gaming Mode
+Type=Application

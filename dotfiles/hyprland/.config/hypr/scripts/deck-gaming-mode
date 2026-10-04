@@ -5,6 +5,9 @@ exec 9>"${XDG_RUNTIME_DIR:?}/deck-gaming-mode.lock"
 flock 9
 umask 077
 record="$XDG_RUNTIME_DIR/deck-gaming-mode.frozen"
+anr_dialog() {
+    [[ $(hyprctl eval "hl.config({misc={enable_anr_dialog=$1}})") == ok ]]
+}
 thaw_work() {
     [[ -f "$record" ]] || return 0
     local unit failed=0 load
@@ -14,7 +17,12 @@ thaw_work() {
         [[ $load == not-found ]] && continue
         timeout 3s systemctl --user thaw "$unit" || failed=1
     done < "$record"
-    if (( failed == 0 )); then rm -f -- "$record"; fi
+    if (( failed == 0 )); then
+        if hyprctl -j getoption misc:enable_anr_dialog >/dev/null 2>&1; then
+            anr_dialog true || failed=1
+        fi
+        if (( failed == 0 )); then rm -f -- "$record"; fi
+    fi
     return "$failed"
 }
 freeze_unit() {
@@ -43,6 +51,8 @@ freeze_work() {
         fi
         case "$unit" in app-org.chromium.Chromium-*.scope) browsers["$unit"]=1 ;; esac
     done <<< "$rows"
+    touch "$record"
+    anr_dialog false || return 1
     freeze_unit deck-work.slice || return 1
     for unit in "${!browsers[@]}"; do
         [[ ${gaming[$unit]:-} == 1 ]] && continue
@@ -64,13 +74,34 @@ dispatch() {
     result=$(hyprctl dispatch "$1")
     [[ $result == ok ]]
 }
+camera() { dispatch "hl.dsp.layout(\"$1\")"; }
 focus() { dispatch "hl.dsp.focus({workspace=\"$1\"})"; }
+transition_focus() {
+    local target=$1 travel=$2
+    camera overview || return 1
+    sleep 0.14
+    camera "pan $travel 0" || { camera pan-cancel || true; return 1; }
+    sleep 0.14
+    if ! focus "$target"; then
+        camera pan-cancel || true
+        camera overview || true
+        return 1
+    fi
+    sleep 0.08
+    camera overview
+}
+fullscreen_big_picture() {
+    local address
+    address=$(hyprctl -j activewindow | jq -r 'select(.class == "steam" and .title == "Steam Big Picture Mode" and .fullscreen == 0) | .address // empty') || return 1
+    [[ -z $address ]] || dispatch "hl.dsp.window.fullscreen({action=\"set\",window=\"address:$address\"})"
+}
 
 case ${1:-enter} in
     sync)
         if [[ $workspace == gaming ]]; then
             pkill -USR1 -x wvkbd-mobintl || true
             if ! profile gaming || ! freeze_work; then thaw_work; exit 1; fi
+            fullscreen_big_picture
         else
             thaw_work
             if hyprctl clients -j | jq -e --arg workspace "$workspace" 'any(.[]; .mapped and (.hidden | not) and (.pinned or .workspace.name == $workspace) and .title == "Steam Input On-screen Keyboard")' >/dev/null; then
@@ -93,7 +124,7 @@ case ${1:-enter} in
         if [[ $workspace != gaming ]]; then thaw_work; exit; fi
         thaw_work
         if ! profile canvas; then profile gaming; exit 1; fi
-        if ! focus previous; then
+        if ! transition_focus previous -720; then
             profile gaming
             exit 1
         fi
@@ -105,7 +136,7 @@ esac
 
 if [[ $workspace != gaming ]]; then
     if ! profile gaming; then profile canvas; exit 1; fi
-    if ! focus name:gaming; then
+    if ! transition_focus name:gaming 720; then
         profile canvas
         exit 1
     fi
@@ -117,7 +148,7 @@ if ! freeze_work || ! dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/des
     notify-send 'Game Mode' 'Could not pause work or open Steam; returning to work.' || true
     if [[ $workspace != gaming ]]; then
         profile canvas
-        focus previous
+        transition_focus previous -720 || true
     fi
     exit 1
 fi

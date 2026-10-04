@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+unit="$HOME/nixos/machines/steamdeck/openwhispr.service"
+test -x /nix/store/bcjqri5fkccmkalzf22yn0j7cpw3wkvw-openwhispr-1.10.2/bin/openwhispr
+mkdir -p "$HOME/.local/share/systemd/user"
+ln -sfn "$unit" "$HOME/.local/share/systemd/user/openwhispr.service"
+systemctl --user daemon-reload
+systemctl --user cat openwhispr.service >/dev/null

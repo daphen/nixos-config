@@ -1,0 +1,46 @@
+--- a/src/input/composite_device/mod.rs
++++ b/src/input/composite_device/mod.rs
+@@ -1056,7 +1056,11 @@
+ 
+         // If force feedback is disabled at the composite device level, don't
+         // forward any other FF events to source devices.
+-        if !self.ff_enabled && event.is_force_feedback() {
++        if !self.ff_enabled
++            && event.is_force_feedback()
++            && !matches!(&event, OutputEvent::SteamDeckHaptics(report)
++                if matches!(report.cmd_type, CommandType::Click | CommandType::Off))
++        {
+             log::trace!("Force feedback not enabled. Nothing to do.");
+             return Ok(());
+         }
+@@ -1723,10 +1727,9 @@
+             &self.active_inputs,
+             &mut self.touchpad_scroll,
+         ) {
+-            let haptics_enabled = self.ff_enabled
+-                && self
+-                    .output_capabilities
+-                    .contains(&OutputCapability::Haptics(Haptic::TrackpadRight));
++            let haptics_enabled = self
++                .output_capabilities
++                .contains(&OutputCapability::Haptics(Haptic::TrackpadRight));
+             if haptics_enabled {
+                 if let Some(cmd_type) = self.touchpad_scroll.desktop_haptic(event) {
+                     self.process_output_event(OutputEvent::SteamDeckHaptics(PackedHapticReport {
+@@ -2872,6 +2875,16 @@
+         assert_eq!(native.len(), 1);
+         assert!(steam.is_empty());
+         assert!(drain_haptics(&mut source_events).is_empty());
++        client
++            .handle_event(pad_button(Touchpad::RightPad, TouchButton::Press, true))
++            .await
++            .unwrap();
++        client
++            .handle_event(pad_button(Touchpad::RightPad, TouchButton::Press, false))
++            .await
++            .unwrap();
++        flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert_eq!(drain_haptics(&mut source_events), vec![CommandType::Click, CommandType::Off]);
+         client.stop().await.unwrap();
+         run.await.unwrap().unwrap();
+ 
