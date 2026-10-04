@@ -1341,7 +1341,7 @@ index 3e17a5568bdf3320b47835752a50ef188f9d2448..fbef0be5e72b471158f740b2328a705a
        private:
          void                                initFB(SP<Render::IFramebuffer> fb);
 diff --git a/src/render/ElementRenderer.cpp b/src/render/ElementRenderer.cpp
-index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf896bf5621 100644
+index 6982d67cc16648c04db6d358f2ce3bbad63266ce..f4bf3b06e7d97a22ea9c2883c50dcdca80cc04fb 100644
 --- a/src/render/ElementRenderer.cpp
 +++ b/src/render/ElementRenderer.cpp
 @@ -4,6 +4,8 @@
@@ -1353,18 +1353,29 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
  #include "render/pass/ClearPassElement.hpp"
  #include "render/transformer/TransformerList.hpp"
  #include <hyprutils/memory/SharedPtr.hpp>
-@@ -15,6 +17,10 @@
+@@ -15,6 +17,21 @@
  
  using namespace Render;
  
-+void IElementRenderer::clearCanvasWindowCache() {
-+    m_canvasWindowCaptures.clear();
++void IElementRenderer::clearCanvasWindowCache(bool clearCurrent) {
++    for (auto& [monitor, captures] : m_canvasMonitorCaptures)
++        std::erase_if(captures, [&](const auto& item) {
++            const auto window = item.second.window.lock();
++            if (!window || !monitor || !monitor->m_enabled)
++                return true;
++            return window->m_monitor != monitor && !(window->m_state & Desktop::View::WINDOW_STATE_PINNED) && !window->isFloating() &&
++                !window->presentation().movingFromMonitor() && (!window->m_workspace ||
++                    (window->m_workspace != monitor->m_activeWorkspace && window->m_workspace != monitor->m_activeSpecialWorkspace));
++        });
++    std::erase_if(m_canvasMonitorCaptures, [](const auto& item) { return !item.first || !item.first->m_enabled; });
++    if (const auto current = m_canvasMonitorCaptures.find(g_pHyprRenderer->m_renderData.pMonitor); clearCurrent && current != m_canvasMonitorCaptures.end())
++        current->second.clear();
 +}
 +
  void IElementRenderer::drawElement(WP<IPassElement> element, const CRegion& damage) {
      if (!element)
          return;
-@@ -108,7 +114,8 @@ void IElementRenderer::calculateUVForSurface(PHLWINDOW pWindow, SP<CWLSurfaceRes
+@@ -108,7 +125,8 @@ void IElementRenderer::calculateUVForSurface(PHLWINDOW pWindow, SP<CWLSurfaceRes
              const auto EXPECTED_SIZE    = getSurfaceExpectedSize(pWindow, pSurface, pMonitor, main).value_or((projSize * pMonitor->m_scale).round());
  
              const auto RATIO = projSize / EXPECTED_SIZE;
@@ -1374,7 +1385,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
                  if (*PEXPANDEDGES && !SCALE_UNAWARE && (RATIO.x > 1 || RATIO.y > 1)) {
                      const auto FIX = RATIO.clamp(Vector2D{1, 1}, Vector2D{1000000, 1000000});
                      uvBR           = uvBR * FIX;
-@@ -283,7 +290,7 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
+@@ -283,7 +301,7 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
      auto    cancelRender = false;
      CRegion clipRegion;
  
@@ -1383,7 +1394,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
          clipRegion = element->visibleRegion(cancelRender);
          if (cancelRender) {
              element->discard();
-@@ -295,9 +302,9 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
+@@ -295,9 +313,9 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
          if (m_renderData.renderingTransformedSource)
              return m_renderData.damage.copy();
  
@@ -1395,7 +1406,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
      };
  
      // check for fractional scale surfaces misaligning the buffer size
-@@ -311,6 +318,8 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
+@@ -311,6 +329,8 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
      float roundingPower = m_data.roundingPower;
  
      rounding -= 1; // to fix a border issue
@@ -1404,7 +1415,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
  
      if (m_data.dontRound) {
          rounding      = 0;
-@@ -418,13 +427,14 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
+@@ -418,13 +438,14 @@ void IElementRenderer::drawSurface(WP<CSurfacePassElement> element, const CRegio
  
      g_pHyprRenderer->blend(true);
  
@@ -1420,7 +1431,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
      m_renderData.useNearestNeighbor = element->m_data.useNearestNeighbor;
      m_renderData.currentWindow      = element->m_data.pWindow;
  
-@@ -444,8 +454,10 @@ void IElementRenderer::preDrawSurface(WP<CSurfacePassElement> element, const CRe
+@@ -444,8 +465,10 @@ void IElementRenderer::preDrawSurface(WP<CSurfacePassElement> element, const CRe
  
  void IElementRenderer::drawTex(WP<CTexPassElement> element, const CRegion& damage) {
      auto& m_renderData = g_pHyprRenderer->m_renderData;
@@ -1432,7 +1443,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
  
      m_renderData.surface = element->m_data.surface;
  
-@@ -685,20 +697,51 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -685,20 +708,57 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
          }
      }
  
@@ -1450,10 +1461,16 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
 +    CBox         outputCanvas  = pixelBoxForLogical(CAPTUREBOX, pMonitor->m_scale);
 +    CBox         SOURCECANVAS  = pixelBoxForLogical(CAPTUREBOX, CAPTURESCALE);
 +
++    auto& m_canvasWindowCaptures = m_canvasMonitorCaptures[pMonitor];
++    const auto context = std::tuple{pMonitor->resources(), sc<double>(pMonitor->m_scale), pMonitor->m_transform, pMonitor->workBufferImageDescription()};
 +    std::erase_if(m_canvasWindowCaptures, [](const auto& item) { return !item.second.window.lock(); });
 +    const auto CACHEKEY = PWINDOW ? rc<uintptr_t>(PWINDOW.get()) : 0;
 +    bool cacheable = pMonitor->m_canvasOverview && HASRENDERMODIFIERS && PWINDOW && !PWINDOW->effects().hasActiveTransformers() && plan.stages.empty() && !element->m_data.blur;
 +    auto cached    = cacheable ? m_canvasWindowCaptures.find(CACHEKEY) : m_canvasWindowCaptures.end();
++    if (cached != m_canvasWindowCaptures.end() && cached->second.context != context) {
++        m_canvasWindowCaptures.erase(cached);
++        cached = m_canvasWindowCaptures.end();
++    }
 +    const bool frozenCanvasWindow = g_pSessionLockManager->isSessionLocked() && g_pSessionLockManager->clientLocked() && pMonitor->m_canvasOverview;
 +    if (frozenCanvasWindow && (cached == m_canvasWindowCaptures.end() || !cached->second.framebuffer))
 +        return;
@@ -1488,7 +1505,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
          fb                = pMonitor->resources()->getUnusedWorkBuffer();
          matteFB           = element->m_data.blur ? pMonitor->resources()->getUnusedWorkBuffer() : nullptr;
          if (!fb || (element->m_data.blur && !matteFB)) {
-@@ -725,7 +768,9 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -725,7 +785,9 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
      };
  
      SWindowTransformBuffer last;
@@ -1499,7 +1516,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
          auto guard = g_pHyprRenderer->bindTempFB(fb);
  
          renderData.currentWindow = element->m_data.window;
-@@ -739,6 +784,8 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -739,6 +801,8 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
          g_pHyprRenderer->draw(CClearPassElement::SClearData{CHyprColor(0, 0, 0, 0)});
  
          renderData.renderModif = {};
@@ -1508,7 +1525,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
          renderData.renderModif.modifs.emplace_back(std::make_pair<>(SRenderModifData::eRenderModifType::RMOD_TYPE_TRANSLATE, CANVASTRANSLATION));
          renderData.noSimplify                 = true;
          renderData.renderingTransformedSource = true;
-@@ -746,6 +793,13 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -746,6 +810,14 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
  
          renderData.renderModif = {};
          last                   = transformWindowFB({.framebuffer = fb, .box = SOURCECANVAS});
@@ -1518,11 +1535,12 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
 +                .framebuffer   = last.framebuffer,
 +                .size          = plan.sourceBox.size(),
 +                .contentSerial = PWINDOW->renderContentSerial(),
++                .context       = context,
 +            };
      }
  
      SP<IFramebuffer>     blurAlphaMatteFB;
-@@ -766,6 +820,8 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -766,6 +838,8 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
              g_pHyprRenderer->draw(CClearPassElement::SClearData{CHyprColor(0, 0, 0, 1)});
  
              renderData.renderModif = {};
@@ -1531,7 +1549,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
              renderData.renderModif.modifs.emplace_back(std::make_pair<>(SRenderModifData::eRenderModifType::RMOD_TYPE_TRANSLATE, CANVASTRANSLATION));
  
              g_pHyprRenderer->draw(
-@@ -798,7 +854,7 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -798,7 +872,7 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
      if (!last.success || last.box != EXPECTEDOUTPUT)
          motionBlur = {};
  
@@ -1540,7 +1558,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
      if (motionBlur.enabled) {
          motionBlur.previous.scale(pMonitor->m_scale);
          motionBlur.current.scale(pMonitor->m_scale);
-@@ -811,7 +867,7 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
+@@ -811,7 +885,7 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
      CTexPassElement::SRenderData data;
      data.tex        = last.framebuffer->getTexture();
      data.box        = outputBox;
@@ -1550,27 +1568,31 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..649ed5f1fb359203d0d8468890b11bf8
  
      CRegion outputRegion{outputBox};
 diff --git a/src/render/ElementRenderer.hpp b/src/render/ElementRenderer.hpp
-index 6028e21a494ed05b138edf984d9c454641b59ab2..3bbaa5bfda76e07699a25bb24bcc2ff79d6e2ae9 100644
+index 6028e21a494ed05b138edf984d9c454641b59ab2..8b3e95f6b469cc0e436835d0206cf98f814ec921 100644
 --- a/src/render/ElementRenderer.hpp
 +++ b/src/render/ElementRenderer.hpp
-@@ -13,6 +13,8 @@
+@@ -13,6 +13,12 @@
  #include "./pass/InnerGlowPassElement.hpp"
  #include "./pass/TransformedWindowPassElement.hpp"
  #include <hyprutils/math/Region.hpp>
 +#include <cstdint>
++#include <map>
++#include <tuple>
 +#include <unordered_map>
++
++namespace Monitor { class CMonitorResources; }
  
  namespace Render {
      class IElementRenderer {
-@@ -21,6 +23,7 @@ namespace Render {
+@@ -21,6 +27,7 @@ namespace Render {
          virtual ~IElementRenderer() = default;
  
          void drawElement(WP<IPassElement> element, const CRegion& damage);
-+        void clearCanvasWindowCache();
++        void clearCanvasWindowCache(bool clearCurrent);
  
        protected:
          virtual void draw(WP<CBorderPassElement> element, const CRegion& damage)    = 0;
-@@ -34,6 +37,15 @@ namespace Render {
+@@ -34,6 +41,16 @@ namespace Render {
          virtual void draw(WP<CTextureMatteElement> element, const CRegion& damage)  = 0;
  
        private:
@@ -1579,15 +1601,16 @@ index 6028e21a494ed05b138edf984d9c454641b59ab2..3bbaa5bfda76e07699a25bb24bcc2ff7
 +            SP<IFramebuffer> framebuffer;
 +            Vector2D         size;
 +            uint64_t         contentSerial = 0;
++            std::tuple<WP<Monitor::CMonitorResources>, double, wl_output_transform, NColorManagement::PImageDescription> context;
 +        };
 +
-+        std::unordered_map<uintptr_t, SCanvasWindowCapture> m_canvasWindowCaptures;
++        std::map<PHLMONITORREF, std::unordered_map<uintptr_t, SCanvasWindowCapture>> m_canvasMonitorCaptures;
 +
          void calculateUVForSurface(PHLWINDOW, SP<CWLSurfaceResource>, PHLMONITOR pMonitor, bool main = false, const Vector2D& projSize = {}, const Vector2D& projSizeUnscaled = {},
                                     bool fixMisalignedFSV1 = false);
  
 diff --git a/src/render/Renderer.cpp b/src/render/Renderer.cpp
-index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf4656b8e6 100644
+index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..5e87cd28cc08846784ae0ac67577e6651a952325 100644
 --- a/src/render/Renderer.cpp
 +++ b/src/render/Renderer.cpp
 @@ -1,6 +1,8 @@
@@ -2406,7 +2429,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
      const auto presentationMode =
          shouldTear ? Aquamarine::eOutputPresentationMode::AQ_OUTPUT_PRESENTATION_IMMEDIATE : Aquamarine::eOutputPresentationMode::AQ_OUTPUT_PRESENTATION_VSYNC;
      if (pMonitor->m_output->state->state().presentationMode != presentationMode)
-@@ -2210,9 +2740,19 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2210,9 +2740,18 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
          return;
      }
  
@@ -2417,8 +2440,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
 +    const bool oldNoSimplify = m_renderData.noSimplify;
 +    CScopeGuard restoreSimplification([&] { m_renderData.noSimplify = oldNoSimplify; });
 +    m_renderData.noSimplify = oldNoSimplify || (RENDER_CANVAS && !CANVAS_TRANSLATION_ONLY);
-+    if (!RENDER_CANVAS || !pMonitor->m_canvasOverview)
-+        elementRenderer()->clearCanvasWindowCache();
++    elementRenderer()->clearCanvasWindowCache(!RENDER_CANVAS || !pMonitor->m_canvasOverview);
 +
      // if we have no tracking or full tracking, invalidate the entire monitor
 -    if (*PDAMAGETRACKINGMODE == DAMAGE_TRACKING_NONE || *PDAMAGETRACKINGMODE == DAMAGE_TRACKING_MONITOR || pMonitor->m_forceFullFrames > 0 || damageBlinkCleanup > 0 ||
@@ -2428,7 +2450,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
          damage = {0, 0, sc<int>(pMonitor->m_transformedSize.x) * 10, sc<int>(pMonitor->m_transformedSize.y) * 10};
  
      finalDamage = damage;
-@@ -2229,8 +2769,9 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2229,8 +2768,9 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
      Event::bus()->m_events.render.stage.emit(RENDER_BEGIN);
  
      bool renderCursor = true;
@@ -2439,7 +2461,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
          renderWindow(pMonitor->m_solitaryClient.lock(), pMonitor, NOW, false, RENDER_PASS_MAIN /* solitary = no popups */);
      else if (!finalDamage.empty()) {
          if (pMonitor->isMirror()) {
-@@ -2241,13 +2782,52 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2241,13 +2781,52 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
              renderCursor = false;
          } else {
              CBox renderBox = {0, 0, sc<int>(pMonitor->m_transformedSize.x), sc<int>(pMonitor->m_transformedSize.y)};
@@ -2494,7 +2516,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
                  Notification::overlay()->draw(pMonitor);
                  ErrorOverlay::overlay()->draw();
              }
-@@ -2295,7 +2875,23 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2295,7 +2874,23 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
  
      Event::bus()->m_events.render.stage.emit(RENDER_LAST_MOMENT);
  
@@ -2518,7 +2540,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
  
      TRACY_GPU_COLLECT;
  
-@@ -2593,7 +3189,9 @@ void IHyprRenderer::sendFrameEventsToWorkspace(PHLMONITOR pMonitor, PHLWORKSPACE
+@@ -2593,7 +3188,9 @@ void IHyprRenderer::sendFrameEventsToWorkspace(PHLMONITOR pMonitor, PHLWORKSPACE
          if (alphaModifier && !alphaModifier->alphaNonZero())
              continue;
  
@@ -2529,7 +2551,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
      }
  }
  
-@@ -2792,6 +3390,7 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2792,6 +3389,7 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
      }
  
      const auto SURFACE_BOX = WLSURF->getSurfaceBoxGlobal();
@@ -2537,7 +2559,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
  
      // hack: schedule frame events
      if (!pSurface->m_current.callbacks.empty() && SURFACE_BOX && !SURFACE_BOX->empty()) {
-@@ -2799,12 +3398,25 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2799,12 +3397,25 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
              if (!m->m_output)
                  continue;
  
@@ -2564,7 +2586,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
      if (damageBox.empty())
          return;
  
-@@ -2820,8 +3432,12 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2820,8 +3431,12 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
      for (auto const& m : State::monitorState()->monitors()) {
          if (!m->m_output)
              continue;
@@ -2578,7 +2600,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
  
          damageBoxForEach.set(damageBox);
          damageBoxForEach.translate({-m->m_position.x, -m->m_position.y}).scale(m->m_scale);
-@@ -2846,6 +3462,10 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
+@@ -2846,6 +3461,10 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
  
      for (auto const& m : State::monitorState()->monitors()) {
          if (forceFull || shouldRenderWindow(pWindow, m)) { // only damage if window is rendered on monitor
@@ -2589,7 +2611,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
              CBox fixedDamageBox = {windowBox.x - m->m_position.x, windowBox.y - m->m_position.y, windowBox.width, windowBox.height};
              fixedDamageBox.scale(m->m_scale).round();
              m->addDamage(fixedDamageBox);
-@@ -3162,7 +3782,7 @@ void IHyprRenderer::addWindowToRenderUnfocused(PHLWINDOW window) {
+@@ -3162,7 +3781,7 @@ void IHyprRenderer::addWindowToRenderUnfocused(PHLWINDOW window) {
          m_renderUnfocusedTimer->updateTimeout(std::chrono::milliseconds(1000 / *PFPS));
  }
  
@@ -2598,7 +2620,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
      // we trust the window is valid.
      const auto PMONITOR = pWindow->m_monitor.lock();
  
-@@ -3174,26 +3794,39 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
+@@ -3174,26 +3793,39 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
  
      LOG(Log::DEBUG, "renderer: making a snapshot of {:x}", rc<uintptr_t>(pWindow.get()));
  
@@ -2647,7 +2669,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
  
      LOG(Log::DEBUG, "renderer: rendered a snapshot of {:x}", rc<uintptr_t>(pWindow.get()));
  
-@@ -3201,7 +3834,10 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
+@@ -3201,7 +3833,10 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
  
      LOG(Log::DEBUG, "renderer: made a snapshot of {:x}", rc<uintptr_t>(pWindow.get()));
  
@@ -2659,7 +2681,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..de9a128b27bc580742ef1a6b0f16bbdf
      return PFRAMEBUFFER;
  }
  
-@@ -3307,6 +3943,8 @@ void IHyprRenderer::renderFadeouts(PHLMONITOR monitor, Desktop::eFadeoutPlane pl
+@@ -3307,6 +3942,8 @@ void IHyprRenderer::renderFadeouts(PHLMONITOR monitor, Desktop::eFadeoutPlane pl
      if (!monitor)
          return;
  
