@@ -64,7 +64,7 @@ restore_transition() {
     (( transition_active )) || return 0
     local failed=0
     hyprctl eval "hl.config({decoration={screen_shader=$saved_shader},debug={damage_tracking=$saved_damage}})" >/dev/null || failed=1
-    hyprctl dispatch "layoutmsg game-transition-reset" >/dev/null || failed=1
+    hyprctl dispatch 'hl.dsp.layout("game-transition-reset")' >/dev/null || failed=1
     transition_active=0
     return "$failed"
 }
@@ -93,13 +93,13 @@ transition_out() {
     saved_shader=$(hyprctl -j getoption decoration:screen_shader | jq -c '.str')
     saved_damage=$(hyprctl -j getoption debug:damage_tracking | jq -er '.int')
     transition_active=1
-    dispatch "layoutmsg game-transition-out"
+    dispatch 'hl.dsp.layout("game-transition-out")'
     transition_shader out 0
     sleep 0.48
     transition_shader hold "$saved_damage"
 }
 transition_in() {
-    dispatch "layoutmsg game-transition-in"
+    dispatch 'hl.dsp.layout("game-transition-in")'
     transition_shader in 0
     sleep 0.50
     restore_transition
