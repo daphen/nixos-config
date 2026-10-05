@@ -74,7 +74,7 @@
          m_canvasCommitting = false;
 --- a/src/render/Renderer.cpp
 +++ b/src/render/Renderer.cpp
-@@ -93,7 +93,7 @@
+@@ -94,7 +94,7 @@
  }
  
  static bool canvasOverviewActive(PHLMONITORREF monitor) {
@@ -82,4 +82,4 @@
 +    return monitor->canvasTransformed() || (!monitor->canvasEnabled() && monitor->m_canvasPanning);
  }
  
- static CBox canvasLogicalBox(PHLMONITORREF monitor) {
+ static bool canvasPartialDamage(PHLMONITORREF monitor) {
