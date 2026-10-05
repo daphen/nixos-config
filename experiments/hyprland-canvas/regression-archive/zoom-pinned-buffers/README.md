@@ -1,11 +1,22 @@
-# Canvas capture-pool performance — verified local improvement
+# Canvas capture-pool correctness — performance claim withdrawn
 
-**Two native lines avoid repeated fallback rendering when overview snapshots
-hold every work buffer.** In controlled sixteen-window zoom/pan tests, GPU work
-per nested commit fell **9.20% pooled**, or **11.56% using the predeclared
-run-median comparison**. The fix also restores an overview tile that the old
-fallback left blank. Not deployed; no Deck battery or physical-presentation
-claim.
+**Audit correction, 2026-10-02:** the 9.20% / 11.56% performance claims are
+withdrawn pending a healthy rerun. All twelve archived comparison/profile runs
+had a failed Wayland bridge, RTKit acquisition and realtime-budget exhaustion.
+Unmeasured parent CPU/RT policy/GPU load/clocks prevent certifying comparable
+contention. Child DRM-fdinfo graphics-engine deltas remain raw observations, not
+an accepted performance benefit; first-entry timings are also tainted.
+
+The two-line buffer-fallback/content correctness fix remains independently
+verified and is deployed on the Deck, not the live Proart desktop. There is no
+established zoom-performance, battery or physical-presentation improvement.
+Profiling is paused; further tests need a healthy fixture and explicit approval
+for a non-interactive window or separate safe machine/GPU.
+
+Evidence:
+`/home/daphen/.cache/canvas-zoom-round2/first-entry/PAUSED-incident.md` and
+`first-entry/old-pool-log-audit.json`. Historical measurements below are
+preserved, not accepted performance evidence.
 
 ## Production path and smallest fix
 
