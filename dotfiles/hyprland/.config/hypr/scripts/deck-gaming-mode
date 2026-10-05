@@ -101,7 +101,7 @@ transition_in() {
 }
 wait_big_picture() {
     local address
-    for (( attempt=0; attempt<300; attempt++ )); do
+    for (( attempt=0; attempt<600; attempt++ )); do
         address=$(hyprctl -j clients | jq -r '.[] | select(.class == "steam" and .title == "Steam Big Picture Mode" and .mapped and (.hidden | not)) | .address' | head -n 1)
         if [[ -n $address ]]; then
             dispatch "hl.dsp.focus({window=\"address:$address\"})" || return 1
