@@ -1,5 +1,8 @@
+#version 300 es
+
 precision highp float;
-varying vec2 v_texcoord;
+in vec2 v_texcoord;
+layout(location = 0) out vec4 fragColor;
 uniform sampler2D tex;
 uniform float time;
 
@@ -9,7 +12,7 @@ void main() {
     vec2 uv = (v_texcoord - 0.5) / scale + 0.5;
     float opacity = 1.0 - smoothstep(0.18, 0.40, time);
     if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0))))
-        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
     else
-        gl_FragColor = vec4(texture2D(tex, uv).rgb * opacity, 1.0);
+        fragColor = vec4(texture(tex, uv).rgb * opacity, 1.0);
 }
