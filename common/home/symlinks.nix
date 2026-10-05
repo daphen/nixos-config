@@ -50,6 +50,7 @@ in {
       force = true;
     };
     "hypr/scripts".source = link "${dotfiles}/hyprland/.config/hypr/scripts";
+    "hypr/shaders".source = link "${dotfiles}/hyprland/.config/hypr/shaders";
     "hypr/modules" = {
       source = link "${dotfiles}/hyprland/.config/hypr/modules";
       force = true;
