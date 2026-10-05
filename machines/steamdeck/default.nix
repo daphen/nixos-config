@@ -2,7 +2,7 @@
 
 let
   canvas = inputs.hyprland-canvas.packages.${pkgs.system}.default.overrideAttrs (old: {
-    patches = (old.patches or []) ++ [ ./hyprland-deck.patch ];
+    patches = (old.patches or []) ++ [ ./hyprland-deck.patch ./hyprland-screen-shader-clock.patch ];
   });
 
   deckInputPlumber = pkgs.inputplumber.overrideAttrs (old: {

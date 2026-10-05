@@ -59,6 +59,13 @@ freeze_work() {
         freeze_unit "$unit" || return 1
     done
 }
+transition_active=0
+restore_transition() {
+    (( transition_active )) || return 0
+    hyprctl eval "hl.config({decoration={screen_shader=$saved_shader},debug={damage_tracking=$saved_damage}})" >/dev/null
+    transition_active=0
+}
+trap 'restore_transition' EXIT
 trap 'thaw_work; exit 1' HUP INT TERM
 if [[ ${1:-} == cleanup ]]; then thaw_work; exit; fi
 workspace=$(hyprctl -j activeworkspace | jq -er '.name')
@@ -75,6 +82,37 @@ dispatch() {
     [[ $result == ok ]]
 }
 focus() { dispatch "hl.dsp.focus({workspace=\"$1\"})"; }
+transition_shader() {
+    local path="$HOME/.config/hypr/shaders/game-mode-$1.frag" damage=$2
+    [[ $(hyprctl eval "hl.config({debug={damage_tracking=$damage},decoration={screen_shader=\"$path\"}})") == ok ]]
+}
+transition_out() {
+    saved_shader=$(hyprctl -j getoption decoration:screen_shader | jq -c '.str')
+    saved_damage=$(hyprctl -j getoption debug:damage_tracking | jq -er '.int')
+    transition_active=1
+    transition_shader out 0
+    sleep 0.48
+    transition_shader hold "$saved_damage"
+}
+transition_in() {
+    transition_shader in 0
+    sleep 0.50
+    restore_transition
+}
+wait_big_picture() {
+    local address
+    for (( attempt=0; attempt<300; attempt++ )); do
+        address=$(hyprctl -j clients | jq -r '.[] | select(.class == "steam" and .title == "Steam Big Picture Mode" and .mapped and (.hidden | not)) | .address' | head -n 1)
+        if [[ -n $address ]]; then
+            dispatch "hl.dsp.focus({window=\"address:$address\"})" || return 1
+            fullscreen_big_picture || return 1
+            sleep 0.25
+            return 0
+        fi
+        sleep 0.1
+    done
+    return 1
+}
 fullscreen_big_picture() {
     local address
     address=$(hyprctl -j activewindow | jq -r 'select(.class == "steam" and .title == "Steam Big Picture Mode" and .fullscreen == 0) | .address // empty') || return 1
@@ -109,10 +147,13 @@ case ${1:-enter} in
         if [[ $workspace != gaming ]]; then thaw_work; exit; fi
         thaw_work
         if ! profile canvas; then profile gaming; exit 1; fi
+        transition_out
         if ! focus previous; then
             profile gaming
             exit 1
         fi
+        sleep 0.25
+        transition_in
         exit 0
         ;;
     enter) pkill -USR1 -x wvkbd-mobintl || true ;;
@@ -121,13 +162,14 @@ esac
 
 if [[ $workspace != gaming ]]; then
     if ! profile gaming; then profile canvas; exit 1; fi
+    transition_out
     if ! focus name:gaming; then
         profile canvas
         exit 1
     fi
 fi
 # Dispatch asynchronously so Steam's lifetime cannot hold the transition lock.
-if ! freeze_work || ! dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")"; then
+if ! freeze_work || ! dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")" || ! wait_big_picture; then
     thaw_work || true
     echo 'Game Mode entry failed; attempted to resume work.' >&2
     notify-send 'Game Mode' 'Could not pause work or open Steam; returning to work.' || true
@@ -137,3 +179,4 @@ if ! freeze_work || ! dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/des
     fi
     exit 1
 fi
+if (( transition_active )); then transition_in; fi

@@ -1,0 +1,33 @@
+--- a/src/render/OpenGL.cpp
++++ b/src/render/OpenGL.cpp
+@@ -1006,6 +1006,8 @@
+     return true;
+ }
+ 
++static float screenShaderSubsecondOffset = 0.F;
++
+ void CHyprOpenGLImpl::applyScreenShader(const std::string& path) {
+ 
+     static auto PDT = CConfigValue<Config::INTEGER>("debug:damage_tracking");
+@@ -1045,8 +1047,10 @@
+         return;
+     }
+ 
+-    if (m_finalScreenShader->getUniformLocation(SHADER_TIME) != -1)
++    if (m_finalScreenShader->getUniformLocation(SHADER_TIME) != -1) {
+         m_finalScreenShader->setInitialTime(g_pHyprRenderer->m_globalTimer.getSeconds());
++        screenShaderSubsecondOffset = g_pHyprRenderer->m_globalTimer.getSeconds() - m_finalScreenShader->getInitialTime();
++    }
+ 
+     static auto uniformRequireNoDamage = [this](eShaderUniform uniform, const std::string& name) {
+         if (*PDT == 0)
+@@ -1342,7 +1346,8 @@
+     shader = useShader(shader);
+ 
+     if (*PDT == 0 || g_pHyprRenderer->m_crashingInProgress)
+-        shader->setUniformFloat(SHADER_TIME, g_pHyprRenderer->m_globalTimer.getSeconds() - shader->getInitialTime());
++        shader->setUniformFloat(SHADER_TIME, g_pHyprRenderer->m_globalTimer.getSeconds() - shader->getInitialTime() -
++                                                 (g_pHyprRenderer->m_crashingInProgress ? 0.F : screenShaderSubsecondOffset));
+     else
+         shader->setUniformFloat(SHADER_TIME, 0.f);
+ 
