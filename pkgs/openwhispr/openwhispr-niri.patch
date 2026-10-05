@@ -200,3 +200,13 @@
      if (this.mainWindow.isMinimized()) {
        this.mainWindow.restore();
      }
+--- a/src/helpers/ensureYdotool.js
++++ b/src/helpers/ensureYdotool.js
+@@ -88,6 +88,7 @@
+   const sessionType = (process.env.XDG_SESSION_TYPE || "").toLowerCase();
+   if (sessionType !== "wayland" && !process.env.WAYLAND_DISPLAY) return;
+
++  if (getLinuxSessionInfo().isWlroots && commandExists("wtype")) return;
+   const log = getLogger();
+
+   const hasYdotool = commandExists("ydotool");

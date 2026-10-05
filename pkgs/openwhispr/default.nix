@@ -26,6 +26,7 @@ let
     for file in \
       main.js \
       src/helpers/hotkeyManager.js \
+      src/helpers/ensureYdotool.js \
       src/helpers/ipcHandlers.js \
       src/helpers/meetingDetectionEngine.js \
       src/helpers/windowManager.js
@@ -34,6 +35,7 @@ let
       (cd "$work/$(dirname "$file")" && asar extract-file "$asar_path" "$file")
     done
     patch -d "$work" -p1 < ${./openwhispr-niri.patch}
+    node ${./test-paste-setup.js} "$work/src/helpers/ensureYdotool.js"
 
     ASAR_PATH="$asar_path" WORK="$work" node <<'NODE'
 const crypto = require("crypto");
@@ -51,6 +53,7 @@ const dataStart = 8 + header.headerSize;
 for (const name of [
   "main.js",
   "src/helpers/hotkeyManager.js",
+  "src/helpers/ensureYdotool.js",
   "src/helpers/ipcHandlers.js",
   "src/helpers/meetingDetectionEngine.js",
   "src/helpers/windowManager.js",
