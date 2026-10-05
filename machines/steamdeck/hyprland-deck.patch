@@ -38,25 +38,64 @@ index 3ae7f033670c2dac7c9163d6d679560f778e04bf..60fe2280b4871be58bfc160f91585f37
          }
          return;
 diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
-index 6f064a5ea12afa4bd25ab33e4abd7fc6f65a2349..7a6c51c331c8df0d6a192444119f33c05d7638e7 100644
 --- a/src/output/Monitor.cpp
 +++ b/src/output/Monitor.cpp
-@@ -190,10 +190,16 @@ void CMonitor::canvasOverview() {
+@@ -145,8 +145,15 @@
+     return (offset * m_scale).round() / m_scale;
+ }
+
++static bool canvasIncludesGames(const CMonitor& monitor) {
++    return std::ranges::any_of(Desktop::windowState()->windows(), [&monitor](const auto& window) {
++        return validMapped(window) && window->m_workspace == monitor.m_activeWorkspace && window->m_ruleApplicator->m_tagKeeper.isTagged("deck-game-mode");
++    });
++}
++
+ PHLWINDOW CMonitor::canvasNearest(bool target) const {
+     const auto focused = Desktop::focusState()->window();
++    const bool includeGames = canvasIncludesGames(*this);
+     if (m_canvasOverview && !m_canvasPanning && validMapped(focused) && !focused->isHidden() && !focused->isFloating() && focused->m_workspace == m_activeWorkspace)
+         return focused;
+     PHLWINDOW  nearest;
+@@ -154,7 +161,8 @@
+     const auto zoom   = target ? m_canvasZoom->goal() : m_canvasZoom->value();
+     const auto offset = canvasOffset(target);
+     for (const auto& window : Desktop::windowState()->windows()) {
+-        if (!validMapped(window) || window->isHidden() || window->m_workspace != m_activeWorkspace || window->isFloating() || window->backend().traits().overrideRedirect)
++        if (!validMapped(window) || window->isHidden() || window->m_workspace != m_activeWorkspace || window->isFloating() || window->backend().traits().overrideRedirect ||
++            (!includeGames && window->m_ruleApplicator->m_tagKeeper.isTagged("deck-game")))
+             continue;
+         const auto box      = window->geometricBox(target ? IGeometric::GEOMETRIC_GOAL : IGeometric::GEOMETRIC_CURRENT);
+         const auto distance = ((box.middle() - m_position) * zoom + offset).distanceSq(m_size / 2.0);
+@@ -190,10 +198,13 @@
          return;
      }
      canvasMotionConfig(*this, "canvasOverview", true);
 +    const auto& windows = Desktop::windowState()->windows();
-+    const bool includeGames = std::ranges::any_of(windows, [this](const auto& window) {
-+        return validMapped(window) && window->m_workspace == m_activeWorkspace && window->m_ruleApplicator &&
-+            window->m_ruleApplicator->m_tagKeeper.isTagged("deck-game-mode");
-+    });
++    const bool includeGames = canvasIncludesGames(*this);
      CBox bounds;
      bool first = true;
 -    for (const auto& window : Desktop::windowState()->windows()) {
 -        if (!validMapped(window) || window->isHidden() || window->m_workspace != m_activeWorkspace || window->isFloating())
 +    for (const auto& window : windows) {
 +        if (!validMapped(window) || window->isHidden() || window->m_workspace != m_activeWorkspace || window->isFloating() ||
-+            (!includeGames && window->m_ruleApplicator && window->m_ruleApplicator->m_tagKeeper.isTagged("deck-game")))
++            (!includeGames && window->m_ruleApplicator->m_tagKeeper.isTagged("deck-game")))
              continue;
          const auto box    = window->geometricBox(IGeometric::GEOMETRIC_GOAL);
          const auto left   = first ? box.x : std::min(bounds.x, box.x);
+@@ -242,6 +253,16 @@
+             const auto pull   = offset * std::min(0.015 * weight, delta.size() * m_canvasZoom->goal() * (m_canvasOverview ? 0.15 : 0.05) / std::max(1.0, offset.size()));
+             *m_canvasX        = m_canvasX->goal() + pull.x / m_canvasZoom->goal();
+             *m_canvasY        = m_canvasY->goal() + pull.y / m_canvasZoom->goal();
++        }
++    }
++    if (!canvasIncludesGames(*this)) {
++        for (const auto& window : Desktop::windowState()->windows()) {
++            if (!validMapped(window) || window->isHidden() || window->m_workspace != m_activeWorkspace || window->isFloating() ||
++                !window->m_ruleApplicator->m_tagKeeper.isTagged("deck-game"))
++                continue;
++            const auto top = window->geometricBox(IGeometric::GEOMETRIC_GOAL).y - window->presentation().borderSize();
++            const auto limit = top - m_position.y - m_size.y / 2.0 - m_size.y / (2.0 * m_canvasZoom->goal());
++            *m_canvasY = std::min<double>(m_canvasY->goal(), limit);
+         }
+     }
+ }

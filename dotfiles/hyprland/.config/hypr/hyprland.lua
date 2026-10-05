@@ -383,7 +383,7 @@ local function focus_direction(ctx, direction)
 
 	for row, items in ipairs(state.rows) do
 		for column, id in ipairs(items) do
-			if id ~= current then
+			if id ~= current and (not DECK_MODE or row <= ROW_COUNT or source_row > ROW_COUNT) then
 				local box = geometry(ctx, row, column, id)
 				local dx = box.x + box.w / 2 - source_x
 				local dy = box.y + box.h / 2 - source_y
