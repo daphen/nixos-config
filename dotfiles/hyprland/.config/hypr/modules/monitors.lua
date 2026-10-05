@@ -18,10 +18,9 @@ return function(ctx)
 			{ output = "eDP-1", mode = "3840x2400@120", position = "0x0", scale = 1.6666666666667 },
 			{
 				output = "desc:ASUSTek COMPUTER INC PA32UCDM T7LMSB001350",
-				mode = "3840x2160@240",
+				mode = "3840x2160@120",
 				position = "2304x0",
 				scale = 1.25,
-				bitdepth = 10,
 			},
 			{ output = "desc:Dell Inc. DELL U2725QE G37YLF4", mode = "3840x2160@120", position = "-2560x0", scale = 1.5 },
 			{

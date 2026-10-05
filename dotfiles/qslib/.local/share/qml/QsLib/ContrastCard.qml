@@ -6,13 +6,13 @@ Item {
 
     readonly property bool lightMode: Theme.mode === "light"
     property bool elevated: true
-    property color faceTop: lightMode ? "#FBFCFD" : "#121212"
-    property color faceUpper: lightMode ? "#FAFBFC" : "#101010"
-    property color faceMid: lightMode ? "#F7F9FA" : "#0F0F0F"
-    property color faceBottom: lightMode ? "#F4F6F8" : "#0D0D0D"
+    property color faceTop: lightMode ? "#FDFDFD" : "#121212"
+    property color faceUpper: lightMode ? "#FDFDFD" : "#101010"
+    property color faceMid: lightMode ? "#FDFDFD" : "#0F0F0F"
+    property color faceBottom: lightMode ? "#FDFDFD" : "#0D0D0D"
     property color rimTop: lightMode ? "#FFFFFF" : "#2B2B2B"
-    property color rimBottom: lightMode ? "#C9D1D8" : "#222222"
-    property color outlineColor: lightMode ? "#C4CBD2" : "#282828"
+    property color rimBottom: lightMode ? "#FFFFFF" : "#222222"
+    property color outlineColor: lightMode ? "#FFFFFF" : "#282828"
     property color shadowColor: lightMode ? Qt.rgba(0.12, 0.15, 0.18, 0.14) : "#101010"
     property color contactShadowColor: lightMode ? "#5A5650" : "#101010"
     property int cardRadius: 18

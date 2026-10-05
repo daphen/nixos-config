@@ -15,6 +15,10 @@ esac
 if [[ $(< /proc/self/cgroup) == *"/$slice/"* ]]; then
     exec "$@"
 fi
+if [[ $slice == app.slice ]]; then
+    unit="desktop-launch-$BASHPID-$RANDOM.scope"
+    exec systemd-run --user --scope --collect --quiet --unit="$unit" --slice="$slice" -- "$@"
+fi
 exec 8>"${XDG_RUNTIME_DIR:?}/deck-gaming-mode.lock"
 flock 8
 state=$(systemctl --user show "$slice" -p FreezerState --value 2>/dev/null) || state=

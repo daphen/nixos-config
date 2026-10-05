@@ -278,10 +278,11 @@ PanelWindow {
 
             Lib.Crossfade {
                 id: activitySwap
-                visible: Modules.TodoListPickerState.openCount > 0 || bar.workingActivities.length > 0
+                readonly property bool showOrb: bar.workingActivities.length > 0 && bar.focusedOutput
+                visible: Modules.TodoListPickerState.openCount > 0 || showOrb
                 width: Math.max(26, quickNotes.implicitWidth)
                 height: parent.height
-                showSecond: bar.workingActivities.length > 0
+                showSecond: showOrb
                 enterDuration: 250
                 exitDuration: 250
                 shift: 8
@@ -289,14 +290,14 @@ PanelWindow {
                 first: Modules.Todos {
                     id: quickNotes
                     anchors.centerIn: parent
-                    enabled: bar.workingActivities.length === 0
+                    enabled: !activitySwap.showOrb
                 }
 
                 second: Lib.ThinkingOrb {
                     width: 26
                     height: 26
                     anchors.centerIn: parent
-                    running: bar.workingActivities.length > 0
+                    running: activitySwap.showOrb
                     seedKey: "rounded-bar-aggregate"
                     glow: Lib.AgentActivity.colorFor(bar.workingActivities[0])
                     activityColors: Lib.AgentActivity.colorsFor(bar.workingActivities)

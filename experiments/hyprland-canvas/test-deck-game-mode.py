@@ -22,6 +22,10 @@ if name == 'hyprctl':
         print(json.dumps({'name': state['workspace']}))
     elif args in (['-j', 'clients'], ['clients', '-j']):
         print(json.dumps(state.get('clients', [])))
+    elif args[:2] == ['-j', 'getoption']:
+        print(json.dumps({'str': state.get('shader', '[[EMPTY]]'), 'int': state.get('damage', 2)}))
+    elif 'hl.dsp.focus({window=' in args[-1]:
+        print('ok')
     elif 'hl.dsp.focus' in args[-1]:
         if state.get('fail') == 'focus':
             print('error: focus rejected')
@@ -31,7 +35,14 @@ if name == 'hyprctl':
                 else (state['previous'], state['workspace']))
             print('ok')
     else:
-        print('error: launch rejected' if state.get('fail') == 'launch' else 'ok')
+        if 'steam://open/bigpicture' in args[-1] and state.get('fail') != 'launch':
+            state['clients'].append({'pid': 99, 'class': 'steam', 'title': 'Steam Big Picture Mode',
+                                     'workspace': {'name': 'gaming'}, 'mapped': True, 'hidden': False,
+                                     'fullscreen': 2, 'address': '0x99'})
+        if args == ['-j', 'activewindow']:
+            print(json.dumps({'class': 'steam', 'title': 'Steam Big Picture Mode', 'fullscreen': 2}))
+        else:
+            print('error: launch rejected' if state.get('fail') == 'launch' and 'exec_cmd' in args[-1] else 'ok')
 elif name == 'readlink':
     assert args[0] == '-f' and pathlib.Path(args[-1]).parent == pathlib.Path('/etc/inputplumber/profiles')
     print(root / 'profiles' / pathlib.Path(args[-1]).name)
@@ -132,6 +143,40 @@ class ModeCommandTest(unittest.TestCase):
         self.assertEqual(self.state()['workspace'], 'work-project')
         self.assertEqual(self.state()['profile'], self.profile('canvas'))
         self.assertFalse(any(call[0] == 'busctl' for call in self.calls()))
+
+    def test_first_open_switches_only_while_black_then_reveals_big_picture(self):
+        self.run_mode('enter')
+        calls = [str(call) for call in self.calls()]
+        native_out = next(i for i, call in enumerate(calls) if 'hl.dsp.layout("game-transition-out")' in call)
+        out = next(i for i, call in enumerate(calls) if 'game-mode-out.frag' in call)
+        hold = next(i for i, call in enumerate(calls) if 'game-mode-hold.frag' in call)
+        switch = next(i for i, call in enumerate(calls) if 'name:gaming' in call)
+        launch = next(i for i, call in enumerate(calls) if 'steam://open/bigpicture' in call)
+        ready = next(i for i, call in enumerate(calls) if 'address:0x99' in call)
+        native_in = next(i for i, call in enumerate(calls) if 'hl.dsp.layout("game-transition-in")' in call)
+        reveal = next(i for i, call in enumerate(calls) if 'game-mode-in.frag' in call)
+        restore = next(i for i, call in enumerate(calls) if 'damage_tracking=2' in call and '[[EMPTY]]' in call)
+        reset = next(i for i, call in enumerate(calls) if 'hl.dsp.layout("game-transition-reset")' in call)
+        self.assertLess(native_out, out)
+        self.assertLess(out, hold)
+        self.assertLess(hold, switch)
+        self.assertLess(switch, launch)
+        self.assertLess(launch, ready)
+        self.assertLess(ready, native_in)
+        self.assertLess(native_in, reveal)
+        self.assertLess(reveal, restore)
+        self.assertLess(restore, reset)
+
+    def test_existing_big_picture_preserves_desktop_history(self):
+        state = self.state()
+        state['clients'].append({'pid': 99, 'class': 'steam', 'title': 'Steam Big Picture Mode',
+                                 'workspace': {'name': 'gaming'}, 'mapped': True, 'hidden': False,
+                                 'fullscreen': 2, 'address': '0x99'})
+        self.write_state(state)
+        self.run_mode('enter')
+        self.run_mode('return')
+        self.assertEqual(self.state()['workspace'], '1')
+        self.assertEqual(self.state()['profile'], self.profile('canvas'))
 
     def test_gaming_tap_forwards_one_guide_chord(self):
         self.configure('gaming', 'gaming')

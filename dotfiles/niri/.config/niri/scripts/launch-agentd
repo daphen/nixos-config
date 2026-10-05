@@ -14,4 +14,5 @@ if [ -z "$OPENAI_API_KEY" ]; then
 fi
 [ -n "$OPENAI_API_KEY" ] || { echo "launch-agentd: no openai key available" >&2; exit 1; }
 export OPENAI_API_KEY SLACK_MCP_CLIENT_SECRET
+export PATH="$HOME/.npm-global/bin:$PATH"
 exec "$HOME/.local/bin/agentd" --scope "$scope" "$@"

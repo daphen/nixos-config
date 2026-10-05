@@ -80,6 +80,10 @@ Picker {
         target: NotificationJumpPickerState
         function onJumpRequested() {
             if (!root.handlesJump) return
+            if (NotificationJumpPickerState.open) {
+                NotificationJumpPickerState.hide()
+                return
+            }
             const vis = Notifications.visibleToasts()
             if (vis.length === 1) root.openItem(root.mkItemLive(vis[0]))
             else NotificationJumpPickerState.open = true

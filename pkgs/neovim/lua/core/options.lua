@@ -107,14 +107,21 @@ opt.backup = false
 opt.writebackup = false
 opt.updatetime = 300
 
--- Auto-reload files through Neovim 0.13's native file watcher.
+-- Auto-reload clean files, but never replace a modified buffer after an external write.
 opt.autoread = true
+vim.api.nvim_create_autocmd("FileChangedShell", {
+	pattern = "*",
+	callback = function()
+		vim.v.fcs_choice = vim.v.fcs_reason == "conflict" and "" or "ask"
+	end,
+})
 vim.api.nvim_create_autocmd("FileChangedShellPost", {
 	pattern = "*",
-	-- echomsg (kept in :messages) without WarningMsg, so it no longer promotes to
-	-- a desktop toast — the agent constantly rewrites open buffers (plan pulls,
-	-- edits) in the cockpit, which made the warning pure noise.
-	command = "echomsg 'File changed on disk. Buffer reloaded.'",
+	callback = function()
+		if vim.v.fcs_reason ~= "conflict" then
+			vim.cmd("echomsg 'File changed on disk. Buffer reloaded.'")
+		end
+	end,
 })
 
 -- Fix AltGr (Right Alt) behavior for Swedish characters

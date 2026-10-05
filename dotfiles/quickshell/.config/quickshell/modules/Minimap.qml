@@ -181,7 +181,7 @@ Item {
             Behavior on color { ColorAnimation { duration: 110 } }
 
             SequentialAnimation on pulseOpacity {
-                running: NotificationJumpPickerState.needsAttention
+                running: NotificationJumpPickerState.needsAttention && marker.visible
                 loops: Animation.Infinite
                 NumberAnimation { to: 0.3; duration: 650; easing.type: Easing.InOutSine }
                 NumberAnimation { to: 1; duration: 650; easing.type: Easing.InOutSine }
@@ -193,6 +193,6 @@ Item {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: NotificationJumpPickerState.show()
+        onClicked: NotificationJumpPickerState.toggle()
     }
 }

@@ -110,7 +110,7 @@ def main():
     env.update(XDG_RUNTIME_DIR=str(runtime), XDG_STATE_HOME=str(args.output / 'state'),
                XDG_CONFIG_HOME=str(args.output / 'config'), HYPR_CANVAS_REAL='1', HYPR_CANVAS_PROFILE='workstation')
     wrapper = args.output / 'hyprland.lua'
-    wrapper.write_text('local on=hl.on\nhl.on=function(event,cb) if event~="hyprland.start" then return on(event,cb) end end\n'
+    wrapper.write_text('package.path=' + json.dumps(f'{CONFIG.parent}/?.lua;{CONFIG.parent}/?/init.lua;') + '..package.path\nlocal on=hl.on\nhl.on=function(event,cb) if event~="hyprland.start" then return on(event,cb) end end\n'
                        + 'dofile(' + json.dumps(str(CONFIG)) + ')\nhl.on=on\nhl.config({misc={disable_splash_rendering=true}})\n'
                        + ('hl.config({debug={log_damage=true,enable_stdout_logs=true,disable_logs=false}})\n' if args.log_damage else '')
                        + f'hl.monitor({{output="WAYLAND-1",mode="{width}x{height}@120",scale={args.scale}}})\n')

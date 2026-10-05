@@ -47,6 +47,7 @@ in
     "git/ignore".source = link "${dotfiles}/git/.config/git/ignore";
     "hypr/hyprland.lua".source = link "${dotfiles}/hyprland/.config/hypr/hyprland.lua";
     "hypr/scripts".source = link "${dotfiles}/hyprland/.config/hypr/scripts";
+    "hypr/shaders".source = link "${dotfiles}/hyprland/.config/hypr/shaders";
     "hypr/modules" = {
       source = link "${dotfiles}/hyprland/.config/hypr/modules";
       force = true;

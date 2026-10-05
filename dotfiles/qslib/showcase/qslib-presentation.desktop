@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=QsLib Presentation
+GenericName=Shared QML components
+Comment=Browse QsLib components, controls, motion, and icons
+Exec=/home/daphen/nixos/dotfiles/qslib/showcase/run.sh
+Icon=applications-development
+Terminal=false
+Categories=Development;
+Keywords=qslib;quickshell;qml;presentation;

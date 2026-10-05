@@ -1,0 +1,85 @@
+--- a/src/layout/LayoutManager.cpp
++++ b/src/layout/LayoutManager.cpp
+@@ -101,6 +101,33 @@
+ 
+     if (!ws)
+         return Config::configError("No workspace, can't target", Config::eConfigErrorLevel::ERROR, Config::eConfigErrorCode::NO_TARGET);
++
++    if (sv == "game-transition-out" || sv == "game-transition-in" || sv == "game-transition-reset") {
++        MONITOR->m_canvasCommitting = false;
++        if (sv == "game-transition-reset") {
++            MONITOR->m_canvasOverview = false;
++            MONITOR->m_canvasPanning = false;
++            MONITOR->m_canvasTransition->setValueAndWarp(0.F);
++            MONITOR->m_canvasZoom->setValueAndWarp(1.F);
++        } else {
++            MONITOR->m_canvasPanning = !MONITOR->canvasEnabled();
++            if (sv == "game-transition-in")
++                MONITOR->m_canvasOverview = false;
++            if (!MONITOR->m_canvasOverview)
++                MONITOR->canvasOverview();
++            if (sv == "game-transition-in") {
++                for (const auto animation : {MONITOR->m_canvasTransition.get(), MONITOR->m_canvasZoom.get(), MONITOR->m_canvasX.get(), MONITOR->m_canvasY.get()})
++                    animation->setValueAndWarp(animation->goal());
++                MONITOR->scheduleFrame(Aquamarine::IOutput::AQ_SCHEDULE_DAMAGE);
++            }
++        }
++        return {};
++    }
++
++    if (sv == "overview" && !MONITOR->canvasEnabled() && MONITOR->m_canvasPanning) {
++        MONITOR->canvasFinish();
++        return {};
++    }
+ 
+     if (MONITOR->canvasEnabled()) {
+         if (sv == "overview") {
+--- a/src/output/Monitor.cpp
++++ b/src/output/Monitor.cpp
+@@ -138,7 +138,7 @@
+ 
+ Vector2D CMonitor::canvasOffset(bool target) const {
+     const auto zoom = target ? m_canvasZoom->goal() : m_canvasZoom->value();
+-    const Vector2D camera = target ? Vector2D{m_canvasX->goal(), m_canvasY->goal()} : Vector2D{m_canvasX->value(), m_canvasY->value()};
++    const Vector2D camera = !canvasEnabled() ? Vector2D{} : target ? Vector2D{m_canvasX->goal(), m_canvasY->goal()} : Vector2D{m_canvasX->value(), m_canvasY->value()};
+     const auto offset = m_size / 2.0 - (m_size / 2.0 + camera) * zoom;
+     if (target || zoom != 1.F || m_canvasZoom->isBeingAnimated() || m_canvasX->isBeingAnimated() || m_canvasY->isBeingAnimated())
+         return offset;
+@@ -183,7 +183,7 @@
+ }
+ 
+ void CMonitor::canvasOverview() {
+-    if (!canvasEnabled())
++    if (!canvasEnabled() && !m_canvasPanning)
+         return;
+     if (m_canvasOverview) {
+         canvasFinish();
+@@ -293,7 +293,7 @@
+         return;
+     canvasMotionConfig(*this, "canvasOverview", true);
+     const auto nearest = canvasNearest(true);
+-    m_canvasPanning    = false;
++    m_canvasPanning    = !canvasEnabled();
+     m_canvasOverview   = false;
+     m_canvasCommitting = !cancel;
+     if (cancel) {
+@@ -318,7 +318,7 @@
+ }
+ 
+ void CMonitor::canvasTick(float) {
+-    if (!canvasEnabled() || (g_pSessionLockManager->isSessionLocked() && !m_canvasOverview)) {
++    if ((!canvasEnabled() && !m_canvasPanning) || (g_pSessionLockManager->isSessionLocked() && !m_canvasOverview)) {
+         m_canvasOverview   = false;
+         m_canvasPanning    = false;
+         m_canvasCommitting = false;
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -93,7 +93,7 @@
+ }
+ 
+ static bool canvasOverviewActive(PHLMONITORREF monitor) {
+-    return monitor->canvasTransformed();
++    return monitor->canvasTransformed() || (!monitor->canvasEnabled() && monitor->m_canvasPanning);
+ }
+ 
+ static CBox canvasLogicalBox(PHLMONITORREF monitor) {
