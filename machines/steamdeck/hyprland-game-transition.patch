@@ -1,0 +1,73 @@
+--- a/src/layout/LayoutManager.cpp
++++ b/src/layout/LayoutManager.cpp
+@@ -102,6 +102,38 @@
+     if (!ws)
+         return Config::configError("No workspace, can't target", Config::eConfigErrorLevel::ERROR, Config::eConfigErrorCode::NO_TARGET);
+ 
++    if (sv == "game-transition-out" || sv == "game-transition-in" || sv == "game-transition-reset") {
++        const auto config = MONITOR->m_canvasTransition->getConfig().lock();
++        for (const auto animation : {MONITOR->m_canvasTransition.get(), MONITOR->m_canvasZoom.get()}) {
++            const auto previous = animation->getConfig().lock();
++            if (previous != config) {
++                const auto goal = animation->goal();
++                if (previous->pValues.lock() != config->pValues.lock())
++                    animation->setValueAndWarp(animation->value());
++                animation->setConfig(config);
++                *animation = goal;
++            }
++        }
++        MONITOR->m_canvasOverview   = false;
++        MONITOR->m_canvasCommitting = false;
++        if (sv == "game-transition-out") {
++            MONITOR->m_canvasPanning = true;
++            *MONITOR->m_canvasTransition = 1.F;
++            *MONITOR->m_canvasZoom       = 0.9F;
++        } else if (sv == "game-transition-in") {
++            MONITOR->m_canvasPanning = true;
++            MONITOR->m_canvasTransition->setValueAndWarp(1.F);
++            MONITOR->m_canvasZoom->setValueAndWarp(0.9F);
++            *MONITOR->m_canvasTransition = 0.F;
++            *MONITOR->m_canvasZoom       = 1.F;
++        } else {
++            MONITOR->m_canvasTransition->setValueAndWarp(0.F);
++            MONITOR->m_canvasZoom->setValueAndWarp(1.F);
++            MONITOR->m_canvasPanning = false;
++        }
++        return {};
++    }
++
+     if (MONITOR->canvasEnabled()) {
+         if (sv == "overview") {
+             MONITOR->canvasOverview();
+--- a/src/output/Monitor.cpp
++++ b/src/output/Monitor.cpp
+@@ -315,7 +315,7 @@
+ }
+ 
+ void CMonitor::canvasTick(float) {
+-    if (!canvasEnabled() || (g_pSessionLockManager->isSessionLocked() && !m_canvasOverview)) {
++    if ((!canvasEnabled() && !m_canvasPanning) || (g_pSessionLockManager->isSessionLocked() && !m_canvasOverview)) {
+         m_canvasOverview   = false;
+         m_canvasPanning    = false;
+         m_canvasCommitting = false;
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -93,7 +93,7 @@
+ }
+ 
+ static bool canvasOverviewActive(PHLMONITORREF monitor) {
+-    return monitor->canvasTransformed();
++    return monitor->canvasTransformed() || (!monitor->canvasEnabled() && monitor->m_canvasPanning);
+ }
+ 
+ static CBox canvasLogicalBox(PHLMONITORREF monitor) {
+@@ -2790,7 +2790,8 @@
+                 renderAllClientsForWorkspace(pMonitor, pMonitor->m_activeWorkspace, NOW, {}, 1.F, true, false, false);
+                 if (canvasReveal(pMonitor) > 0.F)
+                     m_renderPass.add(makeUnique<CCanvasChromeElement>(pMonitor, false));
+-                const auto canvasTranslate = pMonitor->canvasOffset() * pMonitor->m_scale / CANVAS_ZOOM;
++                const auto canvasOffset = pMonitor->canvasEnabled() ? pMonitor->canvasOffset() : pMonitor->m_size * (1.F - CANVAS_ZOOM) / 2.F;
++                const auto canvasTranslate = canvasOffset * pMonitor->m_scale / CANVAS_ZOOM;
+                 renderAllClientsForWorkspace(pMonitor, pMonitor->m_activeWorkspace, NOW, canvasTranslate, CANVAS_ZOOM, false, true, false, true);
+                 if (pMonitor->m_canvasOverview) {
+                     if (const auto window = pMonitor->canvasNearest(true)) {

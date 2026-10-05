@@ -147,19 +147,25 @@ class ModeCommandTest(unittest.TestCase):
     def test_first_open_switches_only_while_black_then_reveals_big_picture(self):
         self.run_mode('enter')
         calls = [str(call) for call in self.calls()]
+        native_out = next(i for i, call in enumerate(calls) if 'layoutmsg game-transition-out' in call)
         out = next(i for i, call in enumerate(calls) if 'game-mode-out.frag' in call)
         hold = next(i for i, call in enumerate(calls) if 'game-mode-hold.frag' in call)
         switch = next(i for i, call in enumerate(calls) if 'name:gaming' in call)
         launch = next(i for i, call in enumerate(calls) if 'steam://open/bigpicture' in call)
         ready = next(i for i, call in enumerate(calls) if 'address:0x99' in call)
+        native_in = next(i for i, call in enumerate(calls) if 'layoutmsg game-transition-in' in call)
         reveal = next(i for i, call in enumerate(calls) if 'game-mode-in.frag' in call)
+        restore = next(i for i, call in enumerate(calls) if 'damage_tracking=2' in call and '[[EMPTY]]' in call)
+        reset = next(i for i, call in enumerate(calls) if 'layoutmsg game-transition-reset' in call)
+        self.assertLess(native_out, out)
         self.assertLess(out, hold)
         self.assertLess(hold, switch)
         self.assertLess(switch, launch)
         self.assertLess(launch, ready)
-        self.assertLess(ready, reveal)
-        self.assertIn('damage_tracking=2', calls[-1])
-        self.assertIn('[[EMPTY]]', calls[-1])
+        self.assertLess(ready, native_in)
+        self.assertLess(native_in, reveal)
+        self.assertLess(reveal, restore)
+        self.assertLess(restore, reset)
 
     def test_existing_big_picture_preserves_desktop_history(self):
         state = self.state()
