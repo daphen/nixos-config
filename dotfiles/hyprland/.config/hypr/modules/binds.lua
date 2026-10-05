@@ -7,6 +7,7 @@ return function(ctx)
 		or "/home/daphen/nixos/dotfiles/quickshell-login/.config/quickshell-login/launch-lock"
 	local PAN_GAIN = ctx.PAN_GAIN
 	local is_canvas_workspace = ctx.is_canvas_workspace
+	local is_game_window = ctx.is_game_window
 
 	for _, direction in ipairs({ "h", "j", "k", "l" }) do
 		hl.bind("SUPER + " .. direction, hl.dsp.layout("focus " .. direction))
@@ -107,26 +108,20 @@ return function(ctx)
 	end
 
 	if DECK_MODE then
-		hl.workspace_rule({ workspace = "name:gaming", layout = "dwindle" })
-		hl.window_rule({
-			name = "deck-big-picture-fullscreen",
-			match = { class = "(?i)^steam$", title = "^Steam Big Picture Mode$" },
-			fullscreen = true,
-		})
-		hl.window_rule({
-			name = "deck-steam",
-			match = {
-				class = "(?i)^(steam|steam_app_[0-9]+)$",
-				title = "negative:^Steam Input On-screen Keyboard$",
-			},
-			workspace = "name:gaming",
-			sync_fullscreen = true,
-		})
-		hl.window_rule({
-			name = "deck-game-fullscreen",
-			match = { workspace = "name:gaming" },
-			sync_fullscreen = true,
-		})
+		local keyboard_title = "Steam Input On-screen Keyboard"
+		local new_window_focus_reason = 65536
+		local function has_tag(window, expected)
+			for _, tag in ipairs(window and window.tags or {}) do
+				if tag == expected then
+					return true
+				end
+			end
+			return false
+		end
+		local function sync_gaming_mode()
+			hl.dispatch(hl.dsp.exec_cmd(SCRIPTS .. "deck-gaming-mode sync"))
+		end
+
 		hl.window_rule({
 			name = "deck-steam-keyboard",
 			match = { class = "(?i)^steam$", title = "^Steam Input On-screen Keyboard$" },
@@ -138,19 +133,48 @@ return function(ctx)
 			border_size = 0,
 			no_shadow = true,
 		})
-		hl.on("workspace.active", function()
-			hl.dispatch(hl.dsp.exec_cmd(SCRIPTS .. "deck-gaming-mode sync"))
-		end)
-		for _, event in ipairs({ "window.open", "window.close" }) do
-			hl.on(event, function(window)
-				if window.title == "Steam Input On-screen Keyboard" then
-					hl.dispatch(hl.dsp.exec_cmd(SCRIPTS .. "deck-gaming-mode sync"))
+		hl.on("workspace.active", sync_gaming_mode)
+		hl.on("window.open", function(window)
+			if window.title == keyboard_title then
+				sync_gaming_mode()
+				return
+			end
+
+			local selector = "address:" .. tostring(window.address)
+			local game = is_game_window(window)
+			if game then
+				hl.dispatch(hl.dsp.window.tag({ tag = "+deck-game", window = selector }))
+			end
+
+			local tagged = false
+			if not window.floating and window.workspace then
+				for _, existing in ipairs(window.workspace:get_windows()) do
+					if
+						tostring(existing.address) ~= tostring(window.address) and has_tag(existing, "deck-game-mode")
+					then
+						hl.dispatch(hl.dsp.window.tag({ tag = "+deck-game", window = selector }))
+						hl.dispatch(hl.dsp.window.tag({ tag = "+deck-game-mode", window = selector }))
+						tagged = true
+						break
+					end
 				end
-			end)
-		end
-		hl.on("window.active", function(window)
-			if window and window.title == "Steam Big Picture Mode" then
-				hl.dispatch(hl.dsp.exec_cmd(SCRIPTS .. "deck-gaming-mode sync"))
+			end
+
+			if tagged and is_canvas_workspace(window.workspace) then
+				hl.dispatch(hl.dsp.layout("recalculate"))
+			end
+			if tagged or game or window.active then
+				sync_gaming_mode()
+			end
+		end)
+		hl.on("window.close", function(window)
+			if window.title == keyboard_title or is_game_window(window) then
+				sync_gaming_mode()
+			end
+		end)
+		hl.on("window.active", function(window, reason)
+			if window and reason ~= new_window_focus_reason and window.title ~= keyboard_title then
+				sync_gaming_mode()
 			end
 		end)
 		local steam_held = false

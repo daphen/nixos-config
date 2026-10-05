@@ -5,6 +5,8 @@ exec 9>"${XDG_RUNTIME_DIR:?}/deck-gaming-mode.lock"
 flock 9
 umask 077
 record="$XDG_RUNTIME_DIR/deck-gaming-mode.frozen"
+return_target="$XDG_RUNTIME_DIR/deck-gaming-mode.return"
+game='def game: .title != "Steam Input On-screen Keyboard" and ((.class // "" | ascii_downcase | test("^(steam|steam_app_[0-9]+)$")) or ((.tags // []) | index("deck-game") != null) or .workspace.name == "gaming");'
 anr_dialog() {
     [[ $(hyprctl eval "hl.config({misc={enable_anr_dialog=$1}})") == ok ]]
 }
@@ -37,14 +39,14 @@ freeze_unit() {
     timeout 3s systemctl --user freeze "$1"
 }
 freeze_work() {
-    local clients rows pid name unit slice
+    local clients rows pid playing unit slice
     local -A browsers=() gaming=()
     clients=$(hyprctl -j clients) || return 1
-    rows=$(jq -r '.[] | select(.pid > 0) | [.pid, .workspace.name] | @tsv' <<< "$clients") || return 1
-    while IFS=$'\t' read -r pid name; do
+    rows=$(jq -r "$game .[] | select(.pid > 0) | [.pid, game] | @tsv" <<< "$clients") || return 1
+    while IFS=$'\t' read -r pid playing; do
         [[ -n $pid ]] || continue
         unit=$(systemctl --user whoami "$pid" 2>/dev/null) || continue
-        if [[ $name == gaming ]]; then
+        if [[ $playing == true ]]; then
             gaming["$unit"]=1
             slice=$(systemctl --user show "$unit" -p Slice --value) || return 1
             [[ $slice != deck-work.slice ]] || return 1
@@ -59,19 +61,6 @@ freeze_work() {
         freeze_unit "$unit" || return 1
     done
 }
-transition_active=0
-restore_transition() {
-    (( transition_active )) || return 0
-    local failed=0
-    hyprctl eval "hl.config({decoration={screen_shader=$saved_shader},debug={damage_tracking=$saved_damage}})" >/dev/null || failed=1
-    hyprctl dispatch 'hl.dsp.layout("game-transition-reset")' >/dev/null || failed=1
-    transition_active=0
-    return "$failed"
-}
-trap 'restore_transition' EXIT
-trap 'thaw_work; exit 1' HUP INT TERM
-if [[ ${1:-} == cleanup ]]; then thaw_work; exit; fi
-workspace=$(hyprctl -j activeworkspace | jq -er '.name')
 profile() {
     local path
     path=$(readlink -f "/etc/inputplumber/profiles/hyprland-$1.yaml")
@@ -81,109 +70,142 @@ profile() {
 }
 dispatch() {
     local result
-    result=$(hyprctl dispatch "$1")
+    result=$(hyprctl dispatch "$1") || { printf '%s\n' "$result" >&2; return 1; }
     [[ $result == ok ]]
 }
-focus() { dispatch "hl.dsp.focus({workspace=\"$1\"})"; }
-transition_shader() {
-    local path="$HOME/.config/hypr/shaders/game-mode-$1.frag" damage=$2
-    [[ $(hyprctl eval "hl.config({debug={damage_tracking=$damage},decoration={screen_shader=\"$path\"}})") == ok ]]
+focus_window() { dispatch "hl.dsp.focus({window=\"address:$1\"})"; }
+tag_window() { dispatch "hl.dsp.window.tag({tag=\"$2\",window=\"address:$1\"})"; }
+clear_mode() {
+    local clients addresses address
+    clients=$(hyprctl -j clients) || return 1
+    addresses=$(jq -r '.[] | select((.tags // []) | index("deck-game-mode")) | .address' <<< "$clients") || return 1
+    while IFS= read -r address; do
+        [[ -z $address ]] || tag_window "$address" -deck-game-mode || return 1
+    done <<< "$addresses"
 }
-transition_out() {
-    saved_shader=$(hyprctl -j getoption decoration:screen_shader | jq -c '.str')
-    saved_damage=$(hyprctl -j getoption debug:damage_tracking | jq -er '.int')
-    transition_active=1
-    dispatch 'hl.dsp.layout("game-transition-out")'
-    transition_shader out 0
-    sleep 1.00
-    transition_shader hold "$saved_damage"
+camera_active=0
+finish_camera() {
+    (( camera_active )) || return 0
+    dispatch 'hl.dsp.layout("pan-end")' || return 1
+    camera_active=0
 }
-transition_in() {
-    dispatch 'hl.dsp.layout("game-transition-in")'
-    transition_shader in 0
-    sleep 0.20
-    dispatch 'hl.dsp.layout("overview")'
-    sleep 0.85
-    restore_transition
+trap 'finish_camera' EXIT
+trap 'thaw_work; exit 1' HUP INT TERM
+camera_out() {
+    dispatch 'hl.dsp.layout("pan-begin")' || return 1
+    camera_active=1
+    dispatch 'hl.dsp.layout("overview")' || return 1
+    sleep 0.55
+}
+camera_to() {
+    focus_window "$1" || return 1
+    sleep 0.45
+    finish_camera || return 1
+    sleep 0.50
+}
+fullscreen_big_picture() {
+    local active address
+    active=$(hyprctl -j activewindow) || return 1
+    address=$(jq -r 'select(.title == "Steam Big Picture Mode" and (.fullscreen != 0 or .fullscreenClient != 2)) | .address // empty' <<< "$active") || return 1
+    [[ -z $address ]] || dispatch "hl.dsp.window.fullscreen_state({internal=0,client=2,window=\"address:$address\"})"
 }
 wait_big_picture() {
-    local address
+    local clients
     for (( attempt=0; attempt<600; attempt++ )); do
-        address=$(hyprctl -j clients | jq -r '.[] | select(.class == "steam" and .title == "Steam Big Picture Mode" and .mapped and (.hidden | not)) | .address' | head -n 1)
-        if [[ -n $address ]]; then
-            dispatch "hl.dsp.focus({window=\"address:$address\"})" || return 1
-            fullscreen_big_picture || return 1
-            sleep 0.25
-            return 0
-        fi
+        clients=$(hyprctl -j clients) || return 1
+        steam=$(jq -r '.[] | select((.class | ascii_downcase) == "steam" and .title == "Steam Big Picture Mode" and .mapped and (.hidden | not)) | .address' <<< "$clients" | head -n 1)
+        [[ -z $steam ]] || return 0
         sleep 0.1
     done
     return 1
 }
-fullscreen_big_picture() {
-    local address
-    address=$(hyprctl -j activewindow | jq -r 'select(.class == "steam" and .title == "Steam Big Picture Mode" and .fullscreen == 0) | .address // empty') || return 1
-    [[ -z $address ]] || dispatch "hl.dsp.window.fullscreen({action=\"set\",window=\"address:$address\"})"
+prepare_games() {
+    local clients addresses address
+    clients=$(hyprctl -j clients) || return 1
+    addresses=$(jq -r "$game .[] | select(game and .mapped and (.hidden | not) and (.floating | not)) | .address" <<< "$clients") || return 1
+    while IFS= read -r address; do
+        [[ -n $address ]] || continue
+        tag_window "$address" +deck-game || return 1
+        dispatch "hl.dsp.window.fullscreen_state({internal=0,client=0,window=\"address:$address\"})" || return 1
+        dispatch "hl.dsp.window.move({workspace=$workspace_selector,follow=false,window=\"address:$address\"})" || return 1
+        focus_window "$address" || return 1
+        dispatch "hl.dsp.window.fullscreen_state({internal=0,client=2,window=\"address:$address\"})" || return 1
+    done <<< "$addresses"
 }
-
+desktop_target() {
+    local clients address saved=""
+    clients=$(hyprctl -j clients) || return 1
+    if [[ -f "$return_target" ]]; then saved=$(jq -r '.window' "$return_target") || return 1; fi
+    address=$(jq -r --arg saved "$saved" "$game [.[] | select(.mapped and (.hidden | not) and (.floating | not) and (game | not))] | sort_by(.focusHistoryID) | (map(select(.address == \$saved))[0] // .[0]) | .address // empty" <<< "$clients") || return 1
+    [[ -n $address ]] || return 1
+    printf '%s\n' "$address"
+}
+if [[ ${1:-} == cleanup ]]; then thaw_work; rm -f -- "$return_target"; exit; fi
+workspace=$(hyprctl -j activeworkspace)
+workspace_selector=$(jq -c 'if .type == "named" then "name:" + .address else .address end' <<< "$workspace")
+active=$(hyprctl -j activewindow)
+clients=$(hyprctl -j clients)
+playing=0
+if jq -e "$game game" <<< "$active" >/dev/null; then
+    playing=1
+elif [[ $(jq -r '.title' <<< "$active") == 'Steam Input On-screen Keyboard' ]] &&
+    jq -e --arg name "$(jq -r '.name' <<< "$workspace")" 'any(.[]; .workspace.name == $name and ((.tags // []) | index("deck-game-mode")))' <<< "$clients" >/dev/null; then
+    playing=1
+fi
 case ${1:-enter} in
     sync)
-        if [[ $workspace == gaming ]]; then
+        if (( playing )); then
             pkill -USR1 -x wvkbd-mobintl || true
+            if jq -e "$game game" <<< "$active" >/dev/null; then tag_window "$(jq -r '.address' <<< "$active")" +deck-game-mode; fi
             if ! profile gaming || ! freeze_work; then thaw_work; exit 1; fi
             fullscreen_big_picture
         else
             thaw_work
-            if hyprctl clients -j | jq -e --arg workspace "$workspace" 'any(.[]; .mapped and (.hidden | not) and (.pinned or .workspace.name == $workspace) and .title == "Steam Input On-screen Keyboard")' >/dev/null; then
-                profile keyboard
-            else
-                profile canvas
-            fi
+            clear_mode
+            rm -f -- "$return_target"
+            if jq -e --arg name "$(jq -r '.name' <<< "$workspace")" 'any(.[]; .mapped and (.hidden | not) and (.pinned or .workspace.name == $name) and .title == "Steam Input On-screen Keyboard")' <<< "$clients" >/dev/null; then profile keyboard; else profile canvas; fi
         fi
         exit 0
         ;;
     tap)
-        if [[ $workspace == gaming ]]; then
-            exec busctl call org.shadowblip.InputPlumber \
-                /org/shadowblip/InputPlumber/CompositeDevice0 \
-                org.shadowblip.Input.CompositeDevice SendButtonChord \
-                as 1 Gamepad:Button:Guide
+        if (( playing )); then
+            exec busctl call org.shadowblip.InputPlumber /org/shadowblip/InputPlumber/CompositeDevice0 org.shadowblip.Input.CompositeDevice SendButtonChord as 1 Gamepad:Button:Guide
         fi
         ;;
     return)
-        if [[ $workspace != gaming ]]; then thaw_work; exit; fi
+        if (( ! playing )); then thaw_work; exit; fi
+        destination=$(desktop_target)
         thaw_work
         if ! profile canvas; then profile gaming; exit 1; fi
-        transition_out
-        if ! focus previous; then
-            profile gaming
-            exit 1
-        fi
-        sleep 0.25
-        transition_in
-        exit 0
+        if ! camera_out || ! camera_to "$destination"; then profile gaming; exit 1; fi
+        clear_mode
+        rm -f -- "$return_target"
+        exit
         ;;
     enter) pkill -USR1 -x wvkbd-mobintl || true ;;
     *) echo 'Usage: deck-gaming-mode [enter|tap|return|sync|cleanup]' >&2; exit 2 ;;
 esac
-
-if [[ $workspace != gaming ]]; then
-    if ! profile gaming; then profile canvas; exit 1; fi
-    transition_out
-    if ! focus name:gaming; then
-        profile canvas
-        exit 1
-    fi
+if (( playing )); then
+    tag_window "$(jq -r '.address' <<< "$active")" +deck-game-mode
+    if ! profile gaming || ! freeze_work; then thaw_work; exit 1; fi
+    fullscreen_big_picture
+    exit
 fi
-# Dispatch asynchronously so Steam's lifetime cannot hold the transition lock.
-if ! freeze_work || ! dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")" || ! wait_big_picture; then
-    thaw_work || true
-    echo 'Game Mode entry failed; attempted to resume work.' >&2
-    notify-send 'Game Mode' 'Could not pause work or open Steam; returning to work.' || true
-    if [[ $workspace != gaming ]]; then
-        profile canvas
-        focus previous
-    fi
-    exit 1
+[[ $(jq -r '.tiledLayout' <<< "$workspace") == lua:canvas ]] || { echo 'Game Mode requires a canvas workspace.' >&2; exit 1; }
+jq '{window:.address}' <<< "$active" > "$return_target"
+destination=$(desktop_target)
+if ! profile gaming; then profile canvas; rm -f -- "$return_target"; exit 1; fi
+# Steam's lifetime must not hold the transition lock.
+if dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")" && wait_big_picture && prepare_games &&
+    focus_window "$destination" && camera_out && tag_window "$steam" +deck-game-mode && camera_to "$steam" && freeze_work; then
+    exit
 fi
-if (( transition_active )); then transition_in; fi
+thaw_work || true
+clear_mode || true
+finish_camera || true
+profile canvas
+focus_window "$destination" || true
+rm -f -- "$return_target"
+echo 'Game Mode entry failed; attempted to resume work.' >&2
+notify-send 'Game Mode' 'Could not pause work or open Steam; returning to work.' || true
+exit 1

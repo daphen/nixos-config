@@ -195,10 +195,11 @@ kanata, the systemd-user services (notes-sync, etc.), and fonts.
 ## Steam Deck pre-arrival and first-day bring-up
 
 The Deck keeps SteamOS and boots Hyprland by default. **Gaming Mode** opens
-Steam Big Picture on a normal `gaming` workspace in the same running session; it
-does not log out or start another compositor. Tap Steam from work to enter, tap
-during gaming for Steam's menu, and hold for 600 ms to return to work.
-Steam+button chords are deferred in this first version. The command
+Steam Big Picture in a remote row of the current desktop canvas. The camera
+zooms out, pans to Steam, and zooms in without a black shader or workspace
+switch. It does not log out or start another compositor. Tap Steam from work to
+enter, tap during gaming for Steam's menu, and hold for 600 ms to return to
+work. Steam+button chords are deferred in this first version. The command
 `deck-gaming-mode return` also returns without closing Steam or games.
 
 Configured application starts share the `desktop-launch` policy on every host;

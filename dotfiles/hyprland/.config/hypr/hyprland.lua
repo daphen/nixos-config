@@ -71,6 +71,23 @@ local function is_canvas_workspace(workspace)
 	return workspace and workspace.tiled_layout == "lua:canvas"
 end
 
+local function window_has_tag(window, expected)
+	for _, tag in ipairs(window and window.tags or {}) do
+		if tag == expected then
+			return true
+		end
+	end
+	return false
+end
+
+local function is_game_window(window)
+	if not DECK_MODE or not window or window.title == "Steam Input On-screen Keyboard" then
+		return false
+	end
+	local class = (window.class or ""):lower()
+	return class == "steam" or class:match("^steam_app_%d+$") ~= nil or window_has_tag(window, "deck-game")
+end
+
 local function target_id(target)
 	local window = target.window
 	return window and tostring(window.stable_id) or tostring(target.index)
@@ -103,7 +120,8 @@ end
 
 local function shortest_row()
 	local best = 1
-	for row = 2, #state.rows do
+	local last = DECK_MODE and ROW_COUNT or #state.rows
+	for row = 2, last do
 		if #state.rows[row] < #state.rows[best] then
 			best = row
 		end
@@ -115,7 +133,8 @@ local function fixture_row(target)
 	local window = target.window
 	local title = window and window.title or ""
 	local row = tonumber(title:match("^Canvas (%d+)%."))
-	return row and math.min(row, #state.rows) or nil
+	local last = DECK_MODE and ROW_COUNT or #state.rows
+	return row and math.min(row, last) or nil
 end
 
 local geometry
@@ -185,6 +204,18 @@ local function sync(ctx)
 		end
 	end
 
+	if DECK_MODE then
+		state.rows[ROW_COUNT + 1] = state.rows[ROW_COUNT + 1] or {}
+		state.row_offsets[ROW_COUNT + 1] = state.row_offsets[ROW_COUNT + 1] or 0
+		for id, target in pairs(targets) do
+			local row, column = locate(id)
+			if row and row ~= ROW_COUNT + 1 and is_game_window(target.window) then
+				table.remove(state.rows[row], column)
+				table.insert(state.rows[ROW_COUNT + 1], id)
+			end
+		end
+	end
+
 	for _, row in ipairs(state.rows) do
 		for _, id in ipairs(row) do
 			present[id] = nil
@@ -217,7 +248,10 @@ local function sync(ctx)
 	for _, target in ipairs(ctx.targets) do
 		local id = target_id(target)
 		if present[id] then
-			local row = fixture_row(target) or focused_row or fallback_row
+			local game = is_game_window(target.window)
+			local normal_focused_row = focused_row and (not DECK_MODE or focused_row <= ROW_COUNT) and focused_row
+				or nil
+			local row = game and (ROW_COUNT + 1) or fixture_row(target) or normal_focused_row or fallback_row
 			local column = #state.rows[row] + 1
 			if focused_row == row then
 				column = focused_column + 1
@@ -273,7 +307,11 @@ end
 geometry = function(ctx, row, column, id)
 	local size = canvas_size(ctx, id)
 	local x = ctx.area.x + (state.row_offsets[row] or 0) - state.camera.x
-	local y = ctx.area.y + OUTER_GAP - state.camera.y - (state.keyboard_offset or 0) + (row - 1) * (ctx.area.h - OUTER_GAP * 2 + INNER_GAP)
+	local y = ctx.area.y
+		+ OUTER_GAP
+		- state.camera.y
+		- (state.keyboard_offset or 0)
+		+ (row - 1) * (ctx.area.h - OUTER_GAP * 2 + INNER_GAP)
 	if state.fullscreen[id] then
 		y = y - ctx.area.y + state.fullscreen[id].viewport.y
 	end
@@ -398,7 +436,9 @@ local function move_direction(ctx, direction)
 	end
 
 	local next_row = row + (direction == "k" and -1 or 1)
-	if next_row < 1 then
+	if DECK_MODE and (row > ROW_COUNT or next_row < 1 or next_row > ROW_COUNT) then
+		return
+	elseif next_row < 1 then
 		table.insert(state.rows, 1, {})
 		table.insert(state.row_offsets, 1, 0)
 		row = row + 1
@@ -471,7 +511,8 @@ hl.layout.register("canvas", {
 			local id = active_id(ctx)
 			local row = id and locate(id)
 			local target = row and row + (arg1 == "j" and 1 or -1) or nil
-			if target and target >= 1 and target <= #state.rows then
+			local last = DECK_MODE and ROW_COUNT or #state.rows
+			if row and row <= last and target and target >= 1 and target <= last then
 				state.rows[row], state.rows[target] = state.rows[target], state.rows[row]
 				state.focused_row = target
 				center(ctx, id)
@@ -578,6 +619,7 @@ local module_context = {
 	ROW_COUNT = ROW_COUNT,
 	PAN_GAIN = PAN_GAIN,
 	is_canvas_workspace = is_canvas_workspace,
+	is_game_window = is_game_window,
 }
 
 for _, name in ipairs({

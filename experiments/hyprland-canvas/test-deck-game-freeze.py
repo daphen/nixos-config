@@ -50,16 +50,71 @@ env = dict(os.environ, XDG_RUNTIME_DIR=os.environ['REAL_XDG_RUNTIME_DIR'])
 sys.exit(subprocess.run([os.environ['REAL_SYSTEMD_RUN'], *out], env=env).returncode)
 ''')
         self._write('hyprctl', r'''
-import json, os, pathlib, sys
+import json, os, pathlib, re, sys
+root = pathlib.Path(os.environ['FIXTURE'])
+path = root / 'hypr-state'
+workspace = {'address': '1', 'type': 'numbered', 'name': '1', 'tiledLayout': 'lua:canvas'}
+if path.exists():
+    state = json.loads(path.read_text())
+else:
+    state = {
+        'workspace': workspace,
+        'active': '0x1',
+        'clients': [
+            {'address': '0x1', 'pid': 0, 'class': 'deck-fixture-desktop',
+             'title': 'Deck desktop fixture', 'workspace': workspace, 'mapped': True,
+             'hidden': False, 'floating': False, 'pinned': False, 'fullscreen': 0,
+             'fullscreenClient': 0, 'tags': []},
+            {'address': '0x99', 'pid': 0, 'class': 'steam',
+             'title': 'Steam Big Picture Mode', 'workspace': workspace, 'mapped': True,
+             'hidden': False, 'floating': False, 'pinned': False, 'fullscreen': 0,
+             'fullscreenClient': 2, 'tags': ['deck-game']},
+        ],
+    }
+def client(address):
+    return next(item for item in state['clients'] if item['address'] == address)
+def save():
+    path.write_text(json.dumps(state))
 args = sys.argv[1:]
-if args == ['-j', 'activeworkspace']: print(json.dumps({'name': 'work'}))
-elif args == ['-j', 'clients']: print('[]')
-else: print('ok')
+if args == ['-j', 'activeworkspace']:
+    print(json.dumps(state['workspace']))
+elif args == ['-j', 'clients']:
+    print(json.dumps(state['clients']))
+elif args == ['-j', 'activewindow']:
+    print(json.dumps(client(state['active'])))
+elif args[:2] == ['-j', 'getoption']:
+    print(json.dumps({'int': 1}))
+elif args[:1] == ['eval']:
+    print('ok')
+elif args[:1] == ['dispatch']:
+    command = args[-1]
+    match = re.search(r'address:(0x[0-9a-f]+)', command)
+    if 'hl.dsp.focus({window=' in command and match:
+        state['active'] = match.group(1)
+    elif 'hl.dsp.window.tag' in command and match:
+        tag = re.search(r'tag="([+-]?[^"}]+)', command).group(1)
+        item, value = client(match.group(1)), tag.lstrip('+-')
+        if tag.startswith('-'):
+            item['tags'] = [existing for existing in item['tags'] if existing != value]
+        elif value not in item['tags']:
+            item['tags'].append(value)
+    elif 'hl.dsp.window.fullscreen_state' in command and match:
+        item = client(match.group(1))
+        item['fullscreen'] = int(re.search(r'internal=(\d+)', command).group(1))
+        item['fullscreenClient'] = int(re.search(r'client=(\d+)', command).group(1))
+    print('ok')
+else:
+    print('ok')
+save()
 ''')
         self._write('inputplumber', r'''
 import os, pathlib, sys
 args = sys.argv[1:]
 if args[3] == 'path': print("Current profile path: '/etc/inputplumber/profiles/hyprland-canvas.yaml'")
+''')
+        self._write('pkill', r'''
+import sys
+sys.exit(0)
 ''')
         self._write('counter-workload', r'''
 import os, pathlib, sys
@@ -116,7 +171,8 @@ pathlib.Path(sys.argv[1]).write_text(pathlib.Path('/proc/self/cgroup').read_text
         entering = self._start('bash', str(CONTROLLER), 'enter')
         time.sleep(.2)
         self.assertIsNone(entering.poll(), 'Game Mode raced past an in-progress scope start')
-        (self.root / 'race-release').write_text('1'); self._wait_file('race'); entering.wait(timeout=8)
+        (self.root / 'race-release').write_text('1'); self._wait_file('race')
+        self.assertEqual(entering.wait(timeout=8), 0)
         work = self._wait_file('work'); child = self._wait_file('child'); control = self._wait_file('control')
         time.sleep(.2)
         self.assertEqual((work, child), (self._wait_file('work'), self._wait_file('child')))
