@@ -71,7 +71,9 @@ if name == 'hyprctl':
                 item['tags'].append(value)
         elif 'hl.dsp.window.move' in command:
             address = re.search(r'address:(0x[0-9a-f]+)', command).group(1)
-            client(address)['workspace'] = state['workspace'].copy()
+            target = re.search(r'workspace="([^"]+)"', command).group(1)
+            client(address)['workspace'] = ({'address': target, 'type': 'special', 'name': target}
+                                             if target.startswith('special:') else state['workspace'].copy())
         elif 'hl.dsp.window.fullscreen_state' in command:
             address = re.search(r'address:(0x[0-9a-f]+)', command).group(1)
             internal = int(re.search(r'internal=(\d+)', command).group(1))
@@ -265,13 +267,46 @@ class ModeCommandTest(unittest.TestCase):
         fullscreen = next(i for i, call in enumerate(calls) if "internal=0,client=2" in call)
         desktop_focus = next(i for i, call in enumerate(calls) if "address:0x1" in call and "hl.dsp.focus" in call)
         pan_begin = next(i for i, call in enumerate(calls) if 'layout("pan-begin")' in call)
-        overview = next(i for i, call in enumerate(calls) if 'layout("overview")' in call)
+        overview = next(i for i, call in enumerate(calls) if 'layout("pan-overview")' in call)
         mode_tag = next(i for i, call in enumerate(calls) if "+deck-game-mode" in call)
         final_focus = max(i for i, call in enumerate(calls) if "address:0x99" in call and "hl.dsp.focus" in call)
         pan_end = next(i for i, call in enumerate(calls) if 'layout("pan-end")' in call)
-        order = [launch, clear, move, first_focus, fullscreen, desktop_focus, pan_begin, overview, mode_tag, final_focus, pan_end]
+        order = [launch, clear, move, fullscreen, desktop_focus, mode_tag, pan_begin, overview, final_focus, pan_end]
         self.assertEqual(order, sorted(set(order)))
+        self.assertEqual(first_focus, final_focus)
         self.assertFalse(any("name:gaming" in call or "game-mode-" in call for call in calls))
+
+    def test_desktop_dialog_is_hidden_and_restored_without_moving_keyboard(self):
+        state = self.state()
+        dialog = self.window('0x2', 'desktop-app', 'Desktop dialog', pid=42)
+        keyboard = self.window('0x3', 'steam', 'Steam Input On-screen Keyboard', pid=99)
+        dialog['floating'] = keyboard['floating'] = True
+        state['clients'].extend([dialog, keyboard])
+        self.write_state(state)
+        self.run_mode('enter')
+        state = self.state()
+        dialog, keyboard = [next(item for item in state['clients'] if item['address'] == address)
+                            for address in ('0x2', '0x3')]
+        self.assertEqual(dialog['workspace']['name'], 'special:deck-work-floats')
+        self.assertIn('deck-work-float', dialog['tags'])
+        self.assertEqual(keyboard['workspace']['name'], '1')
+        self.assertEqual(state['workspace']['name'], '1')
+        self.run_mode('return')
+        dialog = next(item for item in self.state()['clients'] if item['address'] == '0x2')
+        self.assertEqual(dialog['workspace']['name'], '1')
+        self.assertNotIn('deck-work-float', dialog['tags'])
+
+    def test_native_game_dialog_is_not_hidden(self):
+        state = self.state()
+        game = self.window('0x2', 'native-game', 'Game', pid=42, tags=['deck-game'])
+        dialog = self.window('0x3', 'native-game', 'Game dialog', pid=42)
+        dialog['floating'] = True
+        state['clients'].extend([game, dialog])
+        self.write_state(state)
+        self.run_mode('enter')
+        dialog = next(item for item in self.state()['clients'] if item['address'] == '0x3')
+        self.assertEqual(dialog['workspace']['name'], '1')
+        self.assertNotIn('deck-work-float', dialog['tags'])
 
     def test_existing_big_picture_returns_to_desktop(self):
         self.add_game()

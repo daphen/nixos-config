@@ -123,6 +123,11 @@ return function(ctx)
 		end
 
 		hl.window_rule({
+			name = "deck-big-picture-no-initial-focus",
+			match = { class = "(?i)^steam$", title = "^Steam Big Picture Mode$" },
+			no_initial_focus = true,
+		})
+		hl.window_rule({
 			name = "deck-steam-keyboard",
 			match = { class = "(?i)^steam$", title = "^Steam Input On-screen Keyboard$" },
 			opacity = "0.7",

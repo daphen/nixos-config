@@ -83,6 +83,30 @@ clear_mode() {
         [[ -z $address ]] || tag_window "$address" -deck-game-mode || return 1
     done <<< "$addresses"
 }
+park_floats() {
+    local clients addresses address
+    clients=$(hyprctl -j clients) || return 1
+    addresses=$(jq -r --arg name "$(jq -r '.name' <<< "$workspace")" "$game . as \$all | .[] | select(.mapped and (.hidden | not) and .floating and (.pinned | not) and .workspace.name == \$name and (.class | ascii_downcase) != \"steam\" and (game | not)) | .pid as \$pid | select(any(\$all[]; .pid == \$pid and game) | not) | .address" <<< "$clients") || return 1
+    [[ -f "$return_target" ]] || jq '{window:.address,workspace:.workspace.address,type:.workspace.type}' <<< "$active" > "$return_target"
+    while IFS= read -r address; do
+        [[ -n $address ]] || continue
+        tag_window "$address" +deck-work-float || return 1
+        dispatch "hl.dsp.window.move({workspace=\"special:deck-work-floats\",follow=false,window=\"address:$address\"})" || return 1
+    done <<< "$addresses"
+}
+restore_floats() {
+    local clients addresses address selector=$workspace_selector
+    clients=$(hyprctl -j clients) || return 1
+    addresses=$(jq -r '.[] | select((.tags // []) | index("deck-work-float")) | .address' <<< "$clients") || return 1
+    if [[ -f "$return_target" ]]; then
+        selector=$(jq -c 'if .type == "named" then "name:" + .workspace else .workspace end' "$return_target") || return 1
+    fi
+    while IFS= read -r address; do
+        [[ -n $address ]] || continue
+        dispatch "hl.dsp.window.move({workspace=$selector,follow=false,window=\"address:$address\"})" || return 1
+        tag_window "$address" -deck-work-float || return 1
+    done <<< "$addresses"
+}
 camera_active=0
 finish_camera() {
     (( camera_active )) || return 0
@@ -94,7 +118,7 @@ trap 'thaw_work; exit 1' HUP INT TERM
 camera_out() {
     dispatch 'hl.dsp.layout("pan-begin")' || return 1
     camera_active=1
-    dispatch 'hl.dsp.layout("overview")' || return 1
+    dispatch 'hl.dsp.layout("pan-overview")' || return 1
     sleep 0.55
 }
 camera_to() {
@@ -128,7 +152,6 @@ prepare_games() {
         tag_window "$address" +deck-game || return 1
         dispatch "hl.dsp.window.fullscreen_state({internal=0,client=0,window=\"address:$address\"})" || return 1
         dispatch "hl.dsp.window.move({workspace=$workspace_selector,follow=false,window=\"address:$address\"})" || return 1
-        focus_window "$address" || return 1
         dispatch "hl.dsp.window.fullscreen_state({internal=0,client=2,window=\"address:$address\"})" || return 1
     done <<< "$addresses"
 }
@@ -159,9 +182,11 @@ case ${1:-enter} in
             if jq -e "$game game" <<< "$active" >/dev/null; then tag_window "$(jq -r '.address' <<< "$active")" +deck-game-mode; fi
             if ! profile gaming || ! freeze_work; then thaw_work; exit 1; fi
             fullscreen_big_picture
+            park_floats
         else
             thaw_work
             clear_mode
+            restore_floats
             rm -f -- "$return_target"
             if jq -e --arg name "$(jq -r '.name' <<< "$workspace")" 'any(.[]; .mapped and (.hidden | not) and (.pinned or .workspace.name == $name) and .title == "Steam Input On-screen Keyboard")' <<< "$clients" >/dev/null; then profile keyboard; else profile canvas; fi
         fi
@@ -179,6 +204,8 @@ case ${1:-enter} in
         if ! profile canvas; then profile gaming; exit 1; fi
         if ! camera_out || ! camera_to "$destination"; then profile gaming; exit 1; fi
         clear_mode
+        restore_floats
+        focus_window "$destination"
         rm -f -- "$return_target"
         exit
         ;;
@@ -189,20 +216,22 @@ if (( playing )); then
     tag_window "$(jq -r '.address' <<< "$active")" +deck-game-mode
     if ! profile gaming || ! freeze_work; then thaw_work; exit 1; fi
     fullscreen_big_picture
+    park_floats
     exit
 fi
 [[ $(jq -r '.tiledLayout' <<< "$workspace") == lua:canvas ]] || { echo 'Game Mode requires a canvas workspace.' >&2; exit 1; }
-jq '{window:.address}' <<< "$active" > "$return_target"
+jq '{window:.address,workspace:.workspace.address,type:.workspace.type}' <<< "$active" > "$return_target"
 destination=$(desktop_target)
 if ! profile gaming; then profile canvas; rm -f -- "$return_target"; exit 1; fi
 # Steam's lifetime must not hold the transition lock.
-if dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")" && wait_big_picture && prepare_games &&
-    focus_window "$destination" && camera_out && tag_window "$steam" +deck-game-mode && camera_to "$steam" && freeze_work; then
+if dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")" && wait_big_picture && prepare_games && park_floats &&
+    focus_window "$destination" && tag_window "$steam" +deck-game-mode && camera_out && camera_to "$steam" && freeze_work; then
     exit
 fi
 thaw_work || true
 clear_mode || true
 finish_camera || true
+restore_floats || true
 profile canvas
 focus_window "$destination" || true
 rm -f -- "$return_target"
