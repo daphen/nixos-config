@@ -8,6 +8,12 @@ import "../QsLib" as Lib
 PanelWindow {
     id: bar
 
+    readonly property bool deckPaletteOpen: {
+        const backend = Modules.NiriState.hyprland
+        const window = backend ? backend.deckPalette : null
+        return !!window && !!window.monitor && !!screen && window.monitor.name === screen.name
+    }
+
     readonly property bool pickerActive: Modules.ControlCenterState.open
         || Modules.LauncherState.open
         || Modules.ReviewCreatePickerState.open
@@ -147,7 +153,7 @@ PanelWindow {
     WlrLayershell.keyboardFocus: pickerVisible
         ? WlrKeyboardFocus.Exclusive
         : WlrKeyboardFocus.None
-    mask: Region { item: capsule }
+    mask: Region { item: bar.deckPaletteOpen ? null : capsule }
 
     readonly property string worktreeStack: {
         const _ = Modules.NiriState.version
@@ -158,6 +164,7 @@ PanelWindow {
 
     Lib.ExpandableContainer {
         id: capsule
+        visible: !bar.deckPaletteOpen
         anchors {
             top: parent.top
             horizontalCenter: parent.horizontalCenter
@@ -319,6 +326,12 @@ PanelWindow {
             Modules.Audio {
                 id: audioMetric
                 HoverHandler { id: audioHover }
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: Quickshell.env("HYPR_CANVAS_PROFILE") === "deck"
+                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: Quickshell.execDetached([Quickshell.env("HOME") + "/.config/hypr/scripts/deck-haptics-toggle"])
+                }
             }
             Modules.Battery {
                 id: batteryMetric

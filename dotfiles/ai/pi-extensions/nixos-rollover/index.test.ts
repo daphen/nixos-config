@@ -7,8 +7,10 @@ test.each(["nixos", "personal/ai-cockpit"])("%s registers rolling checkpoint and
   const cwd = spyOn(process, "cwd").mockReturnValue(path.join(os.homedir(), project));
   try {
     const events: string[] = [];
-    install({ on(name: string) { events.push(name); } } as any);
-    expect(events.sort()).toEqual(["model_select", "session_before_compact", "session_start"]);
+    const commands: string[] = [];
+    install({ on(name: string) { events.push(name); }, registerCommand(name: string) { commands.push(name); } } as any);
+    expect(events.sort()).toEqual(["context", "model_select", "session_before_compact", "session_shutdown", "session_start"]);
+    expect(commands).toEqual(["jev-pruning"]);
   } finally { cwd.mockRestore(); }
 });
 

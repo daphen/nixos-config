@@ -268,6 +268,18 @@ in
   # trigger_hotplug itself causes.
   environment.systemPackages = [ u2725qeDsc ];
 
+  systemd.user.services.agentd-deck-relay = {
+    description = "Relay proart agentd scopes to Steam Deck";
+    after = [ "network-online.target" ];
+    wantedBy = [ "default.target" ];
+    serviceConfig = {
+      Type = "simple";
+      ExecStart = "${pkgs.openssh}/bin/ssh -F %h/.cache/steamdeck-install/ssh-config -N -o ControlMaster=no -o ControlPath=none -o ExitOnForwardFailure=yes -o StreamLocalBindUnlink=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -R %t/agentd-proart-personal.sock:%t/agentd-personal.sock -R %t/agentd-proart-work.sock:%t/agentd-work.sock 192.168.50.214";
+      Restart = "always";
+      RestartSec = 5;
+    };
+  };
+
   # ASUS control daemon — manages keyboard lighting, fan curves, etc.
   services.asusd.enable = true;
 

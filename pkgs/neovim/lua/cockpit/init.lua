@@ -1870,12 +1870,12 @@ local function edit_abs(cwd, path)
   return fn.fnamemodify(fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path)), ":p")
 end
 
-handle = function(obj)
+handle = function(obj, reply_scope)
   if obj.type == "changes" and obj.session then
     local w = S.workspace
-    if w and w.remoteCwd and w.remoteCwd ~= "" and (obj.session == w.id or obj.cwd == w.remoteCwd) then
-      local request = S.diff_jobs[w.remoteCwd] or S.diff_jobs[w.cwd]
-      if not obj.id or (request and request.id == obj.id) then
+    local request = w and (S.diff_jobs[w.remoteCwd] or S.diff_jobs[w.cwd])
+    if request and reply_scope == request.scope and obj.id == request.id
+        and obj.session == request.session and obj.cwd == request.cwd then
         local files, bypath = {}, {}
         for _, source in ipairs(obj.files or {}) do
           local parsed = parse_git_diff(vim.split(source.patch or "", "\n", { plain = true }))
@@ -1890,11 +1890,11 @@ handle = function(obj)
           base = obj.base, branch = obj.branch, diff = obj.diff, error = obj.error }
         S.gitdiff[w.remoteCwd], S.gitdiff[w.cwd] = snapshot, snapshot
         S.diff_jobs[w.remoteCwd], S.diff_jobs[w.cwd] = nil, nil
-        if request and request.done then request.done(snapshot) end
+        if request.pipe and not request.pipe:is_closing() then request.pipe:close() end
+        if request.done then request.done(snapshot) end
         if S.view == "changes" then render_changes() else render_chat(false) end
         if refresh_dashboard then refresh_dashboard() end
         pcall(function() require("cockpit.chin").refresh() end)
-      end
     end
     return
   end
@@ -4543,13 +4543,18 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
     }
   end
   local same = previous and previous.scope == workspace_scope and previous.id == id
-  if previous and previous.cwd ~= cwd then
-    local pending = S.diff_jobs[previous.cwd]; if pending and pending.job then pcall(fn.jobstop, pending.job) end
+    and previous.sourceScope == source_scope and previous.remoteCwd == remote_cwd
+  if previous and (not same or previous.cwd ~= cwd) then
+    local pending = S.diff_jobs[previous.cwd]
+    if pending and pending.job then pcall(fn.jobstop, pending.job) end
+    if pending and pending.pipe and not pending.pipe:is_closing() then pending.pipe:close() end
     S.diff_jobs[previous.cwd] = nil
+    if previous.remoteCwd then S.diff_jobs[previous.remoteCwd] = nil end
   end
   if remote_cwd and remote_cwd ~= "" and not (same and previous.remoteCwd == remote_cwd) then
     local pending = S.diff_jobs[cwd]
     if pending and pending.job then pcall(fn.jobstop, pending.job) end
+    if pending and pending.pipe and not pending.pipe:is_closing() then pending.pipe:close() end
     S.gitdiff[cwd], S.gitdiff[remote_cwd], S.diff_jobs[cwd] = nil, nil, nil
   end
   S.workspace = { scope = workspace_scope, id = id, cwd = cwd, plan = plan, profile = profile,
@@ -4806,18 +4811,44 @@ refresh_git_changes = function(cwd, path, done)
   if remote then
     local previous = S.diff_jobs[w.remoteCwd] or S.diff_jobs[w.cwd]
     if previous then previous.done = done or previous.done; return end
-    local request = { id = string.format("nvim-diff-%d-%d", fn.getpid(), uv.hrtime()), done = done }
+    local source_scope = w.sourceScope
+    local request = { id = string.format("nvim-diff-%d-%d", fn.getpid(), uv.hrtime()), done = done,
+      scope = source_scope, session = w.id, cwd = w.remoteCwd }
     S.gitdiff[w.remoteCwd], S.gitdiff[w.cwd] = nil, nil
     S.diff_jobs[w.remoteCwd], S.diff_jobs[w.cwd] = request, request
-    send({ type = "get_changes", session = w.id, id = request.id })
-    vim.defer_fn(function()
+    local function fail(message)
       if S.diff_jobs[w.remoteCwd] ~= request then return end
-      local snapshot = { files = {}, bypath = {}, at = os.time(), error = "VM diff request timed out" }
+      local snapshot = { files = {}, bypath = {}, at = os.time(), error = message }
       S.gitdiff[w.remoteCwd], S.gitdiff[w.cwd] = snapshot, snapshot
       S.diff_jobs[w.remoteCwd], S.diff_jobs[w.cwd] = nil, nil
+      if request.pipe and not request.pipe:is_closing() then request.pipe:close() end
       if request.done then request.done(snapshot) end
       if S.view == "changes" then render_changes() end
       pcall(function() require("cockpit.chin").refresh() end)
+    end
+    if not source_scope or source_scope == "" then fail("VM diff source scope unavailable"); return end
+    local pipe, pending = uv.new_pipe(false), ""
+    request.pipe = pipe
+    pipe:connect((os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/agentd-" .. source_scope .. ".sock", function(err)
+      vim.schedule(function()
+        if S.diff_jobs[w.remoteCwd] ~= request then return end
+        if err then fail("VM diff connection failed: " .. tostring(err)); return end
+        pipe:read_start(vim.schedule_wrap(function(read_err, chunk)
+          if S.diff_jobs[w.remoteCwd] ~= request then return end
+          if read_err or not chunk then fail("VM diff connection closed"); return end
+          pending = pending .. chunk
+          while pending:find("\n", 1, true) do
+            local line; line, pending = pending:match("^(.-)\n(.*)$")
+            local ok, reply = pcall(vim.json.decode, line)
+            if ok and type(reply) == "table" and reply.type == "changes" then handle(reply, source_scope) end
+          end
+        end))
+        pipe:write(vim.json.encode({ type = "get_changes", session = w.id, id = request.id }) .. "\n")
+      end)
+    end)
+    vim.defer_fn(function()
+      if S.diff_jobs[w.remoteCwd] ~= request then return end
+      fail("VM diff request timed out")
     end, 10000)
     return
   end

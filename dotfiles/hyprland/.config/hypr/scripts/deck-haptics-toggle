@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -u
+
+service=org.shadowblip.InputPlumber
+object=/org/shadowblip/InputPlumber/CompositeDevice0
+interface=org.shadowblip.Output.ForceFeedback
+
+read_enabled() {
+    local reply signature value
+    reply=$(busctl --system get-property "$service" "$object" "$interface" Enabled) || return
+    read -r signature value <<< "$reply"
+    [[ $signature == b && ($value == true || $value == false) ]] || return
+    printf '%s\n' "$value"
+}
+
+if ! current=$(read_enabled); then
+    notify-send "Night mode" "InputPlumber unavailable"
+    exit 1
+fi
+
+if [[ $current == true ]]; then
+    next=false
+    message="Night mode on"
+else
+    next=true
+    message="Night mode off"
+fi
+
+if busctl --system set-property "$service" "$object" "$interface" Enabled b "$next" \
+    && [[ $(read_enabled) == "$next" ]]; then
+    notify-send "Night mode" "$message"
+else
+    notify-send "Night mode" "Toggle failed"
+    exit 1
+fi
