@@ -11,7 +11,10 @@ Item {
   property color glow: Theme.fg
   property var activityColors: []
   readonly property bool combined: activityColors.length > 1
-  readonly property real ringWidth: Math.max(1.25, Math.min(width, height) * 0.065) + (Theme.mode === "light" ? 1 : 0)
+  readonly property real diameter: Math.min(width, height)
+  readonly property real ringWidth: Math.max(1.25, diameter * 0.065)
+    + (Theme.mode === "light" ? (diameter <= 24 ? 1.7 : 1) : 0)
+  readonly property real ringLightness: Theme.mode === "light" && diameter <= 24 ? 0.28 : 0.34
   // Flip the ring's light/dark pick — for orbs sitting on an inverted ground
   // (the roster's cursor pill), where the normal ring melts into the fill.
   property bool invertRing: false
@@ -108,7 +111,7 @@ Item {
     visible: Theme.mode === "light"
     color: orb.invertRing
       ? "#FAFAFA"
-      : Qt.hsla(orb.hu, orb.sat * 0.5, 0.34, 1)
+      : Qt.hsla(orb.hu, orb.sat * 0.5, orb.ringLightness, 1)
     antialiasing: true
   }
 
@@ -178,7 +181,7 @@ Item {
     color: "transparent"
     border.width: orb.ringWidth
     border.color: Theme.mode === "light"
-      ? (orb.invertRing ? "#FAFAFA" : Qt.hsla(orb.hu, orb.sat * 0.5, 0.34, 1))
+      ? (orb.invertRing ? "#FAFAFA" : Qt.hsla(orb.hu, orb.sat * 0.5, orb.ringLightness, 1))
       : (field._orange && !orb.invertRing
         ? Qt.hsla((orb.hu + 0.03) % 1, orb.sat * 0.75, 0.78, 1)
         : Qt.hsla(orb.hu, orb.sat * 0.5, orb.invertRing ? 0.34 : 0.82, 1))
