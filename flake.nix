@@ -249,7 +249,7 @@
         (homeManagerModule "workstation")
       ];
 
-      # Every host records the commit it was built from in /run/current-system/configuration-revision.
+      # Every host records the commit it was built from (nixos-version --json → configurationRevision).
       revisionModule = { system.configurationRevision = self.rev or self.dirtyRev or "unknown"; };
 
       mkHost = machineModule: nixpkgs.lib.nixosSystem {

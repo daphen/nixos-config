@@ -17,7 +17,7 @@ cd "$repo"
 [[ -z $(git status --porcelain --untracked-files=no) ]] || die "commit tracked changes first: $(git status --porcelain --untracked-files=no | wc -l) files"
 rev=$(git rev-parse HEAD)
 
-deployed=$(deck 'cat /run/current-system/configuration-revision 2>/dev/null' || true)
+deployed=$(deck 'nixos-version --json 2>/dev/null | jq -r ".configurationRevision // empty"' || true)
 if [[ -z $deployed || $deployed == unknown ]]; then
     (( adopt )) || die "Deck has no recorded revision; rerun with --adopt for the first deploy"
 elif [[ $deployed == *-dirty ]]; then
@@ -29,7 +29,7 @@ fi
 
 printf 'deploy: building %s\n' "$rev"
 system=$(nix build --no-link --print-out-paths "git+file://$repo?rev=$rev#nixosConfigurations.steamdeck.config.system.build.toplevel")
-[[ $(cat "$system/configuration-revision") == "$rev" ]] || die "built system does not record $rev"
+[[ $("$system/sw/bin/nixos-version" --json | jq -r .configurationRevision) == "$rev" ]] || die "built system does not record $rev"
 
 printf 'deploy: copying %s\n' "$system"
 NIX_SSHOPTS="-F $ssh_config" nix copy --no-check-sigs --to "ssh-ng://$host?remote-program=sudo%20-n%20nix-daemon" "$system"
@@ -46,5 +46,5 @@ deck "set -euo pipefail
     printf 'deploy: Deck checkout at %s, previous changes saved in %s\n' \"\$(git rev-parse --short HEAD)\" \"\$backup\""
 
 deck "bash ~/nixos/machines/steamdeck/activate $system"
-[[ $(deck 'cat /run/current-system/configuration-revision') == "$rev" ]] || die "Deck did not switch to $rev"
+[[ $(deck 'nixos-version --json | jq -r .configurationRevision') == "$rev" ]] || die "Deck did not switch to $rev"
 printf 'deploy: Deck now runs %s\n' "$rev"
