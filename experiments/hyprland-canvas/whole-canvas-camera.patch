@@ -1607,7 +1607,7 @@ index 6028e21a494ed05b138edf984d9c454641b59ab2..3bbaa5bfda76e07699a25bb24bcc2ff7
                                     bool fixMisalignedFSV1 = false);
  
 diff --git a/src/render/Renderer.cpp b/src/render/Renderer.cpp
-index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..9298080e8712b51a866bef2537639a34813a893a 100644
+index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..6d680dabd07621fe46b872cf4a306b885e9953c2 100644
 --- a/src/render/Renderer.cpp
 +++ b/src/render/Renderer.cpp
 @@ -1,6 +1,8 @@
@@ -2589,7 +2589,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..9298080e8712b51a866bef2537639a34
  
      // hack: schedule frame events
      if (!pSurface->m_current.callbacks.empty() && SURFACE_BOX && !SURFACE_BOX->empty()) {
-@@ -2799,12 +3423,25 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2799,15 +3423,34 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
              if (!m->m_output)
                  continue;
  
@@ -2616,7 +2616,16 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..9298080e8712b51a866bef2537639a34
      if (damageBox.empty())
          return;
  
-@@ -2820,11 +3457,26 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
++    // Floating windows can report damage that misses changed content; repaint the whole window.
++    if (WINDOW && WINDOW->isFloating()) {
++        damageWindow(WINDOW);
++        return;
++    }
++
+     if (scale != 1.0)
+         damageBox.scale(scale);
+ 
+@@ -2820,11 +3463,26 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
      for (auto const& m : State::monitorState()->monitors()) {
          if (!m->m_output)
              continue;
@@ -2644,7 +2653,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..9298080e8712b51a866bef2537639a34
  
          m->addDamage(damageBoxForEach);
      }
-@@ -2846,8 +3498,16 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
+@@ -2846,8 +3504,16 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
  
      for (auto const& m : State::monitorState()->monitors()) {
          if (forceFull || shouldRenderWindow(pWindow, m)) { // only damage if window is rendered on monitor
@@ -2662,7 +2671,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..9298080e8712b51a866bef2537639a34
              m->addDamage(fixedDamageBox);
          }
      }
-@@ -2877,8 +3537,15 @@ void IHyprRenderer::damageBox(const CBox& box, bool skipFrameSchedule) {
+@@ -2877,8 +3543,15 @@ void IHyprRenderer::damageBox(const CBox& box, bool skipFrameSchedule) {
              continue; // don't damage mirrors traditionally
  
          if (!skipFrameSchedule) {
@@ -2680,7 +2689,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..9298080e8712b51a866bef2537639a34
          }
      }
  
-@@ -3162,7 +3829,7 @@ void IHyprRenderer::addWindowToRenderUnfocused(PHLWINDOW window) {
+@@ -3162,7 +3835,7 @@ void IHyprRenderer::addWindowToRenderUnfocused(PHLWINDOW window) {
          m_renderUnfocusedTimer->updateTimeout(std::chrono::milliseconds(1000 / *PFPS));
  }
  
@@ -2689,7 +2698,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..9298080e8712b51a866bef2537639a34
      // we trust the window is valid.
      const auto PMONITOR = pWindow->m_monitor.lock();
  
-@@ -3174,26 +3841,39 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
+@@ -3174,26 +3847,39 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
  
      LOG(Log::DEBUG, "renderer: making a snapshot of {:x}", rc<uintptr_t>(pWindow.get()));
  
@@ -2738,7 +2747,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..9298080e8712b51a866bef2537639a34
  
      LOG(Log::DEBUG, "renderer: rendered a snapshot of {:x}", rc<uintptr_t>(pWindow.get()));
  
-@@ -3201,7 +3881,10 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
+@@ -3201,7 +3887,10 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
  
      LOG(Log::DEBUG, "renderer: made a snapshot of {:x}", rc<uintptr_t>(pWindow.get()));
  
@@ -2750,7 +2759,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..9298080e8712b51a866bef2537639a34
      return PFRAMEBUFFER;
  }
  
-@@ -3307,6 +3990,8 @@ void IHyprRenderer::renderFadeouts(PHLMONITOR monitor, Desktop::eFadeoutPlane pl
+@@ -3307,6 +3996,8 @@ void IHyprRenderer::renderFadeouts(PHLMONITOR monitor, Desktop::eFadeoutPlane pl
      if (!monitor)
          return;
  
