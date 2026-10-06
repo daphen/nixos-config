@@ -36,14 +36,17 @@ NIX_SSHOPTS="-F $ssh_config -oControlMaster=no -oControlPath=none -oCompression=
 
 printf 'deploy: checking out %s on the Deck\n' "$rev"
 GIT_SSH_COMMAND="ssh -F $ssh_config" git push --force "$host:nixos" "$rev:refs/deploy/current"
-deck "set -euo pipefail
-    cd ~/nixos
-    backup=\$HOME/.cache/steamdeck-update/pre-deploy-\$(date +%Y%m%d-%H%M%S)
-    mkdir -p \"\$backup\"
-    git diff --binary HEAD > \"\$backup/tracked.patch\"
-    git status --porcelain > \"\$backup/status.txt\"
-    git checkout --force --detach $rev
-    printf 'deploy: Deck checkout at %s, previous changes saved in %s\n' \"\$(git rev-parse --short HEAD)\" \"\$backup\""
+deck bash -s <<EOF
+set -euo pipefail
+cd ~/nixos
+backup=\$HOME/.cache/steamdeck-update/pre-deploy-\$(date +%Y%m%d-%H%M%S)
+mkdir -p "\$backup"
+git diff --binary HEAD > "\$backup/tracked.patch"
+git status --porcelain > "\$backup/status.txt"
+git ls-files --others --exclude-standard -z | tar --null -T - -czf "\$backup/untracked.tar.gz"
+git checkout --force --detach $rev
+printf 'deploy: Deck checkout at %s, previous changes saved in %s\\n' "\$(git rev-parse --short HEAD)" "\$backup"
+EOF
 
 deck "bash ~/nixos/machines/steamdeck/activate $system"
 [[ $(deck 'nixos-version --json | jq -r .configurationRevision') == "$rev" ]] || die "Deck did not switch to $rev"
