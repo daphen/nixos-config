@@ -32,7 +32,7 @@ system=$(nix build --no-link --print-out-paths "git+file://$repo?rev=$rev#nixosC
 [[ $("$system/sw/bin/nixos-version" --json | jq -r .configurationRevision) == "$rev" ]] || die "built system does not record $rev"
 
 printf 'deploy: copying %s\n' "$system"
-NIX_SSHOPTS="-F $ssh_config" nix copy --no-check-sigs --to "ssh-ng://$host?remote-program=sudo%20-n%20nix-daemon" "$system"
+NIX_SSHOPTS="-F $ssh_config -oControlMaster=no -oControlPath=none -oCompression=yes" nix copy --no-check-sigs --to "ssh-ng://$host?remote-program=sudo%20-n%20nix-daemon" "$system"
 
 printf 'deploy: checking out %s on the Deck\n' "$rev"
 GIT_SSH_COMMAND="ssh -F $ssh_config" git push --force "$host:nixos" "$rev:refs/deploy/current"
