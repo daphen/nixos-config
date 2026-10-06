@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+system=${1:?system closure required}
+[[ $system == /nix/store/*-nixos-system-steamdeck-* ]]
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+export WAYLAND_DISPLAY=wayland-1 QT_QPA_PLATFORM=wayland
+export HYPR_CANVAS_PROFILE=deck HYPR_CANVAS_REAL=1
+export XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_TYPE=wayland
+export PATH="/run/wrappers/bin:/etc/profiles/per-user/$USER/bin:$HOME/.local/bin:/run/current-system/sw/bin:$PATH"
+export QML2_IMPORT_PATH="$HOME/.local/share/qml"
+export HYPRLAND_INSTANCE_SIGNATURE
+HYPRLAND_INSTANCE_SIGNATURE=$(hyprctl instances -j | jq -er '.[0].instance')
+stage="$HOME/.cache/steamdeck-update"
+finish() {
+    code=$?
+    printf '%s\n' "$code" > "$stage/activation.exit"
+    if (( code != 0 )); then notify-send 'Steam Deck update' 'Update needs attention; see the installer log.' || true; fi
+}
+trap finish EXIT
+nix-store --check-validity "$system"
+mkdir -p "$HOME/personal" "$HOME/nixos/dotfiles/opencode/.config/opencode/themes" "$HOME/nixos/dotfiles/starship/.config"
+/run/wrappers/bin/sudo -n nix-env -p /nix/var/nix/profiles/system --set "$system"
+/run/wrappers/bin/sudo -n "$system/bin/switch-to-configuration" switch
+[[ $(readlink -f /run/current-system) == "$system" ]]
+systemctl --user stop deck-osk.service || true
+if pgrep -u "$(id -u)" -f '/bin/wvkbd-mobintl' >/dev/null; then echo 'Old keyboard is still running' >&2; exit 1; fi
+hyprctl reload
+profile=canvas
+if [[ $(hyprctl activeworkspace -j | jq -r .name) == gaming ]] || hyprctl clients -j | jq -e 'any(.[]; .mapped and .title == "Steam Input On-screen Keyboard")' >/dev/null; then profile=gaming; fi
+inputplumber device 0 profile load "/etc/inputplumber/profiles/hyprland-$profile.yaml"
+mapfile -t bars < <(pgrep -u "$(id -u)" -f '^/nix/store/[^ ]*/bin/quickshell -n$')
+[[ ${#bars[@]} == 1 ]]
+kill "${bars[0]}"
+systemd-run --user --unit=deck-desktop --collect --property=Restart=on-failure \
+    --property="StandardOutput=append:$stage/desktop.log" \
+    --property="StandardError=append:$stage/desktop.log" \
+    --setenv="PATH=$PATH" --setenv="WAYLAND_DISPLAY=$WAYLAND_DISPLAY" \
+    --setenv="HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE" \
+    --setenv="QML2_IMPORT_PATH=$QML2_IMPORT_PATH" --setenv=QT_QPA_PLATFORM=wayland \
+    --setenv=HYPR_CANVAS_PROFILE=deck --setenv=HYPR_CANVAS_REAL=1 \
+    --setenv=XDG_CURRENT_DESKTOP=Hyprland --setenv=XDG_SESSION_TYPE=wayland \
+    "$(command -v qs)" -n
+sleep 4
+systemctl --user is-active deck-desktop
+grep -q 'Configuration Loaded' "$stage/desktop.log"
+if grep -E 'ERROR|TypeError|ReferenceError' "$stage/desktop.log"; then exit 1; fi
+for app in dsqrd-client slqs-client mlqs-client opqs-client cockpit-qs deck-cockpit helium slack spotify obsidian libreoffice nvim pi; do command -v "$app"; done
+systemctl --user is-active agentd-personal
+for attempt in {1..30}; do [[ -S "$XDG_RUNTIME_DIR/agentd-personal.sock" ]] && break; sleep 1; done
+test -S "$XDG_RUNTIME_DIR/agentd-personal.sock"
+timeout 20 nvim --headless '+qa!' > "$stage/nvim-check.log" 2>&1
+hyprctl configerrors
+fc-match 'JetBrainsMono Nerd Font' | grep -F 'JetBrainsMono Nerd Font'
+inputplumber device 0 profile path
+printf '%s\n' "$system" > "$stage/installed-system"
+notify-send 'Steam Deck update installed' 'ProArt apps, Cockpit, Steam keyboard, LT shortcuts and the control panel are installed. Chat apps still need sign-in.'

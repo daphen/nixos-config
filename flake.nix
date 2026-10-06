@@ -249,10 +249,13 @@
         (homeManagerModule "workstation")
       ];
 
+      # Every host records the commit it was built from in /run/current-system/configuration-revision.
+      revisionModule = { system.configurationRevision = self.rev or self.dirtyRev or "unknown"; };
+
       mkHost = machineModule: nixpkgs.lib.nixosSystem {
         inherit system;
         specialArgs = { inherit inputs applicationPkgs; };
-        modules = commonModules ++ [ machineModule ];
+        modules = commonModules ++ [ revisionModule machineModule ];
       };
 
       mkSteamDeck = inputs.jovian.inputs.nixpkgs.lib.nixosSystem {
@@ -271,6 +274,7 @@
               })
             ];
           }
+          revisionModule
           inputs.jovian.nixosModules.default
           home-manager.nixosModules.home-manager
           (homeManagerModule "deck")
