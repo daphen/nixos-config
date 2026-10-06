@@ -60,6 +60,14 @@
             });
             hyprland = prev.hyprland.overrideAttrs (old: {
               patches = (old.patches or [ ]) ++ [ ./whole-canvas-camera.patch ];
+              nativeBuildInputs = old.nativeBuildInputs ++ [ prev.ccache ];
+              # Uses the host's shared cache when the sandbox exposes it (proart); builds normally elsewhere.
+              preConfigure = (old.preConfigure or "") + ''
+                if [ -w /var/cache/ccache ]; then
+                  export CCACHE_DIR=/var/cache/ccache CCACHE_UMASK=007 CCACHE_COMPRESS=1 CCACHE_BASEDIR=$NIX_BUILD_TOP
+                  cmakeFlagsArray+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+                fi
+              '';
               preBuild = (old.preBuild or "") + ''
                 ${prev.util-linux}/bin/renice -n 10 -p $$
                 ${prev.util-linux}/bin/ionice -c3 -p $$
