@@ -41,6 +41,12 @@ The desktop Quickshell tree is not Cockpit. Current Cockpit launchers in
   `/run/wrappers/bin/sudo nixos-rebuild switch --flake /home/daphen/nixos#proart`.
   This switches NixOS and Home Manager together; never run bare `nixos-rebuild`
   and never reboot as part of validation.
+- All machines build from the same `main`; there are no per-machine branches.
+  Deploy the Steam Deck only with `machines/steamdeck/deploy` from clean,
+  committed `main` (with David's approval). It builds the system and checks out
+  the Deck's `~/nixos` at that one commit and refuses to replace a Deck
+  revision that commit does not contain. Never rsync or stage a source tree onto
+  the Deck, and never deploy from a side worktree.
 - A live-linked QML, KDL, Lua, or unit edit still needs its real isolated loader
   check before reporting success. Do not restart a visible Cockpit, daemon, or
   desktop service without explicit approval.
