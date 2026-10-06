@@ -108,6 +108,9 @@ return function(ctx)
 	end
 
 	if DECK_MODE then
+		if #hl.get_windows({ class = "^org.quickshell$", title = "^(quickshell|deck-radial-palette)$" }) > 0 then
+			hl.exec_cmd(SCRIPTS .. "palette-shell-ipc radial cancel 0 ''")
+		end
 		local keyboard_title = "Steam Input On-screen Keyboard"
 		local new_window_focus_reason = 65536
 		local function has_tag(window, expected)
@@ -466,19 +469,28 @@ return function(ctx)
 			end
 			return true
 		end
+		local face_device = { inclusive = false, list = { "extest-fake-device" } }
+		-- Steam also emits A/B; consume those duplicates, not InputPlumber's events.
+		for _, key in ipairs({ "Return", "Escape" }) do
+			hl.bind(key, function() end, { ignore_mods = true, device = { list = { "extest-fake-device" } } })
+		end
 		hl.bind("Return", function()
+			if radial_open then
+				close_radial("activate")
+				return
+			end
 			if rt_face_key(1) then return end
 			return { pass_event = true }
-		end)
+		end, { device = face_device })
 		hl.bind("F21", function()
-			if rt_face_key(4) then return end
 			if radial_open then
 				radial_ipc("delete", 0)
-			else
-				hl.dispatch(hl.dsp.layout("overview"))
+				return
 			end
+			rt_face_key(4)
 		end)
 		hl.bind("F22", function()
+			if radial_open then return end
 			if rt_face_key(3) then return end
 			hl.dispatch(hl.dsp.exec_cmd("deck-osk-toggle"))
 		end)
@@ -500,28 +512,20 @@ return function(ctx)
 				end
 			end
 			return { pass_event = true }
-		end, { dont_inhibit = true })
+		end, { dont_inhibit = true, device = face_device })
 		hl.bind("F24", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
 		hl.bind("F10", hl.dsp.exec_cmd("qs ipc call -- controlCenter toggle"))
 		hl.bind("SUPER + mouse:272", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
 		hl.bind("SUPER + F21", function()
-			if deck_rt_down and not radial_open then
-				hl.dispatch(hl.dsp.window.close())
-			elseif radial_open then
+			if radial_open then
 				radial_ipc("delete", 0)
-			elseif radial_outer then
-				hl.dispatch(hl.dsp.layout("move k"))
 			end
 		end)
 		hl.bind("SUPER + Escape", function()
 			if radial_open then
 				close_radial("cancel")
-			elseif radial_outer then
-				hl.dispatch(hl.dsp.layout("move l"))
-			else
-				hl.dispatch(hl.dsp.layout("resize l"))
 			end
-		end)
+		end, { device = face_device })
 		hl.bind("SUPER + F22", function()
 			if radial_open then
 				return
@@ -532,10 +536,6 @@ return function(ctx)
 				if window and is_canvas_workspace(window.workspace) then
 					hl.dispatch(hl.dsp.layout("keyboard"))
 				end
-			elseif radial_outer then
-				hl.dispatch(hl.dsp.layout("move h"))
-			else
-				hl.dispatch(hl.dsp.layout("resize h"))
 			end
 		end, { repeating = true })
 		hl.bind("F22", function() keyboard_toggle_held = false end, { release = true, ignore_mods = true })
@@ -562,20 +562,19 @@ return function(ctx)
 		hl.bind("SUPER + F8", stop_deck_dictation, { release = true, dont_inhibit = true })
 		hl.bind("F12", function() end, { dont_inhibit = true })
 		hl.bind("SUPER + F12", function()
-			if not radial_open and deck_rt_down then
+			if radial_open then return end
+			if deck_rt_down then
 				hl.dispatch(hl.dsp.layout("widen"))
+			else
+				hl.dispatch(hl.dsp.window.close())
 			end
 		end, { dont_inhibit = true })
 		hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
 		hl.bind("SUPER + RETURN", function()
 			if radial_open then
 				close_radial("activate")
-			elseif radial_outer then
-				hl.dispatch(hl.dsp.layout("move j"))
-			else
-				hl.exec_cmd("qs ipc call -- launcher toggle")
 			end
-		end)
+		end, { device = face_device })
 		hl.bind("XF86PowerOff", hl.dsp.exec_cmd("systemctl suspend"), { locked = true })
 	end
 

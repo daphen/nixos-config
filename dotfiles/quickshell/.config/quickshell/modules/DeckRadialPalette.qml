@@ -214,9 +214,13 @@ FloatingWindow {
             else if (!appsMode) previewTab()
         } else if (action === "step") {
             step(value)
-        } else if (action === "delete" && !appsMode && !outerActive) {
-            const tab = ringItem(tabs)
-            if (tab) PaletteState.closeTab(tab.id)
+        } else if (action === "delete") {
+            if (appsMode && appLayer === 0 && selectedEntry) {
+                Quickshell.execDetached([home + "/.config/hypr/scripts/hypr-dispatch", "closewindow", "address:" + selectedEntry.address])
+            } else if (!appsMode && !outerActive) {
+                const tab = ringItem(tabs)
+                if (tab) PaletteState.closeTab(tab.id)
+            }
         } else if (action === "activate") {
             if (selectedEntry) {
                 if (appsMode && appLayer === 0) Quickshell.execDetached([home + "/.config/hypr/scripts/hypr-dispatch", "focuswindow", "address:" + selectedEntry.address])
