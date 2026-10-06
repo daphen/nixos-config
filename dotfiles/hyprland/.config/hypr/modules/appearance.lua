@@ -48,9 +48,8 @@ return function(ctx)
 		},
 		cursor = {
 			no_warps = true,
-			inactive_timeout = REAL_MODE and not ctx.DECK_MODE and 1.5 or 0,
-			hide_on_key_press = REAL_MODE and not ctx.DECK_MODE,
-			hide_on_touch = not ctx.DECK_MODE,
+			inactive_timeout = REAL_MODE and 1.5 or 0,
+			hide_on_key_press = REAL_MODE,
 		},
 	})
 
