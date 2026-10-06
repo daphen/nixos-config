@@ -29,9 +29,16 @@ hyprctl reload
 profile=canvas
 if [[ $(hyprctl activeworkspace -j | jq -r .name) == gaming ]] || hyprctl clients -j | jq -e 'any(.[]; .mapped and .title == "Steam Input On-screen Keyboard")' >/dev/null; then profile=gaming; fi
 inputplumber device 0 profile load "/etc/inputplumber/profiles/hyprland-$profile.yaml"
-mapfile -t bars < <(pgrep -u "$(id -u)" -f '^/nix/store/[^ ]*/bin/quickshell -n$')
-[[ ${#bars[@]} == 1 ]]
-kill "${bars[0]}"
+for _ in {1..30}; do [[ $(systemctl --user is-active nixos-activation) == activating ]] || break; sleep 1; done
+if systemctl --user --quiet is-active deck-desktop; then
+    systemctl --user stop deck-desktop
+else
+    mapfile -t bars < <(pgrep -u "$(id -u)" -f '^/nix/store/[^ ]*/bin/quickshell -n$')
+    (( ${#bars[@]} <= 1 ))
+    (( ${#bars[@]} == 0 )) || kill "${bars[0]}"
+fi
+systemctl --user reset-failed deck-desktop 2>/dev/null || true
+: > "$stage/desktop.log"
 systemd-run --user --unit=deck-desktop --collect --property=Restart=on-failure \
     --property="StandardOutput=append:$stage/desktop.log" \
     --property="StandardError=append:$stage/desktop.log" \
