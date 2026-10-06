@@ -39,6 +39,9 @@ in
   networking.hostName = "proart";
 
   programs.ydotool.enable = true;
+  # Shared compiler cache for the canvas Hyprland builds (proart and Deck closures).
+  programs.ccache.enable = true;
+  nix.settings.extra-sandbox-paths = [ config.programs.ccache.cacheDir ];
   hardware.uinput.enable = true;
   users.users.daphen.extraGroups = [ config.programs.ydotool.group "uinput" ];
 
