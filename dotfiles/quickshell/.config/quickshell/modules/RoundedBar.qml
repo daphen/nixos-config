@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
-import Quickshell.Hyprland
 import Quickshell.Widgets
 import "." as Modules
 import "../QsLib" as Lib
@@ -154,10 +153,7 @@ PanelWindow {
     WlrLayershell.keyboardFocus: pickerVisible || audioCardOpen
         ? WlrKeyboardFocus.Exclusive
         : WlrKeyboardFocus.None
-    mask: Region {
-        item: bar.deckPaletteOpen ? null : capsule
-        Region { item: bar.audioCardOpen && !bar.deckPaletteOpen ? audioCard : null }
-    }
+    mask: Region { item: bar.deckPaletteOpen ? null : bar.audioCardOpen ? audioCardDismiss : capsule }
 
     readonly property string worktreeStack: {
         const _ = Modules.NiriState.version
@@ -502,10 +498,13 @@ PanelWindow {
         }
     }
 
-    HyprlandFocusGrab {
-        windows: [bar]
-        active: bar.audioCardOpen
-        onCleared: bar.audioCardOpen = false
+    // Touch has no pointer focus to grab, so an open dropdown catches outside taps over the whole surface.
+    MouseArea {
+        id: audioCardDismiss
+        anchors.fill: parent
+        z: -1
+        enabled: bar.audioCardOpen
+        onClicked: bar.audioCardOpen = false
     }
 
     Rectangle {
