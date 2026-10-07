@@ -490,7 +490,10 @@ return function(ctx)
 			rt_face_key(4)
 		end)
 		hl.bind("F22", function()
-			if radial_open then return end
+			if radial_open then
+				radial_ipc("delete", 0)
+				return
+			end
 			if rt_face_key(3) then return end
 			hl.dispatch(hl.dsp.exec_cmd("deck-osk-toggle"))
 		end)
@@ -528,7 +531,7 @@ return function(ctx)
 		end, { device = face_device })
 		hl.bind("SUPER + F22", function()
 			if radial_open then
-				return
+				radial_ipc("delete", 0)
 			elseif deck_rt_down then
 				if keyboard_toggle_held then return end
 				keyboard_toggle_held = true
