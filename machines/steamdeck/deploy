@@ -10,7 +10,16 @@ adopt=0
 [[ ${1:-} == --adopt ]] && adopt=1
 
 die() { printf 'deploy: %s\n' "$*" >&2; exit 1; }
-deck() { ssh -F "$ssh_config" "$host" "$@"; }
+# The ssh alias names one network; pick whichever known Deck address answers (office, home).
+addr=${DECK_ADDR:-}
+if [[ -z $addr ]]; then
+    for candidate in 10.0.3.163 192.168.50.214; do
+        ssh -F "$ssh_config" -oHostName="$candidate" -oConnectTimeout=4 -oControlMaster=no -oControlPath=none "$host" true 2>/dev/null && { addr=$candidate; break; }
+    done
+    [[ -n $addr ]] || die "Deck is not reachable at any known address"
+fi
+ssh_opts="-F $ssh_config -oHostName=$addr"
+deck() { ssh $ssh_opts "$host" "$@"; }
 
 cd "$repo"
 [[ $(git branch --show-current) == main ]] || die "deploy only from main (on $(git branch --show-current))"
@@ -32,10 +41,10 @@ system=$(nix build --no-link --print-out-paths "git+file://$repo?rev=$rev#nixosC
 [[ $("$system/sw/bin/nixos-version" --json | jq -r .configurationRevision) == "$rev" ]] || die "built system does not record $rev"
 
 printf 'deploy: copying %s\n' "$system"
-NIX_SSHOPTS="-F $ssh_config -oControlMaster=no -oControlPath=none -oCompression=yes" nix copy --no-check-sigs --to "ssh-ng://$host?remote-program=sudo%20-n%20nix-daemon" "$system"
+NIX_SSHOPTS="$ssh_opts -oControlMaster=no -oControlPath=none -oCompression=yes" nix copy --no-check-sigs --to "ssh-ng://$host?remote-program=sudo%20-n%20nix-daemon" "$system"
 
 printf 'deploy: checking out %s on the Deck\n' "$rev"
-GIT_SSH_COMMAND="ssh -F $ssh_config" git push --force "$host:nixos" "$rev:refs/deploy/current"
+GIT_SSH_COMMAND="ssh $ssh_opts" git push --force "$host:nixos" "$rev:refs/deploy/current"
 deck bash -s <<EOF
 set -euo pipefail
 cd ~/nixos
