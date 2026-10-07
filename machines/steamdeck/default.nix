@@ -148,6 +148,20 @@ let
     fi
     ${deckInputPlumber}/bin/inputplumber devices manage-all || true
   '';
+  # A relogin races the previous session's release; InputPlumber can attach a transient generic pad instead of the Deck.
+  claimInput = pkgs.writeShellScriptBin "deck-input-claim" ''
+    ip=${deckInputPlumber}/bin/inputplumber
+    deck_id() { $ip devices list | ${pkgs.gawk}/bin/awk -F'│' '$3 ~ /Steam Deck/ { gsub(/ /, "", $2); print $2; exit }'; }
+    wait_deck() { for _ in $(${pkgs.coreutils}/bin/seq 1 30); do id=$(deck_id); [ -n "$id" ] && return 0; ${pkgs.coreutils}/bin/sleep 0.2; done; return 1; }
+    $ip devices manage-all --enable
+    if ! wait_deck; then
+      $ip devices manage-all
+      ${pkgs.coreutils}/bin/sleep 1
+      $ip devices manage-all --enable
+      wait_deck || { echo "deck-input-claim: no Steam Deck composite device" >&2; exit 1; }
+    fi
+    $ip device "$id" profile load "/etc/inputplumber/profiles/hyprland-''${1:-canvas}.yaml"
+  '';
   startCanvas = pkgs.writeShellScriptBin "start-hyprland-canvas" ''
     release() {
       ${gamingMode}/bin/deck-gaming-mode cleanup || true
@@ -156,15 +170,7 @@ let
     trap release EXIT
     trap 'exit 1' INT TERM
     ${gamingMode}/bin/deck-gaming-mode cleanup
-    ${deckInputPlumber}/bin/inputplumber devices manage-all --enable
-    for attempt in $(${pkgs.coreutils}/bin/seq 1 30); do
-      if ${deckInputPlumber}/bin/inputplumber device 0 info >/dev/null 2>&1; then
-        ${deckInputPlumber}/bin/inputplumber device 0 profile load \
-          /etc/inputplumber/profiles/hyprland-canvas.yaml
-        break
-      fi
-      ${pkgs.coreutils}/bin/sleep 0.2
-    done
+    ${claimInput}/bin/deck-input-claim canvas || true
     export HYPR_CANVAS_REAL=1
     export HYPR_CANVAS_CAMERA=1
     export HYPR_CANVAS_PROFILE=deck
@@ -291,6 +297,7 @@ in
   environment.systemPackages = with pkgs; [
     canvas
     canvasSession
+    claimInput
     gamingMode
     gamingModeEntry
     deckInputPlumber

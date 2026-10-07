@@ -28,7 +28,7 @@ if pgrep -u "$(id -u)" -f '/bin/wvkbd-mobintl' >/dev/null; then echo 'Old keyboa
 hyprctl reload
 profile=canvas
 if [[ $(hyprctl activeworkspace -j | jq -r .name) == gaming ]] || hyprctl clients -j | jq -e 'any(.[]; .mapped and .title == "Steam Input On-screen Keyboard")' >/dev/null; then profile=gaming; fi
-inputplumber device 0 profile load "/etc/inputplumber/profiles/hyprland-$profile.yaml"
+deck-input-claim "$profile"
 for _ in {1..30}; do [[ $(systemctl --user is-active nixos-activation) == activating ]] || break; sleep 1; done
 if systemctl --user --quiet is-active deck-desktop; then
     systemctl --user stop deck-desktop
