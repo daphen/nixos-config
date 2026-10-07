@@ -1,5 +1,5 @@
 diff --git a/src/animation/AnimationManager.cpp b/src/animation/AnimationManager.cpp
-index 321c074363bac0cfa32f9079acb1ee09f71383e3..8540ade7001b498401565244ec049d3905bdd5ec 100644
+index 321c074..8540ade 100644
 --- a/src/animation/AnimationManager.cpp
 +++ b/src/animation/AnimationManager.cpp
 @@ -157,6 +157,9 @@ void CHyprAnimationManager::tick() {
@@ -13,7 +13,7 @@ index 321c074363bac0cfa32f9079acb1ee09f71383e3..8540ade7001b498401565244ec049d39
          tickDone();
          return;
 diff --git a/src/config/shared/animation/AnimationTree.cpp b/src/config/shared/animation/AnimationTree.cpp
-index c2dd5e96d001579b58163a46ea1a62cef9b7fd5c..36349cea0f4f07ebd08b704e30204a5e75a31e39 100644
+index c2dd5e9..36349ce 100644
 --- a/src/config/shared/animation/AnimationTree.cpp
 +++ b/src/config/shared/animation/AnimationTree.cpp
 @@ -26,6 +26,9 @@ void CAnimationTreeController::reset() {
@@ -27,7 +27,7 @@ index c2dd5e96d001579b58163a46ea1a62cef9b7fd5c..36349cea0f4f07ebd08b704e30204a5e
      // layer
      m_animationTree.createNode("layersIn", "layers");
 diff --git a/src/config/values/ConfigValues.cpp b/src/config/values/ConfigValues.cpp
-index 87fc5334ddf0b70aa016f4e10c28bcc1b850468b..5bff08ff8b43544e347c7c20a3d2e6d8b4640b49 100644
+index 87fc533..5bff08f 100644
 --- a/src/config/values/ConfigValues.cpp
 +++ b/src/config/values/ConfigValues.cpp
 @@ -377,6 +377,7 @@ std::vector<SP<IValue>> Values::getConfigValues() {
@@ -63,7 +63,7 @@ index 87fc5334ddf0b70aa016f4e10c28bcc1b850468b..5bff08ff8b43544e347c7c20a3d2e6d8
          /*
  		 * input_capture:
 diff --git a/src/desktop/state/ViewHitTester.cpp b/src/desktop/state/ViewHitTester.cpp
-index 8c60528d3979182e4c52b937898158daf5c843f9..cea0957e87ccd6a538967cf3d63479f34e9b1553 100644
+index 8c60528..cea0957 100644
 --- a/src/desktop/state/ViewHitTester.cpp
 +++ b/src/desktop/state/ViewHitTester.cpp
 @@ -5,6 +5,7 @@
@@ -198,7 +198,7 @@ index 8c60528d3979182e4c52b937898158daf5c843f9..cea0957e87ccd6a538967cf3d63479f3
  
  SP<CWLSurfaceResource> CViewHitTester::layerPopupSurfaceAt(const Vector2D& pos, PHLMONITOR monitor, Vector2D* surfaceCoords, PHLLS* layerFound) const {
 diff --git a/src/desktop/state/ViewHitTester.hpp b/src/desktop/state/ViewHitTester.hpp
-index ff5db2ed3b3bf9e4f21d4863ac039bd246ab06aa..aba4bc7819b62816e58f64808f4a11105824e251 100644
+index ff5db2e..aba4bc7 100644
 --- a/src/desktop/state/ViewHitTester.hpp
 +++ b/src/desktop/state/ViewHitTester.hpp
 @@ -22,6 +22,7 @@ namespace Desktop {
@@ -210,7 +210,7 @@ index ff5db2ed3b3bf9e4f21d4863ac039bd246ab06aa..aba4bc7819b62816e58f64808f4a1110
          SP<CWLSurfaceResource> layerPopupSurfaceAt(const Vector2D& pos, PHLMONITOR monitor, Vector2D* surfaceCoords, PHLLS* layerFound) const;
          SP<CWLSurfaceResource> layerSurfaceAt(const Vector2D& pos, std::vector<PHLLSREF>* layerSurfaces, Vector2D* surfaceCoords, PHLLS* layerFound,
 diff --git a/src/desktop/view/LayerSurface.cpp b/src/desktop/view/LayerSurface.cpp
-index 7f69263aa4ed38c50abc628e5073e4d8845c4fc7..7ba208e42d0a181c9af01a0620040553daaa472e 100644
+index 7f69263..7ba208e 100644
 --- a/src/desktop/view/LayerSurface.cpp
 +++ b/src/desktop/view/LayerSurface.cpp
 @@ -319,7 +319,7 @@ void CLayerSurface::onCommit() {
@@ -223,7 +223,7 @@ index 7f69263aa4ed38c50abc628e5073e4d8845c4fc7..7ba208e42d0a181c9af01a0620040553
      if (m_layerSurface->m_current.committed != 0) {
          if (m_layerSurface->m_current.committed & CLayerShellResource::eCommittedState::STATE_LAYER && m_layerSurface->m_current.layer != m_layer) {
 diff --git a/src/desktop/view/Popup.cpp b/src/desktop/view/Popup.cpp
-index 0ef5382a617b16924de48a5a57ef298b8959084c..0aa28dfe3ac1c083327b4fb57eb1ea1b71e6559d 100644
+index 0ef5382..0aa28df 100644
 --- a/src/desktop/view/Popup.cpp
 +++ b/src/desktop/view/Popup.cpp
 @@ -370,13 +370,23 @@ void CPopup::onReposition() {
@@ -254,7 +254,7 @@ index 0ef5382a617b16924de48a5a57ef298b8959084c..0aa28dfe3ac1c083327b4fb57eb1ea1b
  
  SP<Desktop::View::CWLSurface> CPopup::getT1Owner() const {
 diff --git a/src/desktop/view/animationControllers/WindowAnimationController.cpp b/src/desktop/view/animationControllers/WindowAnimationController.cpp
-index fb054486919da020c8e8ccdd1f9d6a6ec533df12..1359215f892a53a2ae68daa7d6fa0174c0dc68d5 100644
+index fb05448..1359215 100644
 --- a/src/desktop/view/animationControllers/WindowAnimationController.cpp
 +++ b/src/desktop/view/animationControllers/WindowAnimationController.cpp
 @@ -135,7 +135,16 @@ static void applyWindowStyle(Animation::SViewAnimationContext& ctx, CWindow* win
@@ -276,7 +276,7 @@ index fb054486919da020c8e8ccdd1f9d6a6ec533df12..1359215f892a53a2ae68daa7d6fa0174
  
          return;
 diff --git a/src/desktop/view/window/Window.cpp b/src/desktop/view/window/Window.cpp
-index 3c64c28725e41f96930bbc2c8beb193a1942c51f..6c05ebb22d120b8b4d3d140fe826b6ab0020adb5 100644
+index 3c64c28..6c05ebb 100644
 --- a/src/desktop/view/window/Window.cpp
 +++ b/src/desktop/view/window/Window.cpp
 @@ -17,6 +17,8 @@
@@ -356,7 +356,7 @@ index 3c64c28725e41f96930bbc2c8beb193a1942c51f..6c05ebb22d120b8b4d3d140fe826b6ab
      g_pHyprRenderer->damageSurface(wlSurface()->resource(), m_realPosition->goal().x, m_realPosition->goal().y, 1.0 / m_backend->surfaceScale());
  
 diff --git a/src/desktop/view/window/Window.hpp b/src/desktop/view/window/Window.hpp
-index b231affdf339ebf1345f520c8e778d875abc6270..47cdc21b01d8f9e5e8534e35c74884f644078181 100644
+index b231aff..47cdc21 100644
 --- a/src/desktop/view/window/Window.hpp
 +++ b/src/desktop/view/window/Window.hpp
 @@ -230,6 +230,7 @@ namespace Desktop::View {
@@ -382,7 +382,7 @@ index b231affdf339ebf1345f520c8e778d875abc6270..47cdc21b01d8f9e5e8534e35c74884f6
          std::string m_lastWorkspaceType;
          bool        m_lastWorkspaceSpecial = false;
 diff --git a/src/desktop/view/window/WindowEffectsController.cpp b/src/desktop/view/window/WindowEffectsController.cpp
-index d0d47a3b34ac9577415c1fb62c93ec75bc1bf15b..8067d4542cb6d118b2ea8f24fe46c2f45eaf3363 100644
+index d0d47a3..8067d45 100644
 --- a/src/desktop/view/window/WindowEffectsController.cpp
 +++ b/src/desktop/view/window/WindowEffectsController.cpp
 @@ -4,6 +4,10 @@
@@ -439,7 +439,7 @@ index d0d47a3b34ac9577415c1fb62c93ec75bc1bf15b..8067d4542cb6d118b2ea8f24fe46c2f4
      recordMotionBlur(previous, current);
  
 diff --git a/src/desktop/view/window/WindowEffectsController.hpp b/src/desktop/view/window/WindowEffectsController.hpp
-index 47b9b63925260f020d18f796fe92bf0cffacca8e..b3ba1bff96a72469a3a03ff2367af879f358dd21 100644
+index 47b9b63..b3ba1bf 100644
 --- a/src/desktop/view/window/WindowEffectsController.hpp
 +++ b/src/desktop/view/window/WindowEffectsController.hpp
 @@ -30,6 +30,9 @@ namespace Desktop::View {
@@ -453,7 +453,7 @@ index 47b9b63925260f020d18f796fe92bf0cffacca8e..b3ba1bff96a72469a3a03ff2367af879
  
          bool                                      hasActiveTransformers() const;
 diff --git a/src/desktop/view/window/X11Backend.cpp b/src/desktop/view/window/X11Backend.cpp
-index 85b47bf81578258879b87a1b6fd2b5c2495afbd1..6fe5ef29db8d627c8aa13725d83f45db6988ead4 100644
+index 85b47bf..6fe5ef2 100644
 --- a/src/desktop/view/window/X11Backend.cpp
 +++ b/src/desktop/view/window/X11Backend.cpp
 @@ -268,9 +268,12 @@ SClientGeometry CX11Backend::geometry() const {
@@ -501,8 +501,44 @@ index 85b47bf81578258879b87a1b6fd2b5c2495afbd1..6fe5ef29db8d627c8aa13725d83f45db
  }
  
  Vector2D CX11Backend::surfaceLocalToBuffer(const Vector2D& local) const {
+diff --git a/src/helpers/CanvasProjection.hpp b/src/helpers/CanvasProjection.hpp
+new file mode 100644
+index 0000000..fa9c719
+--- /dev/null
++++ b/src/helpers/CanvasProjection.hpp
+@@ -0,0 +1,30 @@
++#pragma once
++
++#include "../config/ConfigValue.hpp"
++#include <algorithm>
++#include <hyprutils/math/Vector2D.hpp>
++
++namespace CanvasProjection {
++    inline bool enabled() {
++        static auto value = CConfigValue<Config::INTEGER>("experimental:canvas_lens");
++        return *value;
++    }
++
++    inline float strength() {
++        static auto value = CConfigValue<Config::FLOAT>("experimental:canvas_lens_strength");
++        return *value;
++    }
++
++    inline float edgeScale() {
++        static auto value = CConfigValue<Config::FLOAT>("experimental:canvas_lens_edge_scale");
++        return *value;
++    }
++
++    inline Vector2D sourcePoint(const Vector2D& point, const Vector2D& size, float amount) {
++        if (amount == 0.F || !enabled())
++            return point;
++        const auto centered = point / size * 2.0 - Vector2D{1.0, 1.0};
++        const auto radius2  = centered.x * centered.x + centered.y * centered.y;
++        return (centered * ((1.0 + strength() * amount * radius2) / (1.0 + (edgeScale() - 1.0) * amount)) + Vector2D{1.0, 1.0}) * 0.5 * size;
++    }
++}
 diff --git a/src/helpers/MiscFunctions.cpp b/src/helpers/MiscFunctions.cpp
-index 299d2199cec36326c23abf902cf5a9c84e0e11cf..706e3dae8fafb13c3da4f4b4f3e07153fdfb1d5b 100644
+index 299d219..706e3da 100644
 --- a/src/helpers/MiscFunctions.cpp
 +++ b/src/helpers/MiscFunctions.cpp
 @@ -473,8 +473,11 @@ bool truthy(const std::string& str) {
@@ -519,7 +555,7 @@ index 299d2199cec36326c23abf902cf5a9c84e0e11cf..706e3dae8fafb13c3da4f4b4f3e07153
      // clang-format on
  }
 diff --git a/src/ipc/s1/Commands.cpp b/src/ipc/s1/Commands.cpp
-index 5089a6595e11350c5851996003a26e73682da2d3..cda886c77e7edb3e98011903cbda98017793f774 100644
+index 5089a65..cda886c 100644
 --- a/src/ipc/s1/Commands.cpp
 +++ b/src/ipc/s1/Commands.cpp
 @@ -216,6 +216,7 @@ std::string CCommandFormatter::getMonitorData(PHLMONITOR m, eHyprCtlOutputFormat
@@ -548,7 +584,7 @@ index 5089a6595e11350c5851996003a26e73682da2d3..cda886c77e7edb3e98011903cbda9801
              formatToString(m->m_output->state->state().drmFormat), m->m_mirrorOf ? std::format("{}", m->m_mirrorOf->m_id) : "none", availableModesForOutput(m, format),
              (NCMType::toString(m->m_cmType)), (m->m_sdrBrightness), (m->m_sdrSaturation), (m->m_sdrMinLuminance), (m->m_sdrMaxLuminance), tf(!m->shouldUseSoftwareCursors()),
 diff --git a/src/ipc/s1/S1.cpp b/src/ipc/s1/S1.cpp
-index 76f2e9b59e95b7d6ae470555d60189f4bc33b6ce..6c0bed5d083ac4a143187cc6c20ba41476471bb5 100644
+index 76f2e9b..6c0bed5 100644
 --- a/src/ipc/s1/S1.cpp
 +++ b/src/ipc/s1/S1.cpp
 @@ -145,7 +145,7 @@ SResponse CSocket1::dispatchBatch(std::string request, pid_t pid) {
@@ -561,7 +597,7 @@ index 76f2e9b59e95b7d6ae470555d60189f4bc33b6ce..6c0bed5d083ac4a143187cc6c20ba414
          parsedCommand << request[i];
      }
 diff --git a/src/keybinds/Manager.cpp b/src/keybinds/Manager.cpp
-index f96f9202f5a04a41ef285268c97cb1d0b428e535..96295b63a58e681a0dfde1685ccddc5be02ee41a 100644
+index f96f920..96295b6 100644
 --- a/src/keybinds/Manager.cpp
 +++ b/src/keybinds/Manager.cpp
 @@ -10,6 +10,8 @@
@@ -625,7 +661,7 @@ index f96f9202f5a04a41ef285268c97cb1d0b428e535..96295b63a58e681a0dfde1685ccddc5b
      if (PROTO::inputCapture->isCaptured() && !bind->hasFlag(BIND_FLAG_ALLOW_INPUT_CAPTURE))
          return false;
 diff --git a/src/keybinds/Manager.hpp b/src/keybinds/Manager.hpp
-index 9782a23797c606455194a4e46710216fa7e67a6c..8b4d40284e344c4b2f4dc578e8c2c3bd6d614d0d 100644
+index 9782a23..8b4d402 100644
 --- a/src/keybinds/Manager.hpp
 +++ b/src/keybinds/Manager.hpp
 @@ -69,6 +69,7 @@ namespace Keybinds {
@@ -637,7 +673,7 @@ index 9782a23797c606455194a4e46710216fa7e67a6c..8b4d40284e344c4b2f4dc578e8c2c3bd
          std::unordered_set<WP<CBind>> m_shadowed;
  
 diff --git a/src/layout/LayoutManager.cpp b/src/layout/LayoutManager.cpp
-index d4e53b882ac8779c207475e13510c3176dadf91a..90579f5f58f29cd61f06f4f83a9488c2b6b16c95 100644
+index d4e53b8..90579f5 100644
 --- a/src/layout/LayoutManager.cpp
 +++ b/src/layout/LayoutManager.cpp
 @@ -1,4 +1,6 @@
@@ -687,7 +723,7 @@ index d4e53b882ac8779c207475e13510c3176dadf91a..90579f5f58f29cd61f06f4f83a9488c2
  }
  
 diff --git a/src/layout/target/WindowTarget.cpp b/src/layout/target/WindowTarget.cpp
-index c337295aa288fd45485822149036ca1e44dcfc67..811920c4312a1ffd48993de4bfb13a8534a1ff77 100644
+index c337295..811920c 100644
 --- a/src/layout/target/WindowTarget.cpp
 +++ b/src/layout/target/WindowTarget.cpp
 @@ -1,6 +1,7 @@
@@ -726,7 +762,7 @@ index c337295aa288fd45485822149036ca1e44dcfc67..811920c4312a1ffd48993de4bfb13a85
      const bool  CONFIGURECLIENT = !(flags & TARGET_UPDATE_NO_CLIENT_CONFIGURE);
  
 diff --git a/src/managers/SessionLockManager.cpp b/src/managers/SessionLockManager.cpp
-index 960127be179d287987d9f6865a5af2a9384120c7..bcf693bc9924fe75777ed8936302226b3c1b34be 100644
+index 960127b..bcf693b 100644
 --- a/src/managers/SessionLockManager.cpp
 +++ b/src/managers/SessionLockManager.cpp
 @@ -81,6 +81,8 @@ void CSessionLockManager::onNewSessionLock(SP<CSessionLock> pLock) {
@@ -758,13 +794,17 @@ index 960127be179d287987d9f6865a5af2a9384120c7..bcf693bc9924fe75777ed8936302226b
      const bool NOACTIVEMONS = std::ranges::all_of(State::monitorState()->monitors(), [](const auto& m) { return !m->m_enabled || !m->m_dpmsStatus; });
  
      if (NOACTIVEMONS) {
-@@ -143,3 +155,3 @@
+@@ -141,7 +153,7 @@ void CSessionLockManager::removeSendLockedTimer() {
+ }
+ 
  bool CSessionLockManager::isSessionLocked() {
 -    return PROTO::sessionLock->isLocked();
 +    return m_sessionLock != nullptr || PROTO::sessionLock->isLocked();
  }
+ 
+ WP<SSessionLockSurface> CSessionLockManager::getSessionLockSurfaceForMonitor(uint64_t id) {
 diff --git a/src/managers/fullscreen/FullscreenController.cpp b/src/managers/fullscreen/FullscreenController.cpp
-index e7db82afb930691278ed28220a22121fbff40f02..fd21f1be1dde34be949e709ed5f57bcd8737fc0d 100644
+index e7db82a..fd21f1b 100644
 --- a/src/managers/fullscreen/FullscreenController.cpp
 +++ b/src/managers/fullscreen/FullscreenController.cpp
 @@ -515,6 +515,7 @@ void CFullscreenController::setWindowFullscreenModeClient(const PHLWINDOW window
@@ -776,7 +816,7 @@ index e7db82afb930691278ed28220a22121fbff40f02..fd21f1be1dde34be949e709ed5f57bcd
  
  WP<IFullscreenHandler> CFullscreenController::getFsHandler(const PHLWINDOW window, std::optional<bool> layoutHandled) {
 diff --git a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager.cpp
-index 6b00560276bd5e1ea85452cd8434749ea8aa0dc9..3ae7f033670c2dac7c9163d6d679560f778e04bf 100644
+index 6b00560..3ae7f03 100644
 --- a/src/managers/input/InputManager.cpp
 +++ b/src/managers/input/InputManager.cpp
 @@ -1,4 +1,5 @@
@@ -998,7 +1038,7 @@ index 6b00560276bd5e1ea85452cd8434749ea8aa0dc9..3ae7f033670c2dac7c9163d6d679560f
      eBorderIconDirection direction        = BORDERICON_NONE;
      CBox                 boxFullGrabInput = {box.x - *PEXTENDBORDERGRAB - BORDERSIZE, box.y - *PEXTENDBORDERGRAB - BORDERSIZE, box.width + 2 * (*PEXTENDBORDERGRAB + BORDERSIZE),
 diff --git a/src/managers/input/Touch.cpp b/src/managers/input/Touch.cpp
-index 176a49560d182a25c6bb2e7cf1da92832eb9feeb..2f8a7dc880c9fce01a5635b022814e9b332a94f4 100644
+index 176a495..2f8a7dc 100644
 --- a/src/managers/input/Touch.cpp
 +++ b/src/managers/input/Touch.cpp
 @@ -93,13 +93,11 @@ void CInputManager::onTouchDown(ITouch::SDownEvent e) {
@@ -1029,7 +1069,7 @@ index 176a49560d182a25c6bb2e7cf1da92832eb9feeb..2f8a7dc880c9fce01a5635b022814e9b
              local = m_touchData.touchFocusWindow->backend().surfaceLocalToBuffer(local);
  
 diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
-index 090611aba4ccdf9cb0068eba8079aa9324e4c626..d9658e9713c4aee7f77d74c0f16315c7d28471c0 100644
+index 090611a..b5b30fe 100644
 --- a/src/output/Monitor.cpp
 +++ b/src/output/Monitor.cpp
 @@ -37,6 +37,9 @@
@@ -1064,7 +1104,7 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..d9658e9713c4aee7f77d74c0f16315c7
      Animation::mgr()->createAnimation(0.F, m_zoomAnimProgress, Config::animationTree()->getAnimationPropertyConfig("monitorAdded"), AVARDAMAGE_NONE);
      m_zoomAnimProgress->setUpdateCallback([this](auto) { g_pHyprRenderer->damageMonitor(m_self.lock()); });
      Animation::mgr()->createAnimation(0.F, m_backgroundOpacity, Config::animationTree()->getAnimationPropertyConfig("monitorAdded"), AVARDAMAGE_NONE);
-@@ -107,6 +125,219 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
+@@ -107,6 +125,252 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
      m_commitCoordinator = makeUnique<COutputCommitCoordinator>(this);
  }
  
@@ -1174,8 +1214,18 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..d9658e9713c4aee7f77d74c0f16315c7
 +    m_canvasPanning = true;
 +    Animation::mgr()->requestTick();
 +    m_canvasCommitting = false;
-+    *m_canvasX         = m_canvasX->goal() + delta.x;
-+    *m_canvasY         = m_canvasY->goal() + delta.y;
++    const Vector2D previous{m_canvasX->goal(), m_canvasY->goal()};
++    // Cap pan speed (6 screen heights per second on screen) so fast flicks still animate across rows.
++    static auto lastPan = std::chrono::steady_clock::now();
++    const auto  now     = std::chrono::steady_clock::now();
++    const auto  dt      = std::clamp(std::chrono::duration<double>(now - lastPan).count(), 0.001, 1.0 / 30.0);
++    lastPan             = now;
++    auto        step    = delta;
++    const auto  maxStep = 6.0 * m_size.y * dt / m_canvasZoom->goal();
++    if (step.size() > maxStep)
++        step = step * (maxStep / step.size());
++    *m_canvasX         = m_canvasX->goal() + step.x;
++    *m_canvasY         = m_canvasY->goal() + step.y;
 +    if (delta != Vector2D{}) {
 +        if (const auto window = canvasNearest(true)) {
 +            const auto offset =
@@ -1185,6 +1235,29 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..d9658e9713c4aee7f77d74c0f16315c7
 +            const auto pull   = offset * std::min(0.015 * weight, delta.size() * m_canvasZoom->goal() * (m_canvasOverview ? 0.15 : 0.05) / std::max(1.0, offset.size()));
 +            *m_canvasX        = m_canvasX->goal() + pull.x / m_canvasZoom->goal();
 +            *m_canvasY        = m_canvasY->goal() + pull.y / m_canvasZoom->goal();
++        }
++        // Past the outermost window centers, damp outward motion progressively (rubber band); never pull back inward.
++        Vector2D low{std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};
++        Vector2D high{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest()};
++        for (const auto& window : Desktop::windowState()->windows()) {
++            if (!validMapped(window) || window->isHidden() || window->m_workspace != m_activeWorkspace || window->isFloating())
++                continue;
++            const auto center = window->geometricBox(IGeometric::GEOMETRIC_GOAL).middle() - m_position - m_size / 2.0;
++            low               = {std::min(low.x, center.x), std::min(low.y, center.y)};
++            high              = {std::max(high.x, center.x), std::max(high.y, center.y)};
++        }
++        if (low.x <= high.x) {
++            const double range  = std::min(m_size.x, m_size.y) * 0.15 / m_canvasZoom->goal();
++            const auto   rubber = [range](double from, double to, double min, double max) {
++                const double edge = to > from ? max : min;
++                if ((to > from && to <= edge) || (to < from && to >= edge) || to == from)
++                    return to;
++                const double start = to > from ? std::max(from, edge) : std::min(from, edge);
++                const double over  = std::abs(start - edge) / range;
++                return start + (to - start) / ((1.0 + over) * (1.0 + over));
++            };
++            *m_canvasX = rubber(previous.x, m_canvasX->goal(), low.x, high.x);
++            *m_canvasY = rubber(previous.y, m_canvasY->goal(), low.y, high.y);
 +        }
 +    }
 +}
@@ -1285,7 +1358,7 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..d9658e9713c4aee7f77d74c0f16315c7
      m_events.destroy.emit();
      if (g_pHyprRenderer && g_pHyprRenderer->glBackend())
 diff --git a/src/output/Monitor.hpp b/src/output/Monitor.hpp
-index f8187852ad2fb6a1febbb75028934e783c1528cc..d32041a1842c6f1845900b2402c7a5e433bdd63a 100644
+index f818785..d32041a 100644
 --- a/src/output/Monitor.hpp
 +++ b/src/output/Monitor.hpp
 @@ -166,6 +166,24 @@ namespace Monitor {
@@ -1314,7 +1387,7 @@ index f8187852ad2fb6a1febbb75028934e783c1528cc..d32041a1842c6f1845900b2402c7a5e4
          // for fading in the wallpaper because it doesn't happen instantly (it's loaded async)
          PHLANIMVAR<float> m_backgroundOpacity;
 diff --git a/src/output/MonitorResources.cpp b/src/output/MonitorResources.cpp
-index a0e30242c477b73aa76a4a3b14459e8f639e0e16..45ad4bf85394c690e291a8b428c2f773e11c1a0d 100644
+index a0e3024..45ad4bf 100644
 --- a/src/output/MonitorResources.cpp
 +++ b/src/output/MonitorResources.cpp
 @@ -31,6 +31,7 @@ void CMonitorResources::setImageDescription(NColorManagement::PImageDescription
@@ -1336,7 +1409,7 @@ index a0e30242c477b73aa76a4a3b14459e8f639e0e16..45ad4bf85394c690e291a8b428c2f773
          if (!res.buffer->alloc(size.x, size.y, m_drmFormat)) {
              m_sizedWorkBuffers.pop_back();
 diff --git a/src/output/MonitorResources.hpp b/src/output/MonitorResources.hpp
-index 3e17a5568bdf3320b47835752a50ef188f9d2448..fbef0be5e72b471158f740b2328a705a356edda5 100644
+index 3e17a55..fbef0be 100644
 --- a/src/output/MonitorResources.hpp
 +++ b/src/output/MonitorResources.hpp
 @@ -6,6 +6,7 @@
@@ -1362,7 +1435,7 @@ index 3e17a5568bdf3320b47835752a50ef188f9d2448..fbef0be5e72b471158f740b2328a705a
        private:
          void                                initFB(SP<Render::IFramebuffer> fb);
 diff --git a/src/render/ElementRenderer.cpp b/src/render/ElementRenderer.cpp
-index 6982d67cc16648c04db6d358f2ce3bbad63266ce..442f877a36d8e6d60ecd4198b588649601917c40 100644
+index 6982d67..442f877 100644
 --- a/src/render/ElementRenderer.cpp
 +++ b/src/render/ElementRenderer.cpp
 @@ -4,6 +4,8 @@
@@ -1570,7 +1643,7 @@ index 6982d67cc16648c04db6d358f2ce3bbad63266ce..442f877a36d8e6d60ecd4198b5886496
  
      CRegion outputRegion{outputBox};
 diff --git a/src/render/ElementRenderer.hpp b/src/render/ElementRenderer.hpp
-index 6028e21a494ed05b138edf984d9c454641b59ab2..3bbaa5bfda76e07699a25bb24bcc2ff79d6e2ae9 100644
+index 6028e21..3bbaa5b 100644
 --- a/src/render/ElementRenderer.hpp
 +++ b/src/render/ElementRenderer.hpp
 @@ -13,6 +13,8 @@
@@ -1607,7 +1680,7 @@ index 6028e21a494ed05b138edf984d9c454641b59ab2..3bbaa5bfda76e07699a25bb24bcc2ff7
                                     bool fixMisalignedFSV1 = false);
  
 diff --git a/src/render/Renderer.cpp b/src/render/Renderer.cpp
-index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..6d680dabd07621fe46b872cf4a306b885e9953c2 100644
+index 16117f7..6d680da 100644
 --- a/src/render/Renderer.cpp
 +++ b/src/render/Renderer.cpp
 @@ -1,6 +1,8 @@
@@ -2769,7 +2842,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..6d680dabd07621fe46b872cf4a306b88
      for (auto const& fadeout : Desktop::fadingOutState()->fadeouts()) {
          if (!fadeout || fadeout->monitor() != monitor || fadeout->plane() != plane)
 diff --git a/src/render/Renderer.hpp b/src/render/Renderer.hpp
-index 739d122fe1c862706f7f0e7e415b406647161c40..2320d9e66653ef5f30dca93da180147422c15686 100644
+index 739d122..2320d9e 100644
 --- a/src/render/Renderer.hpp
 +++ b/src/render/Renderer.hpp
 @@ -83,6 +83,7 @@ namespace Render {
@@ -2810,7 +2883,7 @@ index 739d122fe1c862706f7f0e7e415b406647161c40..2320d9e66653ef5f30dca93da1801474
          void renderLayer(PHLLS, PHLMONITOR, const Time::steady_tp&, bool popups = false, bool lockscreen = false);
          void renderSessionLockSurface(WP<SSessionLockSurface>, PHLMONITOR, const Time::steady_tp&);
 diff --git a/src/render/decorations/CHyprBorderDecoration.cpp b/src/render/decorations/CHyprBorderDecoration.cpp
-index 7ea2714154ed0fa6c07a3d49845a16865d472f0f..b68c8e393c4fd0b33f4cbedd29078e1e27b91416 100644
+index 7ea2714..b68c8e3 100644
 --- a/src/render/decorations/CHyprBorderDecoration.cpp
 +++ b/src/render/decorations/CHyprBorderDecoration.cpp
 @@ -12,6 +12,9 @@
@@ -2842,7 +2915,7 @@ index 7ea2714154ed0fa6c07a3d49845a16865d472f0f..b68c8e393c4fd0b33f4cbedd29078e1e
      const auto                      ROUNDING         = ROUNDINGBASE * pMonitor->m_scale;
      const auto                      ROUNDINGPOWER    = m_window->presentation().roundingPower();
 diff --git a/src/render/pass/Pass.cpp b/src/render/pass/Pass.cpp
-index a5b06075d93a0a053c4efcb777834930b2200ac4..b901bcfd8b2d4ddeaf39adb0ae929a8bb86317ff 100644
+index a5b0607..b901bcf 100644
 --- a/src/render/pass/Pass.cpp
 +++ b/src/render/pass/Pass.cpp
 @@ -13,6 +13,7 @@
@@ -2914,7 +2987,7 @@ index a5b06075d93a0a053c4efcb777834930b2200ac4..b901bcfd8b2d4ddeaf39adb0ae929a8b
              // do not occlude a border near it.
              if (willBlur) {
 diff --git a/src/render/pass/TransformedWindowPassElement.hpp b/src/render/pass/TransformedWindowPassElement.hpp
-index 497855696c233fa86f5fa4d95fd4a986c1b013f7..739ec970c6a6619482d97a07780223fce557a31e 100644
+index 4978556..739ec97 100644
 --- a/src/render/pass/TransformedWindowPassElement.hpp
 +++ b/src/render/pass/TransformedWindowPassElement.hpp
 @@ -12,6 +12,7 @@ class CTransformedWindowPassElement : public IPassElement {
@@ -2925,42 +2998,6 @@ index 497855696c233fa86f5fa4d95fd4a986c1b013f7..739ec970c6a6619482d97a07780223fc
          float                   blurA             = 1.F;
          int                     blurRound         = 0;
          float                   blurRoundingPower = 2.F;
-diff --git a/src/helpers/CanvasProjection.hpp b/src/helpers/CanvasProjection.hpp
-new file mode 100644
-index 0000000..fa9c719
---- /dev/null
-+++ b/src/helpers/CanvasProjection.hpp
-@@ -0,0 +1,30 @@
-+#pragma once
-+
-+#include "../config/ConfigValue.hpp"
-+#include <algorithm>
-+#include <hyprutils/math/Vector2D.hpp>
-+
-+namespace CanvasProjection {
-+    inline bool enabled() {
-+        static auto value = CConfigValue<Config::INTEGER>("experimental:canvas_lens");
-+        return *value;
-+    }
-+
-+    inline float strength() {
-+        static auto value = CConfigValue<Config::FLOAT>("experimental:canvas_lens_strength");
-+        return *value;
-+    }
-+
-+    inline float edgeScale() {
-+        static auto value = CConfigValue<Config::FLOAT>("experimental:canvas_lens_edge_scale");
-+        return *value;
-+    }
-+
-+    inline Vector2D sourcePoint(const Vector2D& point, const Vector2D& size, float amount) {
-+        if (amount == 0.F || !enabled())
-+            return point;
-+        const auto centered = point / size * 2.0 - Vector2D{1.0, 1.0};
-+        const auto radius2  = centered.x * centered.x + centered.y * centered.y;
-+        return (centered * ((1.0 + strength() * amount * radius2) / (1.0 + (edgeScale() - 1.0) * amount)) + Vector2D{1.0, 1.0}) * 0.5 * size;
-+    }
-+}
 diff --git a/src/render/transformer/ResizeTransformer.cpp b/src/render/transformer/ResizeTransformer.cpp
 new file mode 100644
 index 0000000..e43ee22
