@@ -103,10 +103,11 @@ PanelWindow {
             activities.push(...(root.activities || []))
         return activities
     }
+    property bool audioCardOpen: false
     readonly property var metricTooltipTarget: weatherHover.hovered ? weatherMetric
         : cpuHover.hovered ? cpuMetric
         : memoryHover.hovered ? memoryMetric
-        : audioHover.hovered ? audioMetric
+        : audioHover.hovered && !audioCardOpen ? audioMetric
         : null
     readonly property string metricTooltipText: metricTooltipTarget === weatherMetric
         ? Qt.formatDate(tooltipClock.date, "dddd, MMMM d")
@@ -152,7 +153,10 @@ PanelWindow {
     WlrLayershell.keyboardFocus: pickerVisible
         ? WlrKeyboardFocus.Exclusive
         : WlrKeyboardFocus.None
-    mask: Region { item: bar.deckPaletteOpen ? null : capsule }
+    mask: Region {
+        item: bar.deckPaletteOpen ? null : capsule
+        Region { item: bar.audioCardOpen && !bar.deckPaletteOpen ? audioCard : null }
+    }
 
     readonly property string worktreeStack: {
         const _ = Modules.NiriState.version
@@ -344,7 +348,7 @@ PanelWindow {
                     anchors.fill: parent
                     enabled: Quickshell.env("HYPR_CANVAS_PROFILE") === "deck"
                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: Quickshell.execDetached([Quickshell.env("HOME") + "/.config/hypr/scripts/deck-haptics-toggle"])
+                    onClicked: bar.audioCardOpen = !bar.audioCardOpen
                 }
             }
             Modules.Battery {
@@ -494,6 +498,85 @@ PanelWindow {
             font.family: Modules.Theme.fontFamily
             font.pixelSize: Modules.Theme.fontSize - 1
             font.weight: Modules.Theme.fontWeight
+        }
+    }
+
+    Rectangle {
+        id: audioCard
+        readonly property real targetCenterX: capsule.x + rightGroup.x + audioMetric.x + audioMetric.width / 2
+        visible: bar.audioCardOpen || opacity > 0
+        opacity: bar.audioCardOpen ? 1 : 0
+        x: Math.max(12, Math.min(bar.width - width - 12, targetCenterX - width / 2))
+        y: capsule.y + Modules.Theme.barHeight + (bar.audioCardOpen ? 2 : -3)
+        width: 260
+        height: audioRows.implicitHeight + 20
+        radius: 12
+        color: bar.hoverSurface
+        border.width: 1
+        border.color: Modules.Theme.hairline
+        z: 10
+
+        Behavior on opacity {
+            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+        }
+
+        Column {
+            id: audioRows
+            anchors.left: parent.left
+            anchors.leftMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+
+            Repeater {
+                model: [
+                    { icon: "volume", label: "Volume", detail: Math.round((audioMetric.muted ? 0 : audioMetric.volume) * 100) + "%", script: "" },
+                    { icon: "headphones", label: "Bluetooth headphones", detail: audioMetric.bluetooth ? "Connected" : "Off", script: "toggle-headphones" },
+                    { icon: "bolt", label: "Trackpad haptics", detail: "Toggle", script: "deck-haptics-toggle" }
+                ]
+
+                Item {
+                    id: audioRow
+                    required property var modelData
+                    width: audioCard.width - 24
+                    height: 32
+
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: 8
+
+                        Lib.Icon {
+                            name: audioRow.modelData.icon
+                            Layout.preferredWidth: 18
+                            Layout.preferredHeight: 18
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+                        Text {
+                            text: audioRow.modelData.label
+                            color: Modules.Theme.fg
+                            font.family: Modules.Theme.fontFamily
+                            font.pixelSize: Modules.Theme.fontSize - 1
+                            font.weight: Modules.Theme.fontWeight
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+                        Text {
+                            text: audioRow.modelData.detail
+                            color: Modules.Theme.fg_muted
+                            font.family: Modules.Theme.fontFamily
+                            font.pixelSize: Modules.Theme.fontSize - 2
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: audioRow.modelData.script !== ""
+                        onClicked: Quickshell.execDetached([Quickshell.env("HOME") + "/.config/hypr/scripts/" + audioRow.modelData.script])
+                    }
+                }
+            }
         }
     }
 
