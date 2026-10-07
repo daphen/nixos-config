@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import Quickshell.Widgets
 import "." as Modules
 import "../QsLib" as Lib
@@ -150,7 +151,7 @@ PanelWindow {
     color: "transparent"
     WlrLayershell.namespace: "qs-rounded-bar"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: pickerVisible
+    WlrLayershell.keyboardFocus: pickerVisible || audioCardOpen
         ? WlrKeyboardFocus.Exclusive
         : WlrKeyboardFocus.None
     mask: Region {
@@ -501,8 +502,17 @@ PanelWindow {
         }
     }
 
+    HyprlandFocusGrab {
+        windows: [bar]
+        active: bar.audioCardOpen
+        onCleared: bar.audioCardOpen = false
+    }
+
     Rectangle {
         id: audioCard
+        focus: bar.audioCardOpen
+        Keys.onEscapePressed: bar.audioCardOpen = false
+        onVisibleChanged: if (bar.audioCardOpen) forceActiveFocus()
         readonly property real targetCenterX: capsule.x + rightGroup.x + audioMetric.x + audioMetric.width / 2
         visible: bar.audioCardOpen || opacity > 0
         opacity: bar.audioCardOpen ? 1 : 0
