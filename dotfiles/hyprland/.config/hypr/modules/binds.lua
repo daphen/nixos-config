@@ -595,6 +595,20 @@ return function(ctx)
 		hl.bind("SUPER + e", hl.dsp.exec_cmd(launch .. SCRIPTS .. "spawn-terminal-with-yazi"))
 	end
 
+	if REAL_MODE then
+		hl.bind(
+			"XF86AudioRaiseVolume",
+			hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 && wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"),
+			{ locked = true, repeating = true }
+		)
+		hl.bind(
+			"XF86AudioLowerVolume",
+			hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 && wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),
+			{ locked = true, repeating = true }
+		)
+		hl.bind("XF86AudioMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { locked = true })
+	end
+
 	if REAL_MODE and not DECK_MODE then
 		local scripts = SCRIPTS
 		local function picker(name)
@@ -693,17 +707,6 @@ return function(ctx)
 			"o=$(hyprctl -j monitors | jq -r '.[] | select(.focused).name'); grim -o \"$o\" - | tee \"$HOME/Pictures/Screenshots/Screenshot from $(date +'%Y-%m-%d %H-%M-%S').png\" | wl-copy"
 		)
 
-		bind_exec(
-			"XF86AudioRaiseVolume",
-			"wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 && wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+",
-			{ locked = true, repeating = true }
-		)
-		bind_exec(
-			"XF86AudioLowerVolume",
-			"wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 && wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
-			{ locked = true, repeating = true }
-		)
-		bind_exec("XF86AudioMute", "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle", { locked = true })
 		bind_exec("XF86AudioMicMute", scripts .. "toggle-mic", { locked = true })
 		bind_exec("XF86WebCam", scripts .. "toggle-camera", { locked = true })
 		bind_exec("XF86MonBrightnessUp", scripts .. "brightness-throttled 5%+", { locked = true, repeating = true })
