@@ -23,6 +23,10 @@ let
   };
   palette-daemon = inputs.palette-daemon.packages.${pkgs.system}.default;
   openwhispr = pkgs.callPackage ../../pkgs/openwhispr { };
+  startOpenwhispr = pkgs.writeShellScript "start-openwhispr" ''
+    export OPENAI_API_KEY="$(${pkgs.fish}/bin/fish -c 'source "$HOME/.config/fish/secrets.fish"; printf "%s" "$OPENAI_API_KEY"')"
+    exec ${openwhispr}/bin/openwhispr --no-sandbox --ozone-platform=wayland
+  '';
   ancs4linux = import ../../pkgs/ancs4linux { inherit pkgs; };
 
   claudeBackupSrc = "%h/.claude/projects/";
@@ -96,7 +100,7 @@ in
     Service = {
       Type = "simple";
       ExecStartPre = "/bin/sh -c '[ -n \"$WAYLAND_DISPLAY\" ] && (${pkgs.procps}/bin/pkill -u %U -f \"openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64\" || true)'";
-      ExecStart = "${openwhispr}/bin/openwhispr --no-sandbox --ozone-platform=wayland";
+      ExecStart = "${startOpenwhispr}";
       ExecStopPost = "/bin/sh -c '${pkgs.procps}/bin/pkill -u %U -f \"openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64\" || true; ${pkgs.coreutils}/bin/rm -f %t/openwhispr-dictation-state'";
       Environment = [
         "DICTATION_KEY=Super+V"
