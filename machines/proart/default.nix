@@ -276,7 +276,15 @@ in
     wantedBy = [ "default.target" ];
     serviceConfig = {
       Type = "simple";
-      ExecStart = "${pkgs.openssh}/bin/ssh -F %h/.cache/steamdeck-install/ssh-config -N -o ControlMaster=no -o ControlPath=none -o ExitOnForwardFailure=yes -o StreamLocalBindUnlink=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -R %t/agentd-proart-personal.sock:%t/agentd-personal.sock -R %t/agentd-proart-work.sock:%t/agentd-work.sock 192.168.50.214";
+      # The Deck is on either the home or the office network; try each known address.
+      ExecStart = pkgs.writeShellScript "agentd-deck-relay" ''
+        for addr in 192.168.50.214 10.0.3.163; do
+          ${pkgs.openssh}/bin/ssh -F "$HOME/.cache/steamdeck-install/ssh-config" -N -o ConnectTimeout=5 -o ControlMaster=no -o ControlPath=none -o ExitOnForwardFailure=yes -o StreamLocalBindUnlink=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+            -R "$XDG_RUNTIME_DIR/agentd-proart-personal.sock:$XDG_RUNTIME_DIR/agentd-personal.sock" \
+            -R "$XDG_RUNTIME_DIR/agentd-proart-work.sock:$XDG_RUNTIME_DIR/agentd-work.sock" "$addr"
+        done
+        exit 1
+      '';
       Restart = "always";
       RestartSec = 5;
     };
