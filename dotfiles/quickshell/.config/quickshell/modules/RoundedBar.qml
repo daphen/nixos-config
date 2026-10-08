@@ -337,14 +337,18 @@ PanelWindow {
             Modules.Network {
                 id: networkMetric
                 HoverHandler { id: networkHover }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Modules.NetworkPickerState.toggle()
+                }
             }
             Modules.Audio {
                 id: audioMetric
                 HoverHandler { id: audioHover }
                 MouseArea {
                     anchors.fill: parent
-                    enabled: Quickshell.env("HYPR_CANVAS_PROFILE") === "deck"
-                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: bar.audioCardOpen = !bar.audioCardOpen
                 }
             }
@@ -541,7 +545,7 @@ PanelWindow {
                     { icon: "volume", label: "Volume", detail: Math.round((audioMetric.muted ? 0 : audioMetric.volume) * 100) + "%", script: "" },
                     { icon: "headphones", label: "Bluetooth headphones", detail: audioMetric.bluetooth ? "Connected" : "Off", script: "toggle-headphones" },
                     { icon: "bolt", label: "Trackpad haptics", detail: "Toggle", script: "deck-haptics-toggle" }
-                ]
+                ].filter(row => row.script !== "deck-haptics-toggle" || bar.deckGaming)
 
                 Item {
                     id: audioRow

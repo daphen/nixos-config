@@ -125,8 +125,21 @@ Picker {
                 open: !secured
             })
         }
+        for (const name of Object.keys(root.savedSsids)) {
+            if (root.networks.some(n => n.ssid === name)) continue
+            out.push({
+                ssid: name,
+                label: name,
+                subtitle: "saved  ·  out of range",
+                active: false,
+                saved: true,
+                open: false,
+                away: true
+            })
+        }
         out.sort((a, b) => {
             if (a.active !== b.active) return a.active ? -1 : 1
+            if (!!a.away !== !!b.away) return a.away ? 1 : -1
             const ai = root.networks.find(n => n.ssid === a.ssid)
             const bi = root.networks.find(n => n.ssid === b.ssid)
             return (bi ? bi.signal : 0) - (ai ? ai.signal : 0)
