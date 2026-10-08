@@ -228,6 +228,9 @@ FloatingWindow {
                 else if (outerActive) PaletteState.gotoUrl(selectedEntry.url, false)
             }
             PaletteState.hide()
+        } else if (action === "newtab") {
+            PaletteState.gotoUrl("chrome://newtab/", true)
+            PaletteState.hide()
         } else if (action === "cancel") {
             if (!appsMode) {
                 const original = allTabs.find(tab => tab.id === originalTabId)
@@ -621,8 +624,8 @@ FloatingWindow {
                 id: footerText
                 anchors.centerIn: parent
                 text: root.appsMode
-                    ? "LEFT STICK SELECT   ·   LB NEXT RING   ·   RELEASE LT OPEN   ·   B CLOSE"
-                    : "RIGHT STICK TABS   ·   LEFT STICK QUICKMARKS   ·   B CLOSE"
+                    ? "LEFT STICK SELECT   ·   LB NEXT RING   ·   RELEASE LT OPEN   ·   Y CLOSE APP   ·   B CLOSE"
+                    : "RIGHT STICK TABS   ·   LEFT STICK QUICKMARKS   ·   X NEW TAB   ·   Y CLOSE TAB   ·   B CLOSE"
                 color: Theme.fg_muted
                 font.family: Theme.fontFamily
                 font.pixelSize: 10

@@ -484,7 +484,7 @@ return function(ctx)
 		end, { device = face_device })
 		hl.bind("F21", function()
 			if radial_open then
-				radial_ipc("delete", 0)
+				if radial_kind == "browser" then close_radial("newtab") else radial_ipc("delete", 0) end
 				return
 			end
 			rt_face_key(4)
@@ -521,7 +521,7 @@ return function(ctx)
 		hl.bind("SUPER + mouse:272", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
 		hl.bind("SUPER + F21", function()
 			if radial_open then
-				radial_ipc("delete", 0)
+				if radial_kind == "browser" then close_radial("newtab") else radial_ipc("delete", 0) end
 			end
 		end)
 		hl.bind("SUPER + Escape", function()

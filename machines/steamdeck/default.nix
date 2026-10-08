@@ -151,14 +151,24 @@ let
   # A relogin races the previous session's release; InputPlumber can attach a transient generic pad instead of the Deck.
   claimInput = pkgs.writeShellScriptBin "deck-input-claim" ''
     ip=${deckInputPlumber}/bin/inputplumber
-    deck_id() { $ip devices list | ${pkgs.gawk}/bin/awk -F'│' '$3 ~ /Steam Deck/ { gsub(/ /, "", $2); print $2; exit }'; }
-    wait_deck() { for _ in $(${pkgs.coreutils}/bin/seq 1 30); do id=$(deck_id); [ -n "$id" ] && return 0; ${pkgs.coreutils}/bin/sleep 0.2; done; return 1; }
+    # A split controller (two Steam Deck devices) gives Steam two virtual pads and breaks its native right-pad cursor.
+    deck_ids() { $ip devices list | ${pkgs.gawk}/bin/awk -F'│' '$3 ~ /Steam Deck/ { gsub(/ /, "", $2); print $2 }'; }
+    wait_deck() {
+      for _ in $(${pkgs.coreutils}/bin/seq 1 15); do
+        ${pkgs.coreutils}/bin/sleep 0.4
+        ids=$(deck_ids)
+        [ "$(echo "$ids" | ${pkgs.coreutils}/bin/wc -w)" = 1 ] || continue
+        ${pkgs.coreutils}/bin/sleep 2
+        [ "$(deck_ids)" = "$ids" ] && id=$ids && return 0
+      done
+      return 1
+    }
     $ip devices manage-all --enable
     if ! wait_deck; then
-      $ip devices manage-all
-      ${pkgs.coreutils}/bin/sleep 1
+      /run/wrappers/bin/sudo -n ${pkgs.systemd}/bin/systemctl restart inputplumber
+      ${pkgs.coreutils}/bin/sleep 2
       $ip devices manage-all --enable
-      wait_deck || { echo "deck-input-claim: no Steam Deck composite device" >&2; exit 1; }
+      wait_deck || { echo "deck-input-claim: expected one Steam Deck composite device, got: $(deck_ids | ${pkgs.coreutils}/bin/tr '\n' ' ')" >&2; exit 1; }
     fi
     $ip device "$id" profile load "/etc/inputplumber/profiles/hyprland-''${1:-canvas}.yaml"
   '';
@@ -170,6 +180,8 @@ let
     trap release EXIT
     trap 'exit 1' INT TERM
     ${gamingMode}/bin/deck-gaming-mode cleanup
+    # A fast relogin can leave the previous session's target active, so its wanted services (palette-daemon) never restart.
+    ${pkgs.systemd}/bin/systemctl --user stop graphical-session.target || true
     ${claimInput}/bin/deck-input-claim canvas || true
     export HYPR_CANVAS_REAL=1
     export HYPR_CANVAS_CAMERA=1
