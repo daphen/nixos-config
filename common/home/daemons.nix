@@ -101,7 +101,7 @@ in
       Type = "simple";
       ExecStartPre = "/bin/sh -c '[ -n \"$WAYLAND_DISPLAY\" ] && (${pkgs.procps}/bin/pkill -u %U -f \"openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64\" || true)'";
       ExecStart = "${startOpenwhispr}";
-      ExecStopPost = "/bin/sh -c '${pkgs.procps}/bin/pkill -u %U -f \"openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64\" || true; ${pkgs.coreutils}/bin/rm -f %t/openwhispr-dictation-state'";
+      ExecStopPost = "/bin/sh -c '${pkgs.procps}/bin/pkill -u %U -f \"openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64\" || true; ${pkgs.coreutils}/bin/rm -f %t/openwhispr-dictation-state %t/openwhispr-dictation-level'";
       Environment = [
         "DICTATION_KEY=Super+V"
         "OPENWHISPR_EXTERNAL_DICTATION_KEY=Super+V"

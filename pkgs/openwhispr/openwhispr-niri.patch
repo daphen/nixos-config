@@ -76,7 +76,7 @@
        const primary = hotkeys[0];
 --- a/src/helpers/ipcHandlers.js
 +++ b/src/helpers/ipcHandlers.js
-@@ -31,6 +31,20 @@
+@@ -31,6 +31,33 @@
  } = require("./policyResponseError");
  const { classifyAndLog } = require("./networkErrors");
  const { resolveSystemDefaultMicrophone } = require("./systemDefaultMicrophone");
@@ -94,17 +94,39 @@
 +    debugLogger.warn("Failed to publish dictation lifecycle", { error: error.message });
 +  }
 +}
++function writeExternalDictationLevel(level) {
++  if (process.env.OPENWHISPR_EXTERNAL_OVERLAY !== "1") return;
++  const runtimeDir = process.env.XDG_RUNTIME_DIR;
++  if (!runtimeDir) return;
++  const levelFile = path.join(runtimeDir, "openwhispr-dictation-level");
++  const temporary = `${levelFile}.${process.pid}`;
++  try {
++    fs.writeFileSync(temporary, `${Math.min(1, Math.max(0, level)).toFixed(3)}\n`, { mode: 0o600 });
++    fs.renameSync(temporary, levelFile);
++  } catch (error) {
++    debugLogger.warn("Failed to publish dictation level", { error: error.message });
++  }
++}
  // The renderer's ModelRegistry is not main-loadable; the raw registry data is
  // packaged, and the route resolver only needs {id, baseUrl} per provider.
  const transcriptionProviderBaseUrls = () =>
-@@ -1831,6 +1845,7 @@
+@@ -1831,6 +1858,7 @@
          return;
        }
        this.windowManager.setDictationLifecycleState(state, inputKind);
 +      writeExternalDictationState(state);
      });
-
+ 
      ipcMain.on("show-agent-dictation-final-transcript", (event, text) => {
+@@ -1856,6 +1884,8 @@
+         return;
+       }
+       this.windowManager.setDictationAudioLevel(level);
++      const numericLevel = Number(level);
++      if (Number.isFinite(numericLevel)) writeExternalDictationLevel(numericLevel);
+     });
+ 
+     // Dictionary handlers
 --- a/main.js
 +++ b/main.js
 @@ -1069,7 +1069,9 @@
