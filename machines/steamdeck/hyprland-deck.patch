@@ -49,7 +49,7 @@ diff -ru a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager
 +                    const Vector2D from{target->m_canvasX->goal(), target->m_canvasY->goal()};
 +                    target->canvasCenter(window);
 +                    const Vector2D to{target->m_canvasX->goal(), target->m_canvasY->goal()};
-+                    const auto     next = from + (to - from) * 0.15;
++                    const auto     next = from + (to - from) * 0.12;
 +                    if ((to - next).size() * target->m_canvasZoom->goal() < 0.5)
 +                        return;
 +                    *target->m_canvasX = next.x;
@@ -60,7 +60,7 @@ diff -ru a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager
 +            g_pEventLoopManager->addTimer(snapTimer);
 +        }
 +        snapMonitor = monitor;
-+        snapTimer->updateTimeout(std::chrono::milliseconds(100));
++        snapTimer->updateTimeout(std::chrono::milliseconds(25));
 +        return;
 +    }
 +
