@@ -1,8 +1,15 @@
-diff --git a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager.cpp
-index 3ae7f033670c2dac7c9163d6d679560f778e04bf..60fe2280b4871be58bfc160f91585f374b3543a5 100644
---- a/src/managers/input/InputManager.cpp
-+++ b/src/managers/input/InputManager.cpp
-@@ -155,7 +155,21 @@ void CInputManager::onMouseMoved(IPointer::SMotionEvent e) {
+diff -ru a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager.cpp
+--- a/src/managers/input/InputManager.cpp	2026-10-08 15:45:45.321478213 +0200
++++ b/src/managers/input/InputManager.cpp	2026-10-08 15:45:53.777467583 +0200
+@@ -2,6 +2,7 @@
+ #include "../../protocols/ShortcutsInhibit.hpp"
+ #include "../../desktop/view/window/WindowPresentation.hpp"
+ #include "../../Compositor.hpp"
++#include "../eventLoop/EventLoopManager.hpp"
+ #include <aquamarine/output/Output.hpp>
+ #include <cstdint>
+ #include <hyprutils/math/Vector2D.hpp>
+@@ -155,7 +156,43 @@
      if (e.mouse)
          recheckMouseWarpOnMouseInput();
  
@@ -19,13 +26,35 @@ index 3ae7f033670c2dac7c9163d6d679560f778e04bf..60fe2280b4871be58bfc160f91585f37
 +            monitor->canvasCenter(Desktop::focusState()->window());
 +        }
 +        monitor->canvasPan(DELTA);
++        // Steam's pad has no lift event; a short pause in overview panning centers the camera on the highlighted window.
++        static WP<CMonitor>        snapMonitor;
++        static SP<CEventLoopTimer> snapTimer;
++        if (!snapTimer) {
++            snapTimer = makeShared<CEventLoopTimer>(
++                std::nullopt,
++                [](SP<CEventLoopTimer>, void*) {
++                    const auto target = snapMonitor.lock();
++                    if (!target || !target->m_canvasOverview || !target->m_canvasPanning)
++                        return;
++                    const auto window       = target->canvasNearest(true);
++                    target->m_canvasPanning = false;
++                    if (!window)
++                        return;
++                    Desktop::focusState()->rawWindowFocus(window, Desktop::FOCUS_REASON_KEYBIND);
++                    target->canvasCenter(window);
++                },
++                nullptr);
++            g_pEventLoopManager->addTimer(snapTimer);
++        }
++        snapMonitor = monitor;
++        snapTimer->updateTimeout(std::chrono::milliseconds(150));
 +        return;
 +    }
 +
      const bool overview = !g_pSessionLockManager->isSessionLocked() && canvasOverviewActive(monitor, getMouseCoordsInternal());
  
      // an interactive move or resize is an exclusive grab, so don't feed relative motion to the window being
-@@ -1041,6 +1055,11 @@ void CInputManager::onMouseWheel(IPointer::SAxisEvent e) {
+@@ -1044,6 +1081,11 @@
              auto delta = e.delta * factor * 2.5;
              if (*PINVERTHORIZONTALSCROLL && e.axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
                  delta = -delta;
@@ -37,13 +66,14 @@ index 3ae7f033670c2dac7c9163d6d679560f778e04bf..60fe2280b4871be58bfc160f91585f37
              monitor->canvasPan(e.axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL ? Vector2D{delta, 0.0} : Vector2D{0.0, delta});
          }
          return;
-diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
---- a/src/output/Monitor.cpp
-+++ b/src/output/Monitor.cpp
+Only in b/src/managers/input: InputManager.cpp.orig
+diff -ru a/src/output/Monitor.cpp b/src/output/Monitor.cpp
+--- a/src/output/Monitor.cpp	2026-10-08 15:45:45.325478208 +0200
++++ b/src/output/Monitor.cpp	2026-10-08 15:45:45.333308197 +0200
 @@ -145,8 +145,15 @@
      return (offset * m_scale).round() / m_scale;
  }
-
+ 
 +static bool canvasIncludesGames(const CMonitor& monitor) {
 +    return std::ranges::any_of(Desktop::windowState()->windows(), [&monitor](const auto& window) {
 +        return validMapped(window) && window->m_workspace == monitor.m_activeWorkspace && window->m_ruleApplicator->m_tagKeeper.isTagged("deck-game-mode");
@@ -82,11 +112,10 @@ diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
              continue;
          const auto box    = window->geometricBox(IGeometric::GEOMETRIC_GOAL);
          const auto left   = first ? box.x : std::min(bounds.x, box.x);
-@@ -242,6 +253,16 @@
-             const auto pull   = offset * std::min(0.015 * weight, delta.size() * m_canvasZoom->goal() * (m_canvasOverview ? 0.15 : 0.05) / std::max(1.0, offset.size()));
+@@ -253,6 +264,16 @@
              *m_canvasX        = m_canvasX->goal() + pull.x / m_canvasZoom->goal();
              *m_canvasY        = m_canvasY->goal() + pull.y / m_canvasZoom->goal();
-+        }
+         }
 +    }
 +    if (!canvasIncludesGames(*this)) {
 +        for (const auto& window : Desktop::windowState()->windows()) {
@@ -96,6 +125,8 @@ diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
 +            const auto top = window->geometricBox(IGeometric::GEOMETRIC_GOAL).y - window->presentation().borderSize();
 +            const auto limit = top - m_position.y - m_size.y / 2.0 - m_size.y / (2.0 * m_canvasZoom->goal());
 +            *m_canvasY = std::min<double>(m_canvasY->goal(), limit);
-         }
-     }
- }
++        }
+         // Past the outermost window centers, damp outward motion progressively (rubber band); never pull back inward.
+         Vector2D low{std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};
+         Vector2D high{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest()};
+Only in b/src/output: Monitor.cpp.orig
