@@ -1069,7 +1069,7 @@ index 176a495..2f8a7dc 100644
              local = m_touchData.touchFocusWindow->backend().surfaceLocalToBuffer(local);
  
 diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
-index 090611a..b5b30fe 100644
+index 090611a..aeb23bc 100644
 --- a/src/output/Monitor.cpp
 +++ b/src/output/Monitor.cpp
 @@ -37,6 +37,9 @@
@@ -1215,14 +1215,14 @@ index 090611a..b5b30fe 100644
 +    Animation::mgr()->requestTick();
 +    m_canvasCommitting = false;
 +    const Vector2D previous{m_canvasX->goal(), m_canvasY->goal()};
-+    // Cap pan speed (6 screen heights per second on screen) so fast flicks still animate across rows.
++    // Cap overview pan speed (6 screen heights per second on screen) so fast flicks still animate across rows.
 +    static auto lastPan = std::chrono::steady_clock::now();
 +    const auto  now     = std::chrono::steady_clock::now();
 +    const auto  dt      = std::clamp(std::chrono::duration<double>(now - lastPan).count(), 0.001, 1.0 / 30.0);
 +    lastPan             = now;
 +    auto        step    = delta;
 +    const auto  maxStep = 6.0 * m_size.y * dt / m_canvasZoom->goal();
-+    if (step.size() > maxStep)
++    if (m_canvasOverview && step.size() > maxStep)
 +        step = step * (maxStep / step.size());
 +    *m_canvasX         = m_canvasX->goal() + step.x;
 +    *m_canvasY         = m_canvasY->goal() + step.y;
