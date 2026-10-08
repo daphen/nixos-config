@@ -1,6 +1,6 @@
 diff -ru a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager.cpp
 --- a/src/managers/input/InputManager.cpp	2026-10-08 15:45:45.321478213 +0200
-+++ b/src/managers/input/InputManager.cpp	2026-10-08 15:45:53.777467583 +0200
++++ b/src/managers/input/InputManager.cpp	2026-10-08 15:54:59.254160696 +0200
 @@ -2,6 +2,7 @@
  #include "../../protocols/ShortcutsInhibit.hpp"
  #include "../../desktop/view/window/WindowPresentation.hpp"
@@ -9,7 +9,7 @@ diff -ru a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager
  #include <aquamarine/output/Output.hpp>
  #include <cstdint>
  #include <hyprutils/math/Vector2D.hpp>
-@@ -155,7 +156,43 @@
+@@ -155,7 +156,56 @@
      if (e.mouse)
          recheckMouseWarpOnMouseInput();
  
@@ -26,35 +26,48 @@ diff -ru a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager
 +            monitor->canvasCenter(Desktop::focusState()->window());
 +        }
 +        monitor->canvasPan(DELTA);
-+        // Steam's pad has no lift event; a short pause in overview panning centers the camera on the highlighted window.
++        // Steam's pad has no lift event; once panning pauses, glide the camera onto the highlighted window (magnet).
 +        static PHLMONITORREF       snapMonitor;
++        static PHLWINDOWREF        snapWindow;
 +        static SP<CEventLoopTimer> snapTimer;
 +        if (!snapTimer) {
 +            snapTimer = makeShared<CEventLoopTimer>(
 +                std::nullopt,
-+                [](SP<CEventLoopTimer>, void*) {
++                [](SP<CEventLoopTimer> self, void*) {
 +                    const auto target = snapMonitor.lock();
-+                    if (!target || !target->m_canvasOverview || !target->m_canvasPanning)
++                    if (!target || !target->m_canvasOverview)
 +                        return;
-+                    const auto window       = target->canvasNearest(true);
-+                    target->m_canvasPanning = false;
-+                    if (!window)
++                    if (target->m_canvasPanning) {
++                        snapWindow              = target->canvasNearest(true);
++                        target->m_canvasPanning = false;
++                        if (const auto window = snapWindow.lock())
++                            Desktop::focusState()->rawWindowFocus(window, Desktop::FOCUS_REASON_KEYBIND);
++                    }
++                    const auto window = snapWindow.lock();
++                    if (!validMapped(window))
 +                        return;
-+                    Desktop::focusState()->rawWindowFocus(window, Desktop::FOCUS_REASON_KEYBIND);
++                    const Vector2D from{target->m_canvasX->goal(), target->m_canvasY->goal()};
 +                    target->canvasCenter(window);
++                    const Vector2D to{target->m_canvasX->goal(), target->m_canvasY->goal()};
++                    const auto     next = from + (to - from) * 0.2;
++                    if ((to - next).size() * target->m_canvasZoom->goal() < 0.5)
++                        return;
++                    *target->m_canvasX = next.x;
++                    *target->m_canvasY = next.y;
++                    self->updateTimeout(std::chrono::milliseconds(16));
 +                },
 +                nullptr);
 +            g_pEventLoopManager->addTimer(snapTimer);
 +        }
 +        snapMonitor = monitor;
-+        snapTimer->updateTimeout(std::chrono::milliseconds(150));
++        snapTimer->updateTimeout(std::chrono::milliseconds(40));
 +        return;
 +    }
 +
      const bool overview = !g_pSessionLockManager->isSessionLocked() && canvasOverviewActive(monitor, getMouseCoordsInternal());
  
      // an interactive move or resize is an exclusive grab, so don't feed relative motion to the window being
-@@ -1044,6 +1081,11 @@
+@@ -1044,6 +1094,11 @@
              auto delta = e.delta * factor * 2.5;
              if (*PINVERTHORIZONTALSCROLL && e.axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
                  delta = -delta;
@@ -66,10 +79,9 @@ diff -ru a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager
              monitor->canvasPan(e.axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL ? Vector2D{delta, 0.0} : Vector2D{0.0, delta});
          }
          return;
-Only in b/src/managers/input: InputManager.cpp.orig
 diff -ru a/src/output/Monitor.cpp b/src/output/Monitor.cpp
 --- a/src/output/Monitor.cpp	2026-10-08 15:45:45.325478208 +0200
-+++ b/src/output/Monitor.cpp	2026-10-08 15:45:45.333308197 +0200
++++ b/src/output/Monitor.cpp	2026-10-08 15:54:59.230453845 +0200
 @@ -145,8 +145,15 @@
      return (offset * m_scale).round() / m_scale;
  }
@@ -129,4 +141,3 @@ diff -ru a/src/output/Monitor.cpp b/src/output/Monitor.cpp
          // Past the outermost window centers, damp outward motion progressively (rubber band); never pull back inward.
          Vector2D low{std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};
          Vector2D high{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest()};
-Only in b/src/output: Monitor.cpp.orig
