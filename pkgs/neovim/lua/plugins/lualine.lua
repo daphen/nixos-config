@@ -3,9 +3,8 @@ return {
 	lazy = false,
 	event = { "BufReadPost", "BufNewFile", "VimEnter" },
 	after = function()
-		-- Embedded-cockpit mode (TermView sets COCKPIT_COCKPIT, not _OPEN — that is
-		-- the plain cockpit-rail flow, which has no QML chin and keeps lualine): the
-		-- chin owns the statusline; nvim runs bar-less so the grid is pure buffer.
+		-- Embedded-cockpit mode (TermView sets COCKPIT_COCKPIT): the QML chin owns the
+		-- statusline; nvim runs bar-less so the grid is pure buffer.
 		if vim.env.COCKPIT_COCKPIT == "1" or vim.env.HEIDR_COCKPIT == "1" then
 			vim.o.laststatus = 0
 			vim.o.cmdheight = 0

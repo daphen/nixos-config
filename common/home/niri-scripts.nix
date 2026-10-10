@@ -25,7 +25,7 @@ let
       # Keep the rail commands that legacy heidr-* compatibility symlinks target.
       for script in $out/bin/cockpit-*; do
         case "$(basename "$script")" in
-          cockpit-app|cockpit-cross|cockpit-ipc|cockpit-rail|cockpit-rail-focus|cockpit-rail-lovbox|cockpit-rail-lovbox-connect|cockpit-rail-roster) ;;
+          cockpit-app|cockpit-cross|cockpit-ipc|cockpit-rail-focus|cockpit-rail-lovbox|cockpit-rail-lovbox-connect|cockpit-rail-roster) ;;
           *) rm -f "$script" ;;
         esac
       done
