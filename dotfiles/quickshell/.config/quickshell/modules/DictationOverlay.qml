@@ -48,9 +48,9 @@ PanelWindow {
         onTriggered: root.mapped = false
     }
 
-    // Speech RMS sits low on a linear scale; sqrt spreads it, and the floor drops room noise.
+    // Measured speech RMS: ~0.005 silence, 0.015-0.10 talking; normalize that band, curve keeps quiet syllables visible.
     readonly property real voiceTarget: DictationState.recording
-        ? Math.max(0, Math.min(1, (Math.sqrt(DictationState.level) - 0.12) * 1.8))
+        ? Math.pow(Math.max(0, Math.min(1, (DictationState.level - 0.008) / 0.07)), 0.7)
         : 0
     property real voice: 0
     // Fast attack, slow release: syllables kick the orb, pauses let it settle.
@@ -93,13 +93,13 @@ PanelWindow {
         glow: root.orbGlow
         seedKey: "voice-dictation"
         flow: DictationState.processing ? 4.5 : 3.5
-        warp: 1.5 + root.voice * 0.5
+        warp: 1.5 + root.voice * 0.8
         bright: 0.55 + root.voice * 0.3
         plasma: 0.05 + root.voice * 0.12
         transform: Scale {
             origin.x: 56
             origin.y: 56
-            xScale: 1 + root.voice * 0.08
+            xScale: 1 + root.voice * 0.12
             yScale: xScale
         }
     }
