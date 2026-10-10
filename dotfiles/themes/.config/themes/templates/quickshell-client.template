@@ -41,6 +41,15 @@ Singleton {
             "green":       "{{light.accent.green}}",
             "sky":         "{{light.accent.sky}}",
             "electric":    "{{light.accent.electric}}",
+            "syntaxKeyword": "{{light.semantic.keyword}}",
+            "syntaxString": "{{light.semantic.string}}",
+            "syntaxComment": "{{light.semantic.comment}}",
+            "syntaxNumber": "{{light.semantic.number}}",
+            "syntaxBoolean": "{{light.semantic.boolean}}",
+            "syntaxType": "{{light.semantic.type}}",
+            "syntaxFunction": "{{light.semantic.function}}",
+            "diffAddedBg": "{{light.semantic.highlight_succ}}",
+            "diffRemovedBg": "{{light.semantic.highlight_err}}",
             "cursor":      "{{light.semantic.cursor}}",
             "ink":         "{{light.terminal.black}}",
             "warning":     "{{light.background.warning}}",
@@ -73,6 +82,15 @@ Singleton {
             "green":       "{{dark.accent.green}}",
             "sky":         "{{dark.accent.sky}}",
             "electric":    "{{dark.accent.electric}}",
+            "syntaxKeyword": "{{dark.semantic.keyword}}",
+            "syntaxString": "{{dark.semantic.string}}",
+            "syntaxComment": "{{dark.semantic.comment}}",
+            "syntaxNumber": "{{dark.semantic.number}}",
+            "syntaxBoolean": "{{dark.semantic.boolean}}",
+            "syntaxType": "{{dark.semantic.type}}",
+            "syntaxFunction": "{{dark.semantic.function}}",
+            "diffAddedBg": "{{dark.semantic.highlight_succ}}",
+            "diffRemovedBg": "{{dark.semantic.highlight_err}}",
             "cursor":      "{{dark.semantic.cursor}}",
             "ink":         "{{dark.terminal.black}}",
             "warning":     "{{dark.background.warning}}",
@@ -107,6 +125,16 @@ Singleton {
     readonly property color green:        palettes[mode].green
     readonly property color sky:          palettes[mode].sky
     readonly property color electric:     palettes[mode].electric
+    // Syntax and diff roles, matching the Neovim theme's Keyword/String/Comment/… and Added/Removed groups.
+    readonly property color syntaxKeyword:  palettes[mode].syntaxKeyword
+    readonly property color syntaxString:   palettes[mode].syntaxString
+    readonly property color syntaxComment:  palettes[mode].syntaxComment
+    readonly property color syntaxNumber:   palettes[mode].syntaxNumber
+    readonly property color syntaxBoolean:  palettes[mode].syntaxBoolean
+    readonly property color syntaxType:     palettes[mode].syntaxType
+    readonly property color syntaxFunction: palettes[mode].syntaxFunction
+    readonly property color diffAddedBg:    palettes[mode].diffAddedBg
+    readonly property color diffRemovedBg:  palettes[mode].diffRemovedBg
     readonly property color cursor:       palettes[mode].cursor
     // Exposed existing palette colors (no new colors.json entries): near-black for
     // text on bright accents/badges + the modal scrim, the warning bg + yellow for
