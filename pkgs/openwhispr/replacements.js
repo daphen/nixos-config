@@ -35,7 +35,10 @@ const edits = [
     file: "src/helpers/windowManager.js",
     from: "      if (this.isDictationProcessing()) {\n        return;\n      }\n\n      const activationMode = this.getActivationMode();",
     to:
-      '      if (phase === "cancel") {\n        this.sendCancelActiveDictation();\n        return;\n      }\n' +
+      '      if (phase === "cancel") {\n' +
+      "        if (this.winPushState?.safetyTimeoutId) clearTimeout(this.winPushState.safetyTimeoutId);\n" +
+      "        this.winPushState = null;\n" +
+      "        this.sendCancelActiveDictation();\n        return;\n      }\n" +
       "      if (this.isDictationProcessing()) {\n        return;\n      }\n\n      const activationMode = this.getActivationMode();",
   },
 ];
