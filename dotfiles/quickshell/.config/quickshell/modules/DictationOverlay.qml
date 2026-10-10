@@ -64,43 +64,54 @@ PanelWindow {
 
     readonly property color orbGlow: DictationState.processing ? Lib.Theme.electric : Lib.Theme.orange
 
-    Shape {
-        anchors.centerIn: parent
-        width: 112
-        height: 112
-        scale: 1.04 + root.voice * 0.34
-        opacity: DictationState.active ? 0.18 + root.voice * 0.5 : 0
-        preferredRendererType: Shape.CurveRenderer
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+    // The mic only opens about 0.9 s after the press; stay dim and small until it does, then bloom.
+    readonly property bool listening: DictationState.lifecycle === "recording" || DictationState.processing
 
-        ShapePath {
-            strokeWidth: -1
-            fillGradient: RadialGradient {
-                centerX: 56; centerY: 56; centerRadius: 56
-                focalX: 56; focalY: 56
-                GradientStop { position: 0.55; color: Qt.alpha(root.orbGlow, 0.9) }
-                GradientStop { position: 1.0; color: Qt.alpha(root.orbGlow, 0) }
+    Item {
+        anchors.fill: parent
+        opacity: root.listening ? 1 : 0.45
+        scale: root.listening ? 1 : 0.78
+        Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutBack; easing.overshoot: 2.2 } }
+
+        Shape {
+            anchors.centerIn: parent
+            width: 112
+            height: 112
+            scale: 1.04 + root.voice * 0.34
+            opacity: root.listening ? 0.18 + root.voice * 0.5 : 0
+            preferredRendererType: Shape.CurveRenderer
+            Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+
+            ShapePath {
+                strokeWidth: -1
+                fillGradient: RadialGradient {
+                    centerX: 56; centerY: 56; centerRadius: 56
+                    focalX: 56; focalY: 56
+                    GradientStop { position: 0.55; color: Qt.alpha(root.orbGlow, 0.9) }
+                    GradientStop { position: 1.0; color: Qt.alpha(root.orbGlow, 0) }
+                }
+                PathAngleArc { centerX: 56; centerY: 56; radiusX: 56; radiusY: 56; sweepAngle: 360 }
             }
-            PathAngleArc { centerX: 56; centerY: 56; radiusX: 56; radiusY: 56; sweepAngle: 360 }
         }
-    }
 
-    Lib.ThinkingOrb {
-        anchors.centerIn: parent
-        width: 112
-        height: 112
-        running: DictationState.active
-        glow: root.orbGlow
-        seedKey: "voice-dictation"
-        flow: DictationState.processing ? 4.5 : 3.5
-        warp: 1.5 + root.voice * 0.8
-        bright: 0.55 + root.voice * 0.3
-        plasma: 0.05 + root.voice * 0.12
-        transform: Scale {
-            origin.x: 56
-            origin.y: 56
-            xScale: 1 + root.voice * 0.12
-            yScale: xScale
+        Lib.ThinkingOrb {
+            anchors.centerIn: parent
+            width: 112
+            height: 112
+            running: DictationState.active
+            glow: root.orbGlow
+            seedKey: "voice-dictation"
+            flow: DictationState.processing ? 4.5 : 3.5
+            warp: 1.5 + root.voice * 0.8
+            bright: 0.55 + root.voice * 0.3
+            plasma: 0.05 + root.voice * 0.12
+            transform: Scale {
+                origin.x: 56
+                origin.y: 56
+                xScale: 1 + root.voice * 0.12
+                yScale: xScale
+            }
         }
     }
 }
