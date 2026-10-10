@@ -30,7 +30,8 @@ let
       src/helpers/ipcHandlers.js \
       src/helpers/meetingDetectionEngine.js \
       src/helpers/windowManager.js \
-      src/dist/assets/index-ByWBFLRu.js
+      src/dist/assets/index-ByWBFLRu.js \
+      src/helpers/hyprlandShortcut.js
     do
       mkdir -p "$work/$(dirname "$file")"
       (cd "$work/$(dirname "$file")" && asar extract-file "$asar_path" "$file")
@@ -46,6 +47,15 @@ let
       if (source.split(gated).length !== 2) throw new Error("dictation level gate not found exactly once");
       fs.writeFileSync(file, source.replace(gated, "!l&&window.electronAPI?.dictationAudioLevelChanged?.(e)"));
     ' "$work/src/dist/assets/index-ByWBFLRu.js"
+    # External-hotkey mode: our Hyprland config owns the binds, so the app must not edit hyprland.lua.
+    node -e '
+      const fs = require("fs");
+      const file = process.argv[1];
+      const entry = "  _ensureSourceInMainConfig(config) {\n";
+      const source = fs.readFileSync(file, "utf8");
+      if (source.split(entry).length !== 2) throw new Error("Hyprland config writer not found exactly once");
+      fs.writeFileSync(file, source.replace(entry, entry + "    if (process.env.OPENWHISPR_EXTERNAL_HOTKEY === \"1\") return true;\n"));
+    ' "$work/src/helpers/hyprlandShortcut.js"
 
     ASAR_PATH="$asar_path" WORK="$work" node <<'NODE'
 const crypto = require("crypto");
@@ -68,6 +78,7 @@ for (const name of [
   "src/helpers/meetingDetectionEngine.js",
   "src/helpers/windowManager.js",
   "src/dist/assets/index-ByWBFLRu.js",
+  "src/helpers/hyprlandShortcut.js",
 ]) {
   const info = filesystem.getFile(name, false);
   const changed = fs.readFileSync(path.join(work, name));
