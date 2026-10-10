@@ -103,8 +103,9 @@ in
       ExecStart = "${startOpenwhispr}";
       ExecStopPost = "/bin/sh -c '${pkgs.procps}/bin/pkill -u %U -f \"openwhispr-[^/]*/resources/bin/[l]inux-key-listener-x64\" || true; ${pkgs.coreutils}/bin/rm -f %t/openwhispr-dictation-state %t/openwhispr-dictation-level'";
       Environment = [
-        "DICTATION_KEY=Super+V"
-        "OPENWHISPR_EXTERNAL_DICTATION_KEY=Super+V"
+        # Deliberately unpressed: Hyprland binds Super+V as a toggle, and the app's own key listener would stop on release.
+        "DICTATION_KEY=Super+F9"
+        "OPENWHISPR_EXTERNAL_DICTATION_KEY=Super+F9"
         "OPENWHISPR_EXTERNAL_HOTKEY=1"
         "OPENWHISPR_EXTERNAL_OVERLAY=1"
         "OPENWHISPR_FORCE_PUSH_TO_TALK=1"

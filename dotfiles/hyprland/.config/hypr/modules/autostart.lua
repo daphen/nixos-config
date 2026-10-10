@@ -62,7 +62,4 @@ return function(ctx)
 			end
 		end
 	end)
-	if not DECK_MODE then
-		pcall(require, "/home/daphen/.config/hypr/openwhispr-binds.lua")
-	end
 end
