@@ -95,16 +95,22 @@ return function(ctx)
 		hl.bind("ALT + escape", hl.dsp.exec_cmd(SCRIPTS .. "session-exit"))
 	end
 
-	local deck_dictation_active = false
-	local deck_dictation_f9_down = false
-	local function stop_deck_dictation()
-		if not deck_dictation_active then
-			return
+	local function dictation_running()
+		local file = io.open((os.getenv("XDG_RUNTIME_DIR") or "") .. "/openwhispr-dictation-state", "r")
+		if not file then
+			return false
 		end
-		deck_dictation_active = false
+		local state = file:read("*l")
+		file:close()
+		return state == "preparing" or state == "recording"
+	end
+	local function dictation(method)
 		hl.exec_cmd(
-			"dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App.PttUp"
+			"dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App." .. method
 		)
+	end
+	local function toggle_dictation()
+		dictation(dictation_running() and "PttUp" or "PttDown")
 	end
 
 	if DECK_MODE then
@@ -240,15 +246,11 @@ return function(ctx)
 		hl.on("window.close", function(window)
 			if window.title == "quickshell" then reset_radial() end
 		end)
-		local function start_deck_dictation()
-			if deck_dictation_active then
-				return
+		local function toggle_deck_dictation()
+			if not dictation_running() then
+				close_radial("cancel")
 			end
-			close_radial("cancel")
-			deck_dictation_active = true
-			hl.exec_cmd(
-				"dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App.PttDown"
-			)
+			toggle_dictation()
 		end
 		local function stick_direction(held)
 			local x = (held[4] and 1 or 0) - (held[1] and 1 or 0)
@@ -285,7 +287,7 @@ return function(ctx)
 			end, { timeout = 25, type = "oneshot" })
 		end
 		local function radial_press(index)
-			if deck_dictation_active or radial_kind == "apps" then
+			if dictation_running() or radial_kind == "apps" then
 				return
 			end
 			cancel_radial_release()
@@ -306,7 +308,7 @@ return function(ctx)
 			end
 		end
 		local function apps_radial_press(index, analog)
-			if deck_dictation_active then
+			if dictation_running() then
 				return
 			end
 			cancel_radial_release()
@@ -371,12 +373,6 @@ return function(ctx)
 					if radial_open and radial_kind == "browser" then
 						close_radial(radial_ring_outer and "activate" or "finish")
 					end
-				end
-				if keycode == 75 then
-					deck_dictation_f9_down = false
-				end
-				if keycode == 75 or keycode == 133 then
-					stop_deck_dictation()
 				end
 			end
 			if keycode >= 67 and keycode <= 70 and key_state == 0 then
@@ -475,6 +471,10 @@ return function(ctx)
 			hl.bind(key, function() end, { ignore_mods = true, device = { list = { "extest-fake-device" } } })
 		end
 		hl.bind("Return", function()
+			if dictation_running() then
+				dictation("PttUp")
+				return
+			end
 			if radial_open then
 				close_radial("activate")
 				return
@@ -542,27 +542,14 @@ return function(ctx)
 			end
 		end, { repeating = true })
 		hl.bind("F22", function() keyboard_toggle_held = false end, { release = true, ignore_mods = true })
-		hl.bind("F9", function()
-			deck_dictation_f9_down = true
-		end)
-		hl.bind("SUPER + F9", function()
-			deck_dictation_f9_down = true
-			start_deck_dictation()
-		end)
-		hl.bind("code:133", function()
-			if deck_dictation_f9_down then
-				start_deck_dictation()
-			end
-		end, { ignore_mods = true })
 		hl.bind("F8", function() toggle_radial_ring(radial_kind) end, { dont_inhibit = true })
 		hl.bind("SUPER + F8", function()
 			if radial_open then
 				toggle_radial_ring(radial_kind)
 			else
-				start_deck_dictation()
+				toggle_deck_dictation()
 			end
 		end, { dont_inhibit = true })
-		hl.bind("SUPER + F8", stop_deck_dictation, { release = true, dont_inhibit = true })
 		hl.bind("F12", function() end, { dont_inhibit = true })
 		hl.bind("SUPER + F12", function()
 			if radial_open then return end
@@ -640,19 +627,14 @@ return function(ctx)
 		hl.bind("SUPER + SHIFT + g", jump("title:qstns", "/home/daphen/personal/qstns/run.sh", true))
 		hl.bind("SUPER + g", jump("cockpit-nvim", "true"))
 		hl.bind("SUPER + i", hl.dsp.exec_cmd(scripts .. "inbox-jump"))
-		hl.bind(
-			"SUPER + v",
-			hl.dsp.exec_cmd(
-				"dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App.PttDown"
-			)
-		)
-		hl.bind(
-			"SUPER + v",
-			hl.dsp.exec_cmd(
-				"dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App.PttUp"
-			),
-			{ release = true }
-		)
+		hl.bind("SUPER + v", toggle_dictation)
+		hl.bind("Return", function()
+			if dictation_running() then
+				dictation("PttUp")
+				return
+			end
+			return { pass_event = true }
+		end)
 		hl.bind("SUPER + t", hl.dsp.exec_cmd(scripts .. "cockpit-rail-roster"))
 		hl.bind("SUPER + y", hl.dsp.exec_cmd(scripts .. "agent-ask-or-cockpit"))
 		hl.bind("SUPER + SHIFT + y", hl.dsp.exec_cmd(launch(scripts .. "cockpit-new")))
