@@ -29,13 +29,23 @@ let
       src/helpers/ensureYdotool.js \
       src/helpers/ipcHandlers.js \
       src/helpers/meetingDetectionEngine.js \
-      src/helpers/windowManager.js
+      src/helpers/windowManager.js \
+      src/dist/assets/index-ByWBFLRu.js
     do
       mkdir -p "$work/$(dirname "$file")"
       (cd "$work/$(dirname "$file")" && asar extract-file "$asar_path" "$file")
     done
     patch -d "$work" -p1 < ${./openwhispr-niri.patch}
     node ${./test-paste-setup.js} "$work/src/helpers/ensureYdotool.js"
+    # The renderer only reports the mic level while the assistant panel is open; the orb needs it during dictation.
+    node -e '
+      const fs = require("fs");
+      const file = process.argv[1];
+      const gated = "!l&&z?.current&&window.electronAPI?.dictationAudioLevelChanged?.(e)";
+      const source = fs.readFileSync(file, "utf8");
+      if (source.split(gated).length !== 2) throw new Error("dictation level gate not found exactly once");
+      fs.writeFileSync(file, source.replace(gated, "!l&&window.electronAPI?.dictationAudioLevelChanged?.(e)"));
+    ' "$work/src/dist/assets/index-ByWBFLRu.js"
 
     ASAR_PATH="$asar_path" WORK="$work" node <<'NODE'
 const crypto = require("crypto");
@@ -57,6 +67,7 @@ for (const name of [
   "src/helpers/ipcHandlers.js",
   "src/helpers/meetingDetectionEngine.js",
   "src/helpers/windowManager.js",
+  "src/dist/assets/index-ByWBFLRu.js",
 ]) {
   const info = filesystem.getFile(name, false);
   const changed = fs.readFileSync(path.join(work, name));
