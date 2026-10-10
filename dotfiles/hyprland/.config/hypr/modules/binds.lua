@@ -95,13 +95,17 @@ return function(ctx)
 		hl.bind("ALT + escape", hl.dsp.exec_cmd(SCRIPTS .. "session-exit"))
 	end
 
-	local function dictation_running()
+	local function dictation_state()
 		local file = io.open((os.getenv("XDG_RUNTIME_DIR") or "") .. "/openwhispr-dictation-state", "r")
 		if not file then
-			return false
+			return "idle"
 		end
 		local state = file:read("*l")
 		file:close()
+		return state or "idle"
+	end
+	local function dictation_running()
+		local state = dictation_state()
 		return state == "preparing" or state == "recording"
 	end
 	local function dictation(method)
@@ -498,6 +502,10 @@ return function(ctx)
 			hl.dispatch(hl.dsp.exec_cmd("deck-osk-toggle"))
 		end)
 		hl.bind("Escape", function()
+			if dictation_state() ~= "idle" then
+				dictation("Cancel")
+				return
+			end
 			if radial_open then
 				close_radial("cancel")
 				return
@@ -628,6 +636,13 @@ return function(ctx)
 		hl.bind("SUPER + g", jump("cockpit-nvim", "true"))
 		hl.bind("SUPER + i", hl.dsp.exec_cmd(scripts .. "inbox-jump"))
 		hl.bind("SUPER + v", toggle_dictation)
+		hl.bind("Escape", function()
+			if dictation_state() ~= "idle" then
+				dictation("Cancel")
+				return
+			end
+			return { pass_event = true }
+		end)
 		hl.bind("Return", function()
 			if dictation_running() then
 				dictation("PttUp")

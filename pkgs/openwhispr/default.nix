@@ -38,24 +38,7 @@ let
     done
     patch -d "$work" -p1 < ${./openwhispr-niri.patch}
     node ${./test-paste-setup.js} "$work/src/helpers/ensureYdotool.js"
-    # The renderer only reports the mic level while the assistant panel is open; the orb needs it during dictation.
-    node -e '
-      const fs = require("fs");
-      const file = process.argv[1];
-      const gated = "!l&&z?.current&&window.electronAPI?.dictationAudioLevelChanged?.(e)";
-      const source = fs.readFileSync(file, "utf8");
-      if (source.split(gated).length !== 2) throw new Error("dictation level gate not found exactly once");
-      fs.writeFileSync(file, source.replace(gated, "!l&&window.electronAPI?.dictationAudioLevelChanged?.(e)"));
-    ' "$work/src/dist/assets/index-ByWBFLRu.js"
-    # External-hotkey mode: our Hyprland config owns the binds, so the app must not edit hyprland.lua.
-    node -e '
-      const fs = require("fs");
-      const file = process.argv[1];
-      const entry = "  _ensureSourceInMainConfig(config) {\n";
-      const source = fs.readFileSync(file, "utf8");
-      if (source.split(entry).length !== 2) throw new Error("Hyprland config writer not found exactly once");
-      fs.writeFileSync(file, source.replace(entry, entry + "    if (process.env.OPENWHISPR_EXTERNAL_HOTKEY === \"1\") return true;\n"));
-    ' "$work/src/helpers/hyprlandShortcut.js"
+    node ${./replacements.js} "$work"
 
     ASAR_PATH="$asar_path" WORK="$work" node <<'NODE'
 const crypto = require("crypto");
