@@ -113,8 +113,20 @@ return function(ctx)
 			"dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App." .. method
 		)
 	end
+	-- Stopping instantly clips the last word still in flight to the recognizer.
+	local dictation_stop_timer
+	local function finish_dictation()
+		dictation_stop_timer = hl.timer(function()
+			dictation_stop_timer = nil
+			dictation("PttUp")
+		end, { timeout = 300, type = "oneshot" })
+	end
 	local function toggle_dictation()
-		dictation(dictation_running() and "PttUp" or "PttDown")
+		if dictation_running() then
+			finish_dictation()
+		else
+			dictation("PttDown")
+		end
 	end
 
 	if DECK_MODE then
@@ -476,7 +488,7 @@ return function(ctx)
 		end
 		hl.bind("Return", function()
 			if dictation_running() then
-				dictation("PttUp")
+				finish_dictation()
 				return
 			end
 			if radial_open then
@@ -645,7 +657,7 @@ return function(ctx)
 		end)
 		hl.bind("Return", function()
 			if dictation_running() then
-				dictation("PttUp")
+				finish_dictation()
 				return
 			end
 			return { pass_event = true }

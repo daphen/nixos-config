@@ -41,6 +41,39 @@ const edits = [
       "        this.sendCancelActiveDictation();\n        return;\n      }\n" +
       "      if (this.isDictationProcessing()) {\n        return;\n      }\n\n      const activationMode = this.getActivationMode();",
   },
+  {
+    // Hyprland's toggle is the key press itself; the push-to-talk hold debounce only delays the mic.
+    file: "src/helpers/windowManager.js",
+    from: "    const MIN_HOLD_DURATION_MS = 150;\n    const MAX_PUSH_DURATION_MS = 300000;\n    const downTime = Date.now();\n\n    this.showDictationPanel({ reposition: true });",
+    to: '    const MIN_HOLD_DURATION_MS = process.env.OPENWHISPR_EXTERNAL_HOTKEY === "1" ? 0 : 150;\n    const MAX_PUSH_DURATION_MS = 300000;\n    const downTime = Date.now();\n\n    this.showDictationPanel({ reposition: true });',
+  },
+  {
+    // The renderer starts sending audio before it asks main to connect; keep those first frames instead of dropping them.
+    file: "src/helpers/ipcHandlers.js",
+    from: '    ipcMain.on("dictation-realtime-send", (_event, buffer) => {\n      this._dictationStreaming?.sendAudio(Buffer.from(buffer));\n    });',
+    to:
+      '    ipcMain.on("dictation-realtime-send", (_event, buffer) => {\n' +
+      "      if (this._dictationStreaming) {\n        this._dictationStreaming.sendAudio(Buffer.from(buffer));\n        return;\n      }\n" +
+      "      const early = (this._dictationEarlyAudio ||= []);\n" +
+      "      if (early.reduce((sum, frame) => sum + frame.data.length, 0) < 96000) early.push({ at: Date.now(), data: Buffer.from(buffer) });\n" +
+      "    });",
+  },
+  {
+    file: "src/helpers/ipcHandlers.js",
+    from: "        streaming.beginConnecting();\n        this._dictationStreaming = streaming;",
+    to:
+      "        streaming.beginConnecting();\n" +
+      "        for (const frame of this._dictationEarlyAudio || []) {\n" +
+      "          if (Date.now() - frame.at < 1500) streaming.sendAudio(frame.data);\n" +
+      "        }\n" +
+      "        this._dictationEarlyAudio = [];\n" +
+      "        this._dictationStreaming = streaming;",
+  },
+  {
+    file: "src/helpers/ipcHandlers.js",
+    from: '    ipcMain.handle("dictation-realtime-stop", async () => {\n      clearDictationIdleTimer();',
+    to: '    ipcMain.handle("dictation-realtime-stop", async () => {\n      this._dictationEarlyAudio = [];\n      clearDictationIdleTimer();',
+  },
 ];
 
 for (const { file, from, to } of edits) {
