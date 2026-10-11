@@ -181,7 +181,7 @@ local S = {
   chat_line_msg = {}, -- chat bufline(0-idx) -> msgIndex
   scroll_to_msg = {}, -- id -> msgIndex: pending "jump to this message" (cross-session search)
   chat_blocks = {},   -- 1-indexed buflines that start a message block
-  readbuf = "",
+  readbuf = {},
   spin = 0,
   timer = nil,
   saved_gcr = nil,
@@ -1068,6 +1068,21 @@ handle = function(obj, reply_scope)
   end
 end
 
+-- Joining only at newlines keeps a multi-MB event linear; appending each chunk to a
+-- string buffer copied the whole line per 64 KB read and peaked at tens of GB.
+local function each_line(parts, chunk, on_line)
+  local start, nl = 1, chunk:find("\n", 1, true)
+  while nl do
+    parts[#parts + 1] = chunk:sub(start, nl - 1)
+    local line = table.concat(parts)
+    for i = #parts, 1, -1 do parts[i] = nil end
+    start = nl + 1
+    nl = chunk:find("\n", start, true)
+    on_line(line)
+  end
+  if start <= #chunk then parts[#parts + 1] = chunk:sub(start) end
+end
+
 on_read = function(err, chunk)
   -- err or nil chunk = the daemon closed the pipe (restart, socket drop). Flip
   -- to disconnected and self-heal: without this S.connected stays true forever
@@ -1078,7 +1093,7 @@ on_read = function(err, chunk)
       S.connected = false
       pcall(function() if S.pipe then S.pipe:close() end end)
       S.pipe = nil
-      S.readbuf = ""
+      S.readbuf = {}
       vim.schedule(function()
         -- re-request the roster on reconnect: the daemon only pushes it on
         -- change, so a fresh connection needs an explicit list_sources.
@@ -1088,17 +1103,12 @@ on_read = function(err, chunk)
     return
   end
   S.last_recv = os.time() -- heartbeat: agentd pings every 3s; absence = dead pipe
-  S.readbuf = S.readbuf .. chunk
-  while true do
-    local nl = S.readbuf:find("\n", 1, true)
-    if not nl then break end
-    local line = S.readbuf:sub(1, nl - 1)
-    S.readbuf = S.readbuf:sub(nl + 1)
+  each_line(S.readbuf, chunk, function(line)
     if #line > 0 then
       local ok, obj = pcall(vim.json.decode, line)
       if ok and type(obj) == "table" then handle(obj) end
     end
-  end
+  end)
 end
 
 -- Remote agentd: COCKPIT_AGENTD_ADDR="host:port" (legacy HEIDR fallback) connects over
@@ -1199,7 +1209,7 @@ local function drop_and_reconnect()
   if S.connected then
     S.connected = false
     pcall(function() if S.pipe then S.pipe:close() end end)
-    S.pipe = nil; S.readbuf = ""
+    S.pipe = nil; S.readbuf = {}
   end
   S.turn_active = {} -- connection reset → lost turn tracking; don't leave "working" stuck
   connect(function() send({ type = "list_sources" }) end)
@@ -2345,7 +2355,7 @@ local function sync_scope()
   local saved = local_scope_state[next_scope] or {}
   S.drafts, S.outbox = saved.drafts or {}, saved.outbox or {}
   local pipe = S.pipe
-  S.pipe, S.connected, S.connecting, S.readbuf = nil, false, false, ""
+  S.pipe, S.connected, S.connecting, S.readbuf = nil, false, false, {}
   if pipe and not pipe:is_closing() then pipe:close() end
   scope = next_scope
   S.selected, S.workspace, S.dash, S._follow, S.cockpit_ctx = nil, nil, nil, nil, nil
@@ -2615,7 +2625,7 @@ refresh_git_changes = function(cwd, path, done)
       pcall(function() require("cockpit.chin").refresh() end)
     end
     if not source_scope or source_scope == "" then fail("VM diff source scope unavailable"); return end
-    local pipe, pending = uv.new_pipe(false), ""
+    local pipe, pending = uv.new_pipe(false), {}
     request.pipe = pipe
     pipe:connect((os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/agentd-" .. source_scope .. ".sock", function(err)
       vim.schedule(function()
@@ -2624,12 +2634,10 @@ refresh_git_changes = function(cwd, path, done)
         pipe:read_start(vim.schedule_wrap(function(read_err, chunk)
           if S.diff_jobs[w.remoteCwd] ~= request then return end
           if read_err or not chunk then fail("VM diff connection closed"); return end
-          pending = pending .. chunk
-          while pending:find("\n", 1, true) do
-            local line; line, pending = pending:match("^(.-)\n(.*)$")
+          each_line(pending, chunk, function(line)
             local ok, reply = pcall(vim.json.decode, line)
             if ok and type(reply) == "table" and reply.type == "changes" then handle(reply, source_scope) end
-          end
+          end)
         end))
         pipe:write(vim.json.encode({ type = "get_changes", session = w.id, id = request.id }) .. "\n")
       end)
