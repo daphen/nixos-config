@@ -46,7 +46,7 @@ return {
                 rows = state.rows, sizes = state.sizes, camera = state.camera,
                 row_offsets = state.row_offsets, row_center = state.row_center,
                 focused_row = state.focused_row, viewport = state.viewport,
-                fullscreen = state.fullscreen, widened = state.widened,
+                fullscreen = state.fullscreen, widened = state.widened, groups = state.groups,
             }
         end
         local text = "return " .. encode({instance = instance, workspaces = workspaces}) .. "\n"

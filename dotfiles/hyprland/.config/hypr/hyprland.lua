@@ -32,6 +32,7 @@ local function select_workspace(workspace)
 	end
 	state = states[key]
 	state.windows = state.windows or {}
+	state.groups = state.groups or {}
 	return true
 end
 
@@ -44,6 +45,9 @@ local function forget(saved, id)
 		end
 	end
 	saved.sizes[id], saved.fullscreen[id], saved.widened[id] = nil, nil, nil
+	if saved.groups then
+		saved.groups[id] = nil
+	end
 	if saved.windows then
 		saved.windows[id] = nil
 	end
@@ -118,6 +122,69 @@ local function locate(id)
 	end
 end
 
+-- Grouped windows share one view: the camera frames the group and stays put while focus moves inside it.
+local function joined(a, b)
+	return a ~= nil and b ~= nil and state.groups[a] ~= nil and state.groups[a] == state.groups[b]
+end
+
+local function group_members(gid)
+	local out = {}
+	for row, items in ipairs(state.rows) do
+		for column, id in ipairs(items) do
+			if gid and state.groups[id] == gid then
+				out[#out + 1] = { id = id, row = row, column = column }
+			end
+		end
+	end
+	return out
+end
+
+-- A group is the windows connected through row neighbours or the rows directly above and below; a break splits it.
+local function normalize_groups()
+	for id in pairs(state.groups) do
+		if not locate(id) then
+			state.groups[id] = nil
+		end
+	end
+	local done = {}
+	for _, items in ipairs(state.rows) do
+		for _, id in ipairs(items) do
+			local gid = state.groups[id]
+			if gid and not done[gid] then
+				done[gid] = true
+				local pending = group_members(gid)
+				local first = true
+				while #pending > 0 do
+					local component, queue = { pending[1] }, { pending[1] }
+					table.remove(pending, 1)
+					while #queue > 0 do
+						local current = table.remove(queue)
+						for i = #pending, 1, -1 do
+							local other = pending[i]
+							if (other.row == current.row and math.abs(other.column - current.column) == 1)
+								or math.abs(other.row - current.row) == 1 then
+								component[#component + 1] = other
+								queue[#queue + 1] = other
+								table.remove(pending, i)
+							end
+						end
+					end
+					local next_gid = first and gid or ("g" .. component[1].id)
+					first = false
+					done[next_gid] = true
+					for _, member in ipairs(component) do
+						state.groups[member.id] = #component > 1 and next_gid or nil
+					end
+				end
+			end
+		end
+	end
+end
+
+local function column_gap(row, column)
+	return joined(state.rows[row][column - 1], state.rows[row][column]) and OUTER_GAP or INNER_GAP
+end
+
 local function shortest_row()
 	local best = 1
 	local last = DECK_MODE and ROW_COUNT or #state.rows
@@ -140,6 +207,8 @@ end
 local geometry
 local fullscreen_geometry
 local align_rows
+local relayout
+local frame
 
 local function default_height(ctx)
 	return (ctx.area.h - OUTER_GAP * 2) / ctx.area.h
@@ -278,7 +347,7 @@ local function row_width(ctx, row)
 	local width = 0
 	for column, id in ipairs(state.rows[row]) do
 		if column > 1 then
-			width = width + INNER_GAP
+			width = width + column_gap(row, column)
 		end
 		width = width + ctx.area.w * canvas_size(ctx, id).w
 	end
@@ -320,7 +389,19 @@ geometry = function(ctx, row, column, id)
 	end
 	for previous = 1, column - 1 do
 		local previous_id = state.rows[row][previous]
-		x = x + ctx.area.w * canvas_size(ctx, previous_id).w + INNER_GAP
+		x = x + ctx.area.w * canvas_size(ctx, previous_id).w + column_gap(row, previous + 1)
+	end
+	if row > 1 and not state.fullscreen[id] then
+		local bottom
+		for above_column, above_id in ipairs(state.rows[row - 1]) do
+			if joined(id, above_id) then
+				local box = geometry(ctx, row - 1, above_column, above_id)
+				bottom = math.max(bottom or box.y + box.h, box.y + box.h)
+			end
+		end
+		if bottom then
+			y = bottom + OUTER_GAP
+		end
 	end
 	return {
 		x = x,
@@ -347,26 +428,20 @@ local function recalculate(ctx)
 		return
 	end
 	local targets = sync(ctx)
+	normalize_groups()
+	align_rows(ctx)
 	local active = active_id(ctx)
-	for row, items in ipairs(state.rows) do
-		for column, id in ipairs(items) do
-			if targets[id] then
-				targets[id]:set_box(geometry(ctx, row, column, id))
-			end
-		end
-	end
+	relayout(ctx, targets)
 	if state.recenter then
 		if state.recenter == active then
-			hl.dispatch(hl.dsp.layout("camera-center"))
+			frame(ctx, active)
 		end
 		state.recenter = nil
 	end
 	checkpoint.write(states)
 end
 
-local function focus_direction(ctx, direction)
-	sync(ctx)
-	local current = active_id(ctx)
+local function neighbour(ctx, current, direction)
 	local source_row, source_column
 	if current then
 		source_row, source_column = locate(current)
@@ -404,6 +479,12 @@ local function focus_direction(ctx, direction)
 		end
 	end
 
+	return best_id
+end
+
+local function focus_direction(ctx, direction)
+	sync(ctx)
+	local best_id = neighbour(ctx, active_id(ctx), direction)
 	if best_id then
 		local targets = sync(ctx)
 		local window = targets[best_id] and targets[best_id].window
@@ -412,6 +493,88 @@ local function focus_direction(ctx, direction)
 			hl.dispatch(hl.dsp.focus({ window = "address:" .. tostring(window.address) }))
 		end
 	end
+end
+
+relayout = function(ctx, targets)
+	for row, items in ipairs(state.rows) do
+		for column, id in ipairs(items) do
+			if targets[id] then
+				targets[id]:set_box(geometry(ctx, row, column, id))
+			end
+		end
+	end
+end
+
+-- Moving into a group frames all of it when it fits. Otherwise, like niri, the focused window is pinned to the screen
+-- edge away from its group neighbours so the view opens toward them; moving inside a group only scrolls far enough to show it.
+frame = function(ctx, id)
+	local row, column = locate(id)
+	local gid = state.groups[id]
+	local members = gid and group_members(gid) or {}
+	if not row or #members < 2 then
+		state.framed_group = nil
+		hl.dispatch(hl.dsp.layout("camera-center"))
+		return
+	end
+	local function padded(box)
+		return string.format("%.3f %.3f %.3f %.3f", box.x - OUTER_GAP, box.y - OUTER_GAP, box.w + OUTER_GAP * 2, box.h + OUTER_GAP * 2)
+	end
+	if state.framed_group == gid then
+		hl.dispatch(hl.dsp.layout("camera-align " .. padded(geometry(ctx, row, column, id)) .. " 0 0"))
+		return
+	end
+	local left, top, right, bottom
+	for _, member in ipairs(members) do
+		local box = geometry(ctx, member.row, member.column, member.id)
+		left = math.min(left or box.x, box.x)
+		top = math.min(top or box.y, box.y)
+		right = math.max(right or box.x + box.w, box.x + box.w)
+		bottom = math.max(bottom or box.y + box.h, box.y + box.h)
+	end
+	state.framed_group = gid
+	if right - left + OUTER_GAP * 2 <= ctx.area.w and bottom - top + OUTER_GAP * 2 <= ctx.area.h then
+		hl.dispatch(hl.dsp.layout("camera-box " .. padded({ x = left, y = top, w = right - left, h = bottom - top })))
+		return
+	end
+	local sides = {}
+	for _, member in ipairs(members) do
+		if member.row == row and member.column == column - 1 then sides.left = true end
+		if member.row == row and member.column == column + 1 then sides.right = true end
+		if member.row == row - 1 then sides.up = true end
+		if member.row == row + 1 then sides.down = true end
+	end
+	local function pin(before, after)
+		return (after and not before) and -1 or (before and not after) and 1 or 0
+	end
+	hl.dispatch(hl.dsp.layout(string.format("camera-align %s %d %d", padded(geometry(ctx, row, column, id)),
+		pin(sides.left, sides.right), pin(sides.up, sides.down))))
+end
+
+local function join_direction(ctx, direction)
+	local targets = sync(ctx)
+	local current = active_id(ctx)
+	local other = neighbour(ctx, current, direction)
+	local row, other_row = locate(current or ""), locate(other or "")
+	if not other or ((direction == "j" or direction == "k") and math.abs(other_row - row) ~= 1) then
+		return
+	end
+	if joined(current, other) then
+		state.groups[current] = nil
+	else
+		local gid = state.groups[other] or state.groups[current] or ("g" .. current)
+		local merged = { [state.groups[current] or ""] = true, [state.groups[other] or ""] = true }
+		for id, existing in pairs(state.groups) do
+			if merged[existing] then
+				state.groups[id] = gid
+			end
+		end
+		state.groups[current], state.groups[other] = gid, gid
+	end
+	normalize_groups()
+	state.framed_group = nil
+	align_rows(ctx)
+	relayout(ctx, targets)
+	frame(ctx, current)
 end
 
 local function move_direction(ctx, direction)
@@ -504,6 +667,14 @@ hl.layout.register("canvas", {
 			focus_direction(ctx, arg1)
 		elseif command == "move" and arg1:match("^[hjkl]$") then
 			move_direction(ctx, arg1)
+		elseif command == "join" and arg1:match("^[hjkl]$") then
+			join_direction(ctx, arg1)
+		elseif command == "frame" then
+			sync(ctx)
+			local id = active_id(ctx)
+			if id then
+				frame(ctx, id)
+			end
 		elseif command == "resize" and arg1:match("^[hjkl]$") then
 			resize_direction(ctx, arg1)
 		elseif command == "move-row" and arg1:match("^[jk]$") then
@@ -549,7 +720,7 @@ hl.layout.register("canvas", {
 			state.camera.x = 0
 			state.camera.y = 0
 		else
-			return "canvas: expected focus, move, move-row, resize, center, recalculate, widen, keyboard, or reset"
+			return "canvas: expected focus, move, join, frame, move-row, resize, center, recalculate, widen, keyboard, or reset"
 		end
 		checkpoint.write(states)
 		return true
@@ -565,7 +736,7 @@ hl.on("window.active", function(window)
 	if row and row ~= state.focused_row then
 		hl.dispatch(hl.dsp.layout("recalculate"))
 	end
-	hl.dispatch(hl.dsp.layout("camera-center"))
+	hl.dispatch(hl.dsp.layout("frame"))
 end)
 
 hl.on("window.close", function(window)
