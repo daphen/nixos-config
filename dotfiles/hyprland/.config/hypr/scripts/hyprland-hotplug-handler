@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-lock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hyprland-hotplug-handler.lock"
+lock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hyprland-hotplug-handler-${HYPRLAND_INSTANCE_SIGNATURE:?}.lock"
 exec 9>"$lock"
 flock -n 9 || exit 0
 
 last=""
 while sleep 1; do
-    monitors=$(hyprctl -j monitors 2>/dev/null) || continue
+    monitors=$(hyprctl -j monitors 2>/dev/null) || exit 0
     fingerprint=$(jq -r 'map(.name) | sort | join("\n")' <<< "$monitors")
     [[ "$fingerprint" != "$last" ]] || continue
     last=$fingerprint
@@ -18,7 +18,7 @@ while sleep 1; do
     [[ -n "$target" ]] || continue
 
     hyprctl -j workspaces | jq -r --arg target "$target" '
-        .[] | select(.monitor != $target) | .name' |
+        .[] | select(.monitor != $target and .windows > 0) | .name' |
     while IFS= read -r workspace; do
         [[ -n "$workspace" ]] || continue
         "$(dirname -- "$0")/hypr-dispatch" moveworkspacetomonitor "$workspace" "$target" >/dev/null

@@ -3274,3 +3274,12 @@ index 0000000..0b67cb4
 +        SP<CEventLoopTimer> m_timeout;
 +    };
 +}
+diff --git a/src/state/workspace/LifecyclePolicyAdapter.cpp b/src/state/workspace/LifecyclePolicyAdapter.cpp
+index cd9036a..dd3e769 100644
+--- a/src/state/workspace/LifecyclePolicyAdapter.cpp
++++ b/src/state/workspace/LifecyclePolicyAdapter.cpp
+@@ -144,3 +144,3 @@ class CHyprlandPolicyContext final : public IPolicyContext {
+         const auto WORKSPACE = findWorkspace(identity);
+-        placementController()->moveWorkspaceToMonitor(WORKSPACE, findMonitor(monitorAddress), true, false);
++        placementController()->moveWorkspaceToMonitor(WORKSPACE, findMonitor(monitorAddress), true, true);
+         finishLifecycleTransition(WORKSPACE);
