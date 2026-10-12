@@ -505,70 +505,73 @@ relayout = function(ctx, targets)
 	end
 end
 
--- Moving into a group frames all of it when it fits. Otherwise, like niri, the focused window is pinned to the screen
--- edge away from its group neighbours so the view opens toward them; moving inside a group only scrolls far enough to show it.
+-- Only windows joined on the focused row share a view. A row that fits is centred as one; a wider one pins the focused
+-- window to the screen edge away from its row neighbours on entry (like niri) and then only scrolls far enough to show it.
 frame = function(ctx, id)
 	local row, column = locate(id)
-	local gid = state.groups[id]
-	local members = gid and group_members(gid) or {}
-	if not row or #members < 2 then
+	local first, last = column, column
+	while row and joined(state.rows[row][first - 1], id) do first = first - 1 end
+	while row and joined(state.rows[row][last + 1], id) do last = last + 1 end
+	if not row or first == last then
 		state.framed_group = nil
 		hl.dispatch(hl.dsp.layout("camera-center"))
 		return
 	end
-	local function padded(box)
-		return string.format("%.3f %.3f %.3f %.3f", box.x - OUTER_GAP, box.y - OUTER_GAP, box.w + OUTER_GAP * 2, box.h + OUTER_GAP * 2)
-	end
-	if state.framed_group == gid then
-		hl.dispatch(hl.dsp.layout("camera-align " .. padded(geometry(ctx, row, column, id)) .. " 0 0"))
+	local box = geometry(ctx, row, column, id)
+	local left = geometry(ctx, row, first, state.rows[row][first])
+	local right = geometry(ctx, row, last, state.rows[row][last])
+	local width = right.x + right.w - left.x
+	local y = string.format("%.3f", box.y + box.h / 2 - ctx.area.h / 2)
+	local key = state.groups[id] .. ":" .. row
+	if width + OUTER_GAP * 2 <= ctx.area.w then
+		state.framed_group = key
+		hl.dispatch(hl.dsp.layout(string.format("camera-box %.3f %.3f %.3f %.3f", left.x, box.y, width, box.h)))
 		return
 	end
-	local left, top, right, bottom
-	for _, member in ipairs(members) do
-		local box = geometry(ctx, member.row, member.column, member.id)
-		left = math.min(left or box.x, box.x)
-		top = math.min(top or box.y, box.y)
-		right = math.max(right or box.x + box.w, box.x + box.w)
-		bottom = math.max(bottom or box.y + box.h, box.y + box.h)
+	local pin = 0
+	if state.framed_group ~= key then
+		pin = (column == first) and -1 or (column == last) and 1 or 0
 	end
-	state.framed_group = gid
-	if right - left + OUTER_GAP * 2 <= ctx.area.w and bottom - top + OUTER_GAP * 2 <= ctx.area.h then
-		hl.dispatch(hl.dsp.layout("camera-box " .. padded({ x = left, y = top, w = right - left, h = bottom - top })))
-		return
-	end
-	local sides = {}
-	for _, member in ipairs(members) do
-		if member.row == row and member.column == column - 1 then sides.left = true end
-		if member.row == row and member.column == column + 1 then sides.right = true end
-		if member.row == row - 1 then sides.up = true end
-		if member.row == row + 1 then sides.down = true end
-	end
-	local function pin(before, after)
-		return (after and not before) and -1 or (before and not after) and 1 or 0
-	end
-	hl.dispatch(hl.dsp.layout(string.format("camera-align %s %d %d", padded(geometry(ctx, row, column, id)),
-		pin(sides.left, sides.right), pin(sides.up, sides.down))))
+	state.framed_group = key
+	hl.dispatch(hl.dsp.layout(string.format("camera-align %.3f %s %.3f %.3f %d -1",
+		box.x - OUTER_GAP, y, box.w + OUTER_GAP * 2, ctx.area.h, pin)))
 end
 
+-- On a grouped window this only detaches: toward a member it cuts the group on that side, otherwise the window leaves.
 local function join_direction(ctx, direction)
 	local targets = sync(ctx)
 	local current = active_id(ctx)
-	local other = neighbour(ctx, current, direction)
-	local row, other_row = locate(current or ""), locate(other or "")
-	if not other or ((direction == "j" or direction == "k") and math.abs(other_row - row) ~= 1) then
+	local row, column = locate(current or "")
+	if not row then
 		return
 	end
-	if joined(current, other) then
-		state.groups[current] = nil
-	else
-		local gid = state.groups[other] or state.groups[current] or ("g" .. current)
-		local merged = { [state.groups[current] or ""] = true, [state.groups[other] or ""] = true }
-		for id, existing in pairs(state.groups) do
-			if merged[existing] then
-				state.groups[id] = gid
+	local gid = state.groups[current]
+	if gid then
+		local beyond = {}
+		for _, member in ipairs(group_members(gid)) do
+			if (direction == "h" and member.row == row and member.column < column)
+				or (direction == "l" and member.row == row and member.column > column)
+				or (direction == "k" and member.row < row)
+				or (direction == "j" and member.row > row) then
+				beyond[#beyond + 1] = member.id
 			end
 		end
-		state.groups[current], state.groups[other] = gid, gid
+		local other = neighbour(ctx, current, direction)
+		if #beyond > 0 and joined(current, other) then
+			for _, id in ipairs(beyond) do
+				state.groups[id] = gid .. "/" .. other
+			end
+		else
+			state.groups[current] = nil
+		end
+	else
+		local other = neighbour(ctx, current, direction)
+		local other_row = locate(other or "")
+		if not other or ((direction == "j" or direction == "k") and math.abs(other_row - row) ~= 1) then
+			return
+		end
+		local target = state.groups[other] or ("g" .. current)
+		state.groups[current], state.groups[other] = target, target
 	end
 	normalize_groups()
 	state.framed_group = nil

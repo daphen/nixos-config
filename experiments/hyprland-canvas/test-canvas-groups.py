@@ -184,6 +184,18 @@ def main():
         middle = left_again.get(index[b])
         check('ungrouped focus centers again', middle and abs((middle[0] + middle[1]) / 2 - WIDTH / 2) <= 3, middle)
 
+        focus(a)
+        layout('join l')
+        focus(c)
+        layout('join h')
+        check('an ungrouped window joins a group', abs(gap(b, c) - OUTER_GAP) <= 1 and abs(gap(a, b) - OUTER_GAP) <= 1, [gap(a, b), gap(b, c)])
+        focus(b)
+        layout('join l')
+        check('detaching toward a member cuts the group on that side only', abs(gap(a, b) - OUTER_GAP) <= 1 and abs(gap(b, c) - INNER_GAP) <= 1,
+              [gap(a, b), gap(b, c)])
+        layout('join j')
+        check('detaching away from the group leaves it', abs(gap(a, b) - INNER_GAP) <= 1, gap(a, b))
+
         focus(c)
         layout('move j')
         layout('join k')
@@ -193,6 +205,14 @@ def main():
             if t != c and abs(boxes[c]['at'][1] - (boxes[t]['at'][1] + boxes[t]['size'][1]) - 2 * BORDER - OUTER_GAP) <= 1:
                 vertical = t
         check('a window joined to the row above sits one edge margin below it', vertical is not None,
+              {t: [boxes[t]['at'], boxes[t]['size']] for t in names})
+
+        alone = screen('vertical-alone').get(index[c])
+        check('a window alone on its row centers even when grouped vertically', alone and abs((alone[0] + alone[1]) / 2 - WIDTH / 2) <= 3, alone)
+        layout('join j')
+        boxes = clients()
+        check('detaching downward with nothing below leaves the vertical group',
+              not any(t != c and abs(boxes[c]['at'][1] - (boxes[t]['at'][1] + boxes[t]['size'][1]) - 2 * BORDER - OUTER_GAP) <= 1 for t in names),
               {t: [boxes[t]['at'], boxes[t]['size']] for t in names})
 
         binds = json.loads(ctl('j/binds'))
