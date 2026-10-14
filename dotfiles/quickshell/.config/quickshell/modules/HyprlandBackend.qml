@@ -270,7 +270,10 @@ Item {
     }
 
     function focusedAppId() {
-        const object = objectFor(focusedWindow())
+        const window = focusedWindow()
+        // Newly opened toplevels can lack lastIpcObject; the canvas query already has their class.
+        const clients = canvasSnapshot ? canvasSnapshot.clients || [] : []
+        const object = clients.find(client => window && client.address === "0x" + window.address) || objectFor(window)
         return object.class || object.initialClass || ""
     }
 
