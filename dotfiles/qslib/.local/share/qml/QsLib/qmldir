@@ -10,6 +10,7 @@ ButtonSurface ButtonSurface.qml
 KeyCap KeyCap.qml
 CapLabel CapLabel.qml
 FeedbackPill FeedbackPill.qml
+HoverTip HoverTip.qml
 Card Card.qml
 ContrastCard ContrastCard.qml
 ContrastSurface ContrastSurface.qml
@@ -21,3 +22,5 @@ Modal Modal.qml
 ChangelogModal ChangelogModal.qml
 Spinner Spinner.qml
 ThinkingOrb ThinkingOrb.qml
+TabBar TabBar.qml
+TabFace TabFace.qml

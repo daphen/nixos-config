@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import "."
 
 // "Thinking" orb — a silk-aurora badge: a domain-warped fbm field (aurora.frag,
@@ -10,6 +11,8 @@ Item {
   property bool running: true
   property color glow: Theme.fg
   property var activityColors: []
+  property int colorDuration: 650
+  property real idleBlur: 0
   readonly property bool combined: activityColors.length > 1
   readonly property real diameter: Math.min(width, height)
   readonly property real ringWidth: Math.max(1.25, diameter * 0.065)
@@ -40,7 +43,7 @@ Item {
   // running flaps or delegate recreation) and BOUNDED (radians, so the shader
   // never sees coordinates big enough to break float32 noise). flow scales the
   // clock, keeping continuity. Prime-ish periods so the composite never loops.
-  readonly property real clockNow: running ? OrbClock.now : 0
+  property real clockNow: running ? OrbClock.now : 0
   readonly property real ph1: _ph(clockNow, 47000) + seed * 6.2832
   readonly property real ph2: _ph(clockNow, 61000) + seed * 17.9
   readonly property real ph3: _ph(clockNow, 83000) + seed * 29.3
@@ -115,11 +118,30 @@ Item {
     antialiasing: true
   }
 
+  Rectangle {
+    id: fieldMask
+    anchors.fill: field
+    radius: width / 2
+    color: "white"
+    antialiasing: true
+    visible: false
+    layer.enabled: field.layer.enabled
+  }
+
   ShaderEffect {
     id: field
     anchors.fill: parent
     anchors.margins: Theme.mode === "light" ? orb.ringWidth : orb.ringWidth / 2
     fragmentShader: Qt.resolvedUrl("aurora.frag.qsb")
+    layer.enabled: orb.idleBlur > 0
+    layer.effect: MultiEffect {
+      blurEnabled: true
+      blurMax: orb.diameter >= 40 ? 64 : 8
+      blur: orb.idleBlur * 0.45
+      autoPaddingEnabled: false
+      maskEnabled: true
+      maskSource: fieldMask
+    }
     property real ph1: orb.ph1
     property real ph2: orb.ph2
     property real ph3: orb.ph3
@@ -167,9 +189,9 @@ Item {
       ? Qt.hsla((orb.hu + 0.05) % 1, orb.sat * 0.789, 0.733 + _oLift, 1)
       : Qt.hsla((orb.hu + (_warm ? 0.045 : 0.96)) % 1, orb.sat * 0.35,
                 (Theme.mode === "light" ? 0.84 : 0.80) + _lift * 0.5, 1)
-    Behavior on colA { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
-    Behavior on colB { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
-    Behavior on colC { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
+    Behavior on colA { ColorAnimation { duration: orb.colorDuration; easing.type: Easing.InOutQuad } }
+    Behavior on colB { ColorAnimation { duration: orb.colorDuration; easing.type: Easing.InOutQuad } }
+    Behavior on colC { ColorAnimation { duration: orb.colorDuration; easing.type: Easing.InOutQuad } }
   }
 
   // Light surfaces need a neutral dark perimeter; the action hue remains in the
@@ -185,7 +207,7 @@ Item {
       : (field._orange && !orb.invertRing
         ? Qt.hsla((orb.hu + 0.03) % 1, orb.sat * 0.75, 0.78, 1)
         : Qt.hsla(orb.hu, orb.sat * 0.5, orb.invertRing ? 0.34 : 0.82, 1))
-    Behavior on border.color { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
+    Behavior on border.color { ColorAnimation { duration: orb.colorDuration; easing.type: Easing.InOutQuad } }
     antialiasing: true
   }
 }

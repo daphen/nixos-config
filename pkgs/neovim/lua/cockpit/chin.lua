@@ -133,6 +133,7 @@ local function gather()
 	plan = plan:gsub("%s*→.*$", ""):gsub("%s*·%s*%a+%s*$", "")
 	return {
 		path = rel,
+		cwd = vim.fn.getcwd(),
 		err = diag[vim.diagnostic.severity.ERROR] or 0,
 		warn = diag[vim.diagnostic.severity.WARN] or 0,
 		info = diag[vim.diagnostic.severity.INFO] or 0,

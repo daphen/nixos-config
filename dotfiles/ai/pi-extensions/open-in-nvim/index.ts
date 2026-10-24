@@ -9,7 +9,13 @@ export default function (pi: ExtensionAPI) {
       "Open and focus a file in the Cockpit Neovim showing this agent session. " +
       "Use when the user asks to see, show, or open a file or a change you discussed. " +
       "Resolve the relevant path and changed line from the conversation yourself; the user does not need to provide them. " +
-      "Accepts repository-relative, absolute, mirrored remote, and notes-vault paths.",
+      "Accepts repository-relative, absolute, mirrored remote, and notes-vault paths. " +
+      "The Cockpit editor has three tabs, each with its own per-session state: " +
+      "Code live-follows your edits (and keeps the last edited file while the user is elsewhere); " +
+      "Dashboard is the session overview and never changes on its own; " +
+      "Vault is the user's notes vault, static, remembering the note they last had open (first visit opens the session plan). " +
+      "This tool switches to the right tab itself: vault paths open in Vault, everything else in Code. " +
+      "Edits to vault files never move any tab, so open a plan or note explicitly when the user should see it.",
     promptSnippet: "open_in_nvim: show a requested file or change in this session's Cockpit Neovim",
     parameters: Type.Object({
       path: Type.String({ description: "File to open, relative to this session's cwd or absolute" }),

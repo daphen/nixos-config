@@ -1441,6 +1441,9 @@ local function resolvable(cwd, path)
 end
 
 
+local VAULT = fn.expand("~/personal/notes/storage")
+local function editor_key(w) return w.scope .. "/" .. w.id .. (w.cwd == VAULT and "#vault" or "") end
+
 local function open_in_editor(cwd, path, line)
   local file = resolvable(cwd, path)
   if not file then vim.notify("Cockpit: not readable — " .. path, vim.log.levels.WARN); return end
@@ -1453,6 +1456,14 @@ local function open_in_editor(cwd, path, line)
   end
   api.nvim_set_current_win(target)
   pcall(vim.cmd, "edit " .. fn.fnameescape(file))
+  -- An explicit open (often a notes file outside the checkout) is what this session returns to.
+  if S.workspace then
+    local key = editor_key(S.workspace)
+    S.workspace_editors = S.workspace_editors or {}
+    local state = S.workspace_editors[key] or {}
+    state.buf, state.view, state.opened = api.nvim_win_get_buf(target), nil, file
+    S.workspace_editors[key] = state
+  end
   editor_gutter(target, true)
   if hide_banner then hide_banner() end -- a real file is showing now → drop the dashboard banner float
   if line then pcall(api.nvim_win_set_cursor, 0, { tonumber(line), 0 }) end
@@ -2314,6 +2325,14 @@ function M.follow_remote(cwd, path, force, line, needle_b64, added_lines)
   end
   local ed = target_editor_win()
   if not ed then return "" end
+  local file = path:sub(1, 1) == "/" and path or ((cwd or "") .. "/" .. path)
+  if file:sub(1, #VAULT + 1) == VAULT .. "/" then return "" end
+  -- Only the Code tab follows; on Vault or Dashboard the edit just becomes Code's file.
+  if S.workspace and (S.workspace.cwd == VAULT or M.dashboard_snapshot().active) then
+    local state = edit_mark_state()
+    if state then state.pending_follow = { cwd = cwd, path = file, line = line, snippet = snippet, added = added_lines } end
+    return ""
+  end
   if force then
     S._follow_paused = nil; follow_edit(cwd, path, line, true, true, snippet, added_lines); return ""
   end
@@ -2372,21 +2391,24 @@ local function sync_scope()
 end
 
 function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, source_scope, remote_cwd)
+  latest = type(latest) == "string" and latest or ""
   sync_scope()
   if persisted_scope() and normalized_scope(workspace_scope) ~= scope then return "" end
   local snacks = package.loaded["snacks"]
   if snacks and snacks.picker then
     for _, picker in ipairs(snacks.picker.get()) do picker:close() end
   end
+  if package.loaded["mini.files"] then pcall(require("mini.files").close) end
   local ed = target_editor_win()
   if not ed then return "" end
   local previous = S.workspace
   local buf = api.nvim_win_get_buf(ed)
   local path = api.nvim_buf_get_name(buf)
   S.workspace_editors = S.workspace_editors or {}
-  if previous and vim.bo[buf].buftype == "" and path:sub(1, #previous.cwd + 1) == previous.cwd .. "/"
-      and not path:find("/%.plans/") then
-    local key = previous.scope .. "/" .. previous.id
+  local previous_state = previous and S.workspace_editors[editor_key(previous)]
+  if previous and vim.bo[buf].buftype == "" and ((path:sub(1, #previous.cwd + 1) == previous.cwd .. "/"
+      and not path:find("/%.plans/")) or (previous_state and path == previous_state.opened)) then
+    local key = editor_key(previous)
     local state = S.workspace_editors[key] or {}
     state.buf, state.view = buf, api.nvim_win_call(ed, fn.winsaveview)
     S.workspace_editors[key] = state
@@ -2409,6 +2431,10 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
   S.workspace = { scope = workspace_scope, id = id, cwd = cwd, plan = plan, profile = profile,
     sourceScope = source_scope, remoteCwd = remote_cwd }
   S.selected = id
+  if same and previous.cwd == cwd and view == "" and latest == "" then
+    pcall(function() require("cockpit.chin").refresh() end)
+    return ""
+  end
   if fn.getcwd(ed) ~= cwd and fn.isdirectory(cwd) == 1 then
     api.nvim_win_call(ed, function() vim.cmd.cd(fn.fnameescape(cwd)) end)
   end
@@ -2417,7 +2443,7 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
     local on_plan = path:find("/%.plans/") or path:find("/notes/storage/plans/", 1, true)
     view = same and (dashboard and "code" or (on_plan and "dashboard" or (plan ~= "" and "plan" or "dashboard"))) or "code"
   end
-  S._follow_paused = view ~= "" and view ~= "dashboard"
+  S._follow_paused = view == "plan" or view == "diff" or view == "vault"
   S._follow_paused_at = os.time()
   S._program_nav = true
   local function open_file(file)
@@ -2430,6 +2456,27 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
     if hide_banner then hide_banner() end
   end
   local function show_view()
+    if view == "vault" then
+      local saved = S.workspace_editors[workspace_scope .. "/" .. id .. "#vault"]
+      if saved and saved.buf and api.nvim_buf_is_valid(saved.buf) then
+        local name = api.nvim_buf_get_name(saved.buf)
+        if name:sub(1, #cwd + 1) == cwd .. "/" and fn.filereadable(name) == 1 then
+          api.nvim_win_set_buf(ed, saved.buf)
+          if saved.view then api.nvim_win_call(ed, function() fn.winrestview(saved.view) end) end
+          editor_gutter(ed, true)
+          if hide_banner then hide_banner() end
+          return
+        end
+      end
+      local file = cwd .. "/plans/" .. plan .. ".md"
+      if plan ~= "" and fn.filereadable(file) == 1 then open_file(file); return end
+      api.nvim_win_set_buf(ed, api.nvim_create_buf(true, false))
+      editor_gutter(ed, true)
+      if hide_banner then hide_banner() end
+      api.nvim_set_current_win(ed)
+      require("mini.files").open(cwd)
+      return
+    end
     if view == "plan" then
       if plan == "" then vim.notify("Cockpit: " .. id .. " has no bound plan"); return end
       local file = cwd .. "/.plans/" .. plan .. ".md"
@@ -2445,9 +2492,18 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
     end
     local saved = S.workspace_editors[workspace_scope .. "/" .. id]
     local restored = false
-    if view ~= "" and saved and saved.buf and api.nvim_buf_is_valid(saved.buf) then
+    local pending = view == "code" and latest == "" and saved and saved.pending_follow
+    if pending then
+      saved.pending_follow = nil
+      if fn.filereadable(pending.path) == 1 then
+        S._follow_paused = nil
+        follow_edit(pending.cwd, pending.path, pending.line, true, true, pending.snippet, pending.added)
+        restored = true
+      end
+    end
+    if not restored and view ~= "" and not (view == "code" and latest ~= "") and saved and saved.buf and api.nvim_buf_is_valid(saved.buf) then
       local name = api.nvim_buf_get_name(saved.buf)
-      local owned = name:sub(1, #cwd + 1) == cwd .. "/" or name == saved.follow_file
+      local owned = name:sub(1, #cwd + 1) == cwd .. "/" or name == saved.follow_file or name == saved.opened
       if owned and fn.filereadable(name) == 1 then
         api.nvim_win_set_buf(ed, saved.buf)
         if saved.view then api.nvim_win_call(ed, function() fn.winrestview(saved.view) end) end
@@ -2457,7 +2513,7 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
     if not restored and latest ~= "" and not latest:find("/%.plans/")
         and not latest:find("/notes/storage/plans/", 1, true) and fn.filereadable(latest) == 1 then
       open_file(latest)
-      if view == "" then M.follow_remote(cwd, latest, true) end
+      if view == "" or view == "code" then M.follow_remote(cwd, latest, true) end
       restored = true
     end
     if view == "diff" or (view == "code" and not restored) then
