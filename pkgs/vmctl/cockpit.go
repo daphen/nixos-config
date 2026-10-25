@@ -183,6 +183,17 @@ func (c cockpitState) syncReaper() error {
 	if err := c.syncProgram(c.reaper, "vm-slice-reaper", "slice reaper"); err != nil {
 		return fmt.Errorf("reaper sync failed: %w", err)
 	}
+	scripts := filepath.Dir(c.reaper)
+	tools := [][2]string{
+		{filepath.Join(c.a.home, "nixos", "dotfiles", "bin", ".local", "bin", "agent"), "agent"},
+		{filepath.Join(scripts, "agent-review"), "agent-review"},
+		{filepath.Join(scripts, "agent_review_harness.py"), "agent_review_harness.py"},
+	}
+	for _, tool := range tools {
+		if err := c.syncProgram(tool[0], tool[1], tool[1]+" tool"); err != nil {
+			return fmt.Errorf("review tool sync failed: %w", err)
+		}
+	}
 	return nil
 }
 

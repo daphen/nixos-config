@@ -885,8 +885,7 @@ handle = function(obj, reply_scope)
   elseif t == "changes" and obj.session then
     -- Server-streamed working-tree diff from a REMOTE agentd: populate the diff
     -- cache + re-render CHANGES without the files being local. Same parser + re-render
-    -- path as the local git watcher. follow_edit resolves a remote path through the
-    -- vm-sync mirror, so a remote session live-follows into the mirrored file.
+    -- path as the local git watcher.
     local cwd = obj.cwd or session_cwd(obj.session)
     if cwd and type(obj.diff) == "string" then
       S.gitdiff[cwd] = parse_git_diff(vim.split(obj.diff, "\n", { plain = true }))
@@ -1409,40 +1408,15 @@ local function editor_gutter(win, on)
   end)
 end
 
--- A remote session's cwd is a VM path; vm-sync keeps a local mirror of the same
--- worktree, so translate before giving up on a file that "isn't readable".
-local function mirror_of(p)
-  if not p then return nil end
-  local t = p:match("^/home/[^/]+/src/lovable%-([%w%-%.]+)")
-  local root = t and (fn.expand("~/work/lovable.daphen-" .. t))
-    or (p:match("^/home/[^/]+/src/lovable$") and fn.expand("~/work/lovable"))
-  if root and fn.isdirectory(root) == 1 then return root end
-  return nil
-end
-
--- Resolve a path the agent named into something openable here: as given, then
--- rebased onto the local mirror (both for a bare path under a remote cwd and for
--- an absolute VM path).
 local function resolvable(cwd, path)
   local direct = fn.expand(path:match("^/") and path or ((cwd or fn.getcwd()) .. "/" .. path))
   if fn.filereadable(direct) == 1 then return direct end
-  local m = mirror_of(cwd)
-  if m and not path:match("^/") then
-    local rebased = fn.expand(m .. "/" .. path)
-    if fn.filereadable(rebased) == 1 then return rebased end
-  end
-  local vroot, rest = path:match("^(/home/[^/]+/src/lovable[%w%-%.]*)/(.+)$")
-  local vm = vroot and mirror_of(vroot)
-  if vm then
-    local rebased = fn.expand(vm .. "/" .. rest)
-    if fn.filereadable(rebased) == 1 then return rebased end
-  end
   return nil
 end
 
 
 local VAULT = fn.expand("~/personal/notes/storage")
-local function editor_key(w) return w.scope .. "/" .. w.id .. (w.cwd == VAULT and "#vault" or "") end
+local function editor_key(w) return w.cwd == VAULT and "vault" or (w.scope .. "/" .. w.id) end
 
 local function open_in_editor(cwd, path, line)
   local file = resolvable(cwd, path)
@@ -2091,10 +2065,8 @@ refresh_dashboard = function()
   if not (S.scratchbuf and api.nvim_buf_is_valid(S.scratchbuf)) then return end
   for _, w in ipairs(api.nvim_list_wins()) do
     if api.nvim_win_is_valid(w) and api.nvim_win_get_buf(w) == S.scratchbuf then
-      -- The cwd ALREADY on screen wins over S.selected's: when the cockpit rail drives this
-      -- nvim it renders a session's LOCAL mirror path, which is not what agentd reports as
-      -- that session's cwd — resolving through S.selected re-rendered a different worktree
-      -- (or nothing at all, when nothing is selected in this nvim).
+      -- The cwd ALREADY on screen wins over S.selected's: resolving through S.selected
+      -- re-rendered nothing at all when nothing is selected in this nvim.
       local cwd = (S.dash and S.dash.cwd) or (S.selected and session_cwd(S.selected))
       if cwd then pcall(show_scratch, w, cwd) end
       return
@@ -2127,15 +2099,10 @@ function M.git_summary(cwd)
     for _, change in ipairs(cache.files or {}) do add = add + (change.add or 0); del = del + (change.del or 0) end
     return { authoritative = true, add = add, del = del, head = cache.head, base = cache.base }
   end
-  -- Externally-changed trees (a mutagen mirror sync) never fire an nvim event, so a
-  -- diff computed mid-sync would otherwise be reported forever. Re-run in the
-  -- background once the value ages out; the stale number still renders this frame.
-  --
-  -- The TTL alone was not enough: when the VM merged origin/main into every-2447 the
-  -- mirror's HEAD jumped ~320 commits ahead of the LOCAL origin/main, the base resolved
-  -- against a pre-merge trunk, and the chin reported +96602/-25739 for a four-file diff.
-  -- HEAD is the honest invalidator — one rev-parse, and it catches a mutagen write the
-  -- moment it lands rather than up to 20s later.
+  -- Trees changed by agents outside this nvim fire no event, so re-run in the background
+  -- once the value ages out; the stale number still renders this frame. A moved HEAD
+  -- also invalidates: a merged trunk ahead of the local origin/main inflated the diff
+  -- to +96602/-25739 for four files.
   local head = (fn.systemlist({ "git", "-C", cwd, "rev-parse", "HEAD" }) or {})[1]
   local moved = head and cache.head and head ~= cache.head
   if moved and not S.diff_jobs[cwd] then
@@ -2297,9 +2264,8 @@ end
 -- of S.selected. For external drivers (the Quickshell cockpit rail) that pick the
 -- session themselves and drive this nvim over the RPC socket.
 -- Public: live-follow one agent edit, driven from OUTSIDE (the Quickshell rail). The
--- rail is the only component that sees every scope's events AND maps a remote session's
--- paths onto the local mirror — this nvim's own client spans one scope, so cockpit
--- live-follow cannot originate in here. Both args are LOCAL absolute paths.
+-- rail is the only component that sees every scope's events — this nvim's own client
+-- spans one scope, so cockpit live-follow cannot originate in here.
 -- How long a "I'm reading here" pause survives without any cursor movement. Focusing
 -- the rail (or another window) sends nvim no signal, so without this the pause latched
 -- forever and a parent watching a streaming child silently followed nothing.
@@ -2327,8 +2293,8 @@ function M.follow_remote(cwd, path, force, line, needle_b64, added_lines)
   if not ed then return "" end
   local file = path:sub(1, 1) == "/" and path or ((cwd or "") .. "/" .. path)
   if file:sub(1, #VAULT + 1) == VAULT .. "/" then return "" end
-  -- Only the Code tab follows; on Vault or Dashboard the edit just becomes Code's file.
-  if S.workspace and (S.workspace.cwd == VAULT or M.dashboard_snapshot().active) then
+  -- Only the Code tab follows; on Vault, Plan or Dashboard the edit just becomes Code's file.
+  if S.workspace and (S.workspace.cwd == VAULT or S.workspace.view == "plan" or M.dashboard_snapshot().active) then
     local state = edit_mark_state()
     if state then state.pending_follow = { cwd = cwd, path = file, line = line, snippet = snippet, added = added_lines } end
     return ""
@@ -2351,6 +2317,10 @@ function M.follow_remote(cwd, path, force, line, needle_b64, added_lines)
      and bn ~= ours then return "" end
   follow_edit(cwd, path, line, true, nil, snippet, added_lines)
   return ""
+end
+
+function M.workspace_view()
+  return S.workspace and S.workspace.view or ""
 end
 
 function M.workspace_cwd()
@@ -2429,7 +2399,7 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
     S.gitdiff[cwd], S.gitdiff[remote_cwd], S.diff_jobs[cwd] = nil, nil, nil
   end
   S.workspace = { scope = workspace_scope, id = id, cwd = cwd, plan = plan, profile = profile,
-    sourceScope = source_scope, remoteCwd = remote_cwd }
+    sourceScope = source_scope, remoteCwd = remote_cwd, view = same and previous.view or nil }
   S.selected = id
   if same and previous.cwd == cwd and view == "" and latest == "" then
     pcall(function() require("cockpit.chin").refresh() end)
@@ -2443,6 +2413,7 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
     local on_plan = path:find("/%.plans/") or path:find("/notes/storage/plans/", 1, true)
     view = same and (dashboard and "code" or (on_plan and "dashboard" or (plan ~= "" and "plan" or "dashboard"))) or "code"
   end
+  if view ~= "" then S.workspace.view = view end
   S._follow_paused = view == "plan" or view == "diff" or view == "vault"
   S._follow_paused_at = os.time()
   S._program_nav = true
@@ -2457,7 +2428,7 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
   end
   local function show_view()
     if view == "vault" then
-      local saved = S.workspace_editors[workspace_scope .. "/" .. id .. "#vault"]
+      local saved = S.workspace_editors.vault
       if saved and saved.buf and api.nvim_buf_is_valid(saved.buf) then
         local name = api.nvim_buf_get_name(saved.buf)
         if name:sub(1, #cwd + 1) == cwd .. "/" and fn.filereadable(name) == 1 then
@@ -2540,8 +2511,7 @@ function M.dashboard(cwd, id)
   -- Adopt the session being shown. The rail picked it and drives us over RPC, but the
   -- selection is what this nvim keys its own per-session state off (the editor file it
   -- restores, the tests auto-switch), so leaving it unset made every externally-driven
-  -- dashboard sessionless. Match on the worktree's NAME, not the path: agentd reports a
-  -- remote session's cwd as the box sees it, while we are handed the local mirror.
+  -- dashboard sessionless.
   if id and id ~= "" then
     S.selected = id
   elseif cwd and cwd ~= "" then

@@ -131,6 +131,21 @@ allowed_roots[#allowed_roots + 1] = blocked
 open(blocked, "recovered.ts", "blocked")
 check(result("blocked-ts").scope == "blocked" and result("blocked-tailwind").scope == "blocked"
   and result("blocked-oxlint").scope == "blocked", "approval-state change recovers through public activation")
+local missing = directory("missing", true, false, true)
+configure("missing-direnv", missing, { "typescript-language-server", "--stdio" }, true, "function")
+local path = vim.env.PATH
+vim.env.PATH = ""
+notices = {}
+local ok, err = pcall(open, missing, "missing.ts", "missing-direnv")
+check(ok, "missing direnv escaped the FileType callback: " .. tostring(err))
+open(missing, "second.ts", "missing-direnv")
+vim.wait(300)
+check(#notices == 1 and notices[1][1]:find("direnv is unavailable", 1, true), "missing executable must report once per root")
+check(fn.filereadable(tmp .. "/missing-direnv.json") == 0, "missing direnv bypassed the environment trust gate")
+configure("plain-no-direnv", plain, { "typescript-language-server", "--stdio" }, true, "function")
+open(plain, "without-direnv.ts", "plain-no-direnv")
+check(result("plain-no-direnv").scope == "parent", "projects without envrc must work without direnv")
+vim.env.PATH = path
 vim.notify = notify
 for _, client in ipairs(vim.lsp.get_clients({ _uninitialized = true })) do
   clients[#clients + 1] = client.id

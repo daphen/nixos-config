@@ -453,12 +453,11 @@ function M.setup(opts)
 	M.config = vim.tbl_extend("force", M.config, opts)
 
 	local out = git_exec({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })
-	if not out or #out == 0 then return end
-	state.repo_root = out[1]
-
-	state.head_sha = (git_exec({ "git", "-C", state.repo_root, "rev-parse", "HEAD" }) or {})[1]
-	state.base_sha = M.resolve_base(state.repo_root)
-	if not state.base_sha then return end
+	state.repo_root = out and out[1]
+	if state.repo_root then
+		state.head_sha = (git_exec({ "git", "-C", state.repo_root, "rev-parse", "HEAD" }) or {})[1]
+		state.base_sha = M.resolve_base(state.repo_root)
+	end
 	state.enabled = true
 
 	local group = vim.api.nvim_create_augroup("HunkSigns", { clear = true })

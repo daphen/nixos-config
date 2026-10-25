@@ -7,6 +7,10 @@ return {
 	after = function()
 		-- Function to read theme mode from file
 		local function read_theme_mode()
+			local override = vim.g.cockpit_theme_mode
+			if override == "light" or override == "dark" then
+				return override
+			end
 			local theme_file = vim.fn.expand("~/.config/theme_mode")
 			local file = io.open(theme_file, "r")
 			if file then

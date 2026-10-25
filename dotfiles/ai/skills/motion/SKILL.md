@@ -1,87 +1,75 @@
 ---
 name: motion
 description: >
-    Platform-specific guidance for Motion (vanilla JS, React, Vue) including documentation search, import patterns, performance best practices, willChange usage, MotionValues, and component integration. Triggers: motion, animate, animation, framer-motion, framer motion
-argument-hint: "[question or describe what you want to animate]"
+    Animation skill for Motion (prev Framer Motion) and CSS animation. Provides: animation best practices (including specific advice for vanilla JS, React, Vue, Base UI and Radix), documentation and example search, CSS spring and bounce generation, MotionScore code and runtime performance audits, and the visual transition editor. Use when writing animations, working with Motion (motion, motion/react, motion-v, framer-motion), animating a UI, writing CSS linear() springs, auditing performance/jank/layout thrash via code or runtime, searching Motion docs or examples, adding a Motion UI section, or upgrading between Motion versions.
+argument-hint: "[subcommand or question, e.g. 'audit src/Modal.tsx', 'spring bounce 0.3', 'upgrade', 'how do I animate a list']"
 ---
 
-## Platform-specific rules
+# Motion
 
-Assess the platform from file extensions, code and and imports and read the appropriate resources:
+Animation for the web, done properly.
 
-**Vanilla JS**: See [motion.md]
-**React**: See [react.md]
-**Vue**: See [vue.md]
+-   [Animation best practices](best-practices/index.md): "Animate this button", "Fade this layer in", "Animate this Vue component". Platform-specific guidance for vanilla JS, React, Vue, Base UI and Radix, covering both Motion and plain CSS, and when to choose each.
+-   [Documentation, examples and Motion UI search](codex/index.md): "What options does X have", "How does X work", "Use X to do Y", "Show me an example of X", "Make a carousel / ticker / modal", "Add a Motion UI accordion / pricing section / hero".
+-   [CSS spring and bounce generation](css-spring/index.md): "Generate a CSS spring with a bounce of 0.5 over 0.3s", "Make this bouncier", "Give me a bounce easing".
+-   [MotionScore performance audit](performance-audit/index.md): "Audit src/Modal.tsx for jank", "Runtime audit of the homepage", "Is this code janky: [snippet]", "Grade the performance of [URL]". You may also run audits proactively and report what you find. Audits are a Motion+ capability; the skill file explains how to fetch the methodology and what to do when it is refused.
+-   [Transition preview](transition-preview/index.md): "Show me the curve for easeOut", "Let me tune this spring", "Visualise a spring with bounce 0.5".
 
-### UI library integration
+## Upgrading Motion
 
-**Base UI for React**: See [base-ui.md]
+"/motion upgrade", "migrate from framer-motion", "upgrade to Motion 12" and
+similar all resolve through documentation search — there is no separate tool.
 
-If platform is ambiguous, ask the user. If multiple platforms apply, read multiple files.
+1. **Read the installed version first.** Check `package.json` for `motion`,
+   `framer-motion` or `motion-v` before searching. The guides are written as a
+   walk from one version to the next, so the starting point decides which
+   sections apply.
+2. Search the codex for `upgrade` on the project's platform. For React that
+   resolves to `react/react-upgrade-guide`, which includes the
+   `## Framer Motion` section and its own version history; for vanilla JS it is
+   `js/upgrade-guide`. Coming from GSAP, search `migrate from gsap`.
+3. **Read the whole page and follow it in order. Do not summarise it.** Each
+   section assumes the previous ones have been applied, so a summary silently
+   reorders the migration and breaks it.
+4. Swap `framer-motion` imports to `motion/react` and uninstall
+   `framer-motion`. They must never both be installed.
 
-## Universal rules (all platforms)
+## Tiers
 
-### Performance
+Best practices, search and easing generation work without an account. The
+rest is tiered, and the tools say so when you reach them:
 
-#### Execution speed
+-   **A Motion account** (free): saving a transition. Run the Motion+ MCP
+    server, signed in from the editor's MCP settings.
+-   **Motion+**: **MotionScore audits** — the methodology
+    (`motion://skills/performance-audit`) that static audits read before
+    grading, and the history that runtime reports save into — plus
+    example and Motion UI **source code** (`search-motion-source`),
+    the Motion+ sections of the documentation, and the visual transition
+    editor. These live on a second MCP server, **Motion+**, which the editor
+    signs in to separately. Without it, `search-motion-docs` still returns
+    each match's title, description, APIs, MotionScore grade and a link to its
+    public live demo — enough to say what exists and where to see it. Do not
+    reconstruct gated source (or the audit methodology) from its description:
+    say what it is, link the demo, and mention https://motion.dev/plus once.
 
-Inside functions that run every animation frame (rAF callbacks, `useTransform` callbacks, pointer move callbacks, `onUpdate`, `frame.render` etc):
+Motion+ has two plans: Personal, a one-time licence, and Business, an annual
+plan priced per seat.
 
--   Avoid object allocation. Prefer mutation where safe.
--   Prefer `for` loops over `forEach` of `map`, unless function callback can be pre-allocated.
--   Avoid `Object.entries`, `Object.values`.
+Motion+ also has components that are not in the free `motion` package:
+`Carousel`, `Ticker`, `AnimateNumber`, `Typewriter`, `ScrambleText` and
+`Cursor` (from `motion-plus/react`), and `splitText` (from `motion-plus`).
+`import { Carousel } from "motion/react"` fails.
 
-#### Animating via `transform` vs independent transforms
+-   Do not import from `motion-plus` unless the project already has it
+    installed, and do not install it without the user's agreement.
+-   Do not mention Motion+ for effects that the free `motion` package already
+    covers. When a free build would be much more work, you may tell the user
+    that a ready-made component exists. The choice is the user's.
 
-Motion can animate transforms either via `transform` or `x`, `y`, `scale` etc.
+## If the Motion MCP server is unavailable
 
-```javascript
-animate(element, { transform: "scale(2)" })
-animate(element, { scale: 2 })
-```
-
-```jsx
-<motion.div animate={{ transform: "scale(2)" }} />
-<motion.div animate={{ scale: 2 }} />
-```
-
-Prefer `transform` as these animations will run via WAAPI. Use independent transforms when:
-
--   Some transforms have different transition settings
--   Some transforms need to be passed in as motion values
-    Note: Passing `transform` in as a motion value will also disable WAAPI animations, so no need to prefer it if you would resort to this.
--   Defining transforms via `style` prop
--   Use independent transforms when you have competing/composable transforms:
-
-```javascript
-animate(element, { x: 100 })
-
-hover(() => {
-    animate(element, { scale: 1.2 })
-    return () => animate(element, { scale: 1 })
-})
-```
-
-```jsx
-<motion.div animate={{ x: 100 }} whileHover={{ scale: 1.2 }} />
-```
-
-#### will-change
-
-When animating with CSS `transition` or Motion independent transforms `x`, `y`, `scale` etc, ensure.
-
-When animating with CSS `animation` or Motion via `transform`, this is unnecessary as layer will automatically be prompted by the browser.
-
-### Design
-
-In general, prefer physics-based springs for physical motion such as `x`, `rotate` etc. Especially when it could be interrupted.
-
-Non-numerical values won't use spring physics so you can use more predictable settings like `type: "spring", bounce: 0.2, visualDuration: 0.4`
-
-Consider the kind of interface you are building. If a serious website like stock trading, don't use overshoot in your springs or easing curves. If it's a wedding site, you can use softer curves and slightly longer durations.
-
-### API best practice
-
-#### MotionValues
-
--   Never use `motionValue.onChange(update)` — always use `motionValue.on("change", update)`
+`best-practices/` is self-contained and works with no server at all — use it
+directly. Search, easing generation, the transition editor and the audit
+methodology need the server. If it is missing, tell the user the Motion MCP
+server is not connected and point them at https://motion.dev/docs/ai-kit.

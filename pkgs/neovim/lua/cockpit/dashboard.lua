@@ -202,17 +202,14 @@ function M.build(spec)
     tabs = {},
   }
   if spec.remote_cwd then
-    -- The session's files live on another host and no local mirror exists. Say so with
-    -- the command that fixes it: falling through to the home view showed the ticket list
-    -- and made a broken vm-sync look like "this session has no changes" (EVERY-2447).
+    -- Falling through to the home view made an unreachable session look like
+    -- "this session has no changes" (EVERY-2447).
     model.cards[#model.cards + 1] = {
-      title = "REMOTE SESSION — no local mirror",
+      title = "REMOTE SESSION — files are on the VM",
       rows = {
         { text = spec.remote_cwd .. " does not exist on this machine." },
         { text = "" },
-        { text = "vm-sync " .. (spec.identity or ""):upper() .. "   ← creates the local worktree + live sync" },
-        { text = "" },
-        { text = "Until then this session's diff is only visible on the VM." },
+        { text = "Open this session in a work Cockpit to see its diff." },
       },
     }
   elseif spec.kind == "home" then

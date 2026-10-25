@@ -35,6 +35,11 @@ query {
 }
 GQL
 
+if [ -f "$OUT" ]; then
+  extra=$(jq -r '(.session_tickets // []) | to_entries | map("sessionTicket\(.key): issue(id:\(.value.id | tojson)) { identifier title }") | join("\n")' "$OUT")
+  QUERY="${QUERY%\}}$extra}"
+fi
+
 body=$(jq -n --arg q "$QUERY" '{query:$q}')
 resp=$(curl -sS --max-time 20 -X POST "https://api.linear.app/graphql" \
   -H "Authorization: $key" -H "Content-Type: application/json" --data "$body")
@@ -47,7 +52,11 @@ if [ "$(echo "$resp" | jq '.data.cycles.nodes | length')" = "0" ]; then
 fi
 
 mkdir -p "$(dirname "$OUT")"
+tmp=$(mktemp "$OUT.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
 echo "$resp" | jq '
+  [.data | to_entries[] | select(.key | startswith("sessionTicket")) | .value | select(. != null) | {id: .identifier, title: .title}] as $sessions
+  |
   .data.cycles.nodes[0] as $c
   | {
       cycle: {
@@ -60,6 +69,7 @@ echo "$resp" | jq '
         }
       },
       updated_at: (now | todate),
+      session_tickets: $sessions,
       tickets: [ $c.issues.nodes[] | {
         id: .identifier,
         title: .title,
@@ -71,7 +81,8 @@ echo "$resp" | jq '
                   | gsub("^-+"; "") | gsub("-+$"; "") | split("-")[0:6] | join("-")))
       }]
     }
-' >"$OUT"
+' >"$tmp"
+mv "$tmp" "$OUT"
 
 n=$(jq '.tickets | length' "$OUT")
 echo "cycle-sync: wrote $OUT — $(jq -r '.cycle.name' "$OUT") · $n tickets"

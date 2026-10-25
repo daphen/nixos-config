@@ -105,11 +105,13 @@ local function gather()
 		if ok and sc.total and sc.total > 0 then search = sc.current .. "/" .. sc.total end
 	end
 	local plan = ""
+	local view = ""
 	local dashboard = { active = false, model = {} }
 	local shared_diff
 	pcall(function()
 		local m = require("cockpit")
 		plan = (m.plan_chip and m.plan_chip() or "")
+		view = m.workspace_view()
 		dashboard = (m.dashboard_snapshot and m.dashboard_snapshot()) or dashboard
 		local model = type(dashboard.model) == "table" and dashboard.model or {}
 		local git_cwd = dashboard.active and model.cwd or vim.fn.getcwd()
@@ -146,6 +148,7 @@ local function gather()
 		plan = vim.trim(plan),
 		root = root_chip(),
 		dashboard = dashboard,
+		view = view,
 		line = vim.api.nvim_win_get_cursor(0)[1],
 		lines = vim.api.nvim_buf_line_count(buf),
 	}

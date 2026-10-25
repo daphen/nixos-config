@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import "." as Modules
 import "../QsLib" as Lib
+import Qstns as Qstns
 
 PanelWindow {
     id: bar
@@ -38,6 +39,7 @@ PanelWindow {
         || Modules.NotificationJumpPickerState.open
         || Modules.AgentAskState.inputOpen
         || Modules.CockpitState.open
+        || Qstns.State.open
     readonly property var exclusivePickerStates: [
         Modules.ControlCenterState,
         Modules.LauncherState,
@@ -56,7 +58,8 @@ PanelWindow {
         Modules.TodoListPickerState,
         Modules.NotificationJumpPickerState,
         Modules.CockpitState,
-        Modules.PaletteState
+        Modules.PaletteState,
+        Qstns.State
     ]
     function claimPicker(activeState) {
         if (!activeState.open) return
@@ -136,7 +139,8 @@ PanelWindow {
         todoListPicker.open ? todoListPicker.implicitHeight : 0,
         notificationJumpPicker.open ? notificationJumpPicker.implicitHeight : 0,
         agentAskPicker.open ? agentAskPicker.implicitHeight : 0,
-        cockpitPicker.open ? cockpitPicker.implicitHeight : 0
+        cockpitPicker.open ? cockpitPicker.implicitHeight : 0,
+        qstnsPicker.open ? qstnsPicker.implicitHeight : 0
     )
 
     anchors {
@@ -443,11 +447,12 @@ PanelWindow {
                 handlesJump: bar.focusedOutput
             }
             Modules.AgentAskPicker { id: agentAskPicker; anchors.fill: parent }
+            Modules.QstnsPicker { id: qstnsPicker; anchors.fill: parent }
             Modules.CockpitPicker { id: cockpitPicker; anchors.fill: parent }
         }
     }
 
-    Rectangle {
+    Lib.HoverTip {
         id: metricTooltip
         readonly property bool targetInRightGroup: bar.metricTooltipTarget === networkMetric
             || bar.metricTooltipTarget === audioMetric
@@ -468,38 +473,10 @@ PanelWindow {
                     metricTooltip.retainedText = bar.metricTooltipText
             }
         }
-        visible: bar.metricTooltipTarget !== null || opacity > 0
-        opacity: bar.metricTooltipTarget !== null ? 1 : 0
+        shown: bar.metricTooltipTarget !== null
+        text: retainedText
         x: Math.max(12, Math.min(bar.width - width - 12, retainedCenterX - width / 2))
         y: capsule.y + Modules.Theme.barHeight + (bar.metricTooltipTarget !== null ? 2 : -3)
-        width: metricTooltipLabel.implicitWidth + 20
-        height: 30
-        radius: 10
-        color: bar.hoverSurface
-        border.width: 1
-        border.color: Modules.Theme.hairline
-        z: 10
-
-        Behavior on opacity {
-            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
-        }
-        Behavior on y {
-            NumberAnimation {
-                duration: Lib.Motion.med
-                easing.type: Lib.Motion.easeEmphasized
-                easing.bezierCurve: Lib.Motion.curveEmphasized
-            }
-        }
-
-        Text {
-            id: metricTooltipLabel
-            anchors.centerIn: parent
-            text: metricTooltip.retainedText
-            color: Modules.Theme.fg
-            font.family: Modules.Theme.fontFamily
-            font.pixelSize: Modules.Theme.fontSize - 1
-            font.weight: Modules.Theme.fontWeight
-        }
     }
 
     // Touch has no pointer focus to grab, so an open dropdown catches outside taps over the whole surface.

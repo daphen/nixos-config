@@ -69,7 +69,7 @@ local function open_changed_files_picker()
 				if item and item.file and vim.fn.filereadable(item.file) == 1 then
 					vim.cmd("edit " .. vim.fn.fnameescape(item.file))
 				else
-					vim.notify("Cockpit: local mirror unavailable for editing", vim.log.levels.WARN)
+					vim.notify("Cockpit: file is not available on this machine", vim.log.levels.WARN)
 				end
 			end,
 		})

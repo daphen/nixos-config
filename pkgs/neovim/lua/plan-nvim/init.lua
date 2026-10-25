@@ -62,8 +62,8 @@ local function plans_dir(root)
 end
 
 -- Where a SPECIFIC plan actually lives. A VM worker writes to its worktree's .plans/
--- (no vault there — the vault is a git repo on David's machine only), mutagen mirrors
--- that into the local worktree, and the vault copy then goes stale silently: EVERY-2563's
+-- (no vault there — the vault is a git repo on David's machine only), and the vault
+-- copy then goes stale silently: EVERY-2563's
 -- rewrite sat unread for hours while `:e!` faithfully reloaded the old vault file. So look
 -- for the file where the writer puts it FIRST, and only then fall back to the vault.
 local function plan_path(key, root)
@@ -529,6 +529,7 @@ end
 -- Multi-line compose float (styled). on_submit(text) fires on send; cancel
 -- discards. Type in insert; <C-s> sends; <Esc> to normal then <CR> sends, q cancels.
 local active_window_session
+local quickshell_ipc = require("cockpit.quickshell_ipc")
 local function cockpit_config()
 	local instance = vim.env.COCKPIT_INSTANCE or vim.env.HEIDR_INSTANCE
 	if not instance then return end
@@ -536,31 +537,35 @@ local function cockpit_config()
 		or vim.fn.expand("~/.local/state/cockpit/instance-" .. instance .. "-shell")
 end
 local function rail_context(payload)
-	local config = cockpit_config()
-	if not config then return false end
+	if not cockpit_config() then return false end
 	local session, scopes = active_window_session()
 	if not session then vim.notify("No selected Cockpit session", vim.log.levels.WARN); return true, false end
 	payload.session, payload.mode = session, scopes == "lovable,work" and "work" or "personal"
-	local file = vim.fn.tempname()
-	payload.id = file
-	vim.fn.writefile({ vim.json.encode(payload) }, file)
-	local result = vim.system({ "qs", "-p", config, "ipc", "call", "cockpit", "editorContext", file }, { text = true }):wait(1500)
-	vim.fn.delete(file)
-	local accepted = result.code == 0 and vim.trim(result.stdout or "") == "accepted"
-	if not accepted then vim.notify("Cockpit: " .. vim.trim(result.stderr or result.stdout or "context handoff failed"), vim.log.levels.WARN) end
+	payload.id = vim.fn.tempname()
+	payload.editor = vim.fn.fnamemodify(vim.v.servername or "", ":t")
+	local ok, result = quickshell_ipc.call("editorContext", { vim.json.encode(payload) }, 1500)
+	local accepted = ok and result == "accepted"
+	if not accepted then vim.notify("Cockpit: " .. (result or "context handoff failed"), vim.log.levels.WARN) end
 	return true, accepted
 end
 
 local rail_compose
-function M.submit_compose(file)
-	local payload = vim.json.decode(table.concat(vim.fn.readfile(file), "\n"))
-	vim.fn.delete(file)
+function M.submit_compose(value)
+	local payload = value
+	if type(value) ~= "table" then
+		local encoded = value
+		if not value:match("^%s*{") then
+			encoded = table.concat(vim.fn.readfile(value), "\n")
+			vim.fn.delete(value)
+		end
+		payload = vim.json.decode(encoded)
+	end
 	if not rail_compose or payload.id ~= rail_compose.id then return false end
 	local text = vim.trim(payload.text or "")
 	if text == "" then return false end
-	local submit = rail_compose.submit
+	local pending = rail_compose
 	rail_compose = nil
-	submit(text)
+	if pending.submit(text) == false then rail_compose = pending; return false end
 	return "sent"
 end
 
@@ -707,20 +712,6 @@ local function dispatch(prompt, wait, cwd, exact_session, exact_scopes)
 		vim.notify("plan: no session bound to this plan — press P in the rail to bind one, then re-dispatch", vim.log.levels.WARN)
 		return false
 	end
-	-- Ticket worktrees carry their session's NAME in the dirname (context name =
-	-- ticket id): send by name — cwd matching cannot reach a VM worker, whose
-	-- session cwd is the box path, not this local mirror.
-	local tick = vim.fn.fnamemodify(root, ":t"):match("^lovable%.daphen%-(.+)$")
-	if tick then
-		vim.system({ "agent", "send", tick, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
-			if res.code ~= 0 then
-				vim.schedule(function()
-					vim.notify("plan: couldn't reach session '" .. tick .. "' — is it in the roster?", vim.log.levels.WARN)
-				end)
-			end
-		end)
-		return true
-	end
 	vim.system({ "agent", "send", "--cwd", root, "--wait", tostring(wait or 8) }, { stdin = prompt }, function(res)
 		if res.code ~= 0 then
 			vim.schedule(function()
@@ -746,9 +737,21 @@ end
 -- variant that's the selection end, so it sits under the lines it's about. (To add a
 -- directive/constraint, just edit the plan text directly — there's no separate note.)
 local function ask_at(anchor, title)
+	local origin_buf = vim.api.nvim_get_current_buf()
+	local origin_path = vim.api.nvim_buf_get_name(origin_buf)
+	local plan_path, root = state.plan_path, state.root
 	compose(title, function(text)
-		insert_after(anchor, quote_block("❓", text))
-		dispatch_questions()
+		if not vim.api.nvim_buf_is_valid(origin_buf) or vim.api.nvim_buf_get_name(origin_buf) ~= origin_path
+			or not vim.uv.fs_stat(origin_path) then return false end
+		local current_plan, current_root = state.plan_path, state.root
+		state.plan_path, state.root = plan_path, root
+		local ok, err = pcall(vim.api.nvim_buf_call, origin_buf, function()
+			insert_after(anchor, quote_block("❓", text))
+			dispatch_questions()
+		end)
+		state.plan_path, state.root = current_plan, current_root
+		if not ok then error(err) end
+		return true
 	end)
 end
 
@@ -757,12 +760,10 @@ function M.ask()
 end
 
 active_window_session = function()
-	local config = cockpit_config()
-	if not config then return nil end
-	local result = vim.system({ "qs", "-p", config, "ipc", "call", "cockpit", "railState" },
-		{ text = true }):wait(1000)
-	if result.code ~= 0 then return nil end
-	local ok, state = pcall(vim.json.decode, vim.trim(result.stdout or ""))
+	if not cockpit_config() then return nil end
+	local called, result = quickshell_ipc.call("railState", {}, 1000)
+	if not called then return nil end
+	local ok, state = pcall(vim.json.decode, result)
 	if not ok or not state.sel or state.sel == "" then return nil end
 	return state.sel, state.scopeMode == "work" and "lovable,work" or "personal"
 end

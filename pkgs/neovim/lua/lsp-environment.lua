@@ -6,6 +6,14 @@ local function gate(root, on_dir)
     on_dir(root)
     return
   end
+  if vim.fn.executable("direnv") == 0 then
+    if not notified[envroot] then
+      notified[envroot] = true
+      vim.notify("LSP paused: direnv is unavailable; update the Neovim package before opening "
+        .. envroot, vim.log.levels.WARN)
+    end
+    return
+  end
   vim.system({ "direnv", "status", "--json" }, { cwd = envroot, text = true }, function(result)
     local ok, status = pcall(vim.json.decode, result.stdout or "")
     local found = ok and status.state and status.state.foundRC

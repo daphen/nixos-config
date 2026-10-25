@@ -73,6 +73,10 @@ if ! timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/$port" 2>/dev/null; then
 fi
 
 url="http://localhost:$port"
+if ! curl --silent --max-time 3 --output /dev/null "$url"; then
+  echo "cockpit-app: '$sess' advertises port $port, but the VM app is not serving HTTP" >&2
+  exit 1
+fi
 "$HOME/.config/niri/scripts/browser-dispatch" --profile=work "$url" >/dev/null 2>&1 || true
 bid=$(niri msg --json windows 2>/dev/null \
   | jq -r '[.[]|select(.app_id=="browser-work")][0].id // empty')

@@ -31,6 +31,7 @@ PanelWindow {
     property real slideProgress: 0
     readonly property string edgeProfile: {
         const _ = NiriState.version
+        if (root.screen && NiriState.outputIsFullscreen(root.screen.name, root.screen.height)) return ""
         const app = NiriState.focusedAppId()
         return app === "browser-personal" ? "personal" : app === "browser-work" ? "work" : ""
     }

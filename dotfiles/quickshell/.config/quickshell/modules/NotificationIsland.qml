@@ -41,7 +41,12 @@ PanelWindow {
     WlrLayershell.keyboardFocus: answerMode ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     // Input only over the capsule — the rest of the surface passes clicks
     // through to whatever is beneath.
-    mask: Region { item: capsule }
+    mask: Region {
+        x: capsule.x
+        y: capsule.y + capsuleSlide.y
+        width: capsule.width
+        height: capsule.height
+    }
     visible: active
 
     property bool active: false
@@ -347,6 +352,7 @@ PanelWindow {
         }
 
         transform: Translate {
+            id: capsuleSlide
             y: root.open ? 0 : capsule.height + 20
             Behavior on y {
                 NumberAnimation {

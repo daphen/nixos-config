@@ -20,12 +20,6 @@ When animating motion values, don't track the current animation in a variable â€
 
 Easing is defined via the `ease` option using camelCase: `easeOut`, `easeInOut`, `circOut`, etc. Not `ease-out` or `ease-in-out`.
 
-## Docs & Examples Lookup
+## API guidance
 
-When you need API details, usage patterns, or example code, call the `search-motion-codex` MCP tool:
-
-```
-search-motion-codex({ platform: "js", searchTerm: "scroll" })
-```
-
-If the `search-motion-codex` tool is not available, tell the user to install the Motion Studio MCP server from **https://motion.dev/docs/studio**.
+The latest docs are available via the Motion MCP. Check the [Codex](../codex/index.md) documentation.

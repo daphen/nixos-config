@@ -64,6 +64,7 @@ in
     ".gitconfig".source = link "${dotfiles}/git/.gitconfig";
     ".gitignore_global".source = link "${dotfiles}/git/.gitignore_global";
     ".local/share/qml/QsLib".source = link "${dotfiles}/qslib/.local/share/qml/QsLib";
+    ".local/share/qml/Qstns".source = ../../pkgs/qstns/qs-shell;
   });
 
   home.sessionVariables = {

@@ -62,7 +62,6 @@ func runWorktree(a app, ticket, raw string, startApp, scriptTag bool) error {
 			return fmt.Errorf("remote worktree setup failed: %w", err)
 		}
 	}
-	mirror := worktreeMirror(a, ticket, vmwt)
 
 	if startApp {
 		worktreeSay(a, "boot devenv wt in tmux session wt-"+ticket+" …")
@@ -78,35 +77,6 @@ func runWorktree(a app, ticket, raw string, startApp, scriptTag bool) error {
 		}
 	}
 
-	var mirrorErr error
-	if !a.nativeVM() {
-		worktreeSay(a, "local worktree + sync via vm-sync …")
-		syncArgs := []string{"--prepare", raw}
-		if vmwt != repo+"-"+ticket {
-			syncArgs = []string{"--prepare", "--remote-cwd", vmwt, raw}
-		}
-		text, syncErr := a.combined(filepath.Join(a.home, ".local", "bin", "vm-sync"), syncArgs...)
-		for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
-			if line != "" {
-				fmt.Fprintln(a.out, "  "+line)
-			}
-		}
-		mirrorErr = syncErr
-		if mirrorErr == nil {
-			mirrorErr = verifyWorktreeMirror(a, vmwt, mirror)
-		}
-		if mirrorErr == nil {
-			worktreeSay(a, "source mirror ready: "+mirror)
-		} else {
-			worktreeSay(a, "✗ source mirror not ready: "+mirrorErr.Error())
-			worktreeSay(a, "  retry: vm-sync "+strings.Join(syncArgs, " "))
-			if existing == nil {
-				worktreeSay(a, "new agent was not spawned; existing VM state was preserved")
-				return silentError{}
-			}
-		}
-	}
-
 	worktreeSay(a, "playwright override (.pi/mcp.json) on the box …")
 	if _, err := worktreeSSHResult(a, playwrightCommand(vmwt)); err != nil {
 		worktreeSay(a, "  ✗ playwright override failed (non-fatal)")
@@ -119,13 +89,6 @@ func runWorktree(a app, ticket, raw string, startApp, scriptTag bool) error {
 	}
 	worktreeSay(a, "agent ready: select '"+ticket+"' in the rail")
 	worktreeSay(a, "retirement after explicit approval: orchestrator runs vm-wt --reap "+strings.ToUpper(ticket)+" from outside the ticket checkout; workers send a handoff, never self-reap")
-	if mirrorErr != nil {
-		if !scriptTag {
-			worktreeSay(a, "agent context was preserved; HTTP readiness was not attempted")
-			return silentError{}
-		}
-		worktreeSay(a, "routing the registered runtime despite the independent mirror failure")
-	}
 
 	if !startApp {
 		worktreeSay(a, "worker/source ready; app startup not requested (vm-wt --app "+strings.ToUpper(raw)+")")
@@ -200,17 +163,15 @@ func validateTicketCheckout(a app, ticket, cwd string) error {
 	if cwd == standard {
 		return nil
 	}
-	if _, _, _, err := explicitSyncPaths(a, ticket, cwd); err != nil {
+	clean := filepath.Clean(cwd)
+	base := filepath.Base(clean)
+	marker := "-" + ticket
+	at := strings.Index(strings.ToLower(base), marker)
+	if clean != cwd || filepath.Dir(clean) != filepath.Dir(a.vmRepo()) || !explicitCheckoutPattern.MatchString(base) ||
+		at < 0 || (len(base) > at+len(marker) && base[at+len(marker)] != '-') {
 		return fmt.Errorf("registered cwd %q does not match %s", cwd, strings.ToUpper(ticket))
 	}
 	return nil
-}
-
-func worktreeMirror(a app, ticket, cwd string) string {
-	if cwd == a.vmRepo()+"-"+ticket {
-		return filepath.Join(a.home, "work", "lovable.daphen-"+ticket)
-	}
-	return filepath.Join(a.home, "work", filepath.Base(cwd))
 }
 
 func discoverWorktreePorts(a app, cwd string) (worktreePorts, error) {
@@ -399,7 +360,6 @@ func devURLFailure(a app, ticket, stage string, err error) error {
 func finishWorktree(a app, ticket string, reap bool) error {
 	repo := a.vmRepo()
 	target := repo + "-" + ticket
-	mirror := filepath.Join(a.home, "work", "lovable.daphen-"+ticket)
 	if profile := envFallback("COCKPIT_AGENT_PROFILE", "HEIDR_AGENT_PROFILE", ""); profile != "" && profile != "lovable-orchestrator" {
 		return fmt.Errorf("blocked before changes: orchestrator owns ticket shutdown; send a handoff instead of running --off or --reap")
 	}
@@ -411,21 +371,10 @@ func finishWorktree(a app, ticket string, reap bool) error {
 	if err != nil {
 		return fmt.Errorf("blocked before changes: cannot resolve caller directory: %w", err)
 	}
-	roots := []string{target}
-	if !a.nativeVM() {
-		roots = append(roots, mirror)
-	}
-	for _, root := range roots {
-		resolved, err := filepath.EvalSymlinks(root)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("blocked before changes: cannot resolve retirement target: %w", err)
-		}
-		if cwd == resolved || strings.HasPrefix(cwd, resolved+string(os.PathSeparator)) {
-			return fmt.Errorf("blocked before changes: run from outside %s; the orchestrator must own ticket shutdown", root)
-		}
+	if resolved, err := filepath.EvalSymlinks(target); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("blocked before changes: cannot resolve retirement target: %w", err)
+	} else if err == nil && (cwd == resolved || strings.HasPrefix(cwd, resolved+string(os.PathSeparator))) {
+		return fmt.Errorf("blocked before changes: run from outside %s; the orchestrator must own ticket shutdown", target)
 	}
 	socket := filepath.Join(envDefault("XDG_RUNTIME_DIR", "/tmp"), "agentd-work.sock")
 	sessions, err := retirementRoster(socket)
@@ -445,45 +394,16 @@ func finishWorktree(a app, ticket string, reap bool) error {
 		}
 		owner = true
 	}
-	localRepo := filepath.Join(a.home, "work", "lovable")
-	head := ""
-	if reap && !a.nativeVM() && pathExists(mirror) {
-		head, err = a.output("git", "-C", mirror, "rev-parse", "HEAD")
-		if err != nil {
-			return fmt.Errorf("cannot inspect retained mirror: %w", err)
-		}
-		head = strings.TrimSpace(head)
-	}
-	if reap && !a.nativeVM() && pathExists(localRepo) {
-		if text, e := a.combined("sh", "-c", checkoutSafety(localRepo, mirror, head)); e != nil {
-			return fmt.Errorf("local mirror retained: %s: %w", text, e)
-		}
-		if pathExists(mirror) {
-			if _, err := executable(a.home, "wt"); err != nil {
-				return err
-			}
-		}
-	}
 	if reap {
-		if text, e := worktreeSSHResult(a, checkoutSafety(repo, target, head)); e != nil {
+		if text, e := worktreeSSHResult(a, checkoutSafety(repo, target)); e != nil {
 			return fmt.Errorf("VM checkout retained: %s: %w", text, e)
 		}
 	}
-	var mutagen string
-	var hasSync, tunnelActive bool
-	syncName := "vmwt-" + ticket
+	tunnelActive := false
 	if !a.nativeVM() {
-		mutagen, err = executable(a.home, "mutagen")
-		if err != nil {
-			return err
-		}
-		hasSync, err = prepareRetirementSync(a, mutagen, syncName, target, mirror)
-		if err != nil {
-			return fmt.Errorf("blocked before shutdown: %w", err)
-		}
 		tunnelActive, err = inspectRetirementTunnel(a, ticket)
 		if err != nil {
-			return fmt.Errorf("blocked before shutdown (sync may be paused): %w", err)
+			return fmt.Errorf("blocked before shutdown: %w", err)
 		}
 	}
 	if owner {
@@ -506,43 +426,26 @@ func finishWorktree(a app, ticket string, reap bool) error {
 		}
 	}
 	if !reap {
-		worktreeSay(a, "turned off "+strings.ToUpper(ticket)+"; files, branches and caches retained; sync paused")
+		worktreeSay(a, "turned off "+strings.ToUpper(ticket)+"; files, branches and caches retained")
 		return nil
 	}
-	text, err := worktreeSSHResult(a, archiveCheckoutScript(repo, target, ticket, head, true))
+	text, err := worktreeSSHResult(a, bazelCacheScript(target))
+	if text != "" {
+		worktreeSay(a, strings.TrimSpace(text))
+	}
+	if err != nil {
+		return fmt.Errorf("turned off; bazel cache removal incomplete: %w", err)
+	}
+	text, err = worktreeSSHResult(a, archiveCheckoutScript(repo, target, ticket))
 	if text != "" {
 		worktreeSay(a, strings.TrimSpace(text))
 	}
 	if err != nil {
 		return fmt.Errorf("turned off; VM REAP incomplete: %w", err)
 	}
-	if !a.nativeVM() && pathExists(mirror) {
-		text, err = a.combined("sh", "-c", archiveCheckoutScript(localRepo, mirror, ticket, head, false))
-		if text != "" {
-			worktreeSay(a, strings.TrimSpace(text))
-		}
-		if err != nil {
-			return fmt.Errorf("VM removed; local mirror retained: %w", err)
-		}
-		wt, err := executable(a.home, "wt")
-		if err != nil {
-			return fmt.Errorf("VM removed; local mirror retained: %w", err)
-		}
-		if text, err = a.combined(wt, "-C", localRepo, "remove", "--no-delete-branch", "--foreground", "--yes", mirror); err != nil {
-			return fmt.Errorf("VM removed; local Worktrunk removal failed: %s: %w", text, err)
-		}
-		if pathExists(mirror) {
-			return fmt.Errorf("local mirror remains after removal: %s", mirror)
-		}
-	}
-	if hasSync {
-		if err := a.quiet(nil, mutagen, "sync", "terminate", syncName); err != nil {
-			return fmt.Errorf("worktrees removed; sync cleanup failed: %w", err)
-		}
-	}
 	worktreeSay(a, "REAP complete: "+strings.ToUpper(ticket)+"; branches and private evidence retained; owned worktree/cache removed")
 	if a.nativeVM() {
-		worktreeSay(a, "desktop mirrors and forwarding were not touched from this VM")
+		worktreeSay(a, "desktop forwarding was not touched from this VM")
 	}
 	return nil
 }
@@ -604,46 +507,6 @@ func retirementRoster(path string) ([]worktreeSession, error) {
 	return roster.Sessions, err
 }
 
-func prepareRetirementSync(a app, mutagen, name, target, mirror string) (bool, error) {
-	text, err := a.combined(mutagen, "sync", "list", "--template", "{{ json . }}")
-	if err != nil {
-		return false, fmt.Errorf("cannot inspect Mutagen sessions: %w", err)
-	}
-	var sessions []mutagenListing
-	if json.Unmarshal([]byte(text), &sessions) != nil {
-		return false, fmt.Errorf("cannot verify Mutagen ownership for %s", name)
-	}
-	found := false
-	for _, session := range sessions {
-		touchesTarget := filepath.Clean(session.Alpha.Path) == target || filepath.Clean(session.Beta.Path) == mirror
-		if session.Name != name {
-			if touchesTarget {
-				return false, fmt.Errorf("sync %s also names the retirement target", session.Name)
-			}
-			continue
-		}
-		if found || session.Alpha.Protocol != "ssh" || session.Alpha.User != a.user || session.Alpha.Host != a.host || filepath.Clean(session.Alpha.Path) != target || session.Beta.Protocol != "local" || filepath.Clean(session.Beta.Path) != mirror {
-			return false, fmt.Errorf("sync %s does not have the exact expected endpoints", name)
-		}
-		found = true
-	}
-	if !found {
-		return false, nil
-	}
-	for _, session := range sessions {
-		if session.Name == name && session.Paused {
-			return true, nil
-		}
-	}
-	if err := a.quiet(nil, mutagen, "sync", "flush", name); err != nil {
-		return false, fmt.Errorf("sync %s did not flush: %w", name, err)
-	}
-	if err := a.quiet(nil, mutagen, "sync", "pause", name); err != nil {
-		return false, fmt.Errorf("sync %s did not pause: %w", name, err)
-	}
-	return true, nil
-}
-
 func inspectRetirementTunnel(a app, ticket string) (bool, error) {
 	unit := ticket + "-dev-tunnel.service"
 	load, err := exec.Command("systemctl", "--user", "show", "-p", "LoadState", "--value", unit).Output()
@@ -670,20 +533,19 @@ func inspectRetirementTunnel(a app, ticket string) (bool, error) {
 	return exec.Command("systemctl", "--user", "is-active", "--quiet", unit).Run() == nil, nil
 }
 
-func checkoutSafety(repo, target, expectedHead string) string {
-	return "set -eu\nrepo=" + shellLiteral(repo) + "\nwt=" + shellLiteral(target) + "\nexpected=" + shellLiteral(expectedHead) + `
+func checkoutSafety(repo, target string) string {
+	return "set -eu\nrepo=" + shellLiteral(repo) + "\nwt=" + shellLiteral(target) + `
 registered=0; git -C "$repo" worktree list --porcelain | grep -Fqx "worktree $wt" && registered=1 || true
 if [ ! -e "$wt" ]; then [ "$registered" = 0 ] || { echo 'missing checkout still registered' >&2; exit 20; }; echo 'checkout already absent'; exit 0; fi
 [ "$registered" = 1 ] && [ "$(git -C "$wt" rev-parse --show-toplevel)" = "$wt" ] || { echo 'not the exact registered ticket checkout' >&2; exit 20; }
-[ -z "$expected" ] || [ "$(git -C "$wt" rev-parse HEAD)" = "$expected" ] || { echo 'mirror and VM HEAD differ' >&2; exit 21; }
 [ -z "$(git -C "$wt" status --porcelain --untracked-files=no)" ] || { echo 'tracked changes block REAP' >&2; exit 22; }
 [ -z "$(git -C "$wt" ls-files --others --exclude-standard | head -c 1)" ] || { echo 'untracked data blocks REAP' >&2; exit 22; }
 [ -z "$(awk -v p="$wt" '$5==p || index($5,p"/")==1 {print;exit}' /proc/self/mountinfo)" ] || { echo 'mounted data blocks REAP' >&2; exit 22; }
 `
 }
 
-func archiveCheckoutScript(repo, target, ticket, expectedHead string, remove bool) string {
-	script := checkoutSafety(repo, target, expectedHead) + `
+func archiveCheckoutScript(repo, target, ticket string) string {
+	return checkoutSafety(repo, target) + `
 active=$(find /proc/[0-9]* -maxdepth 2 -type l \( -path "*/cwd" -o -path "*/fd/*" \) \( -lname "$wt" -o -lname "$wt/*" \) -print -quit 2>/dev/null || true)
 [ -z "$active" ] || { echo "active CWD or file blocks REAP: $active" >&2; exit 24; }
 head=$(git -C "$wt" rev-parse HEAD); branch=$(git -C "$wt" symbolic-ref --quiet --short HEAD || true)
@@ -702,14 +564,31 @@ echo "private evidence verified: $archive"
 [ -z "$(git -C "$wt" status --porcelain --untracked-files=all)" ] || { echo 'checkout changed while preserving evidence' >&2; exit 26; }
 git -C "$wt" clean -fdX >/dev/null
 [ -z "$(git -C "$wt" ls-files --others --ignored --exclude-standard | head -c 1)" ] || { echo 'ignored data remains; checkout retained' >&2; exit 26; }
-`
-	if remove {
-		script += `git -C "$repo" worktree remove "$wt"
+git -C "$repo" worktree remove "$wt"
 [ ! -e "$wt" ] && ! git -C "$repo" worktree list --porcelain | grep -Fqx "worktree $wt"
 echo 'confirmed VM worktree removed with native Git'
 `
-	}
-	return script
+}
+
+func bazelCacheScript(target string) string {
+	return "set -eu\nwt=" + shellLiteral(target) + `
+found=0
+for marker in "$HOME"/.cache/bazel/_bazel_*/*/DO_NOT_BUILD_HERE; do
+  [ -f "$marker" ] && [ "$(cat "$marker")" = "$wt" ] || continue
+  base=${marker%/DO_NOT_BUILD_HERE}; found=1
+  pid=$(cat "$base/server/server.pid.txt" 2>/dev/null || true)
+  if [ -n "$pid" ] && tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | grep -Fqx -- "--output_base=$base"; then
+    kill -TERM "$pid"
+    for _ in $(seq 1 100); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+    ! kill -0 "$pid" 2>/dev/null || { echo "bazel server $pid did not stop; cache retained" >&2; exit 27; }
+  fi
+  chmod -R u+w "$base"
+  find "$base" -depth -delete
+  [ ! -e "$base" ] || { echo "bazel output base remains: $base" >&2; exit 27; }
+  echo "bazel output base removed: $base"
+done
+[ "$found" = 1 ] || echo 'no bazel output base for this checkout'
+`
 }
 
 func shellLiteral(value string) string {
@@ -721,7 +600,7 @@ func teardownWorktreeTunnel(a app, ticket string) error {
 	if err := exec.Command("systemctl", "--user", "stop", unit).Run(); err != nil {
 		return fmt.Errorf("could not stop %s: %w", unit, err)
 	}
-	worktreeSay(a, "stopped "+unit+"; agent, mirror, and remote dev slice were left running")
+	worktreeSay(a, "stopped "+unit+"; agent and remote dev slice were left running")
 	return nil
 }
 
@@ -734,41 +613,6 @@ func worktreeSSHResult(a app, script string) (string, error) {
 		return a.combined("sh", "-c", script)
 	}
 	return a.combined("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user+"@"+a.host, script)
-}
-
-func worktreeSSHOutput(a app, script string) (string, error) {
-	var stdout, stderr strings.Builder
-	cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=25", a.user+"@"+a.host, script)
-	if a.nativeVM() {
-		cmd = exec.Command("sh", "-c", script)
-	}
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		if diagnostic := strings.TrimSpace(stderr.String()); diagnostic != "" {
-			return stdout.String(), fmt.Errorf("%w: %s", err, diagnostic)
-		}
-		return stdout.String(), err
-	}
-	return stdout.String(), nil
-}
-
-func verifyWorktreeMirror(a app, vmwt, mirror string) error {
-	if !pathExists(filepath.Join(mirror, ".git")) {
-		return fmt.Errorf("%s is not a git checkout", mirror)
-	}
-	local, err := a.output("git", "-C", mirror, "rev-parse", "HEAD")
-	if err != nil {
-		return fmt.Errorf("cannot read local mirror head: %w", err)
-	}
-	remote, err := worktreeSSHOutput(a, "git -C '"+vmwt+"' rev-parse HEAD")
-	if err != nil {
-		return fmt.Errorf("cannot read registered VM checkout head: %w", err)
-	}
-	local, remote = strings.TrimSpace(local), strings.TrimSpace(remote)
-	if local != remote {
-		return fmt.Errorf("head mismatch: mirror %s, registered VM checkout %s", prefix(local, 11), prefix(remote, 11))
-	}
-	return nil
 }
 
 func playwrightCommand(vmwt string) string {

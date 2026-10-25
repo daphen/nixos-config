@@ -1,0 +1,15 @@
+version: 1
+kind: DeviceProfile
+name: Hyprland Gaming
+description: Native Steam Deck controls with both-triggers Steam desktop shortcut
+target_devices: [deck-uhid, keyboard]
+mapping:
+  - name: Left trigger
+    source_event: { gamepad: { trigger: { name: LeftTrigger, deadzone: 0.3 } } }
+    target_events: [ { gamepad: { trigger: { name: LeftTrigger } } }, { keyboard: KeyF6 } ]
+  - name: Right trigger
+    source_event: { gamepad: { trigger: { name: RightTrigger, deadzone: 0.3 } } }
+    target_events: [ { gamepad: { trigger: { name: RightTrigger } } }, { keyboard: KeyF7 } ]
+  - name: Steam button
+    source_event: { gamepad: { button: Guide } }
+    target_events: [ { gamepad: { button: Guide } }, { keyboard: KeyF23 } ]

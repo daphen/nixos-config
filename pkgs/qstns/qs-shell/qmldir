@@ -1,0 +1,5 @@
+module Qstns
+singleton State 1.0 State.qml
+AgentdState 1.0 AgentdState.qml
+Chat 1.0 Chat.qml
+FeedScroll 1.0 FeedScroll.qml

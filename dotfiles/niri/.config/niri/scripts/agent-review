@@ -42,7 +42,7 @@ from agent_review_harness import (
 
 HOME = os.environ["HOME"]
 VM_NAME = os.environ.get("COCKPIT_VM", os.environ.get("HEIDR_VM", "dev-heidr-2a39"))
-NATIVE_VM = socket.gethostname().split(".", 1)[0] == VM_NAME.split(".", 1)[0]
+NATIVE_VM = socket.gethostname().split(".", 1)[0] in (VM_NAME.split(".", 1)[0], "claude-dev")
 LOVABLE_DIR = Path(HOME) / ("src" if NATIVE_VM else "work") / "lovable"
 RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 PR_URL_RE = re.compile(r"https?://github\.com/([^/]+)/([^/]+)/pull/(\d+)")

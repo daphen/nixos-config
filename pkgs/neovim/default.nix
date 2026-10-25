@@ -5,11 +5,18 @@ let
   # Trimmed to what's actually used in the lovable monorepo (TS/Go/Nix/CSS).
   # Re-add language-specific tools (stylua, black, ruff, alejandra, statix) if
   # the sandbox workload changes.
+  agentCli = pkgs.writeShellApplication {
+    name = "agent";
+    runtimeInputs = [ pkgs.python3 ];
+    text = ''exec ${pkgs.python3}/bin/python3 ${../../dotfiles/bin/.local/bin/agent} "$@"'';
+  };
+
   lintAndFormat = with pkgs; [
     prettier      # TS / JS / CSS / JSON
     nixpkgs-fmt   # Nix (single Nix formatter — alejandra dropped)
     eslint_d      # TS / JS lint
     shellcheck    # shell lint
+    (mdformat.withPlugins (ps: [ ps.mdformat-gfm ps.mdformat-frontmatter ]))
   ];
 
   neovim013Pkgs = pkgs.extend (_final: prev: {
@@ -136,6 +143,9 @@ let
         ripgrep
         fd
         git
+        direnv
+        agentCli
+        fontconfig
         mermaid-cli   # mmdc — snacks.image renders ```mermaid code blocks to images (pulls a headless chromium)
       ] ++ lintAndFormat;
 
@@ -161,7 +171,7 @@ let
           # Add more languages to this list as you need them.
           (p.nvim-treesitter.withPlugins (ts: with ts; [
             bash c cpp css go gomod gosum gowork html javascript json lua
-            markdown markdown_inline nix python regex rust toml tsx
+            markdown markdown_inline nix python qmljs regex rust toml tsx
             typescript vim yaml
           ]))
           p.nvim-treesitter-textobjects
@@ -227,6 +237,12 @@ let
   };
 
 in {
+  # Full baked 0.13 runtime for the VM-owned Cockpit editor.
+  remoteEditor = inputs.wrapper-modules.wrappers.neovim.wrap {
+    pkgs = neovim013Pkgs;
+    imports = [ nvimWrapper ];
+  };
+
   # Portable neovim — config baked into the Nix store.
   # Run anywhere with Nix: nix run github:daphen/nixos-config#neovim
   neovim = inputs.wrapper-modules.wrappers.neovim.wrap {

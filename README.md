@@ -198,9 +198,14 @@ The Deck keeps SteamOS and boots Hyprland by default. **Gaming Mode** opens
 Steam Big Picture in a remote row of the current desktop canvas. The camera
 zooms out, pans to Steam, and zooms in without a black shader or workspace
 switch. It does not log out or start another compositor. Tap Steam from work to
-enter, tap during gaming for Steam's menu, and hold for 600 ms to return to
-work. Steam+button chords are deferred in this first version. The command
-`deck-gaming-mode return` also returns without closing Steam or games.
+enter. In Big Picture and games, all controller inputs pass directly to Steam,
+including the Steam button and its hold/chords. Hold both triggers, then tap
+Steam to return to the desktop without closing Big Picture or games; there is no
+Steam-button hold-to-desktop shortcut. Tap Steam from the desktop to return to
+Big Picture. The underlying command is `deck-gaming-mode return`. Desktop
+shortcuts pass through while Steam or a game is focused, so per-game Steam Input
+layouts (including back-paddle keyboard mappings) reach the game. Power and
+volume controls remain available in both modes.
 
 Configured application starts share the `desktop-launch` policy on every host;
 it is transparent on workstations and groups Deck apps and terminal descendants
@@ -254,12 +259,13 @@ Do not resize or format anything from this document. On arrival day:
    before relying on graphical auto-login.
 1. In Hyprland, certify orientation/touch, all canvas keyboard and Deck
    controls, right-pad pointer/click, left-pad pan, OSK, suspend, audio,
-   Bluetooth, and dock hotplug. Verify Guide tap/hold and the switch between
-   desktop controls and the virtual Steam Deck controller, including haptics.
+   Bluetooth, and dock hotplug. Verify native Steam tap/hold/chords and the
+   switch between desktop controls and the virtual Steam Deck controller,
+   including haptics.
 1. In Gaming Mode, browse the library and test native and Proton titles. Check
-   late-opening game windows, fullscreen/frame times, Steam's menu, and hold to
-   return to the untouched work canvas. Finally boot the previous NixOS
-   generation and Valve recovery media once.
+   late-opening game windows, fullscreen/frame times, Steam's native
+   menu/chords, and explicit return to the untouched work canvas. Finally boot
+   the previous NixOS generation and Valve recovery media once.
 
 A local terminal and its child client pause, but root Nix workers do not. From
 TTY2, run `deck-gaming-mode cleanup` after an interrupted graphical session;

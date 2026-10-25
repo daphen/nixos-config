@@ -43,8 +43,5 @@ return function(ctx)
 		})
 	end
 
-	for _, name in ipairs({ "k:04-mini-mouse", "ergohaven-k:04-mini-mouse" }) do
-		hl.device({ name = name, sensitivity = -0.2 })
-	end
 	hl.config({ input = input })
 end

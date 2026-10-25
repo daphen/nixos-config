@@ -25,7 +25,6 @@ let
   # the repo). Lands `agentd` on PATH; the nvim rail + niri startup use it.
   agentd = import ../../pkgs/agentd { inherit pkgs; src = inputs.agentd; };
   mediactl = import ../../pkgs/mediactl { inherit pkgs; };
-  mutagenEvented = import ../../pkgs/mutagen-evented.nix { inherit pkgs; };
   entropyLauncher = pkgs.writeShellScriptBin "entropy-k04" ''
     export APPIMAGE_EXTRACT_AND_RUN=1
     export LD_LIBRARY_PATH="${pkgs.libglvnd}/lib:/run/opengl-driver/lib:${pkgs.wayland}/lib:${pkgs.libxkbcommon}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -87,9 +86,6 @@ in
     # `ssh -f` dies on any network blip and takes the remote agentd with it, leaving a
     # stale socket and a rail that silently shows nothing; autossh reconnects.
     autossh
-    # sshfs/mutagen — mutagen syncs the lovbox worktree to the local mirror so the
-    # local nvim edits the box's files at native speed (sshfs hung on the monorepo).
-    mutagenEvented
     btop
   ]) ++ [
     # Helium browser via the upstream auto-bumped flake. Ships its own

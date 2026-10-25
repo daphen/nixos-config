@@ -7,6 +7,8 @@ return function(ctx)
 		local function floating_rule(name, match, size)
 			if DECK_MODE and size then
 				size = "90% 80%"
+			elseif not DECK_MODE and name ~= "picture-in-picture" then
+				size = "monitor_w*0.9 monitor_h*0.9"
 			end
 			local rule = {
 				name = name,

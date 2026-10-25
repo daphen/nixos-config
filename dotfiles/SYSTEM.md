@@ -189,7 +189,7 @@ Current entrypoints:
 
 - `cockpit-boot work|personal` restores one of two stable Cockpit instances.
 - `cockpit-new` creates a unique personal instance.
-- `vm-wt EVERY-N` creates the VM worktree/mirror and worker session.
+- `vm-wt EVERY-N` creates the VM worktree and worker session.
 - `agent-review <PR>` owns PR review checkout and session creation.
 - Super+T focuses the rail roster; Super+Ctrl+T opens its context picker.
 

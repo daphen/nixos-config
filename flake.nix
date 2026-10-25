@@ -122,6 +122,7 @@
       };
 
       nvimPkgs = import ./pkgs/neovim { inherit pkgs inputs; lib = nixpkgs.lib; };
+      vmctlPkg = import ./pkgs/vmctl { inherit pkgs; neovim = nvimPkgs.remoteEditor; };
 
       # Pin iwd to 3.12 to fix SIGSEGV crashes during WiFi roaming (build_ciphers_common)
       iwdOverlay = final: prev: {
@@ -233,6 +234,7 @@
             inherit inputs desktopProfile;
             nvimLocal = nvimPkgs.neovimLocal;
             nvimBaked = nvimPkgs.neovim;
+            nvimRemote = nvimPkgs.remoteEditor;
           };
         };
       };
@@ -313,6 +315,7 @@
           neovim = nvimPkgs.neovim;
           neovim-local = nvimPkgs.neovimLocal;
           neovim-013 = nvimPkgs.neovim013Local;
+          vmctl = vmctlPkg;
           dev-env = mkDevEnv "x86_64-linux";
           default = mkDevEnv "x86_64-linux";
         };

@@ -261,7 +261,9 @@ def main(binary, label):
         CONFIG.with_name("canvas-state.lua").read_bytes()
     )
     (case / "hyprland.lua").write_text(
-        'local on=hl.on\nhl.on=function(event,callback) if event~="hyprland.start" then return on(event,callback) end end\ndofile('
+        'package.path=package.path..";"..'
+        + json.dumps(str(CONFIG.parent / "?.lua"))
+        + '\nlocal on=hl.on\nhl.on=function(event,callback) if event~="hyprland.start" then return on(event,callback) end end\ndofile('
         + json.dumps(str(CONFIG))
         + ')\nhl.on=on\nhl.monitor({output="WAYLAND-1",mode="1280x720@60",scale='
         + str(scale)

@@ -117,17 +117,8 @@ let
         source_event: { gamepad: { button: North } }
         target_events: [ { keyboard: KeyF22 } ]
   '';
-  gamingInputProfile = pkgs.writeText "hyprland-gaming-input.yaml" ''
-    version: 1
-    kind: DeviceProfile
-    name: Hyprland Gaming
-    description: Steam gamepad controls with native Hyprland Guide tap and hold
-    target_devices: [ deck-uhid, keyboard ]
-    mapping:
-      - name: Steam button
-        source_event: { gamepad: { button: Guide } }
-        target_events: [ { keyboard: KeyF23 } ]
-  '';
+  gamingInputProfile = pkgs.writeText "hyprland-gaming-input.yaml"
+    (builtins.readFile ../../dotfiles/hyprland/.config/hypr/modules/gaming-input.yaml);
   keyboardInputProfile = pkgs.writeText "hyprland-keyboard-input.yaml" ''
     version: 1
     kind: DeviceProfile

@@ -22,6 +22,7 @@ let
     nspr
     nss
     pango
+    pipewire
     systemd
     libx11
     libxcomposite

@@ -29,6 +29,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -401,6 +402,8 @@ def cmd_review(a) -> int:
     # review/pr-<n> worktree and start a rail session there seeded with /review-pr. The
     # Super+r picker and the agent_review tool route through here, so there's one path.
     script = str(HOME / ".config" / "niri" / "scripts" / "agent-review")
+    if not os.path.exists(script):
+        script = shutil.which("agent-review") or script
     if not os.path.exists(script):
         print(f"agent review: {script} not found", file=sys.stderr)
         return 1

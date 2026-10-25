@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Restart one scope's agentd so its sessions respawn pi (fresh extensions, skills,
+# MCP config); sessions come back asleep and resume their transcript on next use.
+set -euo pipefail
+scope="${1:?usage: cockpit-agentd-restart <scope>}"
+if [ "$scope" != work ]; then
+  exec systemctl --user restart "agentd-$scope.service"
+fi
+# The VM agentd was started by hand, so restart it with its own argv and environment.
+exec ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=15 \
+  david_karlsson_lovable_dev@dev-heidr-2a39.workstation.lovable.net bash -s <<'EOF'
+set -eu
+pid=$(pgrep -x agentd | head -1); [ -n "$pid" ] || { echo "no agentd running" >&2; exit 1; }
+d=$(mktemp -d); cp /proc/$pid/environ $d/env; cp /proc/$pid/cmdline $d/cmd; cwd=$(readlink /proc/$pid/cwd)
+kill -TERM $pid
+for i in $(seq 1 50); do kill -0 $pid 2>/dev/null || break; sleep 0.2; done
+kill -0 $pid 2>/dev/null && kill -KILL $pid
+cd "$cwd"
+mapfile -d '' -t envv < $d/env; mapfile -d '' -t cmdv < $d/cmd; rm -rf $d
+setsid env -i "${envv[@]}" "${cmdv[@]}" >>~/agentd.log 2>&1 </dev/null &
+for i in $(seq 1 25); do ss -tln | grep -q ':17840 ' && { echo "agentd restarted"; exit 0; }; sleep 0.2; done
+tail -5 ~/agentd.log >&2; exit 1
+EOF

@@ -90,6 +90,21 @@ in
       Install.WantedBy = [ "default.target" ];
     };
 
+    systemd.user.services.agentd-chat = {
+      Unit = {
+        Description = "agentd (chat scope)";
+        After = [ "network-online.target" "graphical-session.target" ];
+      };
+      Service = {
+        ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/agentd/chat";
+        ExecStart = "%h/.local/bin/launch-agentd chat --repo %h/.local/share/agentd/chat";
+        Environment = "PATH=${pkgs.libsecret}/bin:${pkgs.fish}/bin:/etc/profiles/per-user/daphen/bin:/run/current-system/sw/bin";
+        Restart = "on-failure";
+        RestartSec = 10;
+      };
+      Install.WantedBy = [ "default.target" ];
+    };
+
     xdg.desktopEntries.google-chrome = lib.mkForce { name = "Google Chrome"; noDisplay = true; };
 
     # Hide Helium's generic entry: it bypasses the isolated personal data dir.

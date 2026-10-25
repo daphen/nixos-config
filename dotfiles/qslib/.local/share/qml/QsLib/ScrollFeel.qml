@@ -17,12 +17,16 @@ WheelHandler {
 
     target: null
     acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+    // A horizontal-only list takes sideways swipes; the handler ignores the other axis.
+    readonly property bool horizontal: flick.flickableDirection === Flickable.HorizontalFlick
+    orientation: horizontal ? Qt.Horizontal : Qt.Vertical
     onWheel: e => {
         const touchpad = point.device.type === PointerDevice.TouchPad
-        const px = touchpad
-            ? e.angleDelta.y * touchpadGain
-            : ((e.pixelDelta.y !== 0) ? e.pixelDelta.y : e.angleDelta.y / 8) * mouseGain
-        flick.contentY -= px
+        const angle = horizontal ? e.angleDelta.x : e.angleDelta.y
+        const pixel = horizontal ? e.pixelDelta.x : e.pixelDelta.y
+        const px = touchpad ? angle * touchpadGain : ((pixel !== 0) ? pixel : angle / 8) * mouseGain
+        if (horizontal) flick.contentX -= px
+        else flick.contentY -= px
         flick.returnToBounds()
         root.scrolled(px > 0)
         e.accepted = true

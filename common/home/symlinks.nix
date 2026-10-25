@@ -49,6 +49,7 @@ in {
       source = link "${dotfiles}/hyprland/.config/hypr/hyprland.lua";
       force = true;
     };
+    "hypr/xdph.conf".source = link "${dotfiles}/hyprland/.config/hypr/xdph.conf";
     "hypr/scripts".source = link "${dotfiles}/hyprland/.config/hypr/scripts";
     "hypr/shaders".source = link "${dotfiles}/hyprland/.config/hypr/shaders";
     "hypr/modules" = {
@@ -124,5 +125,6 @@ in {
   # QsLib — shared QML module (Theme, nucleo icons, family components) for
   # the bar and all quickshell apps. Resolved via QML2_IMPORT_PATH.
   home.file.".local/share/qml/QsLib".source = link "${dotfiles}/qslib/.local/share/qml/QsLib";
+  home.file.".local/share/qml/Qstns".source = link "/home/daphen/personal/qstns/qs-shell";
   home.file.".local/share/applications/qslib-presentation.desktop".source = link "${dotfiles}/qslib/showcase/qslib-presentation.desktop";
 }

@@ -63,7 +63,11 @@ freeze_work() {
 }
 profile() {
     local path
-    path=$(readlink -f "/etc/inputplumber/profiles/hyprland-$1.yaml")
+    if [[ $1 == gaming ]]; then
+        path=$(readlink -f "$HOME/.config/hypr/modules/gaming-input.yaml")
+    else
+        path=$(readlink -f "/etc/inputplumber/profiles/hyprland-$1.yaml")
+    fi
     if [[ $(inputplumber device 0 profile path) != "Current profile path: '$path'" ]]; then
         inputplumber device 0 profile load "$path"
     fi
@@ -123,7 +127,7 @@ camera_out() {
 }
 camera_to() {
     focus_window "$1" || return 1
-    sleep 0.45
+    sleep 0.85
     finish_camera || return 1
     sleep 0.50
 }
@@ -193,9 +197,7 @@ case ${1:-enter} in
         exit 0
         ;;
     tap)
-        if (( playing )); then
-            exec busctl call org.shadowblip.InputPlumber /org/shadowblip/InputPlumber/CompositeDevice0 org.shadowblip.Input.CompositeDevice SendButtonChord as 1 Gamepad:Button:Guide
-        fi
+        if (( playing )); then exit 0; fi
         ;;
     return)
         if (( ! playing )); then thaw_work; exit; fi

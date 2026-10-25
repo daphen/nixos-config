@@ -1,6 +1,6 @@
 # Niri scripts - packaged as a derivation for PATH availability
 # The niri config.kdl itself is symlinked via symlinks.nix
-{ config, pkgs, inputs, ... }:
+{ config, pkgs, inputs, nvimRemote, ... }:
 let
   # Source from the flake itself (a pure store path), NOT an absolute ~/… path.
   # A derivation `src` must be readable at build time; an out-of-flake absolute
@@ -9,7 +9,7 @@ let
   # picking up new/changed scripts. `inputs.self` tracks every git-tracked file.
   desktopctl = import ../../pkgs/desktopctl { inherit pkgs; };
   sessionctl = import ../../pkgs/sessionctl { inherit pkgs; };
-  vmctl = import ../../pkgs/vmctl { inherit pkgs; };
+  vmctl = import ../../pkgs/vmctl { inherit pkgs; neovim = nvimRemote; };
   niri-scripts = pkgs.stdenv.mkDerivation {
     name = "niri-scripts";
     src = "${inputs.self}/dotfiles/niri/.config/niri/scripts";

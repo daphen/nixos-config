@@ -54,20 +54,20 @@ until explicitly revised:
 
 ## Dispatch and lifecycle
 
-`vm-wt EVERY-N` prepares the VM checkout, source mirror, and worker only; it does
-not start the app or install project dependencies locally. When an app is needed,
+`vm-wt EVERY-N` prepares the VM checkout and worker only; it does not start the
+app or install project dependencies locally. When an app is needed,
 run `vm-wt --app EVERY-N` from the laptop to reuse the canonical VM startup,
 loopback tunnel, and HTTP checks. Use `--script-tag` only when that runtime is
 explicitly needed. The existing worker owns VM dependencies, builds, logs,
 diagnostics and tests inside its registered checkout using the repository's
-existing devenv commands. Never reconstruct these with ad-hoc SSH or run project
-setup in the local mirror; existing auth, sandbox and restart approvals still apply.
+existing devenv commands. Never reconstruct these with ad-hoc SSH; existing auth,
+sandbox and restart approvals still apply.
 
 Own ticket shutdown and retirement yourself; never delegate `--off` or `--reap`
 to the retiring worker or a cleanup helper. The worker saves a durable handoff
 and reports readiness, dirty data, dependencies, and blockers. Only after David
 approves that exact context, run the installed `vm-wt --reap EVERY-N` from
-outside the target checkout and its mirror (`--off` retains files and caches).
+outside the target checkout (`--off` retains files and caches).
 Capture stdout, stderr, and exit status outside the target; verify session,
 runtime, and worktree removal before reporting success. A disappeared session
 is not proof of complete retirement. Preserve every safeguard and report the
@@ -113,7 +113,7 @@ plan/progress artifacts and the roster before acting.
 Never kill or hand-relaunch an agentd process, hand-roll SSH/worktree repair, or
 bypass a failed canonical launcher. Report the exact failure. Use the installed
 `vm-wt` wrapper on the current host; the VM wrapper selects native execution,
-which leaves desktop mirrors and tunnels untouched. A protected work-daemon
+which leaves desktop tunnels untouched. A protected work-daemon
 restart is `vm-cockpit --restart` and requires David.
 
 ## PR convergence

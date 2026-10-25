@@ -8,11 +8,19 @@ return function(ctx)
 	local PAN_GAIN = ctx.PAN_GAIN
 	local is_canvas_workspace = ctx.is_canvas_workspace
 	local is_game_window = ctx.is_game_window
+	local function bind(key, action, options)
+		if not DECK_MODE then return hl.bind(key, action, options) end
+		return hl.bind(key, function(...)
+			if is_game_window(hl.get_active_window()) then return { pass_event = true } end
+			if type(action) == "function" then return action(...) end
+			hl.dispatch(action)
+		end, options)
+	end
 
 	for _, direction in ipairs({ "h", "j", "k", "l" }) do
-		hl.bind("SUPER + " .. direction, hl.dsp.layout("focus " .. direction))
-		hl.bind("SUPER + SHIFT + " .. direction, hl.dsp.layout("move " .. direction))
-		hl.bind("SUPER + CTRL + " .. direction, hl.dsp.layout("resize " .. direction))
+		bind("SUPER + " .. direction, hl.dsp.layout("focus " .. direction))
+		bind("SUPER + SHIFT + " .. direction, hl.dsp.layout("move " .. direction))
+		bind("SUPER + CTRL + " .. direction, hl.dsp.layout("resize " .. direction))
 	end
 
 	local palette_tab_cycle_active = false
@@ -40,8 +48,8 @@ return function(ctx)
 	end
 
 	local palette_tab_bindings = {
-		hl.bind("CTRL + h", palette_tab_cycle(-1), { repeating = true }),
-		hl.bind("CTRL + l", palette_tab_cycle(1), { repeating = true }),
+		bind("CTRL + h", palette_tab_cycle(-1), { repeating = true }),
+		bind("CTRL + l", palette_tab_cycle(1), { repeating = true }),
 	}
 
 	hl.on("input.keyboard.key", function(keycode, _, state)
@@ -65,34 +73,34 @@ return function(ctx)
 	set_palette_tab_bindings(hl.get_active_window())
 	hl.on("window.active", set_palette_tab_bindings)
 
-	hl.bind("ALT + CTRL + h", hl.dsp.layout("pan -120 0"), { repeating = true })
-	hl.bind("ALT + CTRL + l", hl.dsp.layout("pan 120 0"), { repeating = true })
-	hl.bind("ALT + CTRL + k", hl.dsp.layout("pan 0 -120"), { repeating = true })
-	hl.bind("ALT + CTRL + j", hl.dsp.layout("pan 0 120"), { repeating = true })
-	hl.bind("ALT + SHIFT + j", hl.dsp.layout("move-row j"))
-	hl.bind("ALT + SHIFT + k", hl.dsp.layout("move-row k"))
-	hl.bind("ALT + r", hl.dsp.layout("reset"))
-	hl.bind("SUPER + SHIFT + d", hl.dsp.exec_cmd(SCRIPTS .. "desktop-launch kitty"))
-	hl.bind("SUPER + CTRL + w", hl.dsp.window.close())
-	hl.bind("SUPER + TAB", hl.dsp.layout("overview"))
-	hl.bind("SUPER + CTRL + f", hl.dsp.layout("widen"))
-	hl.bind("SUPER + CTRL + SHIFT + f", hl.dsp.window.float({ action = "toggle" }))
-	hl.bind("SUPER + d", hl.dsp.exec_cmd(SCRIPTS .. "focus-kitty-cycle"))
-	hl.bind("SUPER + u", hl.dsp.focus({ monitor = "+1" }))
-	hl.bind("ALT + h", hl.dsp.focus({ monitor = "l" }))
-	hl.bind("ALT + j", hl.dsp.focus({ monitor = "d" }))
-	hl.bind("ALT + k", hl.dsp.focus({ monitor = "u" }))
-	hl.bind("ALT + l", hl.dsp.focus({ monitor = "r" }))
+	bind("ALT + CTRL + h", hl.dsp.layout("pan -120 0"), { repeating = true })
+	bind("ALT + CTRL + l", hl.dsp.layout("pan 120 0"), { repeating = true })
+	bind("ALT + CTRL + k", hl.dsp.layout("pan 0 -120"), { repeating = true })
+	bind("ALT + CTRL + j", hl.dsp.layout("pan 0 120"), { repeating = true })
+	bind("ALT + SHIFT + j", hl.dsp.layout("move-row j"))
+	bind("ALT + SHIFT + k", hl.dsp.layout("move-row k"))
+	bind("ALT + r", hl.dsp.layout("reset"))
+	bind("SUPER + SHIFT + d", hl.dsp.exec_cmd(SCRIPTS .. "desktop-launch kitty"))
+	bind("SUPER + CTRL + w", hl.dsp.window.close())
+	bind("SUPER + TAB", hl.dsp.layout("overview"))
+	bind("SUPER + CTRL + f", hl.dsp.layout("widen"))
+	bind("SUPER + CTRL + SHIFT + f", hl.dsp.window.float({ action = "toggle" }))
+	bind("SUPER + d", hl.dsp.exec_cmd(SCRIPTS .. "focus-kitty-cycle"))
+	bind("SUPER + u", hl.dsp.focus({ monitor = "+1" }))
+	bind("ALT + h", hl.dsp.focus({ monitor = "l" }))
+	bind("ALT + j", hl.dsp.focus({ monitor = "d" }))
+	bind("ALT + k", hl.dsp.focus({ monitor = "u" }))
+	bind("ALT + l", hl.dsp.focus({ monitor = "r" }))
 	for _, direction in ipairs({ "h", "j", "k", "l" }) do
-		hl.bind("SUPER + CTRL + SHIFT + " .. direction, hl.dsp.layout("join " .. direction))
+		bind("SUPER + CTRL + SHIFT + " .. direction, hl.dsp.layout("join " .. direction))
 	end
-	hl.bind("SUPER + SHIFT + u", hl.dsp.window.move({ monitor = "+1" }))
-	hl.bind("ALT + CTRL + SHIFT + h", hl.dsp.workspace.move({ monitor = "l" }))
-	hl.bind("ALT + CTRL + SHIFT + j", hl.dsp.workspace.move({ monitor = "d" }))
-	hl.bind("ALT + CTRL + SHIFT + k", hl.dsp.workspace.move({ monitor = "u" }))
-	hl.bind("ALT + CTRL + SHIFT + l", hl.dsp.workspace.move({ monitor = "r" }))
+	bind("SUPER + SHIFT + u", hl.dsp.window.move({ monitor = "+1" }))
+	bind("ALT + CTRL + SHIFT + h", hl.dsp.workspace.move({ monitor = "l" }))
+	bind("ALT + CTRL + SHIFT + j", hl.dsp.workspace.move({ monitor = "d" }))
+	bind("ALT + CTRL + SHIFT + k", hl.dsp.workspace.move({ monitor = "u" }))
+	bind("ALT + CTRL + SHIFT + l", hl.dsp.workspace.move({ monitor = "r" }))
 	if not DECK_MODE then
-		hl.bind("ALT + escape", hl.dsp.exec_cmd(SCRIPTS .. "session-exit"))
+		bind("ALT + escape", hl.dsp.exec_cmd(SCRIPTS .. "session-exit"))
 	end
 
 	local function dictation_state()
@@ -147,6 +155,11 @@ return function(ctx)
 			hl.dispatch(hl.dsp.exec_cmd(SCRIPTS .. "deck-gaming-mode sync"))
 		end
 
+		hl.window_rule({
+			name = "deck-steam-startup-no-initial-focus",
+			match = { class = "(?i)^(steam)?$", title = "^Steam$" },
+			no_initial_focus = true,
+		})
 		hl.window_rule({
 			name = "deck-big-picture-no-initial-focus",
 			match = { class = "(?i)^steam$", title = "^Steam Big Picture Mode$" },
@@ -207,22 +220,18 @@ return function(ctx)
 				sync_gaming_mode()
 			end
 		end)
-		local steam_held = false
+		local deck_lt_down, deck_rt_down, steam_return = false, false, false
+		local controller_device = { list = { "inputplumber-keyboard" } }
 		hl.bind("F23", function()
-			steam_held = false
-		end, { dont_inhibit = true })
+			steam_return = deck_lt_down and deck_rt_down
+		end, { dont_inhibit = true, ignore_mods = true, device = controller_device })
 		hl.bind("F23", function()
-			steam_held = true
-			hl.dispatch(hl.dsp.exec_cmd(SCRIPTS .. "deck-gaming-mode return"))
-		end, { long_press = true, dont_inhibit = true })
-		hl.bind("F23", function()
-			if not steam_held then
-				hl.dispatch(hl.dsp.exec_cmd(SCRIPTS .. "deck-gaming-mode tap"))
-			end
-		end, { release = true, dont_inhibit = true })
+			local action = steam_return and "return" or "tap"
+			steam_return = false
+			hl.dispatch(hl.dsp.exec_cmd(SCRIPTS .. "deck-gaming-mode " .. action))
+		end, { release = true, dont_inhibit = true, ignore_mods = true, device = controller_device })
 		local radial_open, radial_outer, radial_kind = false, false, nil
 		local radial_ring_outer = false
-		local deck_rt_down = false
 		local keyboard_toggle_held = false
 		local radial_held = { false, false, false, false }
 		local apps_held = { false, false, false, false }
@@ -349,11 +358,19 @@ return function(ctx)
 				hl.exec_cmd(string.format("%spalette-toggle %d", SCRIPTS, 16 + direction))
 			end
 		end
-		hl.bind("F7", function() deck_rt_down = true end, { ignore_mods = true })
+		hl.bind("F6", function() deck_lt_down = true end, { ignore_mods = true, dont_inhibit = true, device = controller_device })
+		hl.bind("F6", function() deck_lt_down = false end, { release = true, ignore_mods = true, dont_inhibit = true, device = controller_device })
+		hl.bind("F7", function() deck_rt_down = true end, { ignore_mods = true, dont_inhibit = true, device = controller_device })
+		hl.bind("F7", function()
+			deck_rt_down = false
+			if radial_open and radial_kind == "browser" then
+				close_radial(radial_ring_outer and "activate" or "finish")
+			end
+		end, { release = true, ignore_mods = true, dont_inhibit = true, device = controller_device })
 		local right_stick_directions = { "h", "j", "k", "l" }
 		for index, key in ipairs({ "F1", "F2", "F3", "F4" }) do
 			local direction = right_stick_directions[index]
-			hl.bind(key, function()
+			bind(key, function()
 				if radial_open then
 					if radial_kind == "browser" then radial_press(index) end
 					return
@@ -367,7 +384,7 @@ return function(ctx)
 				end
 				hl.dispatch(hl.dsp.layout("focus " .. direction))
 			end, { repeating = true })
-			hl.bind("SUPER + " .. key, function()
+			bind("SUPER + " .. key, function()
 				if radial_open then
 					if radial_kind == "browser" then radial_press(index) end
 					return
@@ -380,17 +397,10 @@ return function(ctx)
 				radial_outer = true
 			end
 		end
-		hl.bind("F11", radial_outer_press)
-		hl.bind("SUPER + F11", radial_outer_press)
+		bind("F11", radial_outer_press)
+		bind("SUPER + F11", radial_outer_press)
 		hl.on("input.keyboard.key", function(keycode, _, key_state)
-			if key_state == 0 then
-				if keycode == 73 then
-					deck_rt_down = false
-					if radial_open and radial_kind == "browser" then
-						close_radial(radial_ring_outer and "activate" or "finish")
-					end
-				end
-			end
+			if is_game_window(hl.get_active_window()) then return end
 			if keycode >= 67 and keycode <= 70 and key_state == 0 then
 				radial_held[keycode - 66] = false
 				if radial_kind == "browser" then
@@ -418,7 +428,7 @@ return function(ctx)
 		}
 		local deck_arrows = { h = "Left", j = "Down", k = "Up", l = "Right" }
 		for key, direction in pairs(deck_directions) do
-			hl.bind(key, function()
+			bind(key, function()
 				if radial_open then
 					if key == "F13" then
 						radial_ipc("step", -1)
@@ -437,15 +447,15 @@ return function(ctx)
 				hl.dispatch(hl.dsp.layout("focus " .. direction))
 			end, { repeating = true })
 			local apps_index = ({ F13 = 1, F14 = 2, F15 = 3, F16 = 4 })[key]
-			hl.bind("SUPER + " .. key, function()
+			bind("SUPER + " .. key, function()
 				apps_radial_press(apps_index)
 			end, { repeating = true })
-			hl.bind("SHIFT + " .. key, hl.dsp.layout("move " .. direction), { repeating = true })
-			hl.bind("CTRL + " .. key, hl.dsp.layout("resize " .. direction), { repeating = true })
+			bind("SHIFT + " .. key, hl.dsp.layout("move " .. direction), { repeating = true })
+			bind("CTRL + " .. key, hl.dsp.layout("resize " .. direction), { repeating = true })
 		end
 		for index, key in ipairs({ "F17", "F18", "F19", "F20" }) do
-			hl.bind(key, function() end, { ignore_mods = true })
-			hl.bind("SUPER + " .. key, function()
+			bind(key, function() end, { ignore_mods = true })
+			bind("SUPER + " .. key, function()
 				if deck_rt_down then
 					radial_press(index)
 				else
@@ -455,10 +465,10 @@ return function(ctx)
 		end
 		-- Steam owns normal stick arrows; LT selection must not also send arrows.
 		for _, key in ipairs({ "Left", "Down", "Up", "Right" }) do
-			hl.bind("SUPER + " .. key, function() end, { device = { list = { "extest-fake-device" } } })
+			bind("SUPER + " .. key, function() end, { device = { list = { "extest-fake-device" } } })
 		end
 		for _, axis in ipairs({ "mouse_up", "mouse_down", "mouse_left", "mouse_right" }) do
-			hl.bind("SUPER + " .. axis, function()
+			bind("SUPER + " .. axis, function()
 				if not radial_open then
 					return { pass_event = true }
 				end
@@ -482,11 +492,16 @@ return function(ctx)
 			return true
 		end
 		local face_device = { inclusive = false, list = { "extest-fake-device" } }
-		-- Steam also emits A/B; consume those duplicates, not InputPlumber's events.
+		-- Consume Steam's duplicate A/B only on the desktop.
 		for _, key in ipairs({ "Return", "Escape" }) do
-			hl.bind(key, function() end, { ignore_mods = true, device = { list = { "extest-fake-device" } } })
+			bind(key, function()
+				local window = hl.get_active_window()
+				if is_game_window(window) or (window and window.title == keyboard_title) then
+					return { pass_event = true }
+				end
+			end, { ignore_mods = true, device = { list = { "extest-fake-device" } } })
 		end
-		hl.bind("Return", function()
+		bind("Return", function()
 			if dictation_running() then
 				finish_dictation()
 				return
@@ -498,14 +513,14 @@ return function(ctx)
 			if rt_face_key(1) then return end
 			return { pass_event = true }
 		end, { device = face_device })
-		hl.bind("F21", function()
+		bind("F21", function()
 			if radial_open then
 				radial_ipc("delete", 0)
 				return
 			end
 			rt_face_key(4)
 		end)
-		hl.bind("F22", function()
+		bind("F22", function()
 			if radial_open then
 				if radial_kind == "browser" then close_radial("newtab") end
 				return
@@ -513,7 +528,7 @@ return function(ctx)
 			if rt_face_key(3) then return end
 			hl.dispatch(hl.dsp.exec_cmd("deck-osk-toggle"))
 		end)
-		hl.bind("Escape", function()
+		bind("Escape", function()
 			if dictation_state() ~= "idle" then
 				dictation("Cancel")
 				return
@@ -536,20 +551,20 @@ return function(ctx)
 			end
 			return { pass_event = true }
 		end, { dont_inhibit = true, device = face_device })
-		hl.bind("F24", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
-		hl.bind("F10", hl.dsp.exec_cmd("qs ipc call -- controlCenter toggle"))
-		hl.bind("SUPER + mouse:272", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
-		hl.bind("SUPER + F21", function()
+		bind("F24", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
+		bind("F10", hl.dsp.exec_cmd("qs ipc call -- controlCenter toggle"))
+		bind("SUPER + mouse:272", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
+		bind("SUPER + F21", function()
 			if radial_open then
 				radial_ipc("delete", 0)
 			end
 		end)
-		hl.bind("SUPER + Escape", function()
+		bind("SUPER + Escape", function()
 			if radial_open then
 				close_radial("cancel")
 			end
 		end, { device = face_device })
-		hl.bind("SUPER + F22", function()
+		bind("SUPER + F22", function()
 			if radial_open then
 				if radial_kind == "browser" then close_radial("newtab") end
 			elseif deck_rt_down then
@@ -561,17 +576,17 @@ return function(ctx)
 				end
 			end
 		end, { repeating = true })
-		hl.bind("F22", function() keyboard_toggle_held = false end, { release = true, ignore_mods = true })
-		hl.bind("F8", function() toggle_radial_ring(radial_kind) end, { dont_inhibit = true })
-		hl.bind("SUPER + F8", function()
+		bind("F22", function() keyboard_toggle_held = false end, { release = true, ignore_mods = true })
+		bind("F8", function() toggle_radial_ring(radial_kind) end, { dont_inhibit = true })
+		bind("SUPER + F8", function()
 			if radial_open then
 				toggle_radial_ring(radial_kind)
 			else
 				toggle_deck_dictation()
 			end
 		end, { dont_inhibit = true })
-		hl.bind("F12", function() end, { dont_inhibit = true })
-		hl.bind("SUPER + F12", function()
+		bind("F12", function() end, { dont_inhibit = true })
+		bind("SUPER + F12", function()
 			if radial_open then return end
 			if deck_rt_down then
 				hl.dispatch(hl.dsp.layout("widen"))
@@ -579,8 +594,8 @@ return function(ctx)
 				hl.dispatch(hl.dsp.window.close())
 			end
 		end, { dont_inhibit = true })
-		hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
-		hl.bind("SUPER + RETURN", function()
+		bind("SUPER + SPACE", hl.dsp.exec_cmd("qs ipc call -- launcher toggle"))
+		bind("SUPER + RETURN", function()
 			if radial_open then
 				close_radial("activate")
 			end
@@ -590,11 +605,11 @@ return function(ctx)
 
 	if REAL_MODE and DECK_MODE then
 		local function app(key, selector, command)
-			hl.bind("SUPER + " .. key, hl.dsp.exec_cmd(string.format("%sjump-or-exec %q %q", SCRIPTS, selector, command)))
+			bind("SUPER + " .. key, hl.dsp.exec_cmd(string.format("%sjump-or-exec %q %q", SCRIPTS, selector, command)))
 		end
 		local launch = SCRIPTS .. "desktop-launch "
-		hl.bind("SUPER + q", hl.dsp.exec_cmd(launch .. SCRIPTS .. "browser-personal"))
-		hl.bind("SUPER + w", hl.dsp.exec_cmd(launch .. SCRIPTS .. "browser-work"))
+		bind("SUPER + q", hl.dsp.exec_cmd(launch .. SCRIPTS .. "browser-personal"))
+		bind("SUPER + w", hl.dsp.exec_cmd(launch .. SCRIPTS .. "browser-work"))
 		app("c", "title:dsqrd", "dsqrd-client")
 		app("s", "title:slqs", "slqs-client")
 		app("a", "spotify_player", "kitty --class spotify_player " .. SCRIPTS .. "spotify-player-launch")
@@ -602,7 +617,7 @@ return function(ctx)
 		app("o", "title:cockpit-qs", "deck-cockpit")
 		app("p", "title:opqs", "opqs-client")
 		app("b", "btop", "kitty --class btop btop")
-		hl.bind("SUPER + e", hl.dsp.exec_cmd(launch .. SCRIPTS .. "spawn-terminal-with-yazi"))
+		bind("SUPER + e", hl.dsp.exec_cmd(launch .. SCRIPTS .. "spawn-terminal-with-yazi"))
 	end
 
 	if REAL_MODE then
@@ -748,10 +763,10 @@ return function(ctx)
 		bind_exec("XF86AudioPrev", "playerctl previous", { locked = true })
 	end
 
-	hl.bind("Super_L", function()
+	bind("Super_L", function()
 		hl.dispatch(hl.dsp.layout("pan-end"))
 	end, { release = true, ignore_mods = true })
-	hl.bind("Super_R", hl.dsp.layout("pan-end"), { release = true, ignore_mods = true })
+	bind("Super_R", hl.dsp.layout("pan-end"), { release = true, ignore_mods = true })
 
 	local overview_timer
 	hl.gesture({

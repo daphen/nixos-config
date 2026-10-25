@@ -71,6 +71,9 @@ func TestCockpitLauncherAndReaperUpdatesAreAtomicWithoutDaemonRestart(t *testing
 	reaper := cockpitReaperHash(t, home)
 	launcher := cockpitFileHash(t, binary)
 	wrapper := fmt.Sprintf("%x", sha256.Sum256([]byte(vmWorktreeWrapper)))
+	for _, tool := range []string{"agent", "agent-review", "agent_review_harness.py"} {
+		os.Remove(filepath.Join(home, "seen-"+tool))
+	}
 	listener := cockpitHealthySocket(t, filepath.Join(home, "run/agentd-work.sock"))
 	defer listener.Close()
 	result := runCockpitBinary(t, home, path, []string{
@@ -81,7 +84,7 @@ func TestCockpitLauncherAndReaperUpdatesAreAtomicWithoutDaemonRestart(t *testing
 	if result.err != nil {
 		t.Fatalf("result=%+v", result)
 	}
-	for _, want := range []string{"vmctl launcher updated and verified (" + launcher + ")", "vm-wt wrapper updated and verified (" + wrapper + ")", "slice reaper updated and verified (" + reaper + ")"} {
+	for _, want := range []string{"vmctl launcher updated and verified (" + launcher + ")", "vm-wt wrapper updated and verified (" + wrapper + ")", "slice reaper updated and verified (" + reaper + ")", "agent tool updated and verified", "agent-review tool updated and verified", "agent_review_harness.py tool updated and verified"} {
 		if !strings.Contains(result.stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, result.stdout)
 		}
@@ -248,6 +251,14 @@ func cockpitFixture(t *testing.T) (string, string, string) {
 	if err := os.WriteFile(reaper, []byte("#!/usr/bin/env python3\nprint('fixture')\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	for _, tool := range []string{"niri/.config/niri/scripts/agent-review", "niri/.config/niri/scripts/agent_review_harness.py", "bin/.local/bin/agent"} {
+		path := filepath.Join(home, "nixos/dotfiles", tool)
+		os.MkdirAll(filepath.Dir(path), 0o755)
+		if err := os.WriteFile(path, []byte(tool+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		os.WriteFile(filepath.Join(home, "seen-"+filepath.Base(tool)), []byte(cockpitFileHash(t, path)+"\n"), 0o644)
+	}
 	for _, rel := range cockpitRoleFiles {
 		path := filepath.Join(ai, filepath.FromSlash(rel))
 		if filepath.Ext(rel) == ".md" || rel == "instructions.md" {
@@ -275,6 +286,8 @@ case "$name" in
  rsync)
    [ "${FAIL_RSYNC-}" = yes ] && exit 1
    case "$*" in
+     *".local/bin/.agent"*)
+       for dest do :; done; dest=${dest##*/.}; dest=${dest%.tmp}; printf '%s\n' "${dest##*-}" > "$HOME/seen-${dest%-*}" ;;
      *".vm-slice-reaper-"*) : > "$HOME/reaper-seen" ;; *".vmctl-"*) : > "$HOME/vmctl-seen" ;;
      *".vm-wt-"*)
        previous=; source=; for arg do previous=$source; source=$arg; done
@@ -286,6 +299,8 @@ exec "$HOME/.local/bin/vmctl" --native worktree "$@"' ] || exit 1
  ssh)
    case "$*" in
      *"pi --version"*) printf '%s\n' "${PI_REMOTE-}" ;;
+     *'sha256sum $HOME/.local/bin/agent'*)
+       tool="$*"; tool=${tool#*sha256sum \$HOME/.local/bin/}; tool=${tool%% *}; read -r hash < "$HOME/seen-$tool" 2>/dev/null && echo "$hash" || true ;;
      *"sha256sum "*"vmctl 2>/dev/null"*)
        if [ -f "$HOME/vmctl-seen" ]; then echo "${REMOTE_VMCTL_AFTER-}"; else echo "${REMOTE_VMCTL_INITIAL-}"; fi ;;
      *"sha256sum "*"vm-wt 2>/dev/null"*)

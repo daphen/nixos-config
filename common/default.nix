@@ -211,6 +211,7 @@
     enable = true;
     extraPortals = with pkgs; [
       xdg-desktop-portal-gtk
+      xdg-desktop-portal-hyprland
       # Provides the ScreenCast/RemoteDesktop impl on niri (talks to
       # niri's org.gnome.Mutter.ScreenCast). gtk has no ScreenCast, so
       # without this — and with the routing below sending ScreenCast to
@@ -220,6 +221,12 @@
       # floating kitty (config in dotfiles/xdg-desktop-portal-termfilechooser)
       xdg-desktop-portal-termfilechooser
     ];
+    config.hyprland = {
+      default = [ "hyprland" "gtk" ];
+      "org.freedesktop.impl.portal.FileChooser" = [ "termfilechooser" ];
+      "org.freedesktop.impl.portal.ScreenCast" = [ "hyprland" ];
+      "org.freedesktop.impl.portal.Screenshot" = [ "hyprland" ];
+    };
     config.niri = {
       default = [ "gnome" "gtk" ];
       "org.freedesktop.impl.portal.FileChooser" = [ "termfilechooser" ];

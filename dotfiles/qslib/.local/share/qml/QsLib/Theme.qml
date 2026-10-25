@@ -19,7 +19,7 @@ Singleton {
         "light": {
             "bg":          "#FFFFFF",
             "bg_dim":      "#F5F5F7",
-            "canvas":      "#ECEFF1",
+            "canvas":      "#F6F7F4",
             "bg_alt":      "#F6F7F4",
             "selection":   "#F4F5F2",
             "surface":     "#F7F7F7",

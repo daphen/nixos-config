@@ -36,10 +36,21 @@ local has_wl_copy = vim.fn.executable("wl-copy") == 1
 if not has_wl_copy then
   local ok, osc52 = pcall(require, "vim.ui.clipboard.osc52")
   if ok then
+    local paste = { ["+"] = osc52.paste("+"), ["*"] = osc52.paste("*") }
+    if vim.env.COCKPIT_COCKPIT == "1" then
+      local ipc = require("cockpit.quickshell_ipc")
+      local function cockpit_paste(kind)
+        return function()
+          local called, text = ipc.call("clipboardText", { kind }, 1500)
+          return called and vim.split(text, "\n") or 0
+        end
+      end
+      paste = { ["+"] = cockpit_paste("+"), ["*"] = cockpit_paste("*") }
+    end
     vim.g.clipboard = {
       name = "OSC52",
       copy = { ["+"] = osc52.copy("+"), ["*"] = osc52.copy("*") },
-      paste = { ["+"] = osc52.paste("+"), ["*"] = osc52.paste("*") },
+      paste = paste,
     }
   end
 end

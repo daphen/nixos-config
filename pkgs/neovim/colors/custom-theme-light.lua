@@ -63,8 +63,8 @@ local c = {
   method = "#e16511",
   tag = "#e16511",
   attribute = "#243560",
-  item_hover = "#EDEDED",
-  item_selected = "#F4F5F2",
+  item_hover = "#F4F4F6",
+  item_selected = "#F0F0F3",
   item_cursor = "#E3E3E7",
 
   -- Highlights

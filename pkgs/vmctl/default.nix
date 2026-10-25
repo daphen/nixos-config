@@ -1,4 +1,4 @@
-{ pkgs }:
+{ pkgs, neovim ? pkgs.neovim }:
 
 pkgs.buildGoModule {
   pname = "vmctl";
@@ -7,9 +7,11 @@ pkgs.buildGoModule {
   vendorHash = null;
   env.CGO_ENABLED = "0";
   subPackages = [ "." ];
-  nativeBuildInputs = [ pkgs.makeWrapper pkgs.git pkgs.git-lfs pkgs.openssh pkgs.rsync pkgs.worktrunk ];
+  nativeBuildInputs = [ pkgs.makeWrapper pkgs.git pkgs.openssh pkgs.rsync ];
   postInstall = ''
-    wrapProgram $out/bin/vmctl --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.git pkgs.git-lfs pkgs.openssh pkgs.rsync pkgs.worktrunk ]}
+    wrapProgram $out/bin/vmctl \
+      --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.git pkgs.openssh pkgs.rsync ]} \
+      --set VMCTL_EDITOR_NVIM ${pkgs.lib.getExe neovim}
   '';
   meta.mainProgram = "vmctl";
 }

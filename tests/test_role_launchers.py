@@ -71,17 +71,17 @@ class VmSliceReaperOwnershipTests(unittest.TestCase):
         self.reaper.SRC = "/vm/src"
         self.reaper.DRY = False
 
-    def run_reaper(self, live, running, argv):
+    def run_reaper(self, live, running, argv, exit_code=0):
         stopped = []
         completed = SimpleNamespace(stdout="", stderr="", returncode=0)
         roster = live if callable(live) else lambda: live
         with mock.patch.object(self.reaper, "roster", side_effect=roster), \
              mock.patch.object(self.reaper, "slice_dirs", return_value=set(running)), \
-             mock.patch.object(self.reaper, "stop_slice", side_effect=lambda worktree: stopped.append(worktree) or True), \
+             mock.patch.object(self.reaper, "stop_slice", side_effect=lambda worktree: (stopped.append(worktree) or True, "stopped")), \
              mock.patch.object(self.reaper.time, "sleep"), \
              mock.patch.object(self.reaper.subprocess, "run", return_value=completed), \
              mock.patch.object(self.reaper.sys, "argv", argv):
-            self.assertEqual(self.reaper.main(), 0)
+            self.assertEqual(self.reaper.main(), exit_code)
         return stopped
 
     def test_sweep_keeps_long_cwd_owned_by_short_session_name(self):
@@ -93,27 +93,28 @@ class VmSliceReaperOwnershipTests(unittest.TestCase):
         worktree = "lovable.davidkarlsson-every-2739-fit-ds-canvas"
         live = {"every-2739": {"name": "every-2739", "cwd": f"/vm/src/{worktree}", "status": "idle"}}
         argv = ["vm-slice-reaper", "--worktree", f"/vm/src/{worktree}", "--session", "long-alias"]
-        self.assertEqual(self.run_reaper(live, [worktree], argv), [])
+        self.assertEqual(self.run_reaper(live, [worktree], argv, exit_code=1), [])
 
     def test_sweep_reaps_true_orphan(self):
         worktree = "lovable-every-9999"
         live = {"other": {"name": "other", "cwd": "/vm/src/lovable-every-1", "status": "streaming"}}
-        self.assertEqual(self.run_reaper(live, [worktree], ["vm-slice-reaper"]), [worktree])
+        self.assertEqual(self.run_reaper(live, [worktree], ["vm-slice-reaper"]), [f"/vm/src/{worktree}"])
 
     def test_unavailable_roster_fails_closed_for_sweep_and_hook(self):
         worktree = "lovable-every-9999"
-        self.assertEqual(self.run_reaper(None, [worktree], ["vm-slice-reaper"]), [])
+        self.assertEqual(self.run_reaper(None, [worktree], ["vm-slice-reaper"], exit_code=1), [])
         argv = ["vm-slice-reaper", "--worktree", f"/vm/src/{worktree}", "--session", "every-9999"]
-        self.assertEqual(self.run_reaper(None, [worktree], argv), [])
+        self.assertEqual(self.run_reaper(None, [worktree], argv, exit_code=1), [])
 
     def test_main_reaps_only_valid_empty_roster(self):
         worktree = "lovable-every-9999"
         argv = ["vm-slice-reaper", "--worktree", f"/vm/src/{worktree}", "--session", "every-9999"]
         with tempfile.TemporaryDirectory() as td:
-            for i, (payload, expected) in enumerate([({"sessions": []}, [worktree]), ({"sessions": [None]}, []), ({"type": "ping"}, [])]):
+            for i, (payload, expected) in enumerate([({"sessions": []}, [f"/vm/src/{worktree}"]), ({"sessions": [None]}, []), ({"type": "ping"}, [])]):
                 fake = FakeAgentd(Path(td) / str(i), payload=payload); fake.start()
                 self.reaper.SOCK = str(fake.path); self.reaper.TCP = ("127.0.0.1", 1)
-                self.assertEqual(self.run_reaper(self.reaper.roster, [worktree], argv), expected); fake.join()
+                code = 0 if payload == {"sessions": []} else 1
+                self.assertEqual(self.run_reaper(self.reaper.roster, [worktree], argv, exit_code=code), expected); fake.join()
 
 
 class LauncherPayloadTests(unittest.TestCase):
@@ -162,17 +163,10 @@ class LauncherPayloadTests(unittest.TestCase):
             (bindir / "ssh").chmod(0o755)
             (bindir / "git").write_text(f"#!/bin/sh\nprintf '%s\\n' '{head}'\n")
             (bindir / "git").chmod(0o755)
-            localbin = tmp / ".local/bin"; localbin.mkdir(parents=True)
-            (localbin / "vm-sync").write_text(
-                "#!/bin/sh\n"
-                "ticket=$(printf '%s' \"$1\" | tr '[:upper:]' '[:lower:]')\n"
-                "mkdir -p \"$HOME/work/lovable.daphen-$ticket/.git\"\n"
-            )
-            (localbin / "vm-sync").chmod(0o755)
             env = os.environ | {"HOME": td, "XDG_RUNTIME_DIR": str(runtime), "PATH": f"{bindir}:{os.environ['PATH']}"}
             result = subprocess.run([ROOT / "dotfiles/niri/.config/niri/scripts/vm-wt", "EVERY-1234"], env=env, check=False, capture_output=True, text=True, timeout=20)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("agent context was preserved", result.stdout)
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("worker/source ready; app startup not requested", result.stdout)
             fake.join()
             spawn = next(m for m in fake.messages if m.get("type") == "spawn")
             self.assertEqual(spawn["profile"], "lovable-worker")
@@ -243,6 +237,32 @@ class LauncherPayloadTests(unittest.TestCase):
         self.assertIn("--runtime-contract", forwarded)
         self.assertEqual(forwarded[forwarded.index("--runtime-contract") + 1], "exact-branch")
         self.assertIn("--allow-sandbox-start", forwarded)
+
+    def test_vm_review_runs_the_synced_launcher_in_vm_mode(self):
+        with tempfile.TemporaryDirectory() as td:
+            bin_dir = Path(td) / ".local/bin"; bin_dir.mkdir(parents=True)
+            for name in ("agent-review", "agent_review_harness.py"):
+                (bin_dir / name).write_bytes((ROOT / "dotfiles/niri/.config/niri/scripts" / name).read_bytes())
+            (bin_dir / "agent-review").chmod(0o755)
+            with mock.patch.dict(os.environ, {"HOME": td, "PATH": f"{bin_dir}:{os.environ['PATH']}"}):
+                script = ROOT / "dotfiles/bin/.local/bin/agent"
+                loader = importlib.machinery.SourceFileLoader("agent_cli_vm", str(script))
+                spec = importlib.util.spec_from_loader("agent_cli_vm", loader)
+                assert spec is not None
+                module: Any = importlib.util.module_from_spec(spec); loader.exec_module(module)
+                args = SimpleNamespace(teardown=None, pr="9", devenv=False, manual_test=None,
+                                       browser_profile_seed=None, runtime_contract=None, allow_sandbox_start=False)
+                with mock.patch.object(module.os, "execv") as execv:
+                    module.cmd_review(args)
+                self.assertEqual(execv.call_args.args[0], str(bin_dir / "agent-review"))
+                review_loader = importlib.machinery.SourceFileLoader("agent_review_vm_host", str(bin_dir / "agent-review"))
+                review_spec = importlib.util.spec_from_loader("agent_review_vm_host", review_loader)
+                assert review_spec is not None
+                review: Any = importlib.util.module_from_spec(review_spec)
+                with mock.patch.object(socket, "gethostname", return_value="claude-dev"):
+                    review_loader.exec_module(review)
+                self.assertTrue(review.NATIVE_VM)
+                self.assertEqual((review.LOVABLE_DIR, review.SCOPE), (Path(td) / "src/lovable", "work"))
 
     def test_agent_cli_parser_accepts_runtime_contract(self):
         result = subprocess.run(

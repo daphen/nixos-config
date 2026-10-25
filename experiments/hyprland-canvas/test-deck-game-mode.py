@@ -84,8 +84,9 @@ if name == 'hyprctl':
     else:
         print('ok')
 elif name == 'readlink':
-    assert args[0] == '-f' and pathlib.Path(args[-1]).parent == pathlib.Path('/etc/inputplumber/profiles')
-    print(root / 'profiles' / pathlib.Path(args[-1]).name)
+    source = pathlib.Path(args[-1])
+    assert args[0] == '-f' and (source.parent == pathlib.Path('/etc/inputplumber/profiles') or source == root / '.config/hypr/modules/gaming-input.yaml')
+    print(root / 'profiles' / source.name)
 elif name == 'inputplumber':
     if args[3] == 'path':
         print("Current profile path: '%s'" % state['profile'])
@@ -134,6 +135,7 @@ class ModeCommandTest(unittest.TestCase):
         self.env = dict(
             os.environ,
             FIXTURE=str(self.root),
+            HOME=str(self.root),
             XDG_RUNTIME_DIR=str(self.root),
             PATH=f'{self.root}:{os.environ["PATH"]}',
         )
@@ -195,7 +197,8 @@ class ModeCommandTest(unittest.TestCase):
         (self.root / "deck-gaming-mode.return").unlink(missing_ok=True)
 
     def profile(self, name):
-        return str(self.root / "profiles" / f"hyprland-{name}.yaml")
+        filename = "gaming-input.yaml" if name == "gaming" else f"hyprland-{name}.yaml"
+        return str(self.root / "profiles" / filename)
 
     def write_state(self, state):
         (self.root / "state").write_text(json.dumps(state))
@@ -315,13 +318,27 @@ class ModeCommandTest(unittest.TestCase):
         self.assertEqual(self.state()["active"], "0x1")
         self.assertEqual(self.state()["profile"], self.profile("canvas"))
 
-    def test_gaming_tap_forwards_one_guide_chord(self):
+    def test_return_and_reenter_preserve_big_picture_and_running_game(self):
+        self.add_game(active=False)
+        self.add_game(address="0x88", class_name="steam_app_440", title="Game", active=False)
+        self.run_mode("enter")
+        before = {client["address"]: client["pid"] for client in self.state()["clients"]}
+        self.run_mode("return")
+        self.assertEqual(self.state()["active"], "0x1")
+        self.assertEqual(self.state()["profile"], self.profile("canvas"))
+        self.run_mode("tap")
+        state = self.state()
+        self.assertEqual(state["active"], "0x99")
+        self.assertEqual(state["profile"], self.profile("gaming"))
+        self.assertEqual({client["address"]: client["pid"] for client in state["clients"]}, before)
+        self.assertFalse(any(call[0] == "pkill" and call[-1] == "steam" for call in self.calls()))
+
+    def test_gaming_tap_does_not_duplicate_native_guide(self):
         self.add_game()
         self.configure_game_profile()
         self.run_mode("tap")
         calls = [call for call in self.calls() if call[0] == "busctl"]
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][-4:], ["SendButtonChord", "as", "1", "Gamepad:Button:Guide"])
+        self.assertEqual(calls, [])
         self.assertFalse(any(call[0] == "inputplumber" for call in self.calls()))
 
     def configure_game_profile(self):

@@ -12,7 +12,6 @@ NIRI = ROOT / "dotfiles/niri/.config/niri/scripts"
 class GoCommandLauncherTests(unittest.TestCase):
     def test_every_launcher_routes_to_go_without_bash_fallback(self):
         cases = [
-            (NIRI / "vm-sync", "vmctl", "sync one two", None),
             (NIRI / "vm-wt", "vmctl", "worktree one two", None),
             (NIRI / "vm-cockpit", "vmctl", "cockpit one two", None),
             (NIRI / "browser-dispatch", "desktopctl", "browser-dispatch one two", "BROWSER_CONFIG"),

@@ -20,36 +20,10 @@ keymap.set("n", "<C-k>", "<C-w>k")
 -- return mid-insert / with a stale visual selection).
 if vim.env.COCKPIT_COCKPIT == "1" or vim.env.HEIDR_COCKPIT == "1" then
   local cross_script = vim.fn.expand("~/.config/niri/scripts/cockpit-cross")
-  local focus_packet = string.char(3, 0, 0, 0, 14)
-    .. "\0c\0o\0c\0k\0p\0i\0t"
-    .. string.char(0, 0, 0, 20)
-    .. "\0f\0o\0c\0u\0s\0R\0i\0g\0h\0t"
-    .. string.char(0, 0, 0, 0)
+  local quickshell_ipc = require("cockpit.quickshell_ipc")
   local function focus_rail()
-    local nvim_sock = vim.env.NVIM_LISTEN_ADDRESS or ""
-    local runtime = vim.env.XDG_RUNTIME_DIR or ("/run/user/" .. vim.fn.getuid())
-    local file = io.open(runtime .. "/cockpit-ipc." .. (nvim_sock:match("([^/]+)$") or "") .. ".id", "r")
-    if not file then vim.system({ cross_script, "right" }); return end
-    local instance = file:read("*l")
-    file:close()
-    if not instance or instance == "" then vim.system({ cross_script, "right" }); return end
-
-    local pipe, done = vim.uv.new_pipe(false), false
-    local function finish(ok)
-      if done then return end
-      done = true
-      if not pipe:is_closing() then pipe:close() end
+    quickshell_ipc.call("focusRight", {}, 250, function(ok)
       if not ok then vim.schedule(function() vim.system({ cross_script, "right" }) end) end
-    end
-    vim.defer_fn(function() finish(false) end, 250)
-    pipe:connect(runtime .. "/quickshell/by-id/" .. instance .. "/ipc.sock", function(err)
-      if err then finish(false); return end
-      pipe:read_start(function(read_err, data)
-        finish(not read_err and data ~= nil and data:byte(1) == 5)
-      end)
-      pipe:write(focus_packet, function(write_err)
-        if write_err then finish(false) end
-      end)
     end)
   end
   local function cross_right()
