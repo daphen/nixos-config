@@ -78,6 +78,9 @@ return {
 			end,
 		})
 
+		-- Callers outside this file (the Cockpit Vault) open mini.files directly.
+		setup_mini_files()
+
 		vim.keymap.set("n", "<leader>e", function()
 			setup_mini_files()
 			mini_files.open(vim.api.nvim_buf_get_name(0))
