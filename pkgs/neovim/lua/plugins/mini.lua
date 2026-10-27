@@ -78,8 +78,10 @@ return {
 			end,
 		})
 
-		-- Callers outside this file (the Cockpit Vault) open mini.files directly.
+		-- Callers outside this file (the Cockpit Vault) open mini.files directly; widths
+		-- come from vim.o.columns, which is only real once a UI attaches.
 		setup_mini_files()
+		vim.api.nvim_create_autocmd({ "UIEnter", "VimResized" }, { callback = setup_mini_files })
 
 		vim.keymap.set("n", "<leader>e", function()
 			setup_mini_files()
