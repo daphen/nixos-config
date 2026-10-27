@@ -30,6 +30,20 @@ local function row() return api.nvim_win_get_cursor(vim.g.agent_editor_win)[1] e
 land("s1", "code")
 follow(repo .. "/a.txt")
 check("code follows edits", shown() == repo .. "/a.txt", shown())
+local here_ns = api.nvim_create_namespace("cockpit-agent-here")
+local function here_rows()
+  local rows = {}
+  for _, buf in ipairs(api.nvim_list_bufs()) do
+    for _, mark in ipairs(api.nvim_buf_get_extmarks(buf, here_ns, 0, -1, {})) do
+      table.insert(rows, api.nvim_buf_get_name(buf) .. ':' .. (mark[2] + 1))
+    end
+  end
+  return table.concat(rows, ",")
+end
+follow(repo .. "/a.txt", 2)
+check("agent line marked", here_rows() == repo .. "/a.txt:2", here_rows())
+follow(repo .. "/a.txt", 4)
+check("agent line marker moves", here_rows() == repo .. "/a.txt:4", here_rows())
 
 -- Vault is static: first visit opens the plan, edits never move it, Code keeps the edit.
 land("s1", "vault")

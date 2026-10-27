@@ -267,7 +267,9 @@ local function set_hl()
   -- (distinct from needs-input=accent and streaming=electric).
   hl("CockpitSwatchIdle", { fg = elec_soft })
   hl("CockpitAccent", { fg = accent, bold = true })
-  hl("CockpitAgentEdit", { fg = api.nvim_get_hl(0, { name = "Cursor", link = false }).bg or accent })
+  local agent_ink = api.nvim_get_hl(0, { name = "Cursor", link = false }).bg or accent
+  hl("CockpitAgentEdit", { fg = agent_ink })
+  hl("CockpitAgentHere", { bg = mix(api.nvim_get_hl(0, { name = "Normal", link = false }).bg or "#000000", agent_ink, 0.16) })
   -- Electric: the dashboard's own accent (matches the HEIÐR banner ink). Scoped to
   -- the resting view so the rail's orange signal stays untouched everywhere else.
   hl("CockpitElectric", { fg = "#5566ff", bold = true })
@@ -1461,8 +1463,20 @@ local function edit_mark_state(workspace)
   return state
 end
 
+-- One "agent is here" line across all buffers; its own namespace because mark_edit
+-- treats every mark in the edit namespace as an already-signed row.
+local here_ns = api.nvim_create_namespace("cockpit-agent-here")
+local function mark_agent_here(buf, row)
+  if S.agent_here_buf and api.nvim_buf_is_valid(S.agent_here_buf) then
+    api.nvim_buf_clear_namespace(S.agent_here_buf, here_ns, 0, -1)
+  end
+  S.agent_here_buf = buf
+  if buf then api.nvim_buf_set_extmark(buf, here_ns, row - 1, 0, { line_hl_group = "CockpitAgentHere", priority = 10 }) end
+end
+
 local function clear_edit_highlight(ns)
   if not ns then return end
+  mark_agent_here(nil)
   for _, buf in ipairs(api.nvim_list_bufs()) do
     if api.nvim_buf_is_loaded(buf) then api.nvim_buf_clear_namespace(buf, ns, 0, -1) end
   end
@@ -1671,6 +1685,7 @@ follow_edit = function(cwd, path, line, external, external_force, snippet, added
       local row = math.max(1, math.min(line, api.nvim_buf_line_count(0)))
       api.nvim_win_set_cursor(target, { row, 0 })
       vim.cmd("normal! zz")
+      mark_agent_here(api.nvim_get_current_buf(), row)
     end
     mark_edit(api.nvim_get_current_buf(), edit_state and edit_state.edit_ns, added_lines)
   end)
