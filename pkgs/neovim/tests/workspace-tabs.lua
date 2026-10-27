@@ -74,6 +74,7 @@ check("dashboard ignores edits", c.dashboard_snapshot().active, shown())
 land("s1", "code")
 check("code shows the edit made while on dashboard", shown() == repo .. "/c.txt", shown())
 check("code lands on the changed line", row() == 3, row())
+check("agent line marked on return", here_rows() == repo .. "/c.txt:3", here_rows())
 
 -- Code while the agent is working jumps to its latest edit, not the remembered file.
 vim.cmd.edit(fn.fnameescape(repo .. "/a.txt"))
