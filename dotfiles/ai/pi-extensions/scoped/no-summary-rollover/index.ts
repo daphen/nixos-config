@@ -7,7 +7,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 type Message = Extract<SessionEntry, { type: "message" }>["message"];
 type Mode = "off" | "shadow" | "on" | "reviewed";
-type Permission = { kind: "mode"; session: string; root: string; mode: Mode; goal?: string };
+type Permission = { kind: "mode"; session: string; root: string; mode: Mode; goal?: string; defaultOn?: true };
 type Selection = { entry: string; hash: string; keep: number; callKeep?: number };
 type Pass = { kind: "pass"; permission: string; task: string; outcome: string;
   selections: Selection[]; milliseconds: number; bytes: number; requests: number;
@@ -24,7 +24,8 @@ function permission(ctx: ExtensionContext) {
   const entry = ctx.sessionManager.getEntries().findLast(e => e.type === "custom"
     && e.customType === RECORD && (e.data as Permission)?.kind === "mode"
     && (e.data as Permission).session === ctx.sessionManager.getSessionId());
-  if (!entry) {
+  // "off" chosen while off was the default is not a choice against the on default.
+  if (!entry || (entry.type === "custom" && (entry.data as Permission).mode === "off" && !(entry.data as Permission).defaultOn)) {
     if (!ctx.sessionManager.getSessionFile()) return;
     const root = realpathSync(ctx.cwd), session = ctx.sessionManager.getSessionId();
     if (!existsSync(join(root, ".git")) || root === homedir()) return;
@@ -259,7 +260,7 @@ export default function noSummaryRollover(pi: ExtensionAPI) {
         return;
       }
       inFlight?.abort();
-      pi.appendEntry<Permission>(RECORD, { kind: "mode", session: ctx.sessionManager.getSessionId(), root, mode: mode as Mode,
+      pi.appendEntry<Permission>(RECORD, { kind: "mode", session: ctx.sessionManager.getSessionId(), root, mode: mode as Mode, defaultOn: true,
         ...(["shadow", "reviewed"].includes(mode) ? { goal: personalGoal } : {}) });
       ctx.ui.notify(`Jev: ${mode}. ${mode === "off" ? "No classifier requests; native checkpoints already written remain in effect." : mode === "shadow" ? "Only approved read paths, result sizes, and the declared personal task may be sent to Typesafe AI; no output is pruned." : mode === "reviewed" ? "Complete approved repository reads and the declared personal task go to Typesafe AI; no output is pruned." : "Selected repository reads and recent task text may be sent to Typesafe AI."}`, "info");
     },

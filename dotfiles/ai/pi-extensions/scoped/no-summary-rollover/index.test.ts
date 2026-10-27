@@ -152,6 +152,12 @@ test("reviewed distinguishes relevant reads in the saved pass but still retains 
   expect(h.entries[2].message.content[0].text).toContain("READ_0");
 }));
 
+test("an off saved before the on default does not disable it", async () => pruning(async h => {
+  h.entries.push({ type: "custom", id: "old-shadow", customType: "jev-pruning", data: { kind: "mode", session: "original", root: h.ctx.cwd, mode: "shadow" } });
+  h.entries.push({ type: "custom", id: "old-off", customType: "jev-pruning", data: { kind: "mode", session: "original", root: h.ctx.cwd, mode: "off" } });
+  expect((await h.context()).messages[2].content[0].text).toContain("Jev omitted");
+}));
+
 test("off is session-wide, a fork starts on by default, and selections are branch-local", async () => pruning(async h => {
   await h.command("on"); await h.context();
   const earlier = h.entries.slice();
