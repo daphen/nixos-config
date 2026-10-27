@@ -43,12 +43,16 @@ async function pruning(run: (h: any) => Promise<void>) {
   } finally { fetch.mockRestore(); rmSync(dir, { recursive: true, force: true }); }
 }
 
-test("off has no side effects; shadow stays intact and never becomes a live decision", async () => pruning(async h => {
+test("a session with no setting is on; off has no side effects; shadow never becomes a live decision", async () => pruning(async h => {
+  expect((await h.context()).messages[2].content[0].text).toContain("Jev omitted");
+  await h.command("off");
+  const before = { requests: h.requests.length, lookups: h.lookups() };
   expect(await h.context()).toBeUndefined();
-  expect(h.lookups()).toBe(0); expect(h.requests).toHaveLength(0);
+  expect(h.requests.length).toBe(before.requests); expect(h.lookups()).toBe(before.lookups);
+  h.requests.length = 0;
   await h.command("shadow");
   expect(await h.context()).toBeUndefined();
-  expect(h.lookups()).toBe(0);
+  expect(h.requests).toHaveLength(0);
   await h.command("shadow personal Cockpit composer overlap");
   expect((await h.context()).messages).toEqual(h.messages);
   expect(JSON.stringify(h.requests)).not.toContain("READ_0");
@@ -148,13 +152,13 @@ test("reviewed distinguishes relevant reads in the saved pass but still retains 
   expect(h.entries[2].message.content[0].text).toContain("READ_0");
 }));
 
-test("off is session-wide, fork consent is absent, and selections are branch-local", async () => pruning(async h => {
+test("off is session-wide, a fork starts on by default, and selections are branch-local", async () => pruning(async h => {
   await h.command("on"); await h.context();
   const earlier = h.entries.slice();
   await h.command("off"); h.branch(earlier);
   expect(await h.context()).toBeUndefined();
   await h.command("on"); h.session("fork");
-  expect(await h.context()).toBeUndefined();
+  expect((await h.context()).messages[2].content[0].text).toContain("Jev omitted");
   h.session("original"); h.branch(earlier.filter((e: any) => e.type === "message"));
   const count = h.requests.length; await h.context(); expect(h.requests.length).toBeGreaterThan(count);
 }));

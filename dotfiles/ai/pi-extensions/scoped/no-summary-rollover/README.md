@@ -18,16 +18,17 @@ cut-point change is made by this extension.
   personal-only session after explicit permission to send those contents. Unlike
   metadata shadow, this can distinguish the relevance of the actual read text.
   Suggestions remain hypothetical.
-- `/jev-pruning on`: older read-result-only opt-in, retained for compatibility;
-  it sends complete eligible read results and only omits scores at or below 0.1.
-  Do not activate it based on `reviewed` scores without a separate sign-off.
+- `/jev-pruning on`: the default. Once a request passes 60% of the model
+  window, complete eligible read results go to Jev and only scores at or below
+  0.1 are omitted from the outgoing copy.
 - The former metadata-only `/jev-pruning compact` is disabled. Its scores
   proposed hiding real passing tests and actionable QML loader errors. Old
   stored compact permissions do not enable classification or filtering.
 - `/jev-pruning off`: stop requests and restore un-compacted original results.
 
-Default is off, including in new sessions and forks. `reviewed` requires its own
-opt-in; an old `compact` permission cannot broaden into content sharing.
+Default is `on` for every saved session inside a git repository where this
+extension loads (`~/nixos`, `~/personal/ai-cockpit`), including new sessions and
+forks. An explicit `/jev-pruning` setting in the session overrides it.
 Permission survives a restart of the same saved session and is bound to its
 repository directory. Turning off applies across branches. Turning on never
 activates earlier shadow suggestions. A new user request expires earlier task

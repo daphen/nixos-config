@@ -24,7 +24,13 @@ function permission(ctx: ExtensionContext) {
   const entry = ctx.sessionManager.getEntries().findLast(e => e.type === "custom"
     && e.customType === RECORD && (e.data as Permission)?.kind === "mode"
     && (e.data as Permission).session === ctx.sessionManager.getSessionId());
-  if (!entry || entry.type !== "custom") return;
+  if (!entry) {
+    if (!ctx.sessionManager.getSessionFile()) return;
+    const root = realpathSync(ctx.cwd), session = ctx.sessionManager.getSessionId();
+    if (!existsSync(join(root, ".git")) || root === homedir()) return;
+    return { id: `default:${session}`, kind: "mode" as const, session, root, mode: "on" as Mode };
+  }
+  if (entry.type !== "custom") return;
   const data = entry.data as Permission;
   if ((data.mode !== "on" && data.mode !== "shadow" && data.mode !== "reviewed") || data.root !== realpathSync(ctx.cwd)) return;
   return { id: entry.id, ...data };
