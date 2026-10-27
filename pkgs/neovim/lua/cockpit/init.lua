@@ -1995,8 +1995,12 @@ local function show_scratch(win, cwd)
 
   local model = dashboard_view.build(spec)
   local lines, line_actions = dashboard_view.text(model, width)
+  -- The Cockpit draws the dashboard from the model; visible text here flashed in the
+  -- terminal before that view faded in. Blank rows keep row:N line actions aligned.
+  local blank = {}
+  for index = 1, #lines do blank[index] = "" end
   vim.bo[buf].modifiable = true
-  api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  api.nvim_buf_set_lines(buf, 0, -1, false, blank)
   vim.bo[buf].modifiable = false
   api.nvim_buf_clear_namespace(buf, S.ns, 0, -1)
 
