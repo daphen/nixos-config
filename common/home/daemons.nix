@@ -292,13 +292,4 @@ in
       ExecStart = "${pkgs.bash}/bin/bash %h/.local/bin/daily-sync";
     };
   };
-
-  systemd.user.timers.daily-sync = {
-    Unit.Description = "Morning /daily briefing";
-    Timer = {
-      OnCalendar = "*-*-* 07:00:00";
-      Persistent = true; # if the machine was asleep at 07:00, run at next wake
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
 }
