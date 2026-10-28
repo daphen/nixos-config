@@ -189,6 +189,7 @@ in
     Service = {
       Type = "simple";
       Environment = "PATH=/etc/profiles/per-user/daphen/bin:/run/current-system/sw/bin";
+      ExecStartPre = "-/run/current-system/sw/bin/tailscale serve --bg --https=8443 http://127.0.0.1:8787";
       ExecStart = "%h/personal/ai-cockpit/bridge/run.sh";
       Restart = "on-failure";
       RestartSec = "5s";

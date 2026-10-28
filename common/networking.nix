@@ -70,6 +70,8 @@
     # From the fresher pin: LoL preview rejects older clients.
     package = inputs.nixpkgs-latest.legacyPackages.${pkgs.system}.tailscale;
     extraUpFlags = [ "--accept-routes" ];
+    # Lets cockpit-bridge re-apply its `tailscale serve` without root after a logout wipes it.
+    extraSetFlags = [ "--operator=daphen" ];
   };
 
   # IPv6 strategy: enabled on loopback, disabled on every external interface.
