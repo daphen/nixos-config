@@ -58,6 +58,40 @@ On this machine, touching only `src/render/Renderer.cpp` and running
 `./dev build` took **47.226 seconds** including relink, config verification, and
 publishing the validated package.
 
+## Quick navigation theory checks
+
+`test-navigation-ab.py` runs a bounded private A/B/A using the production Lua
+config, ordinary and grouped moves, focus-event counts, and no-neighbor framing.
+It verifies parent focus and executable identity survive cleanup. This is a
+handler-cost/correctness diagnostic, **not physical FPS or battery evidence**.
+Arrange an unused-laptop window before running it; private outputs still use
+GPU.
+
+```bash
+TRIAL="$HOME/.cache/canvas-groups/focus-fast-loop"
+python3 experiments/hyprland-canvas/test-navigation-ab.py \
+  --baseline "$TRIAL/baseline-Hyprland" \
+  --candidate "$TRIAL/candidate-Hyprland" \
+  --parent-instance /run/user/1000/hypr/EXACT-LIVE-INSTANCE \
+  --output "$TRIAL/trial-$(date +%Y%m%d-%H%M%S)"
+```
+
+Keep one unchanged baseline executable and change one theory at a time. Refresh
+`candidate-Hyprland` from the newly built executable before running. The
+existing `canvas-groups/hyprland-canvas-dev` source matched the shipping patch
+before the first trial; the primary dev source contains unrelated PhantOMat work
+and must not be reused for these tests. The trial's `dev-shell` profile protects
+the build environment from garbage collection. Use
+`nix develop "$(readlink -f "$TRIAL/dev-shell")"` with
+`HYPRLAND_CANVAS_DEV_ROOT="$HOME/.cache/canvas-groups/hyprland-canvas-dev"` to
+run `./experiments/hyprland-canvas/dev build --no-publish` in that environment.
+The first one-file incremental build took 24 seconds; its successful A/B/A took
+46 seconds. These exclude the one-time dependency repair and fixture debugging.
+Results retain binary/config/runner hashes, raw command latencies, main-thread
+CPU time, functional checks, and parent-focus checkpoints. Promote promising
+results to broader regressions and a separately approved physical-output test;
+never infer frame pacing from private-output timings.
+
 ## Rendering baselines before changing the compositor
 
 `test-canvas-rendering.py` reuses the archived GTK resize fixture, loads the

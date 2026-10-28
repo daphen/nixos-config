@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import signal
 import socket
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -24,15 +25,32 @@ BORDER = 2  # j/clients reports the client box inside the window border
 
 
 def main():
+    global WIDTH, HEIGHT
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--parent-instance', type=Path, required=True, help='live /run/user/UID/hypr/INSTANCE, used only for a temporary hiding rule')
     parser.add_argument('--output', type=Path, required=True)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--quick-navigation', action='store_true')
+    modes.add_argument('--profile-gpu', action='store_true')
+    parser.add_argument('--wallpaper', type=Path)
     args = parser.parse_args()
+    if args.profile_gpu:
+        if not args.wallpaper or not args.wallpaper.is_file():
+            parser.error('--profile-gpu requires an existing --wallpaper image')
+        WIDTH, HEIGHT = 3840, 2400
+    if args.quick_navigation or args.profile_gpu:
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(124))
     args.output.mkdir(parents=True, exist_ok=True)
-    runtime = Path(tempfile.mkdtemp(prefix='cg-', dir=os.environ['XDG_RUNTIME_DIR']))
+    # Leave room for the generated instance name and .socket2.sock within Unix's path limit.
+    runtime = Path(tempfile.mkdtemp(prefix='c', dir=os.environ['XDG_RUNTIME_DIR']))
     runtime.chmod(0o700)
     live = lambda command: r.ipc(args.parent_instance, command)
+    if args.profile_gpu:
+        time.sleep(.75)
+    parent_focus = json.loads(live('j/activewindow')).get('address')
+    parent_pid = (args.parent_instance / 'hyprland.lock').read_text().splitlines()[0]
+    parent_binary = r.sha(f'/proc/{parent_pid}/exe')
     live_display = os.environ['WAYLAND_DISPLAY']
     env = {k: v for k, v in os.environ.items() if k not in ('WAYLAND_DISPLAY', 'DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE', 'NOTIFY_SOCKET')}
     env.update(XDG_RUNTIME_DIR=str(runtime), HYPR_CANVAS_REAL='1', HYPR_CANVAS_PROFILE='workstation', AQ_DRM_DEVICES='/dev/null', LIBSEAT_BACKEND='none')
@@ -65,13 +83,15 @@ def main():
                           if (runtime / 'hypr').exists() else None, [compositor])
         ctl = lambda command: r.ipc(instance, command)
         assert not ctl('configerrors').strip(), ctl('configerrors')
-        assert ctl(f'eval hl.monitor({{output="HEADLESS-1",mode="{WIDTH}x{HEIGHT}@60",position="0x0",scale=1}})').strip() == 'ok'
+        refresh, scale = (120, 5 / 3) if args.profile_gpu else (60, 1)
+        assert ctl(f'eval hl.monitor({{output="HEADLESS-1",mode="{WIDTH}x{HEIGHT}@{refresh}",position="0x0",scale={scale}}})').strip() == 'ok'
         assert ctl('output create headless HEADLESS-1').strip() == 'ok'
         r.wait(lambda: any(m['name'] == 'HEADLESS-1' for m in json.loads(ctl('j/monitors'))), [compositor])
         assert ctl('eval hl.monitor({output="WAYLAND-1",disabled=true})').strip() == 'ok'
         r.wait(lambda: [m['name'] for m in json.loads(ctl('j/monitors'))] == ['HEADLESS-1'], [compositor])
         appenv = dict(child_env, WAYLAND_DISPLAY='nested', GDK_BACKEND='wayland', HYPRLAND_INSTANCE_SIGNATURE=instance.name)
-        launch(['swaybg', '-c', '#263344'], appenv, directory / 'wallpaper.log')
+        background = ['swaybg', '-i', str(args.wallpaper.resolve()), '-m', 'fill'] if args.wallpaper else ['swaybg', '-c', '#263344']
+        launch(background, appenv, directory / 'wallpaper.log')
 
         def command(value):
             reply = ctl(value).strip()
@@ -123,6 +143,79 @@ def main():
         gap = lambda left, right: clients()[right]['at'][0] - (clients()[left]['at'][0] + clients()[left]['size'][0]) - 2 * BORDER
         check('ungrouped gap', abs(gap(a, b) - INNER_GAP) <= 1, gap(a, b))
         index = {t: names.index(t) for t in names}
+
+        if args.profile_gpu:
+            metrics = {'parent_focus_initial': parent_focus, 'binary_sha256': r.sha(args.binary),
+                       'config_sha256': r.sha(r.CONFIG), 'runner_sha256': r.sha(Path(__file__)),
+                       'wallpaper_sha256': r.sha(args.wallpaper), 'width': WIDTH, 'height': HEIGHT, 'scale': scale,
+                       'scope': 'private per-stage GPU timestamps, not physical frame pacing',
+                       'parent_focus_before_measurement': json.loads(live('j/activewindow')).get('address')}
+            assert metrics['parent_focus_before_measurement'] == parent_focus, 'parent focus changed during setup'
+
+            def still(label):
+                subprocess.run(['grim', '-t', 'ppm', '-o', 'HEADLESS-1', str(directory / (label + '.ppm'))], env=appenv, check=True, capture_output=True, timeout=10)
+
+            for cycle in range(3):
+                layout('overview', 1.6 if cycle == 0 else .8)
+                if cycle == 0:
+                    still('overview')
+                for _ in range(8):
+                    layout('pan 36 12', .05)
+                if cycle == 0:
+                    time.sleep(1.5)
+                    still('overview-panned')
+                layout('overview', .8)
+            return
+
+        if args.quick_navigation:
+            metrics = {'parent_focus_initial': parent_focus, 'binary_sha256': r.sha(args.binary), 'config_sha256': r.sha(r.CONFIG),
+                       'runner_sha256': r.sha(Path(__file__)), 'scope': 'private IPC/main-thread diagnostic; not physical frame pacing', 'runs': []}
+            addresses = {t: clients()[t]['address'].removeprefix('0x') for t in names}
+            for grouped in (False, True):
+                focus(a, .8)
+                if grouped:
+                    layout('join l', .8)
+                with socket.socket(socket.AF_UNIX) as events:
+                    events.connect(str(instance / '.socket2.sock'))
+                    events.setblocking(False)
+                    samples = []
+                    cpu_before = int(Path(f'/proc/{compositor.pid}/schedstat').read_text().split()[0])
+                    for direction in ['l', 'h'] * 12:
+                        started = time.perf_counter_ns()
+                        command('dispatch hl.dsp.layout(' + json.dumps('focus ' + direction) + ')')
+                        samples.append((time.perf_counter_ns() - started) / 1e6)
+                        time.sleep(.12)
+                    cpu_after = int(Path(f'/proc/{compositor.pid}/schedstat').read_text().split()[0])
+                    received = b''
+                    while True:
+                        try:
+                            chunk = events.recv(65536)
+                        except BlockingIOError:
+                            break
+                        assert chunk, 'focus event socket closed'
+                        received += chunk
+                observed = [line.split('>>', 1)[1] for line in received.decode().splitlines() if line.startswith('activewindowv2>>')]
+                path = [addresses[a]]
+                for address in observed:
+                    if address != path[-1]:
+                        path.append(address)
+                check('grouped navigation' if grouped else 'ordinary navigation',
+                      path == [addresses[a]] + [addresses[b], addresses[a]] * 12, path)
+                check('final keyboard focus', json.loads(ctl('j/activewindow'))['title'] == a, a)
+                metrics['runs'].append({'grouped': grouped, 'commands': len(samples), 'focus_events': len(observed),
+                                        'ipc_ms': samples, 'median_ipc_ms': statistics.median(samples),
+                                        'p95_ipc_ms': sorted(samples)[int((len(samples) - 1) * .95)],
+                                        'main_thread_cpu_ms': (cpu_after - cpu_before) / 1e6})
+                print(json.dumps(metrics['runs'][-1]), flush=True)
+                if grouped:
+                    layout('join l', .8)
+            focus(a, .8)
+            centered = screen('edge-centered')
+            layout('pan -120 0', .4)
+            layout('focus h')
+            check('no-neighbor navigation restores framing', screen('edge-restored') == centered, centered)
+            assert all(item['passed'] for item in results), results
+            return
 
         focus(a)
         layout('join l')
@@ -221,10 +314,8 @@ def main():
         check('Super+Shift+U is bound and Super+Ctrl+Shift+hjkl join', len(u) == 1 and len(joins) == 4,
               {'u': u, 'joins': [{k: x.get(k) for k in ('key', 'dispatcher', 'arg', 'description')} for x in joins]})
     finally:
-        try:
-            live('eval ' + rule + ':set_enabled(false);' + rule + '=nil')
-        except Exception as error:
-            print('cleanup failed:', error)
+        if (args.quick_navigation or args.profile_gpu) and 'metrics' in locals():
+            metrics['parent_focus_before_cleanup'] = json.loads(live('j/activewindow')).get('address')
         for process in reversed(processes):
             if process.poll() is None:
                 process.send_signal(signal.SIGTERM)
@@ -232,9 +323,20 @@ def main():
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     process.kill()
+        r.wait(lambda: not any(w['workspace']['name'] == 'special:' + rule for w in json.loads(live('j/clients'))), [])
+        assert live('eval ' + rule + ':set_enabled(false);' + rule + '=nil').strip() == 'ok'
         for log in logs:
             log.close()
         (args.output / 'result.json').write_text(json.dumps(results, indent=2))
+        if args.quick_navigation or args.profile_gpu:
+            after = json.loads(live('j/activewindow')).get('address')
+            if 'metrics' in locals():
+                metrics['parent_focus_after_cleanup'] = after
+                (args.output / ('gpu-profile.json' if args.profile_gpu else 'quick-navigation.json')).write_text(json.dumps(metrics, indent=2))
+            assert after == parent_focus, ('parent focus changed', parent_focus, after)
+            if args.profile_gpu and 'metrics' in locals():
+                assert metrics['parent_focus_before_cleanup'] == parent_focus, 'parent focus changed during capture'
+            assert r.sha(f'/proc/{parent_pid}/exe') == parent_binary, 'parent compositor changed'
     failed = [x for x in results if not x['passed']]
     print(f'{len(results) - len(failed)}/{len(results)} checks passed')
     sys.exit(1 if failed else 0)
