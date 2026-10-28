@@ -16,7 +16,6 @@ Item {
   readonly property bool combined: activityColors.length > 1
   readonly property real diameter: Math.min(width, height)
   readonly property real ringWidth: Math.max(1.25, diameter * 0.065)
-    + (Theme.mode === "light" ? (diameter <= 24 ? 1.7 : 1) : 0)
   readonly property real ringLightness: Theme.mode === "light" && diameter <= 24 ? 0.28 : 0.34
   // Flip the ring's light/dark pick — for orbs sitting on an inverted ground
   // (the roster's cursor pill), where the normal ring melts into the fill.
