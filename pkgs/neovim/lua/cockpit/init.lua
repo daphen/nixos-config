@@ -269,7 +269,7 @@ local function set_hl()
   hl("CockpitAccent", { fg = accent, bold = true })
   local agent_ink = api.nvim_get_hl(0, { name = "Cursor", link = false }).bg or accent
   hl("CockpitAgentEdit", { fg = agent_ink })
-  hl("CockpitAgentHere", { bg = mix(api.nvim_get_hl(0, { name = "Normal", link = false }).bg or "#000000", agent_ink, 0.16) })
+  hl("CockpitAgentHere", { bg = mix(dark, agent_ink, 0.16) })
   -- Electric: the dashboard's own accent (matches the HEIÐR banner ink). Scoped to
   -- the resting view so the rail's orange signal stays untouched everywhere else.
   hl("CockpitElectric", { fg = "#5566ff", bold = true })
