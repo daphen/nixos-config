@@ -1,0 +1,174 @@
+diff --git a/src/input/composite_device/mod.rs b/src/input/composite_device/mod.rs
+index 1c59879..d9102cc 100644
+--- a/src/input/composite_device/mod.rs
++++ b/src/input/composite_device/mod.rs
+@@ -207,20 +207,51 @@ impl TouchpadScrollState {
+     }
+ }
+ 
++fn wheel_speed(mappings: &HashMap<Capability, Vec<ProfileMapping>>, pad: &Capability) -> Option<f64> {
++    let mapping = mappings.get(pad)?.iter().find(|mapping| {
++        mapping
++            .target_events
++            .iter()
++            .any(|target| Capability::from(target.clone()) == Capability::Mouse(Mouse::Wheel))
++    })?;
++    Some(
++        mapping
++            .source_event
++            .touchpad
++            .as_ref()
++            .and_then(|touchpad| touchpad.touch.motion.as_ref())
++            .and_then(|motion| motion.speed_pps)
++            .unwrap_or(24) as f64,
++    )
++}
++
++fn wheel_event(source_cap: Capability, value: InputValue) -> Vec<NativeEvent> {
++    if matches!(value, InputValue::None) {
++        return Vec::new();
++    }
++    vec![NativeEvent::new_translated(
++        source_cap,
++        Capability::Mouse(Mouse::Wheel),
++        value,
++    )]
++}
++
+ fn translate_desktop_pads(
+     event: &NativeEvent,
+     mappings: &HashMap<Capability, Vec<ProfileMapping>>,
+     active_inputs: &[Capability],
+     state: &mut TouchpadScrollState,
++    left: &mut TouchpadScrollState,
+ ) -> Option<Vec<NativeEvent>> {
+-    let right_motion = Capability::Touchpad(Touchpad::RightPad(Touch::Motion));
+-    let scroll_mapping = mappings.get(&right_motion)?.iter().find(|mapping| {
+-        mapping
+-            .target_events
+-            .iter()
+-            .any(|target| Capability::from(target.clone()) == Capability::Mouse(Mouse::Wheel))
+-    })?;
+     let source_cap = event.as_capability();
++    let left_motion = Capability::Touchpad(Touchpad::LeftPad(Touch::Motion));
++    if source_cap == left_motion {
++        if let Some(speed) = wheel_speed(mappings, &left_motion) {
++            return Some(wheel_event(source_cap, left.translate(event.get_value(), speed)));
++        }
++    }
++    let right_motion = Capability::Touchpad(Touchpad::RightPad(Touch::Motion));
++    let speed = wheel_speed(mappings, &right_motion)?;
+     let center = |touch| Capability::Touchpad(Touchpad::CenterPad(touch));
+ 
+     if source_cap == right_motion {
+@@ -233,22 +264,7 @@ fn translate_desktop_pads(
+                 value,
+             )]);
+         }
+-        let speed = scroll_mapping
+-            .source_event
+-            .touchpad
+-            .as_ref()
+-            .and_then(|touchpad| touchpad.touch.motion.as_ref())
+-            .and_then(|motion| motion.speed_pps)
+-            .unwrap_or(24) as f64;
+-        let value = state.translate(value, speed);
+-        if matches!(value, InputValue::None) {
+-            return Some(Vec::new());
+-        }
+-        return Some(vec![NativeEvent::new_translated(
+-            source_cap,
+-            Capability::Mouse(Mouse::Wheel),
+-            value,
+-        )]);
++        return Some(wheel_event(source_cap, state.translate(value, speed)));
+     }
+ 
+     match source_cap {
+@@ -315,6 +331,7 @@ pub struct CompositeDevice {
+     /// configs that define how the source event should be translated.
+     device_profile_config_map: HashMap<Capability, Vec<ProfileMapping>>,
+     touchpad_scroll: TouchpadScrollState,
++    left_pad_scroll: TouchpadScrollState,
+     /// List of input capabilities that can be translated by the capability map
+     translatable_capabilities: Vec<Capability>,
+     /// List of currently "pressed" actions used to translate multiple input
+@@ -409,6 +426,7 @@ impl CompositeDevice {
+             device_profile_path: None,
+             device_profile_config_map: HashMap::new(),
+             touchpad_scroll: TouchpadScrollState::default(),
++            left_pad_scroll: TouchpadScrollState::default(),
+             translatable_capabilities: Vec::new(),
+             translatable_active_inputs: Vec::new(),
+             translated_recent_events: HashSet::new(),
+@@ -1725,6 +1743,7 @@ impl CompositeDevice {
+             &self.device_profile_config_map,
+             &self.active_inputs,
+             &mut self.touchpad_scroll,
++            &mut self.left_pad_scroll,
+         ) {
+             let haptics_enabled = self
+                 .output_capabilities
+@@ -2116,6 +2135,7 @@ impl CompositeDevice {
+         log::debug!("Clearing old device profile mappings");
+         self.device_profile_config_map.clear();
+         self.touchpad_scroll.reset();
++        self.left_pad_scroll.reset();
+ 
+         // Load the device profile
+         self.device_profile = profile;
+@@ -2556,6 +2576,7 @@ options: { persist: true }
+             device_profile_path: None,
+             device_profile_config_map: HashMap::new(),
+             touchpad_scroll: TouchpadScrollState::default(),
++            left_pad_scroll: TouchpadScrollState::default(),
+             translatable_capabilities: Vec::new(),
+             translatable_active_inputs: Vec::new(),
+             translated_recent_events: HashSet::new(),
+@@ -3041,4 +3062,46 @@ mapping:
+             Capability::Keyboard(Keyboard::KeyF13)
+         );
+     }
++
++    #[tokio::test]
++    async fn left_pad_scrolls_both_axes_when_mapped_to_the_wheel() {
++        let (client, mut native_events, mut steam_events, _source_events, _run) =
++            composite_fixture(true, true).await;
++        let profile = r#"
++version: 1
++kind: DeviceProfile
++name: canvas
++mapping:
++  - name: Left pad scroll
++    source_event: { touchpad: { name: LeftPad, touch: { motion: { speed_pps: 40 } } } }
++    target_events: [ { mouse: { wheel: {} } } ]
++"#;
++        client.load_profile_from_yaml(profile.to_string()).await.unwrap();
++        let left = |x, y, touching| {
++            NativeEvent::new(
++                Capability::Touchpad(Touchpad::LeftPad(Touch::Motion)),
++                touch(x, y, touching),
++            )
++        };
++        for event in [left(0.5, 0.5, true), left(0.625, 0.5, true), left(0.625, 0.375, true), left(0.375, 0.375, true)] {
++            client.handle_event(event).await.unwrap();
++        }
++        let (native, steam) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert!(steam.is_empty());
++        let wheel: Vec<_> = native
++            .iter()
++            .map(|event| format!("{:?} {:?}", event.as_capability(), event.get_value()))
++            .collect();
++        let expected = |x: Option<f64>, y: Option<f64>| {
++            format!("{:?} {:?}", Capability::Mouse(Mouse::Wheel), InputValue::Vector2 { x, y })
++        };
++        assert_eq!(
++            wheel,
++            vec![
++                expected(Some(5.0), None),
++                expected(None, Some(5.0)),
++                expected(Some(-10.0), None),
++            ]
++        );
++    }
+ }

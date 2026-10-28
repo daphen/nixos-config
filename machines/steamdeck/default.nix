@@ -10,6 +10,7 @@ let
       ./inputplumber-native-gestures.patch
       ./inputplumber-pad-force.patch
       ./inputplumber-night-clicks.patch
+      ./inputplumber-left-pad-scroll.patch
     ];
     nativeCheckInputs = (old.nativeCheckInputs or []) ++ [ (lib.getBin pkgs.dbus) ];
     preCheck = (old.preCheck or "") + ''
@@ -97,6 +98,9 @@ let
       - name: Right trigger movement modifier
         source_event: { gamepad: { trigger: { name: RightTrigger, deadzone: 0.3 } } }
         target_events: [ { keyboard: KeyF7 } ]
+      - name: Left pad scroll
+        source_event: { touchpad: { name: LeftPad, touch: { motion: { speed_pps: 24 } } } }
+        target_events: [ { mouse: { wheel: {} } } ]
       - name: Move modifier
         source_event: { gamepad: { button: LeftPaddle1 } }
         target_events: [ { keyboard: KeyLeftShift } ]
