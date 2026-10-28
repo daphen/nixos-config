@@ -1,5 +1,5 @@
 diff --git a/src/input/composite_device/mod.rs b/src/input/composite_device/mod.rs
-index 1c59879..46bcad1 100644
+index 1c59879..f57d026 100644
 --- a/src/input/composite_device/mod.rs
 +++ b/src/input/composite_device/mod.rs
 @@ -207,20 +207,51 @@ impl TouchpadScrollState {
@@ -25,7 +25,7 @@ index 1c59879..46bcad1 100644
 +}
 +
 +fn wheel_event(source_cap: Capability, value: InputValue) -> Vec<NativeEvent> {
-+    if matches!(value, InputValue::None) {
++    if matches!(value, InputValue::None | InputValue::Vector2 { x: None, y: None }) {
 +        return Vec::new();
 +    }
 +    vec![NativeEvent::new_translated(
@@ -145,6 +145,15 @@ index 1c59879..46bcad1 100644
              return Ok(events);
          }
          if let Some(mappings) = self.device_profile_config_map.get(&source_cap) {
+@@ -1799,7 +1847,7 @@ impl CompositeDevice {
+                             }
+                         }
+                     };
+-                    if matches!(value, InputValue::None) {
++                    if matches!(value, InputValue::None | InputValue::Vector2 { x: None, y: None }) {
+                         continue;
+                     }
+ 
 @@ -2116,6 +2164,7 @@ impl CompositeDevice {
          log::debug!("Clearing old device profile mappings");
          self.device_profile_config_map.clear();
@@ -170,7 +179,7 @@ index 1c59879..46bcad1 100644
              translatable_capabilities: Vec::new(),
              translatable_active_inputs: Vec::new(),
              translated_recent_events: HashSet::new(),
-@@ -3041,4 +3091,66 @@ mapping:
+@@ -3041,4 +3091,76 @@ mapping:
              Capability::Keyboard(Keyboard::KeyF13)
          );
      }
@@ -224,6 +233,16 @@ index 1c59879..46bcad1 100644
 +            }
 +        }
 +        assert_eq!(haptics, vec![CommandType::Tick, CommandType::Off]);
++
++        // A resting finger jitters below one step: no wheel events and no ticks.
++        tokio::time::sleep(Duration::from_millis(40)).await;
++        for x in [0.376, 0.375, 0.377, 0.376] {
++            client.handle_event(left(x, 0.375, true)).await.unwrap();
++        }
++        tokio::time::sleep(Duration::from_millis(40)).await;
++        let (jitter, _) = flush_events(&client, &mut native_events, &mut steam_events).await;
++        assert!(jitter.is_empty(), "resting jitter scrolled: {jitter:?}");
++        assert!(source_events.try_recv().is_err(), "resting jitter sent haptics");
 +
 +        // A resting finger after one step sends no more samples; the tick must still end.
 +        client.handle_event(left(0.5, 0.375, true)).await.unwrap();
