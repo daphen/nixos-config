@@ -25,9 +25,14 @@ WheelHandler {
         const angle = horizontal ? e.angleDelta.x : e.angleDelta.y
         const pixel = horizontal ? e.pixelDelta.x : e.pixelDelta.y
         const px = touchpad ? angle * touchpadGain : ((pixel !== 0) ? pixel : angle / 8) * mouseGain
-        if (horizontal) flick.contentX -= px
-        else flick.contentY -= px
-        flick.returnToBounds()
+        // Clamp instead of returnToBounds(): overshooting then rebounding jitters at the ends.
+        if (horizontal) {
+            const lo = flick.originX - flick.leftMargin
+            flick.contentX = Math.max(lo, Math.min(Math.max(lo, lo + flick.contentWidth + flick.leftMargin + flick.rightMargin - flick.width), flick.contentX - px))
+        } else {
+            const lo = flick.originY - flick.topMargin
+            flick.contentY = Math.max(lo, Math.min(Math.max(lo, lo + flick.contentHeight + flick.topMargin + flick.bottomMargin - flick.height), flick.contentY - px))
+        }
         root.scrolled(px > 0)
         e.accepted = true
     }
