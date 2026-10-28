@@ -1,5 +1,5 @@
 diff --git a/src/input/composite_device/mod.rs b/src/input/composite_device/mod.rs
-index 1c59879..79a20fd 100644
+index 1c59879..46bcad1 100644
 --- a/src/input/composite_device/mod.rs
 +++ b/src/input/composite_device/mod.rs
 @@ -207,20 +207,51 @@ impl TouchpadScrollState {
@@ -109,46 +109,43 @@ index 1c59879..79a20fd 100644
          ) {
              let haptics_enabled = self
                  .output_capabilities
-@@ -1741,6 +1760,38 @@ impl CompositeDevice {
+@@ -1741,6 +1760,35 @@ impl CompositeDevice {
                      .await?;
                  }
              }
-+            let left_motion = source_cap == Capability::Touchpad(Touchpad::LeftPad(Touch::Motion));
-+            let left_haptics = self
-+                .output_capabilities
-+                .contains(&OutputCapability::Haptics(Haptic::TrackpadLeft));
-+            // Tick keeps pulsing until Off, so each scroll step gets a one-sample Tick.
-+            let left_cmd = if !left_motion || !left_haptics {
-+                None
-+            } else if self.left_pad_scroll.haptic_active {
-+                self.left_pad_scroll.haptic_active = false;
-+                Some(CommandType::Off)
-+            } else if !events.is_empty()
++            let left_tick = source_cap == Capability::Touchpad(Touchpad::LeftPad(Touch::Motion))
++                && !events.is_empty()
++                && self
++                    .output_capabilities
++                    .contains(&OutputCapability::Haptics(Haptic::TrackpadLeft))
 +                && self
 +                    .left_pad_scroll
 +                    .last_haptic
-+                    .is_none_or(|last| last.elapsed() >= Duration::from_millis(30))
-+            {
-+                self.left_pad_scroll.haptic_active = true;
++                    .is_none_or(|last| last.elapsed() >= Duration::from_millis(30));
++            if left_tick {
 +                self.left_pad_scroll.last_haptic = Some(Instant::now());
-+                Some(CommandType::Tick)
-+            } else {
-+                None
-+            };
-+            if let Some(cmd_type) = left_cmd {
-+                self.process_output_event(OutputEvent::SteamDeckHaptics(PackedHapticReport {
-+                    side: PadSide::Left,
-+                    cmd_type,
-+                    intensity: Intensity::Default,
-+                    gain: 0,
-+                    ..Default::default()
-+                }))
-+                .await?;
++                let report = |cmd_type| {
++                    OutputEvent::SteamDeckHaptics(PackedHapticReport {
++                        side: PadSide::Left,
++                        cmd_type,
++                        intensity: Intensity::Default,
++                        gain: 0,
++                        ..Default::default()
++                    })
++                };
++                self.process_output_event(report(CommandType::Tick)).await?;
++                // Tick pulses until Off, and a resting finger sends no further samples to end it.
++                let tx = self.tx.clone();
++                let off = report(CommandType::Off);
++                tokio::spawn(async move {
++                    tokio::time::sleep(Duration::from_millis(10)).await;
++                    let _ = tx.send(CompositeCommand::ProcessOutputEvent(off)).await;
++                });
 +            }
              return Ok(events);
          }
          if let Some(mappings) = self.device_profile_config_map.get(&source_cap) {
-@@ -2116,6 +2167,7 @@ impl CompositeDevice {
+@@ -2116,6 +2164,7 @@ impl CompositeDevice {
          log::debug!("Clearing old device profile mappings");
          self.device_profile_config_map.clear();
          self.touchpad_scroll.reset();
@@ -156,7 +153,7 @@ index 1c59879..79a20fd 100644
  
          // Load the device profile
          self.device_profile = profile;
-@@ -2538,7 +2590,7 @@ options: { persist: true }
+@@ -2538,7 +2587,7 @@ options: { persist: true }
          let (source_tx, source_events) = mpsc::channel(64);
          let haptic_capability = OutputCapability::Haptics(Haptic::TrackpadRight);
          let output_capabilities = supports_haptics
@@ -165,7 +162,7 @@ index 1c59879..79a20fd 100644
              .unwrap_or_default();
          let mut device = CompositeDevice {
              dbus: DBusInterfaceManager::new(conn.clone(), path.clone()).unwrap(),
-@@ -2556,6 +2608,7 @@ options: { persist: true }
+@@ -2556,6 +2605,7 @@ options: { persist: true }
              device_profile_path: None,
              device_profile_config_map: HashMap::new(),
              touchpad_scroll: TouchpadScrollState::default(),
@@ -173,7 +170,7 @@ index 1c59879..79a20fd 100644
              translatable_capabilities: Vec::new(),
              translatable_active_inputs: Vec::new(),
              translated_recent_events: HashSet::new(),
-@@ -3041,4 +3094,54 @@ mapping:
+@@ -3041,4 +3091,66 @@ mapping:
              Capability::Keyboard(Keyboard::KeyF13)
          );
      }
@@ -218,6 +215,7 @@ index 1c59879..79a20fd 100644
 +                expected(Some(-10.0), None),
 +            ]
 +        );
++        tokio::time::sleep(Duration::from_millis(40)).await;
 +        let mut haptics = Vec::new();
 +        while let Ok(command) = source_events.try_recv() {
 +            if let SourceCommand::WriteEvent(OutputEvent::SteamDeckHaptics(report)) = command {
@@ -226,5 +224,16 @@ index 1c59879..79a20fd 100644
 +            }
 +        }
 +        assert_eq!(haptics, vec![CommandType::Tick, CommandType::Off]);
++
++        // A resting finger after one step sends no more samples; the tick must still end.
++        client.handle_event(left(0.5, 0.375, true)).await.unwrap();
++        tokio::time::sleep(Duration::from_millis(40)).await;
++        let mut rest = Vec::new();
++        while let Ok(command) = source_events.try_recv() {
++            if let SourceCommand::WriteEvent(OutputEvent::SteamDeckHaptics(report)) = command {
++                rest.push(report.cmd_type);
++            }
++        }
++        assert_eq!(rest, vec![CommandType::Tick, CommandType::Off]);
 +    }
  }
