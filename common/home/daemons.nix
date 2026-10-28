@@ -210,6 +210,9 @@ in
     };
     Service = {
       Type = "simple";
+      # After a VM reboot nothing restarts agentd there; every reconnect starts it if absent.
+      Environment = "PATH=/etc/profiles/per-user/daphen/bin:/run/current-system/sw/bin";
+      ExecStartPre = "-/etc/profiles/per-user/daphen/bin/vmctl agentd";
       ExecStart = "${pkgs.openssh}/bin/ssh -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ExitOnForwardFailure=yes -o StreamLocalBindUnlink=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=15 -L %t/agentd-work.sock:127.0.0.1:17840 david_karlsson_lovable_dev@dev-heidr-2a39.workstation.lovable.net";
       Restart = "always";
       RestartSec = "5s";

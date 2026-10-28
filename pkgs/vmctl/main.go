@@ -50,7 +50,7 @@ func command(args []string, out, errOut io.Writer) error {
 		args = args[1:]
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: vmctl <worktree|cockpit|connect|editor> [arguments]")
+		return fmt.Errorf("usage: vmctl <worktree|cockpit|agentd|connect|editor> [arguments]")
 	}
 	a, err := newApp(out, errOut)
 	if err != nil {
@@ -73,6 +73,11 @@ func command(args []string, out, errOut io.Writer) error {
 			return fmt.Errorf("usage: vmctl cockpit [--restart]")
 		}
 		return runCockpit(a, len(args) == 2)
+	case "agentd":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: vmctl agentd")
+		}
+		return runAgentd(a)
 	case "worktree":
 		if len(args) > 1 && args[1] == "--review" {
 			if len(args) != 4 {
@@ -101,7 +106,7 @@ func command(args []string, out, errOut io.Writer) error {
 		}
 		return runWorktree(a, ticket, raw, startApp, scriptTag)
 	default:
-		return fmt.Errorf("usage: vmctl <worktree|cockpit|connect|editor> [arguments]")
+		return fmt.Errorf("usage: vmctl <worktree|cockpit|agentd|connect|editor> [arguments]")
 	}
 }
 

@@ -371,3 +371,21 @@ func runCockpitBinary(t *testing.T, home, path string, extra []string, args ...s
 	err := cmd.Run()
 	return result{stdout.String(), stderr.String(), err}
 }
+
+func TestAgentdStartsOnlyWhenTheVMReportsItMissing(t *testing.T) {
+	for _, tc := range []struct {
+		running string
+		starts  bool
+	}{{"yes", false}, {"", false}, {"no", true}} {
+		home, path, log := cockpitFixture(t)
+		result := runCockpitBinary(t, home, path, []string{"WAS_RUNNING=" + tc.running, "DAEMON_MODE=already"}, "agentd")
+		if result.err != nil {
+			t.Fatalf("running=%q failed: %v\nstdout=%s\nstderr=%s", tc.running, result.err, result.stdout, result.stderr)
+		}
+		calls := readLog(t, log)
+		started := strings.Contains(calls, "export XDG_DATA_DIRS")
+		if started != tc.starts || strings.Contains(calls, "op|read") != tc.starts || strings.Contains(calls, "rsync|") || strings.Contains(calls, "setsid|") {
+			t.Fatalf("running=%q starts=%v calls:\n%s", tc.running, started, calls)
+		}
+	}
+}

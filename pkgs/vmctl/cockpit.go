@@ -50,9 +50,20 @@ type cockpitState struct {
 	ssh     []string
 }
 
-func runCockpit(a app, restart bool) error {
+// Starts the VM agentd only when it is absent; the work tunnel runs this on every
+// reconnect so a VM reboot no longer needs a manual `vmctl cockpit`.
+func runAgentd(a app) error {
+	c := newCockpitState(a, false)
+	if strings.TrimSpace(c.bestSSHOutput("pgrep -x agentd >/dev/null && echo yes || echo no")) != "no" {
+		return nil
+	}
+	key, slack := c.secrets()
+	return c.startAgentd(key, slack)
+}
+
+func newCockpitState(a app, restart bool) cockpitState {
 	runtime := envDefault("XDG_RUNTIME_DIR", "/tmp")
-	c := cockpitState{
+	return cockpitState{
 		a: a, restart: restart,
 		port:   envFallback("COCKPIT_VM_AGENTD_PORT", "HEIDR_VM_AGENTD_PORT", "17840"),
 		sock:   filepath.Join(runtime, "agentd-work.sock"),
@@ -61,6 +72,25 @@ func runCockpit(a app, restart bool) error {
 		reaper: filepath.Join(a.home, "nixos", "dotfiles", "niri", ".config", "niri", "scripts", "vm-slice-reaper"),
 		ssh:    []string{"ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=25", a.user + "@" + a.host},
 	}
+}
+
+func (c cockpitState) secrets() (string, string) {
+	key, _ := c.a.output("fish", "-c", "source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY")
+	key = strings.TrimRight(key, "\n")
+	if key == "" {
+		c.say("  ⚠ no OPENAI_API_KEY — pi will not start")
+	}
+	slack, _ := c.a.output("op", "read", "op://Private/Slack MCP/text")
+	slack = strings.TrimRight(slack, "\n")
+	if slack == "" {
+		c.say("  (no Slack secret — run 'op signin' if you want the slack mcp)")
+	}
+	return key, slack
+}
+
+func runCockpit(a app, restart bool) error {
+	runtime := envDefault("XDG_RUNTIME_DIR", "/tmp")
+	c := newCockpitState(a, restart)
 	legacy := filepath.Join(runtime, "heidr-role-bundle-work.restart-required")
 	if _, err := os.Stat(legacy); err == nil {
 		if err := os.Rename(legacy, c.marker); err != nil {
@@ -81,16 +111,7 @@ func runCockpit(a app, restart bool) error {
 	if err := c.syncReaper(); err != nil {
 		return err
 	}
-	key, _ := c.a.output("fish", "-c", "source ~/.config/fish/secrets.fish; echo -n $OPENAI_API_KEY")
-	key = strings.TrimRight(key, "\n")
-	if key == "" {
-		c.say("  ⚠ no OPENAI_API_KEY — pi will not start")
-	}
-	slack, _ := c.a.output("op", "read", "op://Private/Slack MCP/text")
-	slack = strings.TrimRight(slack, "\n")
-	if slack == "" {
-		c.say("  (no Slack secret — run 'op signin' if you want the slack mcp)")
-	}
+	key, slack := c.secrets()
 	if err := c.startAgentd(key, slack); err != nil {
 		return err
 	}
