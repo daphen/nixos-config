@@ -1,5 +1,5 @@
 diff --git a/src/input/composite_device/mod.rs b/src/input/composite_device/mod.rs
-index 1c59879..b535184 100644
+index 1c59879..79a20fd 100644
 --- a/src/input/composite_device/mod.rs
 +++ b/src/input/composite_device/mod.rs
 @@ -207,20 +207,51 @@ impl TouchpadScrollState {
@@ -109,24 +109,36 @@ index 1c59879..b535184 100644
          ) {
              let haptics_enabled = self
                  .output_capabilities
-@@ -1741,6 +1760,26 @@ impl CompositeDevice {
+@@ -1741,6 +1760,38 @@ impl CompositeDevice {
                      .await?;
                  }
              }
-+            let left_tick = source_cap == Capability::Touchpad(Touchpad::LeftPad(Touch::Motion))
-+                && !events.is_empty()
-+                && self
-+                    .output_capabilities
-+                    .contains(&OutputCapability::Haptics(Haptic::TrackpadLeft))
++            let left_motion = source_cap == Capability::Touchpad(Touchpad::LeftPad(Touch::Motion));
++            let left_haptics = self
++                .output_capabilities
++                .contains(&OutputCapability::Haptics(Haptic::TrackpadLeft));
++            // Tick keeps pulsing until Off, so each scroll step gets a one-sample Tick.
++            let left_cmd = if !left_motion || !left_haptics {
++                None
++            } else if self.left_pad_scroll.haptic_active {
++                self.left_pad_scroll.haptic_active = false;
++                Some(CommandType::Off)
++            } else if !events.is_empty()
 +                && self
 +                    .left_pad_scroll
 +                    .last_haptic
-+                    .is_none_or(|last| last.elapsed() >= Duration::from_millis(30));
-+            if left_tick {
++                    .is_none_or(|last| last.elapsed() >= Duration::from_millis(30))
++            {
++                self.left_pad_scroll.haptic_active = true;
 +                self.left_pad_scroll.last_haptic = Some(Instant::now());
++                Some(CommandType::Tick)
++            } else {
++                None
++            };
++            if let Some(cmd_type) = left_cmd {
 +                self.process_output_event(OutputEvent::SteamDeckHaptics(PackedHapticReport {
 +                    side: PadSide::Left,
-+                    cmd_type: CommandType::Tick,
++                    cmd_type,
 +                    intensity: Intensity::Default,
 +                    gain: 0,
 +                    ..Default::default()
@@ -136,7 +148,7 @@ index 1c59879..b535184 100644
              return Ok(events);
          }
          if let Some(mappings) = self.device_profile_config_map.get(&source_cap) {
-@@ -2116,6 +2155,7 @@ impl CompositeDevice {
+@@ -2116,6 +2167,7 @@ impl CompositeDevice {
          log::debug!("Clearing old device profile mappings");
          self.device_profile_config_map.clear();
          self.touchpad_scroll.reset();
@@ -144,7 +156,7 @@ index 1c59879..b535184 100644
  
          // Load the device profile
          self.device_profile = profile;
-@@ -2538,7 +2578,7 @@ options: { persist: true }
+@@ -2538,7 +2590,7 @@ options: { persist: true }
          let (source_tx, source_events) = mpsc::channel(64);
          let haptic_capability = OutputCapability::Haptics(Haptic::TrackpadRight);
          let output_capabilities = supports_haptics
@@ -153,7 +165,7 @@ index 1c59879..b535184 100644
              .unwrap_or_default();
          let mut device = CompositeDevice {
              dbus: DBusInterfaceManager::new(conn.clone(), path.clone()).unwrap(),
-@@ -2556,6 +2596,7 @@ options: { persist: true }
+@@ -2556,6 +2608,7 @@ options: { persist: true }
              device_profile_path: None,
              device_profile_config_map: HashMap::new(),
              touchpad_scroll: TouchpadScrollState::default(),
@@ -161,7 +173,7 @@ index 1c59879..b535184 100644
              translatable_capabilities: Vec::new(),
              translatable_active_inputs: Vec::new(),
              translated_recent_events: HashSet::new(),
-@@ -3041,4 +3082,54 @@ mapping:
+@@ -3041,4 +3094,54 @@ mapping:
              Capability::Keyboard(Keyboard::KeyF13)
          );
      }
@@ -206,13 +218,13 @@ index 1c59879..b535184 100644
 +                expected(Some(-10.0), None),
 +            ]
 +        );
-+        let mut left_ticks = 0;
++        let mut haptics = Vec::new();
 +        while let Ok(command) = source_events.try_recv() {
 +            if let SourceCommand::WriteEvent(OutputEvent::SteamDeckHaptics(report)) = command {
-+                assert_eq!((report.side, report.cmd_type), (PadSide::Left, CommandType::Tick));
-+                left_ticks += 1;
++                assert_eq!(report.side, PadSide::Left);
++                haptics.push(report.cmd_type);
 +            }
 +        }
-+        assert!(left_ticks >= 1, "left pad scroll sent no haptic tick");
++        assert_eq!(haptics, vec![CommandType::Tick, CommandType::Off]);
 +    }
  }
