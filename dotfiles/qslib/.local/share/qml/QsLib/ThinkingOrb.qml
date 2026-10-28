@@ -130,7 +130,7 @@ Item {
   ShaderEffect {
     id: field
     anchors.fill: parent
-    anchors.margins: Theme.mode === "light" ? orb.ringWidth : orb.ringWidth / 2
+    anchors.margins: orb.ringWidth / 2
     fragmentShader: Qt.resolvedUrl("aurora.frag.qsb")
     layer.enabled: orb.idleBlur > 0
     layer.effect: MultiEffect {
