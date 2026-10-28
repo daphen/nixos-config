@@ -24,3 +24,5 @@ Spinner Spinner.qml
 ThinkingOrb ThinkingOrb.qml
 TabBar TabBar.qml
 TabFace TabFace.qml
+GradientFrame GradientFrame.qml
+LightKey LightKey.qml

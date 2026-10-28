@@ -23,6 +23,14 @@ Item {
         faceMid: root.face
         faceBottom: root.face
     }
+    LightKey {
+        anchors.fill: parent
+        visible: root.lightMode
+        radius: 15
+        outline: Qt.alpha(Theme.fg, 0.16)
+        faceTop: root.face
+        faceBottom: root.face
+    }
 
     TapHandler {}
 }

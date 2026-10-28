@@ -10,14 +10,32 @@ Rectangle {
 
     readonly property bool lightMode: Theme.mode === "light"
     readonly property color ink: lightMode ? "#23272B" : "#FAFAFA"
+    readonly property bool raised: selected || cursor
 
     radius: 9
     color: Qt.tint(base, selected ? (lightMode ? Theme.itemSelected : Qt.rgba(1, 1, 1, 0.10))
                        : cursor ? (lightMode ? Theme.itemCursor : Qt.rgba(1, 1, 1, 0.14))
                        : hovered ? (lightMode ? Theme.itemHover : Qt.rgba(1, 1, 1, 0.07))
                        : lightMode ? Theme.surface : Qt.alpha(ink, 0.045))
-    border.width: (lightMode && selected) || (cursor && selected) ? 1 : 0
-    border.color: lightMode && !cursor ? "#D3D5DA" : Qt.alpha(ink, 0.25)
 
     Behavior on color { ColorAnimation { duration: 140 } }
+
+    GradientFrame {
+        objectName: "tabFaceFrame"
+        anchors.fill: parent
+        visible: !root.lightMode && root.raised
+        radius: root.radius
+        fill: root.color
+        edge: root.ink
+        strength: root.cursor && root.selected ? 1.3 : 1
+    }
+    LightKey {
+        objectName: "tabFaceKey"
+        anchors.fill: parent
+        visible: root.lightMode && root.raised
+        radius: root.radius
+        outline: Qt.alpha(root.ink, root.cursor && root.selected ? 0.24 : 0.16)
+        faceTop: root.selected ? "#FDFDFD" : "#FBFBFB"
+        faceBottom: root.selected ? "#F5F5F6" : "#F1F1F2"
+    }
 }
