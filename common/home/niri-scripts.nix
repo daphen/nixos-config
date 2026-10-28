@@ -9,7 +9,7 @@ let
   # picking up new/changed scripts. `inputs.self` tracks every git-tracked file.
   desktopctl = import ../../pkgs/desktopctl { inherit pkgs; };
   sessionctl = import ../../pkgs/sessionctl { inherit pkgs; };
-  vmctl = import ../../pkgs/vmctl { inherit pkgs; neovim = nvimRemote; };
+  vmctl = import ../../pkgs/vmctl { inherit pkgs; worktrunk = config.programs.worktrunk.package; neovim = nvimRemote; };
   niri-scripts = pkgs.stdenv.mkDerivation {
     name = "niri-scripts";
     src = "${inputs.self}/dotfiles/niri/.config/niri/scripts";

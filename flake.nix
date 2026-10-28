@@ -122,7 +122,7 @@
       };
 
       nvimPkgs = import ./pkgs/neovim { inherit pkgs inputs; lib = nixpkgs.lib; };
-      vmctlPkg = import ./pkgs/vmctl { inherit pkgs; neovim = nvimPkgs.remoteEditor; };
+      vmctlPkg = import ./pkgs/vmctl { inherit pkgs; worktrunk = worktrunk.packages.${system}.default; neovim = nvimPkgs.remoteEditor; };
 
       # Pin iwd to 3.12 to fix SIGSEGV crashes during WiFi roaming (build_ciphers_common)
       iwdOverlay = final: prev: {
