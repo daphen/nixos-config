@@ -310,7 +310,7 @@ func (c cockpitState) startAgentd(key, slack string) error {
     setsid env OPENAI_API_KEY='%s' SLACK_MCP_CLIENT_SECRET='%s' \
       COCKPIT_SLICE_REAP_HOOK=$HOME/.local/bin/vm-slice-reaper \
       DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" XDG_DATA_DIRS="$XDG_DATA_DIRS" \
-      PATH="$PATH" $HOME/.local/bin/agentd --scope work --repo $HOME/src/lovable \
+      PATH="$PATH" $HOME/.local/bin/agentd --scope work --model anthropic/claude-opus-5-5 --repo $HOME/src/lovable \
       --listen 127.0.0.1:%s >$HOME/agentd.log 2>&1 </dev/null &
     sleep 4
   else echo "  already running (pid $(pgrep -x agentd | tr '\n' ' '), up $(ps -o etime= -p $(pgrep -x agentd | head -1) 2>/dev/null | tr -d ' '))"; fi
