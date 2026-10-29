@@ -42,12 +42,13 @@ func TestWorktreeDefaultCreatesOnlyWorker(t *testing.T) {
 	messages := make(chan map[string]any, 1)
 	listener, done := worktreeSocket(t, home, `{"sessions":[]}`, messages)
 	defer listener.Close()
-	result := runWorktreeBinary(t, home, path, "EVERY-55")
+	result := runWorktreeBinary(t, home, path, "PLS-683")
 	if result.err != nil || !strings.Contains(result.stdout, "app startup not requested") {
 		t.Fatalf("result=%+v", result)
 	}
 	<-done
-	if message := <-messages; message["type"] != "spawn" || message["profile"] != "lovable-worker" {
+	if message := <-messages; message["type"] != "spawn" || message["profile"] != "lovable-worker" ||
+		message["session"] != "pls-683" || message["cwd"] != "/home/tester/src/lovable-pls-683" || message["prompt"] != "/skill:plan-ticket PLS-683" {
 		t.Fatalf("spawn=%v", message)
 	}
 	calls := readLog(t, log)

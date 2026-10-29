@@ -1002,7 +1002,7 @@ local function bound_key(dir)
 end
 
 -- The artifact key for a folder's plan: the folder's session binding first; else
--- from the branch — a Linear branch (carries a ticket number) keys as `EVERY-<num>`;
+-- from the branch — a Linear branch keys as its `TEAM-<num>` (bare numbers → `EVERY-<num>`);
 -- an ad-hoc branch (`daphen/refactor-foo`) keys as its short name (`refactor-foo`) —
 -- so own-work plans need no ticket. nil for main/master with no binding.
 local function plan_key(root)
@@ -1015,6 +1015,8 @@ local function plan_key(root)
 		or (branch ~= "" and branch)
 		or (vim.fn.fnamemodify(root, ":t"):gsub("^lovable%.daphen%-", ""))
 	if not name or name == "" or name == "main" or name == "master" then return nil end
+	local team, tnum = name:match("^(%a[%w]*)%-(%d+)")
+	if team then return team:upper() .. "-" .. tnum end
 	local num = name:match("(%d%d+)")
 	return num and ("EVERY-" .. num) or name
 end

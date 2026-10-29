@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	ticketPattern           = regexp.MustCompile(`(?i)^EVERY-[0-9]+$`)
+	ticketPattern           = regexp.MustCompile(`(?i)^[A-Z][A-Z0-9]*-[0-9]+$`)
 	explicitCheckoutPattern = regexp.MustCompile(`^lovable\.[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
 
@@ -91,7 +91,7 @@ func command(args []string, out, errOut io.Writer) error {
 		scriptTag := len(args) == 3 && args[1] == "--script-tag"
 		startApp := scriptTag || (len(args) == 3 && args[1] == "--app")
 		if len(args) != 2 && !teardown && !off && !reap && !startApp {
-			return fmt.Errorf("usage: vmctl worktree [--off | --reap | --teardown | --app | --script-tag] EVERY-N | --review PR-NUMBER HEAD-SHA")
+			return fmt.Errorf("usage: vmctl worktree [--off | --reap | --teardown | --app | --script-tag] TEAM-N | --review PR-NUMBER HEAD-SHA")
 		}
 		raw := args[len(args)-1]
 		ticket, err := parseTicket(raw)
@@ -112,7 +112,7 @@ func command(args []string, out, errOut io.Writer) error {
 
 func parseTicket(raw string) (string, error) {
 	if !ticketPattern.MatchString(raw) {
-		return "", fmt.Errorf("invalid ticket %q: expected EVERY-N", raw)
+		return "", fmt.Errorf("invalid ticket %q: expected TEAM-N such as EVERY-123 or PLS-683", raw)
 	}
 	return strings.ToLower(raw), nil
 }
