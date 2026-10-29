@@ -4,7 +4,7 @@
   "profiles": {
     "lovable-orchestrator": {
       "prompt": "lovable-orchestrator.md",
-      "model": "openai/gpt-6-sol",
+      "model": "anthropic/claude-opus-5-5",
       "reasoning": "medium",
       "tools": [
         "read",
@@ -55,7 +55,7 @@
     },
     "lovable-worker": {
       "prompt": "lovable-worker.md",
-      "model": "openai/gpt-6-sol",
+      "model": "anthropic/claude-opus-5-5",
       "reasoning": "medium",
       "tools": [
         "read",
@@ -105,7 +105,7 @@
     },
     "lovable-reviewer": {
       "prompt": "lovable-reviewer.md",
-      "model": "openai/gpt-6-sol",
+      "model": "anthropic/claude-opus-5-5",
       "reasoning": "medium",
       "tools": [
         "read",
@@ -149,7 +149,7 @@
     },
     "lovable-watcher": {
       "prompt": "lovable-watcher.md",
-      "model": "openai/gpt-6-sol",
+      "model": "anthropic/claude-opus-5-5",
       "reasoning": "medium",
       "tools": [
         "bash",

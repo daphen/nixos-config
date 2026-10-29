@@ -15,4 +15,6 @@ fi
 [ -n "$OPENAI_API_KEY" ] || { echo "launch-agentd: no openai key available" >&2; exit 1; }
 export OPENAI_API_KEY SLACK_MCP_CLIENT_SECRET
 export PATH="$HOME/.npm-global/bin:$PATH"
-exec "$HOME/.local/bin/agentd" --scope "$scope" "$@"
+model=()
+[ "$scope" = chat ] || model=(--model anthropic/claude-opus-5-5)
+exec "$HOME/.local/bin/agentd" --scope "$scope" "${model[@]}" "$@"
