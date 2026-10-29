@@ -2,7 +2,7 @@
 
 `vm-wt` uses this package. On the VM its wrapper invokes
 `vmctl --native worktree`; source-only startup does not start the app.
-`--app` explicitly starts/reuses the ticket's tmux session.
+`--app` starts the shared `lovable-deps` user unit if :8080 is down, then starts/reuses the ticket's `wt-<ticket>` user unit (logs: `journalctl --user -u wt-<ticket>`).
 
 ## VM-launched apps and desktop access
 

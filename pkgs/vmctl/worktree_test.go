@@ -97,7 +97,7 @@ esac
 	}
 	for _, want := range []string{
 		"worktree /home/tester/src/lovable-every-44 on daphen/every-44",
-		"boot devenv wt in tmux session wt-every-44", "✗ playwright override failed (non-fatal)",
+		"boot shared deps and devenv wt as user unit wt-every-44", "✗ playwright override failed (non-fatal)",
 		"spawned 'every-44' with the plan seed", "agent ready: select 'every-44' in the rail",
 		fmt.Sprintf("HTTP ready — testable URL: http://localhost:%d/", web),
 	} {
@@ -118,8 +118,8 @@ esac
 	if !strings.Contains(tunnelCall, "/run/current-system/sw/bin/ssh -N -o AddressFamily=any -o BatchMode=yes -o ConnectTimeout=25") {
 		t.Errorf("persistent tunnel missing address-family override or ConnectTimeout:\n%s", tunnelCall)
 	}
-	inOrder(t, calls, "ssh|-o StrictHostKeyChecking=no", "git -C '/home/tester/src/lovable' worktree add", "ssh|-o StrictHostKeyChecking=no", "tmux new-session")
-	for _, want := range []string{"show-ref --verify --quiet 'refs/heads/daphen/every-44'", "worktree add '/home/tester/src/lovable-every-44' 'daphen/every-44'", "worktree add -b 'daphen/every-44' '/home/tester/src/lovable-every-44' origin/main", "nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous", `"@playwright/mcp@0.0.80"`, `"--executable-path", "/nix/store/4zn3d0v19mhpw5k3mn5l684v4y79na7k-chromium-143.0.7499.169/bin/chromium"`, `"env": { "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1" }`, "grep -qx '.pi/'", fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", web, web), fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", api, api)} {
+	inOrder(t, calls, "ssh|-o StrictHostKeyChecking=no", "git -C '/home/tester/src/lovable' worktree add", "ssh|-o StrictHostKeyChecking=no", "systemd-run --user --quiet --unit wt-every-44")
+	for _, want := range []string{"show-ref --verify --quiet 'refs/heads/daphen/every-44'", "worktree add '/home/tester/src/lovable-every-44' 'daphen/every-44'", "worktree add -b 'daphen/every-44' '/home/tester/src/lovable-every-44' origin/main", "nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous --no-tui", `"@playwright/mcp@0.0.80"`, `"--executable-path", "/nix/store/4zn3d0v19mhpw5k3mn5l684v4y79na7k-chromium-143.0.7499.169/bin/chromium"`, `"env": { "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1" }`, "grep -qx '.pi/'", fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", web, web), fmt.Sprintf("-L 127.0.0.1:%d:127.0.0.1:%d", api, api)} {
 		if !strings.Contains(calls, want) {
 			t.Errorf("calls missing %q:\n%s", want, calls)
 		}
@@ -131,36 +131,31 @@ esac
 	}
 }
 
-func TestWorktreePassesCABundleToNewTmuxSession(t *testing.T) {
+func TestWorktreePassesCABundleToNewDevUnit(t *testing.T) {
 	for _, supplied := range []string{"", "/trusted/custom CA's.pem"} {
 		t.Run(supplied, func(t *testing.T) {
 			t.Setenv("NODE_EXTRA_CA_CERTS", supplied)
 			home, path, _ := worktreeFixture(t, `
 case "$*" in
-  *"tmux new-session"*) eval "script=\${$#}"; /bin/sh -c "$script"; exit 23 ;;
+  *"--unit wt-"*) eval "script=\${$#}"; /bin/sh -c "$script"; exit 23 ;;
 esac
 `)
-			tmux := `#!/bin/sh
-case "$1" in
-  has-session) exit 1 ;;
-  new-session)
-    ca=not-forwarded
-    while [ "$#" -gt 0 ]; do
-      if [ "$1" = -e ]; then shift; case "$1" in NODE_EXTRA_CA_CERTS=*) ca=${1#*=} ;; esac; fi
-      shift
-    done
-    printf '%s' "$ca" > "$HOME/launch-ca"
-    exit 23 ;;
-esac
+			run := `#!/bin/sh
+ca=not-forwarded
+for arg; do case "$arg" in --setenv=NODE_EXTRA_CA_CERTS=*) ca=${arg#*=*=} ;; esac; done
+printf '%s' "$ca" > "$HOME/launch-ca"
+exit 23
 `
-			if err := os.WriteFile(filepath.Join(path, "tmux"), []byte(tmux), 0o755); err != nil {
-				t.Fatal(err)
+			for name, body := range map[string]string{"systemd-run": run, "systemctl": "#!/bin/sh\nexit 3\n", "curl": "#!/bin/sh\n"} {
+				if err := os.WriteFile(filepath.Join(path, name), []byte(body), 0o755); err != nil {
+					t.Fatal(err)
+				}
 			}
 			listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, nil)
 			defer listener.Close()
 			result := runWorktreeBinaryArgs(t, home, path, "--app", "EVERY-44")
 			if result.err == nil || !strings.Contains(result.stderr, "remote dev startup failed") {
-				t.Fatalf("fixture must stop after capturing tmux startup: %+v", result)
+				t.Fatalf("fixture must stop after capturing unit startup: %+v", result)
 			}
 			got, err := os.ReadFile(filepath.Join(home, "launch-ca"))
 			want := supplied
@@ -168,7 +163,7 @@ esac
 				want = "/etc/ssl/certs/ca-certificates.crt"
 			}
 			if err != nil || string(got) != want {
-				t.Fatalf("tmux CA=%q, want %q: %v", got, want, err)
+				t.Fatalf("unit CA=%q, want %q: %v", got, want, err)
 			}
 		})
 	}
@@ -178,9 +173,9 @@ func TestWorktreeSurfacesCheckoutAndBootFailures(t *testing.T) {
 	for _, tc := range []struct {
 		name, match, diagnostic, want, forbidden string
 	}{
-		{"checkout", " worktree add", "worktree disk full", "worktree disk full", "tmux new-session"},
-		{"checkout empty output", "show-ref --verify", "", "exit status 7", "tmux new-session"},
-		{"boot", "tmux new-session", "tmux rejected cwd", "tmux rejected cwd", "systemd-run|"},
+		{"checkout", " worktree add", "worktree disk full", "worktree disk full", "--unit wt-"},
+		{"checkout empty output", "show-ref --verify", "", "exit status 7", "--unit wt-"},
+		{"boot", "--unit wt-", "unit rejected cwd", "unit rejected cwd", "systemd-run|"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			script := `

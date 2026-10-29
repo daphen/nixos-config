@@ -45,21 +45,21 @@ def start(code, cwd, *args):
 def test_public_cli_stops_only_its_exact_controller_and_reports_failures(tmp_path):
     wt = tmp_path / "src/lovable-every-1"; (wt / ".devenv/state").mkdir(parents=True)
     base = free_port(7); (wt / ".devenv/state/wt-base-port").write_text(str(base))
-    bindir = tmp_path / "bin"; bindir.mkdir(); tmux = bindir / "tmux"
-    tmux.write_text("#!/bin/sh\n[ \"$1:$TMUX_FAIL\" = ls:1 ] && echo wt-every-1 && exit 0\nexit 2\n")
-    tmux.chmod(0o755); ss = bindir / "ss"; real_ss = subprocess.check_output(["which", "ss"], text=True).strip()
+    bindir = tmp_path / "bin"; bindir.mkdir(); unit = bindir / "systemctl"
+    unit.write_text("#!/bin/sh\n[ \"$2:$UNIT_FAIL\" = is-active:1 ] && exit 0\n[ \"$2\" = stop ] && echo denied >&2\nexit 3\n")
+    unit.chmod(0o755); ss = bindir / "ss"; real_ss = subprocess.check_output(["which", "ss"], text=True).strip()
     ss.write_text(f"#!/bin/sh\n{real_ss} \"$@\" | {{ [ \"$SS_HIDE_PID\" = 1 ] && sed 's/users:.*/ /' || cat; }}\n"); ss.chmod(0o755); children = []
-    def run(tmux_fail=False, hide_pid=False):
+    def run(unit_fail=False, hide_pid=False):
         agent_port = free_port(); children.append(start(AGENT, wt, agent_port))
         env = os.environ | {"HOME": str(tmp_path), "AGENTD_SOCK": str(tmp_path / "none"), "AGENTD_PORT": str(agent_port),
-                            "SLICE_STOP_TIMEOUT": ".5", "TMUX_FAIL": str(int(tmux_fail)),
+                            "SLICE_STOP_TIMEOUT": ".5", "UNIT_FAIL": str(int(unit_fail)),
                             "SS_HIDE_PID": str(int(hide_pid)), "PATH": f"{bindir}:{os.environ['PATH']}"}
         return subprocess.run([SCRIPT, "--worktree", wt, "--session", "EVERY-1", "--now"], env=env, capture_output=True, text=True, timeout=5)
     try:
         children.append(start(HTTP, wt, base + 1, 200)); result = run()
         assert result.returncode == 0 and "stopped controller" in result.stdout
         children[-2].wait(timeout=2); assert run().returncode == 0
-        result = run(tmux_fail=True); assert result.returncode != 0 and "removal failed" in result.stdout
+        result = run(unit_fail=True); assert result.returncode != 0 and "unit wt-every-1 stop failed" in result.stdout
         base = free_port(7); (wt / ".devenv/state/wt-base-port").write_text(str(base))
         children.append(start(HTTP, tmp_path, base + 1, 200)); result = run(hide_pid=True)
         assert result.returncode != 0 and "unknown/shared ownership" in result.stdout

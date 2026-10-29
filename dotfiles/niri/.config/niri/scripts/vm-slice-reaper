@@ -13,7 +13,7 @@ Reaps a slice only when BOTH hold:
   * its worktree has no agentd session, or that session has been dormant past GRACE
   * the slice is not the primary checkout (~/src/lovable is never touched)
 Stops it the way process-compose wants (project/stop on its own port), then clears the
-tmux session. Never signals a process tree.
+user unit. Never signals a process tree.
 """
 from __future__ import annotations
 
@@ -137,6 +137,20 @@ def owner_dormant(worktree: str, live: dict) -> tuple[bool, str]:
                            for entry, _, why in states)
 
 
+def stop_unit(unit: str) -> bool:
+    active = subprocess.run(["systemctl", "--user", "is-active", "--quiet", unit]).returncode == 0
+    failed = subprocess.run(["systemctl", "--user", "is-failed", "--quiet", unit]).returncode == 0
+    if not active and not failed:
+        return True
+    result = subprocess.run(["systemctl", "--user", "stop", unit], capture_output=True, text=True)
+    subprocess.run(["systemctl", "--user", "reset-failed", unit], capture_output=True)
+    if result.returncode:
+        log(f"  unit {unit} stop failed: {result.stderr.strip()}")
+        return False
+    log(f"  unit {unit} stopped")
+    return True
+
+
 def stop_slice(wt: str) -> tuple[bool, str]:
     try:
         base = int(open(os.path.join(wt, ".devenv/state/wt-base-port")).read().strip())
@@ -200,16 +214,7 @@ def reap_one(worktree_path: str, session: str, now: bool = False) -> int:
     log(f"hook: {worktree}: {result}")
     if not stopped:
         return 1
-    tmux = subprocess.run(["tmux", "ls"], capture_output=True, text=True).stdout
-    tmux_name = f"wt-{expected}"
-    if tmux_name in tmux:
-        result = subprocess.run(["tmux", "kill-session", "-t", tmux_name],
-                                capture_output=True, text=True)
-        if result.returncode:
-            log(f"  tmux {tmux_name} removal failed: {result.stderr.strip()}")
-            return 1
-        log(f"  tmux {tmux_name} cleared")
-    return 0
+    return 0 if stop_unit(f"wt-{expected}") else 1
 
 
 def main() -> int:
@@ -235,7 +240,6 @@ def main() -> int:
         log("no devenv slices running")
         return 0
 
-    tmux = subprocess.run(["tmux", "ls"], capture_output=True, text=True).stdout
     failed = False
     for worktree in sorted(running):
         if worktree in ("lovable",):
@@ -253,15 +257,8 @@ def main() -> int:
         if not stopped:
             failed = True
             continue
-        tmux_name = f"wt-{name}"
-        if tmux_name in tmux:
-            result = subprocess.run(["tmux", "kill-session", "-t", tmux_name],
-                                    capture_output=True, text=True)
-            if result.returncode:
-                log(f"  tmux {tmux_name} removal failed: {result.stderr.strip()}")
-                failed = True
-            else:
-                log(f"  tmux {tmux_name} cleared")
+        if not stop_unit(f"wt-{name}"):
+            failed = True
     return int(failed)
 
 

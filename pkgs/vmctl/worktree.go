@@ -64,14 +64,8 @@ func runWorktree(a app, ticket, raw string, startApp, scriptTag bool) error {
 	}
 
 	if startApp {
-		worktreeSay(a, "boot devenv wt in tmux session wt-"+ticket+" …")
-		boot := "export PATH=$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH\n" +
-			"if tmux has-session -t 'wt-" + ticket + "' 2>/dev/null; then " +
-			"[ \"$(tmux display-message -p -t 'wt-" + ticket + "' '#{session_path}')\" = '" + vmwt + "' ] || { echo 'tmux wt-" + ticket + " belongs to another checkout' >&2; exit 19; }; " +
-			"echo '  tmux wt-" + ticket + " already running'\n" +
-			"else tmux new-session -d -s 'wt-" + ticket + "' -e \"NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-/etc/ssl/certs/ca-certificates.crt}\" -c '" + vmwt + "' " +
-			"'export PATH=$HOME/src/lovable/bin:$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH; nix develop ./nix-config --impure -c ./bin/devenv wt --no-meticulous 2>&1 | tee ~/wt-" + ticket + ".log' && " +
-			"echo '  started (logs: ~/wt-" + ticket + ".log on the VM, or tmux attach -t wt-" + ticket + ")'; fi"
+		worktreeSay(a, "boot shared deps and devenv wt as user unit wt-"+ticket+" …")
+		boot := devStartupScript(repo, vmwt, ticket)
 		if text, err := worktreeSSHResult(a, boot); err != nil {
 			return fmt.Errorf("remote dev startup failed for %s: %s", vmwt, strings.TrimSpace(text))
 		}
@@ -589,6 +583,34 @@ for marker in "$HOME"/.cache/bazel/_bazel_*/*/DO_NOT_BUILD_HERE; do
 done
 [ "$found" = 1 ] || echo 'no bazel output base for this checkout'
 `
+}
+
+// Both units are systemd user services (VM linger is on) so a crash leaves status and a journal behind.
+func devStartupScript(repo, vmwt, ticket string) string {
+	unit := "wt-" + ticket
+	run := func(name, dir, restart, command string) string {
+		return "systemctl --user reset-failed " + name + " 2>/dev/null; systemd-run --user --quiet --unit " + name +
+			" --property=Restart=" + restart + " --property=RestartSec=10s --working-directory=" + shellLiteral(dir) +
+			" --setenv=NODE_EXTRA_CA_CERTS=\"${NODE_EXTRA_CA_CERTS:-/etc/ssl/certs/ca-certificates.crt}\" " +
+			"/run/current-system/sw/bin/bash -lc " + shellLiteral("export PATH="+repo+"/bin:$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH; exec nix develop ./nix-config --impure -c ./bin/devenv "+command) + " || exit $?\n"
+	}
+	return "export PATH=$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH\n" +
+		"deps() { curl -sf -o /dev/null --max-time 3 http://127.0.0.1:8080/processes; }\n" +
+		"if deps; then echo '  shared deps already answering on :8080'\nelse\n" +
+		"if ! systemctl --user is-active --quiet lovable-deps; then echo '  starting shared deps (lovable-deps.service) …'\n" +
+		run("lovable-deps", repo, "on-failure", "deps --no-tui") + "fi\n" +
+		"i=0; until deps; do i=$((i+1)); if [ $i -gt 180 ]; then echo 'shared deps did not answer on :8080 within 15 minutes' >&2; " +
+		"journalctl --user -u lovable-deps -n 15 --no-pager -o cat >&2; exit 1; fi; sleep 5; done\n" +
+		"echo '  shared deps ready'\nfi\n" +
+		"if systemctl --user is-active --quiet " + unit + "; then " +
+		"[ \"$(systemctl --user show " + unit + " -p WorkingDirectory --value)\" = " + shellLiteral(vmwt) + " ] || { echo '" + unit + " belongs to another checkout' >&2; exit 19; }; " +
+		"echo '  " + unit + " already running'\nelse\n" +
+		"rm -f " + shellLiteral(vmwt) + "/.devenv/state/process-compose-wt-*.yaml\n" +
+		run(unit, vmwt, "no", "wt --no-meticulous --no-tui") +
+		"echo '  started (logs: journalctl --user -u " + unit + " on the VM)'\nfi\n" +
+		"i=0; until ls " + shellLiteral(vmwt) + "/.devenv/state/process-compose-wt-*.yaml >/dev/null 2>&1; do " +
+		"systemctl --user is-active --quiet " + unit + " || { echo 'devenv wt exited before writing its configuration:' >&2; journalctl --user -u " + unit + " -n 15 --no-pager -o cat >&2; exit 1; }; " +
+		"i=$((i+1)); [ $i -le 300 ] || { echo 'devenv wt wrote no configuration within 10 minutes' >&2; exit 1; }; sleep 2; done"
 }
 
 func shellLiteral(value string) string {

@@ -71,7 +71,7 @@ func TestNativeAppReportsOnlyItsVerifiedRouterURL(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(state, "process-compose-wt-51000.yaml"), []byte("- WEB_PORT=51000\n- VITE_GO_API_BASE_URL=http://127.0.0.1:51002\n"), 0644); err != nil {
 				t.Fatal(err)
 			}
-			for _, name := range []string{"sh", "cat", "mkdir", "grep"} {
+			for _, name := range []string{"sh", "cat", "mkdir", "grep", "ls"} {
 				actual, err := exec.LookPath(name)
 				if err != nil {
 					t.Fatal(err)
@@ -80,7 +80,10 @@ func TestNativeAppReportsOnlyItsVerifiedRouterURL(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := os.WriteFile(filepath.Join(path, "tmux"), []byte("#!/bin/sh\n[ \"$1\" != display-message ] || printf '%s\\n' '"+checkout+"'\n"), 0755); err != nil {
+			if err := os.WriteFile(filepath.Join(path, "systemctl"), []byte("#!/bin/sh\n[ \"$2\" != show ] || printf '%s\\n' '"+checkout+"'\n"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(path, "curl"), []byte("#!/bin/sh\n"), 0755); err != nil {
 				t.Fatal(err)
 			}
 			listener, _ := worktreeSocket(t, home, `{"sessions":[]}`, nil)
