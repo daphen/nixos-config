@@ -677,7 +677,14 @@ return function(ctx)
 			end
 			return { pass_event = true }
 		end)
-		hl.bind("SUPER + t", hl.dsp.exec_cmd(scripts .. "cockpit-rail-roster"))
+		hl.bind("SUPER + t", function()
+			local title = (hl.get_active_window() or {}).title or ""
+			if title:sub(1, 10) == "cockpit-qs" then
+				hl.exec_cmd(scripts .. "cockpit-rail-roster toggle '" .. title:gsub("'", "'\\''") .. "'")
+			else
+				hl.exec_cmd(scripts .. "cockpit-rail-roster")
+			end
+		end)
 		hl.bind("SUPER + y", hl.dsp.exec_cmd(scripts .. "agent-ask-or-cockpit"))
 		hl.bind("SUPER + SHIFT + y", hl.dsp.exec_cmd(launch(scripts .. "cockpit-new")))
 		hl.bind(
