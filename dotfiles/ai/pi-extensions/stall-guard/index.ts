@@ -1,22 +1,34 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // Anthropic keeps a stalled stream alive with pings, so the HTTP idle timeout never fires.
+// Prefill finishes before headers, so a silent body after them is a stall (pi#10019).
 const STALL_MS = Number(process.env.PI_STALL_GUARD_MS) || 90_000;
+const AFTER_HEADERS_MS = 45_000;
 const MAX_RESTARTS = 3;
 
 export default function (pi: ExtensionAPI) {
   let inTurn = false;
   let waitingSince = 0;
+  let limit = STALL_MS;
   let stalled = false;
   let restarts = 0;
+  let stallLimit = STALL_MS;
   let ctxRef: ExtensionContext | undefined;
 
   const timer = setInterval(() => {
-    if (!waitingSince || stalled || !ctxRef || ctxRef.isIdle()) return;
-    if (Date.now() - waitingSince < STALL_MS) return;
-    stalled = true;
-    waitingSince = 0;
-    ctxRef.abort();
+    if (!waitingSince || stalled || !ctxRef) return;
+    if (Date.now() - waitingSince < limit) return;
+    try {
+      if (ctxRef.isIdle()) return;
+      stalled = true;
+      stallLimit = limit;
+      waitingSince = 0;
+      ctxRef.abort();
+    } catch {
+      // ctx goes stale after reload, /new or session switch.
+      ctxRef = undefined;
+      waitingSince = 0;
+    }
   }, 5_000);
   timer.unref?.();
 
@@ -26,8 +38,14 @@ export default function (pi: ExtensionAPI) {
     if (!inTurn) return;
     ctxRef = ctx;
     waitingSince = Date.now();
+    limit = STALL_MS;
   });
-  pi.on("provider_stream_event", () => { if (waitingSince) waitingSince = Date.now(); });
+  pi.on("after_provider_response", () => {
+    if (!waitingSince) return;
+    waitingSince = Date.now();
+    limit = AFTER_HEADERS_MS;
+  });
+  pi.on("provider_stream_event", () => { if (waitingSince) { waitingSince = Date.now(); limit = STALL_MS; } });
   pi.on("message_end", (e) => {
     if (e.message.role !== "assistant") return;
     waitingSince = 0;
@@ -39,7 +57,7 @@ export default function (pi: ExtensionAPI) {
     pi.sendMessage(
       {
         customType: "stall-guard",
-        content: `The model stream went silent for ${Math.round(STALL_MS / 1000)}s and was restarted automatically (attempt ${restarts}/${MAX_RESTARTS}). Continue exactly where you left off.`,
+        content: `The model stream went silent for ${Math.round(stallLimit / 1000)}s and was restarted automatically (attempt ${restarts}/${MAX_RESTARTS}). Continue exactly where you left off.`,
         display: true,
       },
       { triggerTurn: true },
