@@ -40,7 +40,8 @@
         "../pi-extensions/scoped/no-summary-rollover/index.ts",
         "../pi-extensions/scoped/work-context-window/index.ts",
         "../pi-extensions/scoped/codemode/index.ts",
-        "../pi-extensions/stall-guard/index.ts"
+        "../pi-extensions/stall-guard/index.ts",
+        "../pi-extensions/context-trim/index.ts"
       ],
       "skills": [
         "../skills/i-have-adhd/SKILL.md",
@@ -91,7 +92,8 @@
         "../pi-extensions/scoped/no-summary-rollover/index.ts",
         "../pi-extensions/scoped/work-context-window/index.ts",
         "../pi-extensions/scoped/codemode/index.ts",
-        "../pi-extensions/stall-guard/index.ts"
+        "../pi-extensions/stall-guard/index.ts",
+        "../pi-extensions/context-trim/index.ts"
       ],
       "skills": [
         "../skills/i-have-adhd/SKILL.md",
@@ -137,7 +139,8 @@
         "../pi-extensions/tool-compress/index.ts",
         "~/.npm-global/lib/node_modules/pi-mcp-adapter/index.ts",
         "../pi-extensions/scoped/codemode/index.ts",
-        "../pi-extensions/stall-guard/index.ts"
+        "../pi-extensions/stall-guard/index.ts",
+        "../pi-extensions/context-trim/index.ts"
       ],
       "skills": [
         "../skills/i-have-adhd/SKILL.md",

@@ -18,7 +18,7 @@ var cockpitRoleFiles = []string{
 	"instructions.md",
 	"roles", "prompts/plan-ticket.md", "prompts/review-pr.md",
 	"pi-extensions/role-policy", "pi-extensions/agents", "pi-extensions/ask", "pi-extensions/user-bash", "pi-extensions/open-in-nvim", "pi-extensions/tool-compress",
-	"pi-extensions/scoped", "pi-extensions/stall-guard",
+	"pi-extensions/scoped", "pi-extensions/stall-guard", "pi-extensions/context-trim",
 	"skills/i-have-adhd", "skills/notes", "skills/cycle", "skills/daily", "skills/standup",
 	"skills/plan-ticket", "skills/watch-pr", "skills/review-pr", "skills/handoff",
 }
