@@ -53,7 +53,11 @@ export default function (pi: ExtensionAPI) {
   });
   pi.on("input", () => { restarts = 0; });
   const resume = (ctx: ExtensionContext) => {
-    if (!ctx.isIdle()) { setTimeout(() => resume(ctx), 100); return; }
+    try {
+      if (!ctx.isIdle()) { setTimeout(() => resume(ctx), 100); return; }
+    } catch {
+      return;
+    }
     pi.sendMessage(
       {
         customType: "stall-guard",
