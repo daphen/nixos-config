@@ -45,7 +45,10 @@ export default function (pi: ExtensionAPI) {
     waitingSince = Date.now();
     limit = AFTER_HEADERS_MS;
   });
-  pi.on("provider_stream_event", () => { if (waitingSince) { waitingSince = Date.now(); limit = STALL_MS; } });
+  const progress = () => { if (waitingSince) { waitingSince = Date.now(); limit = STALL_MS; } };
+  pi.on("provider_stream_event", progress);
+  // pi < 1.0 has no provider_stream_event; content deltas still prove the stream is alive.
+  pi.on("message_update", progress);
   pi.on("message_end", (e) => {
     if (e.message.role !== "assistant") return;
     waitingSince = 0;
