@@ -131,6 +131,7 @@ let
         nil                            # Nix (devenv, flake.nix)
         oxlint                         # TS/JS lint — the monorepo's linter (oxlint --lsp)
         lua-language-server            # Lua — editing this nvim config
+        imagemagick                    # snacks.image converts markdown images to PNG
 
         # Dropped to shrink the closure (re-add if you actually edit these
         # in the sandbox):

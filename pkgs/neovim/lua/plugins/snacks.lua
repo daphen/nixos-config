@@ -190,6 +190,10 @@ return {
 			return project_name, relative_path
 		end
 
+		-- The Cockpit terminal (librio) speaks kitty graphics but reports itself as Rio; send
+		-- image data inline because the VM editor's files are not on the desktop.
+		table.insert(require("snacks.image.terminal").envs(), 1,
+			{ name = "rio", terminal = "rio", supported = true, placeholders = true, remote = true })
 		require("snacks").setup({
 			bigfile = { enabled = true },
 			-- Inline images via the kitty graphics protocol (we run in kitty;
