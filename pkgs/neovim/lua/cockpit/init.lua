@@ -270,6 +270,10 @@ local function set_hl()
   local agent_ink = api.nvim_get_hl(0, { name = "Cursor", link = false }).bg or accent
   hl("CockpitAgentEdit", { fg = agent_ink })
   hl("CockpitAgentHere", { bg = mix(dark, agent_ink, 0.16) })
+  for i = 1, 8 do
+    hl("CockpitAgentFresh" .. i, { bg = mix(dark, agent_ink, 0.3 * (1 - (i - 1) / 8)) })
+    hl("CockpitAgentGone" .. i, { fg = mix(dark, p.red or "#e5675f", 1 - (i - 1) / 8) })
+  end
   -- Electric: the dashboard's own accent (matches the HEIÐR banner ink). Scoped to
   -- the resting view so the rail's orange signal stays untouched everywhere else.
   hl("CockpitElectric", { fg = "#5566ff", bold = true })
@@ -1486,6 +1490,73 @@ local function edit_mark_opts(id)
   return { id = id, sign_text = "▌", sign_hl_group = "CockpitAgentEdit", priority = 5000 }
 end
 
+-- Transient marks step through the 8 CockpitAgentFresh/Gone shades, then vanish.
+local fade_ns = api.nvim_create_namespace("cockpit-edit-fade")
+local fading, fade_timer = {}, nil
+local function fade(buf, row, kind)
+  local opts = kind == "Gone"
+    and { sign_text = "▁", sign_hl_group = "CockpitAgentGone1", priority = 4000 }
+    or { line_hl_group = "CockpitAgentFresh1", priority = 9 }
+  local ok, id = pcall(api.nvim_buf_set_extmark, buf, fade_ns, row - 1, 0, opts)
+  if not ok then return end
+  table.insert(fading, { buf = buf, id = id, kind = kind, step = 1, hold = kind == "Gone" and 8 or 4 })
+  if fade_timer then return end
+  fade_timer = vim.uv.new_timer()
+  fade_timer:start(70, 70, vim.schedule_wrap(function()
+    local left = {}
+    for _, f in ipairs(fading) do
+      if f.hold > 0 then
+        f.hold = f.hold - 1
+        table.insert(left, f)
+      elseif api.nvim_buf_is_valid(f.buf) then
+        f.step = f.step + 1
+        local mark = api.nvim_buf_get_extmark_by_id(f.buf, fade_ns, f.id, {})
+        if f.step > 8 or not mark[1] then
+          pcall(api.nvim_buf_del_extmark, f.buf, fade_ns, f.id)
+        else
+          local o = f.kind == "Gone"
+            and { id = f.id, sign_text = "▁", sign_hl_group = "CockpitAgentGone" .. f.step, priority = 4000 }
+            or { id = f.id, line_hl_group = "CockpitAgentFresh" .. f.step, priority = 9 }
+          pcall(api.nvim_buf_set_extmark, f.buf, fade_ns, mark[1], 0, o)
+          table.insert(left, f)
+        end
+      end
+    end
+    fading = left
+    if #fading == 0 and fade_timer then fade_timer:stop(); fade_timer:close(); fade_timer = nil end
+  end))
+end
+
+-- Short eased scroll so the eye can follow where an edit landed in an open file.
+local glide_timer
+local function glide_to(win, row)
+  if glide_timer then glide_timer:stop(); glide_timer:close(); glide_timer = nil end
+  local height = api.nvim_win_get_height(win)
+  local last = api.nvim_buf_line_count(api.nvim_win_get_buf(win))
+  local goal = math.max(1, math.min(row - math.floor(height / 2), math.max(1, last - height + 1)))
+  local from = api.nvim_win_call(win, function() return fn.line("w0") end)
+  local function show(top, lnum)
+    api.nvim_win_call(win, function()
+      fn.winrestview({ topline = top, lnum = lnum or math.max(top, math.min(row, top + height - 1)), col = 0 })
+    end)
+  end
+  if math.abs(goal - from) <= 1 or math.abs(goal - from) > height * 4 then
+    show(goal, row)
+    return
+  end
+  local step, steps = 0, 10
+  glide_timer = vim.uv.new_timer()
+  glide_timer:start(16, 16, vim.schedule_wrap(function()
+    step = step + 1
+    local t = step / steps
+    local eased = 1 - (1 - t) ^ 3
+    if api.nvim_win_is_valid(win) then
+      show(math.floor(from + (goal - from) * eased + 0.5), step >= steps and row or nil)
+    end
+    if step >= steps and glide_timer then glide_timer:stop(); glide_timer:close(); glide_timer = nil end
+  end))
+end
+
 local function mark_edit(buf, ns, added_lines)
   if not ns or type(added_lines) ~= "table" or #added_lines == 0 then return end
   local marked = {}
@@ -1496,6 +1567,7 @@ local function mark_edit(buf, ns, added_lines)
     row = tonumber(row)
     if row and not marked[row] and row >= 1 and row <= api.nvim_buf_line_count(buf) then
       api.nvim_buf_set_extmark(buf, ns, row - 1, 0, edit_mark_opts())
+      fade(buf, row, "Fresh")
       marked[row] = true
     end
   end
@@ -1503,7 +1575,6 @@ end
 
 local function checktime_preserving_edit_marks(buf, ns)
   local marks = ns and api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}) or {}
-  if #marks == 0 then vim.cmd.checktime(); return end
   local before = api.nvim_buf_get_lines(buf, 0, -1, false)
   vim.cmd.checktime()
   local after = api.nvim_buf_get_lines(buf, 0, -1, false)
@@ -1511,6 +1582,12 @@ local function checktime_preserving_edit_marks(buf, ns)
   local ok, hunks = pcall(vim.diff, table.concat(before, "\n") .. "\n",
     table.concat(after, "\n") .. "\n", { result_type = "indices", algorithm = "histogram" })
   if not ok then return end
+  for _, hunk in ipairs(hunks) do
+    local _, old_count, new_start, new_count = unpack(hunk)
+    if old_count > new_count then
+      fade(buf, math.max(1, math.min(new_start + math.max(new_count - 1, 0), #after)), "Gone")
+    end
+  end
   for _, mark in ipairs(marks) do
     local row, shift, mapped = mark[2] + 1, 0
     for _, hunk in ipairs(hunks) do
@@ -1676,15 +1753,21 @@ follow_edit = function(cwd, path, line, external, external_force, snippet, added
   end
   adopt_edit_file()
   S._program_nav = true
+  local same_file
   api.nvim_win_call(target, function()
-    if fn.fnamemodify(api.nvim_buf_get_name(0), ":p") ~= file then
+    same_file = fn.fnamemodify(api.nvim_buf_get_name(0), ":p") == file
+    if not same_file then
       pcall(function() vim.cmd.edit(fn.fnameescape(file)) end)
     end
     checktime_preserving_edit_marks(api.nvim_get_current_buf(), edit_state and edit_state.edit_ns)
     if line then
       local row = math.max(1, math.min(line, api.nvim_buf_line_count(0)))
-      api.nvim_win_set_cursor(target, { row, 0 })
-      vim.cmd("normal! zz")
+      if same_file then
+        glide_to(target, row)
+      else
+        api.nvim_win_set_cursor(target, { row, 0 })
+        vim.cmd("normal! zz")
+      end
       mark_agent_here(api.nvim_get_current_buf(), row)
     end
     mark_edit(api.nvim_get_current_buf(), edit_state and edit_state.edit_ns, added_lines)
