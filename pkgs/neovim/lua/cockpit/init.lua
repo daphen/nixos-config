@@ -2478,11 +2478,13 @@ function M.workspace(workspace_scope, id, cwd, plan, view, latest, profile, sour
   local path = api.nvim_buf_get_name(buf)
   S.workspace_editors = S.workspace_editors or {}
   local previous_state = previous and S.workspace_editors[editor_key(previous)]
-  if previous and vim.bo[buf].buftype == "" and ((path:sub(1, #previous.cwd + 1) == previous.cwd .. "/"
+  local leaving_code = previous and previous.view == "code" and path ~= ""
+  if previous and vim.bo[buf].buftype == "" and (leaving_code or (path:sub(1, #previous.cwd + 1) == previous.cwd .. "/"
       and not path:find("/%.plans/")) or (previous_state and path == previous_state.opened)) then
     local key = editor_key(previous)
     local state = S.workspace_editors[key] or {}
     state.buf, state.view = buf, api.nvim_win_call(ed, fn.winsaveview)
+    if leaving_code then state.opened = path end
     S.workspace_editors[key] = state
   end
   local same = previous and previous.scope == workspace_scope and previous.id == id

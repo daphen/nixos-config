@@ -62,6 +62,19 @@ check("code cwd", fn.getcwd() == repo, fn.getcwd())
 follow(V .. "/plans/" .. plan .. ".md")
 check("code ignores vault-file edits", shown() == repo .. "/b.txt", shown())
 
+-- Code remembers a file outside the checkout and a .plans/ file.
+local outside = fn.tempname() .. ".md"
+fn.writefile({ "x" }, outside)
+fn.mkdir(repo .. "/.plans", "p")
+fn.writefile({ "p" }, repo .. "/.plans/p.md")
+for _, f in ipairs({ outside, repo .. "/.plans/p.md" }) do
+  api.nvim_win_call(vim.g.agent_editor_win, function() vim.cmd.edit(fn.fnameescape(f)) end)
+  land("s1", "dashboard")
+  land("s1", "code")
+  check("code remembers " .. fn.fnamemodify(f, ":t"), shown() == f, shown())
+end
+api.nvim_win_call(vim.g.agent_editor_win, function() vim.cmd.edit(fn.fnameescape(repo .. "/b.txt")) end)
+
 -- Vault remembers its note.
 land("s1", "vault")
 check("vault remembers its note", shown() == note, shown())
