@@ -544,8 +544,8 @@ Item {
                             width: tabLabel.implicitWidth + 20
                             height: tabLabel.implicitHeight + 12
                             radius: 6
-                            color: isActive ? Theme.itemSelected
-                                 : tabHover.hovered ? Theme.itemHover : "transparent"
+                            color: !isActive && tabHover.hovered ? Theme.itemHover : "transparent"
+                            Lib.PillSurface { anchors.fill: parent; radius: parent.radius; visible: parent.isActive }
                             Text {
                                 id: tabLabel
                                 anchors.centerIn: parent
@@ -620,9 +620,8 @@ Item {
                         anchors.leftMargin: Theme.insetCard
                         anchors.rightMargin: Theme.insetCard
                         radius: Theme.radiusInner
-                        color: rowItem.index === root.selectedIndex ? Theme.bg
-                             : rowHover.hovered ? Theme.itemHover
-                             : "transparent"
+                        color: rowItem.index !== root.selectedIndex && rowHover.hovered ? Theme.itemHover : "transparent"
+                        Lib.PillSurface { anchors.fill: parent; radius: parent.radius; visible: rowItem.index === root.selectedIndex }
                     }
 
                     HoverHandler { id: rowHover; enabled: !rowItem.isDivider }
@@ -1046,8 +1045,8 @@ Item {
                             width: catLbl.implicitWidth + 16
                             height: 26
                             radius: 10
-                            color: isActive ? Theme.itemSelected
-                                 : catHov.hovered ? Theme.itemHover : "transparent"
+                            color: !isActive && catHov.hovered ? Theme.itemHover : "transparent"
+                            Lib.PillSurface { anchors.fill: parent; radius: parent.radius; visible: parent.isActive }
                             Text {
                                 id: catLbl
                                 anchors.centerIn: parent

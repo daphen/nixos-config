@@ -26,3 +26,4 @@ TabBar TabBar.qml
 TabFace TabFace.qml
 GradientFrame GradientFrame.qml
 LightKey LightKey.qml
+PillSurface PillSurface.qml
