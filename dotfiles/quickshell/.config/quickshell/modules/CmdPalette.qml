@@ -14,7 +14,7 @@ import "../QsLib" as Lib
 PanelWindow {
     id: root
 
-    screen: {
+    readonly property var targetScreen: {
         const _ = NiriState.version
         const output = (root.active ? PaletteState.targetOutput : "") || NiriState.focusedOutput()
         const screens = Quickshell.screens
@@ -22,6 +22,9 @@ PanelWindow {
             if (screens[i].name === output) return screens[i]
         return screens.length ? screens[0] : null
     }
+    // Quickshell 0.3.0 segfaults recreating a visible window on a screen change,
+    // so hide first and move only while hidden.
+    Binding on screen { value: root.targetScreen; when: !root.visible; restoreMode: Binding.RestoreNone }
 
     property bool active: false
     property bool gestureActive: false
@@ -36,7 +39,7 @@ PanelWindow {
         return app === "browser-personal" ? "personal" : app === "browser-work" ? "work" : ""
     }
     // Keep the edge mapped across dismissal so a stationary pointer cannot re-enter it.
-    visible: active || edgeProfile !== ""
+    visible: (active || edgeProfile !== "") && screen === targetScreen
     contentItem.opacity: active ? 1 : 0
     readonly property bool open: PaletteState.open
     mask: Region { item: root.active ? root.contentItem : paletteEdge }
