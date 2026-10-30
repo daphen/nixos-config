@@ -102,7 +102,12 @@ return {
 			},
 		})
 
+		-- Opening a plan must not start a monorepo-wide Tailwind index.
+		local tailwind_filetypes = vim.tbl_filter(function(ft)
+			return ft ~= "markdown" and ft ~= "mdx"
+		end, vim.lsp.config.tailwindcss.filetypes)
 		vim.lsp.config("tailwindcss", {
+			filetypes = tailwind_filetypes,
 			settings = {
 				tailwindCSS = {
 					-- templates/ holds dozens of starter apps; scanning
