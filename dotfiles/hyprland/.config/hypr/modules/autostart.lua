@@ -44,7 +44,6 @@ return function(ctx)
 				"systemd-run --user --collect --unit=clipse-image-session --property=Restart=always --property=RestartSec=1 wl-paste --type image/png --watch clipse --wl-store",
 				"systemd-run --user --collect --unit=clipse-text-session --property=Restart=always --property=RestartSec=1 wl-paste --type text --watch clipse --wl-store",
 				"swayidle -w timeout 300 " .. SCRIPTS .. "set-presence idle resume " .. SCRIPTS .. "set-presence active",
-				SCRIPTS .. "hyprland-hotplug-handler >> /tmp/hyprland-hotplug-handler.log 2>&1",
 				SCRIPTS .. "start-session-apps",
 			}
 			for _, command in ipairs(startup) do
