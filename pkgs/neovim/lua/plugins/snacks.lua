@@ -220,6 +220,13 @@ return {
 			picker = { enabled = true },
 			scope = { enabled = true },
 		})
+		-- snacks redraws inline images on edits, not on reloads, so agent-written docs stayed blank.
+		vim.api.nvim_create_autocmd("FileChangedShellPost", {
+			callback = function(ev)
+				pcall(vim.api.nvim_exec_autocmds, "BufWinEnter",
+					{ group = "snacks.image.inline." .. ev.buf, buffer = ev.buf })
+			end,
+		})
 
 		local default_formatters = require("snacks.picker.format")
 		local original_filename = default_formatters.filename
