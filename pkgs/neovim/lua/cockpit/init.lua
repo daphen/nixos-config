@@ -271,7 +271,7 @@ local function set_hl()
   hl("CockpitAgentEdit", { fg = agent_ink })
   hl("CockpitAgentHere", { bg = mix(dark, agent_ink, 0.16) })
   for i = 1, 8 do
-    hl("CockpitAgentFresh" .. i, { bg = mix(dark, agent_ink, 0.3 * (1 - (i - 1) / 8)) })
+    hl("CockpitAgentFresh" .. i, { bg = mix(dark, agent_ink, 0.16 + 0.34 * (1 - i / 8)) })
     hl("CockpitAgentGone" .. i, { fg = mix(dark, p.red or "#e5675f", 1 - (i - 1) / 8) })
   end
   -- Electric: the dashboard's own accent (matches the HEIÐR banner ink). Scoped to
@@ -1496,7 +1496,7 @@ local fading, fade_timer = {}, nil
 local function fade(buf, row, kind)
   local opts = kind == "Gone"
     and { sign_text = "▁", sign_hl_group = "CockpitAgentGone1", priority = 4000 }
-    or { line_hl_group = "CockpitAgentFresh1", priority = 9 }
+    or { line_hl_group = "CockpitAgentFresh1", priority = 20 }
   local ok, id = pcall(api.nvim_buf_set_extmark, buf, fade_ns, row - 1, 0, opts)
   if not ok then return end
   table.insert(fading, { buf = buf, id = id, kind = kind, step = 1, hold = kind == "Gone" and 8 or 4 })
@@ -1516,7 +1516,7 @@ local function fade(buf, row, kind)
         else
           local o = f.kind == "Gone"
             and { id = f.id, sign_text = "▁", sign_hl_group = "CockpitAgentGone" .. f.step, priority = 4000 }
-            or { id = f.id, line_hl_group = "CockpitAgentFresh" .. f.step, priority = 9 }
+            or { id = f.id, line_hl_group = "CockpitAgentFresh" .. f.step, priority = 20 }
           pcall(api.nvim_buf_set_extmark, f.buf, fade_ns, mark[1], 0, o)
           table.insert(left, f)
         end

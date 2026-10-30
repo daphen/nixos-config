@@ -13,10 +13,11 @@ Rectangle {
     readonly property bool raised: selected || cursor
 
     radius: 9
-    color: Qt.tint(base, selected ? (lightMode ? Theme.itemSelected : Qt.rgba(1, 1, 1, 0.10))
-                       : cursor ? (lightMode ? Theme.itemCursor : Qt.rgba(1, 1, 1, 0.14))
-                       : hovered ? (lightMode ? Theme.itemHover : Qt.rgba(1, 1, 1, 0.07))
-                       : lightMode ? Theme.surface : Qt.alpha(ink, 0.045))
+    color: Qt.tint(base, lightMode ? (hovered ? Theme.itemHover : Theme.surface)
+                       : selected ? Qt.rgba(1, 1, 1, 0.10)
+                       : cursor ? Qt.rgba(1, 1, 1, 0.14)
+                       : hovered ? Qt.rgba(1, 1, 1, 0.07)
+                       : Qt.alpha(ink, 0.045))
 
     Behavior on color { ColorAnimation { duration: 140 } }
 
