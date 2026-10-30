@@ -269,9 +269,9 @@ local function set_hl()
   hl("CockpitAccent", { fg = accent, bold = true })
   local agent_ink = api.nvim_get_hl(0, { name = "Cursor", link = false }).bg or accent
   hl("CockpitAgentEdit", { fg = agent_ink })
-  hl("CockpitAgentHere", { bg = mix(dark, agent_ink, 0.16) })
+  hl("CockpitAgentHere", { bg = mix(dark, elec_soft, 0.1) })
   for i = 1, 8 do
-    hl("CockpitAgentFresh" .. i, { bg = mix(dark, agent_ink, 0.16 + 0.34 * (1 - i / 8)) })
+    hl("CockpitAgentFresh" .. i, { bg = mix(dark, elec_soft, 0.1 + 0.2 * (1 - i / 8)) })
     hl("CockpitAgentGone" .. i, { fg = mix(dark, p.red or "#e5675f", 1 - (i - 1) / 8) })
   end
   -- Electric: the dashboard's own accent (matches the HEIÐR banner ink). Scoped to
@@ -1544,12 +1544,12 @@ local function glide_to(win, row)
     show(goal, row)
     return
   end
-  local step, steps = 0, 10
+  local step, steps = 0, 18
   glide_timer = vim.uv.new_timer()
   glide_timer:start(16, 16, vim.schedule_wrap(function()
     step = step + 1
     local t = step / steps
-    local eased = 1 - (1 - t) ^ 3
+    local eased = t < 0.5 and 4 * t ^ 3 or 1 - (-2 * t + 2) ^ 3 / 2
     if api.nvim_win_is_valid(win) then
       show(math.floor(from + (goal - from) * eased + 0.5), step >= steps and row or nil)
     end
