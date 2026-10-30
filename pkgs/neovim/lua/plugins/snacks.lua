@@ -220,6 +220,24 @@ return {
 			picker = { enabled = true },
 			scope = { enabled = true },
 		})
+		-- A reattached Cockpit screen is a fresh terminal without image data, but snacks
+		-- remembers each image as sent; resend them all (the registry is an upvalue).
+		vim.api.nvim_create_autocmd("UIEnter", {
+			callback = vim.schedule_wrap(function()
+				local new = Snacks.image.image.new
+				for i = 1, 20 do
+					local name, images = debug.getupvalue(new, i)
+					if not name then return end
+					if name == "images" then
+						for _, img in pairs(images) do
+							img.sent = false
+							for _, p in pairs(img.placements) do p._state = nil; p:update() end
+						end
+						return
+					end
+				end
+			end),
+		})
 		-- snacks redraws inline images on edits, not on reloads, so agent-written docs stayed blank.
 		vim.api.nvim_create_autocmd("FileChangedShellPost", {
 			callback = function(ev)
