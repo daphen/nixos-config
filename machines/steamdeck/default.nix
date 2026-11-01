@@ -306,6 +306,7 @@ in
   };
   environment.systemPackages = with pkgs; [
     canvas
+    (import ../../pkgs/padswipe { inherit pkgs; })
     canvasSession
     claimInput
     gamingMode
