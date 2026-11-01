@@ -58,14 +58,17 @@ return function(ctx)
 		end
 	end)
 
+	local palette_profile = nil
 	local function set_palette_tab_bindings(window)
 		local class = window and window.class or ""
 		local enabled = class == "browser-personal" or class == "browser-work"
 		for _, binding in ipairs(palette_tab_bindings) do
 			binding:set_enabled(enabled)
 		end
-		if enabled then
-			local profile = class == "browser-work" and "work" or "personal"
+		local profile = enabled and (class == "browser-work" and "work" or "personal") or nil
+		-- Panning moves focus every few frames; forking the compositor costs 4-8 ms per call.
+		if profile and profile ~= palette_profile then
+			palette_profile = profile
 			hl.exec_cmd(string.format("%spalette-shell-ipc focusProfile %q", SCRIPTS, profile))
 		end
 	end

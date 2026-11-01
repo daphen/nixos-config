@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import "."
+import "../QsLib" as Lib
 
 Item {
     id: root
@@ -176,16 +177,10 @@ Item {
             height: 4
             radius: 2
             color: Theme.cursor
-            opacity: NotificationJumpPickerState.needsAttention ? pulseOpacity : 1
-            property real pulseOpacity: 1
+            // Shares the orb's 20 Hz tick: a vsync animation repaints the whole bar surface at 120 fps.
+            opacity: NotificationJumpPickerState.needsAttention && marker.visible
+                ? 0.65 + 0.35 * Math.cos(Lib.OrbClock.now * 2 * Math.PI / 1300) : 1
             Behavior on color { ColorAnimation { duration: 110 } }
-
-            SequentialAnimation on pulseOpacity {
-                running: NotificationJumpPickerState.needsAttention && marker.visible
-                loops: Animation.Infinite
-                NumberAnimation { to: 0.3; duration: 650; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 1; duration: 650; easing.type: Easing.InOutSine }
-            }
         }
 
     }

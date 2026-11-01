@@ -1718,7 +1718,7 @@ index 6028e21a494ed05b138edf984d9c454641b59ab2..3bbaa5bfda76e07699a25bb24bcc2ff7
                                     bool fixMisalignedFSV1 = false);
  
 diff --git a/src/render/Renderer.cpp b/src/render/Renderer.cpp
-index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a85d8488a 100644
+index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..b2a050b42231b221838116c138058df5987c995f 100644
 --- a/src/render/Renderer.cpp
 +++ b/src/render/Renderer.cpp
 @@ -1,6 +1,8 @@
@@ -2261,18 +2261,25 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
          return false;
  
      if (!pWindow->m_workspace)
-@@ -295,6 +791,10 @@ bool IHyprRenderer::shouldRenderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor) {
+@@ -295,6 +791,17 @@ bool IHyprRenderer::shouldRenderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor) {
      return false;
  }
  
 +bool IHyprRenderer::canvasWindowAcceptsUpdates(PHLWINDOW pWindow, PHLMONITOR pMonitor) {
-+    return !pWindow || !pMonitor || shouldRenderWindow(pWindow, pMonitor);
++    if (!pWindow || !pMonitor)
++        return true;
++    // Background clients redraw whole windows and contend for the GPU mid-motion; the final idle present releases their callbacks.
++    const bool cameraMoving = pMonitor->m_canvasZoom->isBeingAnimated() || pMonitor->m_canvasX->isBeingAnimated() || pMonitor->m_canvasY->isBeingAnimated() ||
++        pMonitor->m_canvasTransition->isBeingAnimated();
++    if (cameraMoving && canvasOverviewActive(pMonitor) && !pWindow->isFloating() && pWindow != Desktop::focusState()->window())
++        return false;
++    return shouldRenderWindow(pWindow, pMonitor);
 +}
 +
  bool IHyprRenderer::shouldRenderWindow(PHLWINDOW pWindow) {
  
      if (!validMapped(pWindow))
-@@ -564,6 +1064,8 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
+@@ -564,6 +1071,8 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
  
      TRACY_GPU_ZONE("RenderWindow");
  
@@ -2281,7 +2288,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
      const auto PWORKSPACE = pWindow->m_workspace;
      const auto REALPOS =
          pWindow->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT) + ((pWindow->m_state & WINDOW_STATE_PINNED) ? Vector2D{} : PWORKSPACE->m_renderOffset->value());
-@@ -593,10 +1095,11 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
+@@ -593,10 +1102,11 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
  
      renderdata.surface   = pWindow->wlSurface()->resource();
      renderdata.dontRound = Fullscreen::controller()->getFullscreenModes(pWindow).internal == Fullscreen::FSMODE_FULLSCREEN;
@@ -2294,7 +2301,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
      renderdata.alpha = pWindow->presentation().alphaValue(WINDOW_ALPHA_ACTIVE);
      renderdata.decorate =
          decorate && !pWindow->backend().traits().suggestsNoBorder && Fullscreen::controller()->getFullscreenModes(pWindow).internal != Fullscreen::FSMODE_FULLSCREEN;
-@@ -646,12 +1149,21 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
+@@ -646,12 +1156,21 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
      // render window decorations first, if not fullscreen full
      if (mode == RENDER_PASS_ALL || mode == RENDER_PASS_MAIN) {
  
@@ -2318,7 +2325,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
  
          addPassElement(makeUnique<CBackdropScopePassElement>(CBackdropScopePassElement::eAction::BEGIN, backdropScope));
  
-@@ -751,6 +1263,7 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
+@@ -751,6 +1270,7 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
                  .blurBox           = blurBox,
                  .blur              = windowBlur,
                  .blurUsesLive      = windowBlurUsesLive,
@@ -2326,7 +2333,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
                  .blurA             = renderdata.fadeAlpha,
                  .blurRound         = renderdata.dontRound ? 0 : std::max(renderdata.rounding - 1, 0),
                  .blurRoundingPower = renderdata.roundingPower,
-@@ -793,14 +1306,14 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
+@@ -793,14 +1313,14 @@ void IHyprRenderer::renderWindow(PHLWINDOW pWindow, PHLMONITOR pMonitor, const T
              renderdata.surfaceCounter = 0;
  
              pWindow->popupHead()->breadthfirst(
@@ -2343,7 +2350,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
  
                      popup->wlSurface()->resource()->breadthfirst(
                          [this, &renderdata](SP<CWLSurfaceResource> s, const Vector2D& offset, void* data) {
-@@ -1102,17 +1615,21 @@ void IHyprRenderer::renderSessionLockSurface(WP<SSessionLockSurface> pSurface, P
+@@ -1102,17 +1622,21 @@ void IHyprRenderer::renderSessionLockSurface(WP<SSessionLockSurface> pSurface, P
          &renderdata);
  }
  
@@ -2367,7 +2374,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
              return;
      }
  
-@@ -1161,77 +1678,100 @@ void IHyprRenderer::renderAllClientsForWorkspace(PHLMONITOR pMonitor, PHLWORKSPA
+@@ -1161,77 +1685,100 @@ void IHyprRenderer::renderAllClientsForWorkspace(PHLMONITOR pMonitor, PHLWORKSPA
          return;
      }
  
@@ -2522,7 +2529,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
  
      // Render surfaces above windows for monitor
      for (auto const& ls : pMonitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP]) {
-@@ -1676,11 +2216,12 @@ void IHyprRenderer::renderLockscreen(PHLMONITOR pMonitor, const Time::steady_tp&
+@@ -1676,11 +2223,12 @@ void IHyprRenderer::renderLockscreen(PHLMONITOR pMonitor, const Time::steady_tp&
          return;
      }
  
@@ -2537,7 +2544,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
      const bool RENDERLOCKMISSING = (PSLS.expired() || g_pSessionLockManager->clientDenied()) && g_pSessionLockManager->shallConsiderLockMissing();
  
      ensureLockTexturesRendered(RENDERLOCKMISSING);
-@@ -1689,7 +2230,11 @@ void IHyprRenderer::renderLockscreen(PHLMONITOR pMonitor, const Time::steady_tp&
+@@ -1689,7 +2237,11 @@ void IHyprRenderer::renderLockscreen(PHLMONITOR pMonitor, const Time::steady_tp&
          renderSessionLockMissing(pMonitor);
      else if (PSLS) {
          renderSessionLockSurface(PSLS, pMonitor, now);
@@ -2550,7 +2557,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
  
          // render layers and then their popups for abovelock rule
          for (auto const& lsl : pMonitor->m_layerSurfaceLayers) {
-@@ -2142,7 +2687,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2142,7 +2694,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
  
      // tearing and DS first
      bool       shouldTear              = pMonitor->updateTearing();
@@ -2559,7 +2566,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
      const auto presentationMode =
          shouldTear ? Aquamarine::eOutputPresentationMode::AQ_OUTPUT_PRESENTATION_IMMEDIATE : Aquamarine::eOutputPresentationMode::AQ_OUTPUT_PRESENTATION_VSYNC;
      if (pMonitor->m_output->state->state().presentationMode != presentationMode)
-@@ -2210,9 +2755,19 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2210,9 +2762,19 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
          return;
      }
  
@@ -2581,7 +2588,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
          damage = {0, 0, sc<int>(pMonitor->m_transformedSize.x) * 10, sc<int>(pMonitor->m_transformedSize.y) * 10};
  
      finalDamage = damage;
-@@ -2229,8 +2784,9 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2229,8 +2791,9 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
      Event::bus()->m_events.render.stage.emit(RENDER_BEGIN);
  
      bool renderCursor = true;
@@ -2592,7 +2599,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
          renderWindow(pMonitor->m_solitaryClient.lock(), pMonitor, NOW, false, RENDER_PASS_MAIN /* solitary = no popups */);
      else if (!finalDamage.empty()) {
          if (pMonitor->isMirror()) {
-@@ -2241,13 +2797,52 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2241,13 +2804,52 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
              renderCursor = false;
          } else {
              CBox renderBox = {0, 0, sc<int>(pMonitor->m_transformedSize.x), sc<int>(pMonitor->m_transformedSize.y)};
@@ -2647,7 +2654,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
                  Notification::overlay()->draw(pMonitor);
                  ErrorOverlay::overlay()->draw();
              }
-@@ -2295,7 +2890,23 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
+@@ -2295,7 +2897,23 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
  
      Event::bus()->m_events.render.stage.emit(RENDER_LAST_MOMENT);
  
@@ -2671,7 +2678,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
  
      TRACY_GPU_COLLECT;
  
-@@ -2593,7 +3204,9 @@ void IHyprRenderer::sendFrameEventsToWorkspace(PHLMONITOR pMonitor, PHLWORKSPACE
+@@ -2593,7 +3211,9 @@ void IHyprRenderer::sendFrameEventsToWorkspace(PHLMONITOR pMonitor, PHLWORKSPACE
          if (alphaModifier && !alphaModifier->alphaNonZero())
              continue;
  
@@ -2682,7 +2689,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
      }
  }
  
-@@ -2792,6 +3405,16 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2792,6 +3412,16 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
      }
  
      const auto SURFACE_BOX = WLSURF->getSurfaceBoxGlobal();
@@ -2699,7 +2706,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
  
      // hack: schedule frame events
      if (!pSurface->m_current.callbacks.empty() && SURFACE_BOX && !SURFACE_BOX->empty()) {
-@@ -2799,15 +3422,34 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2799,15 +3429,34 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
              if (!m->m_output)
                  continue;
  
@@ -2735,7 +2742,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
      if (scale != 1.0)
          damageBox.scale(scale);
  
-@@ -2820,11 +3462,26 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
+@@ -2820,11 +3469,26 @@ void IHyprRenderer::damageSurface(SP<CWLSurfaceResource> pSurface, double x, dou
      for (auto const& m : State::monitorState()->monitors()) {
          if (!m->m_output)
              continue;
@@ -2743,11 +2750,11 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
 +        const bool PARTIAL = canvasPartialDamage(m);
 +        if (foreignToCanvas(m) || !canvasWindowAcceptsUpdates(WINDOW, m) ||
 +            !(EXTENTS.overlaps(canvasOverviewActive(m) ? canvasLogicalBox(m) : m->logicalBox()) || (PARTIAL && !WINDOW && EXTENTS.overlaps(m->logicalBox()))))
-+            continue;
+             continue;
 +        if (canvasOverviewActive(m) && (!PARTIAL || (WINDOW && (WINDOW->isFloating() || WINDOW->effects().hasActiveTransformers() ||
 +            WINDOW->positionAnimation()->isBeingAnimated() || WINDOW->sizeAnimation()->isBeingAnimated())))) {
 +            damageMonitor(m);
-             continue;
++            continue;
 +        }
  
          damageBoxForEach.set(damageBox);
@@ -2763,7 +2770,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
  
          m->addDamage(damageBoxForEach);
      }
-@@ -2846,8 +3503,16 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
+@@ -2846,8 +3510,16 @@ void IHyprRenderer::damageWindow(PHLWINDOW pWindow, bool forceFull) {
  
      for (auto const& m : State::monitorState()->monitors()) {
          if (forceFull || shouldRenderWindow(pWindow, m)) { // only damage if window is rendered on monitor
@@ -2781,7 +2788,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
              m->addDamage(fixedDamageBox);
          }
      }
-@@ -2877,8 +3542,15 @@ void IHyprRenderer::damageBox(const CBox& box, bool skipFrameSchedule) {
+@@ -2877,8 +3549,15 @@ void IHyprRenderer::damageBox(const CBox& box, bool skipFrameSchedule) {
              continue; // don't damage mirrors traditionally
  
          if (!skipFrameSchedule) {
@@ -2799,7 +2806,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
          }
      }
  
-@@ -3162,7 +3834,7 @@ void IHyprRenderer::addWindowToRenderUnfocused(PHLWINDOW window) {
+@@ -3162,7 +3841,7 @@ void IHyprRenderer::addWindowToRenderUnfocused(PHLWINDOW window) {
          m_renderUnfocusedTimer->updateTimeout(std::chrono::milliseconds(1000 / *PFPS));
  }
  
@@ -2808,7 +2815,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
      // we trust the window is valid.
      const auto PMONITOR = pWindow->m_monitor.lock();
  
-@@ -3174,26 +3846,39 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
+@@ -3174,26 +3853,39 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
  
      LOG(Log::DEBUG, "renderer: making a snapshot of {:x}", rc<uintptr_t>(pWindow.get()));
  
@@ -2857,7 +2864,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
  
      LOG(Log::DEBUG, "renderer: rendered a snapshot of {:x}", rc<uintptr_t>(pWindow.get()));
  
-@@ -3201,7 +3886,10 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
+@@ -3201,7 +3893,10 @@ SP<IFramebuffer> IHyprRenderer::makeSnapshotFB(PHLWINDOW pWindow) {
  
      LOG(Log::DEBUG, "renderer: made a snapshot of {:x}", rc<uintptr_t>(pWindow.get()));
  
@@ -2869,7 +2876,7 @@ index 16117f7ca806ec9ac459da16fb33b6c02a3e336e..463426ab04491d2b55ca0a6340a75c9a
      return PFRAMEBUFFER;
  }
  
-@@ -3307,6 +3995,8 @@ void IHyprRenderer::renderFadeouts(PHLMONITOR monitor, Desktop::eFadeoutPlane pl
+@@ -3307,6 +4002,8 @@ void IHyprRenderer::renderFadeouts(PHLMONITOR monitor, Desktop::eFadeoutPlane pl
      if (!monitor)
          return;
  
