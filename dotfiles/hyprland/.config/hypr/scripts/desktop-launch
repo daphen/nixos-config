@@ -4,6 +4,8 @@ set -euo pipefail
 if [[ ${HYPR_CANVAS_PROFILE:-} != deck ]]; then
     exec "$@"
 fi
+# The Deck radial palette is an X11 Quickshell; its launches must not inherit xcb, or dictation can't paste into them.
+export QT_QPA_PLATFORM=wayland
 case ${1##*/} in
     kitty) set -- "$1" --override font_size=11 "${@:2}" ;;
     deck-cockpit|cockpit-qs) export COCKPIT_FONT_PX=14 COCKPIT_DECK=1 ;;
