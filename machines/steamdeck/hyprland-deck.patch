@@ -141,3 +141,29 @@ diff -ru a/src/output/Monitor.cpp b/src/output/Monitor.cpp
          // Past the outermost window centers, damp outward motion progressively (rubber band); never pull back inward.
          Vector2D low{std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};
          Vector2D high{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest()};
+diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
+index 93b33aa..ad29dec 100644
+--- a/src/output/Monitor.cpp
++++ b/src/output/Monitor.cpp
+@@ -220,7 +220,7 @@ void CMonitor::canvasOverview() {
+             return;
+         bounds = area;
+     }
+-    const float zoom   = std::clamp(std::min(area.w / (bounds.w + 96.0), area.h / (bounds.h + 96.0)), 0.25, 1.0);
++    const float zoom   = std::clamp(std::min(area.w / (bounds.w + 96.0), area.h / (bounds.h + 96.0)) * 0.85, 0.25, 0.75);
+     const auto  center = m_canvasPanning ? m_position + (area.middle() - m_position - canvasOffset(true)) / m_canvasZoom->goal() : bounds.middle();
+     const auto  camera = center - m_position - m_size / 2.0 + (m_size / 2.0 - area.middle() + m_position) / zoom;
+     m_canvasOverview   = true;
+diff --git a/src/render/Renderer.cpp b/src/render/Renderer.cpp
+index 463426a..f87f72d 100644
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -550,7 +550,7 @@ class CCanvasChromeElement : public IPassElement {
+             previousLabel = labelKey;
+         }
+         if (labelTexture) {
+-            const Vector2D labelPosition{margin + 14.0 * unit, margin + 10.0 * unit - (1.0 - reveal) * 12.0 * unit};
++            const Vector2D labelPosition{(size.x - labelTexture->m_size.x) / 2.0, size.y - margin - 10.0 * unit - labelTexture->m_size.y + (1.0 - reveal) * 12.0 * unit};
+             g_pHyprRenderer->draw(CRectPassElement::SRectData{.box   = {labelPosition - Vector2D{14.0, 10.0} * unit, labelTexture->m_size + Vector2D{28.0, 20.0} * unit},
+                                                               .color = CHyprColor{0.025F, 0.03F, 0.045F, *panelOpacity * reveal},
+                                                               .round = sc<int>(8 * unit)},
