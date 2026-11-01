@@ -138,6 +138,10 @@ let
       - name: Control center
         source_event: { gamepad: { button: QuickAccess } }
         target_events: [ { keyboard: KeyF10 } ]
+      # Shown by RT+X: without F7 here the held RT's release never reaches Hyprland and RT stays latched.
+      - name: Right trigger
+        source_event: { gamepad: { trigger: { name: RightTrigger, deadzone: 0.3 } } }
+        target_events: [ { gamepad: { trigger: { name: RightTrigger } } }, { keyboard: KeyF7 } ]
   '';
   releaseInput = pkgs.writeShellScriptBin "deck-input-release" ''
     if ${deckInputPlumber}/bin/inputplumber device 0 info >/dev/null 2>&1; then
