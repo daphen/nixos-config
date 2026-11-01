@@ -9,7 +9,7 @@ let
   '';
   agentd = import ../../pkgs/agentd { pkgs = applicationPkgs; src = inputs.agentd; };
   cockpit = pkgs.writeShellScriptBin "deck-cockpit" ''
-    export COCKPIT_INSTANCE=personal COCKPIT_SCOPE=personal COCKPIT_DECK=1
+    export COCKPIT_INSTANCE=personal COCKPIT_SCOPE=personal COCKPIT_DECK=1 COCKPIT_FONT_PX=14
     export COCKPIT_AGENTD_SOCKS="$XDG_RUNTIME_DIR/agentd-personal.sock,$XDG_RUNTIME_DIR/agentd-proart-personal.sock"
     ln -sfn "$XDG_RUNTIME_DIR/agentd-proart-work.sock" "$XDG_RUNTIME_DIR/agentd-work.sock"
     export COCKPIT_NEW_CWD="$HOME/personal"
