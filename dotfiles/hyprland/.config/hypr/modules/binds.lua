@@ -237,7 +237,6 @@ return function(ctx)
 		local radial_ring_outer = false
 		local keyboard_toggle_held = false
 		local radial_held = { false, false, false, false }
-		local apps_held = { false, false, false, false }
 		local radial_last_direction = 0
 		local radial_release_timer
 		local function cancel_radial_release()
@@ -264,7 +263,6 @@ return function(ctx)
 			radial_open, radial_kind = false, nil
 			radial_ring_outer = false
 			radial_held = { false, false, false, false }
-			apps_held = { false, false, false, false }
 		end
 		local function close_radial(action)
 			if not radial_open then return end
@@ -335,25 +333,12 @@ return function(ctx)
 				hl.exec_cmd(string.format("%spalette-toggle %d", SCRIPTS, direction))
 			end
 		end
-		local function apps_radial_press(index, analog)
+		local function apps_radial_press(index)
 			if dictation_running() then
 				return
 			end
 			cancel_radial_release()
-			if not analog then
-				apps_held[index] = true
-			end
-			if radial_open and radial_kind == "browser" then
-				if not analog then
-					if index == 1 then
-						radial_ipc("step", -1)
-					elseif index == 4 then
-						radial_ipc("step", 1)
-					end
-				end
-				return
-			end
-			local direction = analog and ({ 6, 4, 0, 2 })[index] or update_radial_direction(apps_held)
+			local direction = ({ 6, 4, 0, 2 })[index]
 			if not radial_open then
 				radial_open, radial_kind = true, "apps"
 				radial_ring_outer = false
@@ -411,14 +396,6 @@ return function(ctx)
 				if radial_kind == "browser" then
 					schedule_radial_release(radial_held)
 				end
-			elseif keycode >= 191 and keycode <= 194 and key_state == 0 then
-				apps_held[keycode - 190] = false
-				radial_held[keycode - 190] = false
-				if radial_kind == "apps" then
-					schedule_radial_release(apps_held)
-				elseif radial_kind == "browser" then
-					schedule_radial_release(radial_held)
-				end
 			elseif keycode == 95 and key_state == 0 then
 				radial_outer = false
 			elseif keycode == 133 and key_state == 0 and radial_open then
@@ -445,10 +422,6 @@ return function(ctx)
 				hl.dispatch(hl.dsp.send_key_state({ mods = "", key = deck_arrows[direction], state = "down" }))
 				hl.dispatch(hl.dsp.send_key_state({ mods = "", key = deck_arrows[direction], state = "up" }))
 			end, { repeating = true })
-			local apps_index = ({ F13 = 1, F14 = 2, F15 = 3, F16 = 4 })[key]
-			bind("SUPER + " .. key, function()
-				apps_radial_press(apps_index)
-			end, { repeating = true })
 			bind("SHIFT + " .. key, hl.dsp.layout("move " .. direction), { repeating = true })
 			bind("CTRL + " .. key, hl.dsp.layout("resize " .. direction), { repeating = true })
 		end
@@ -458,7 +431,7 @@ return function(ctx)
 				if deck_rt_down then
 					radial_press(index)
 				else
-					apps_radial_press(index, true)
+					apps_radial_press(index)
 				end
 			end, { repeating = true })
 		end
