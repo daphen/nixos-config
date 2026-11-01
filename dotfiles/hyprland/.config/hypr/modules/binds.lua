@@ -400,6 +400,8 @@ return function(ctx)
 		bind("F11", radial_outer_press)
 		bind("SUPER + F11", radial_outer_press)
 		hl.on("input.keyboard.key", function(keycode, _, key_state)
+			-- Hyprland skips F7's release bind when another bind fired while RT was held (RT+LT+click widen).
+			if keycode == 73 and key_state == 0 then deck_rt_down = false end
 			if is_game_window(hl.get_active_window()) then return end
 			if keycode >= 67 and keycode <= 70 and key_state == 0 then
 				radial_held[keycode - 66] = false
