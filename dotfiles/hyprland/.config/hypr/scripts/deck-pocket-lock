@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Power button on the Deck: black session lock + screen off without suspending, so audio keeps playing.
+set -u
+config="$HOME/.config/quickshell/pocket-lock"
+
+if qs -p "$config" ipc call -- pocket unlock >/dev/null 2>&1; then
+    hyprctl dispatch 'hl.dsp.dpms({action="on"})' >/dev/null
+    exit 0
+fi
+
+setsid -f qs -p "$config" >/dev/null 2>&1 </dev/null
+for _ in $(seq 40); do
+    qs -p "$config" ipc show >/dev/null 2>&1 && break
+    sleep 0.05
+done
+hyprctl dispatch 'hl.dsp.dpms({action="off"})' >/dev/null

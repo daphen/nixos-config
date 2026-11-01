@@ -610,7 +610,20 @@ return function(ctx)
 				close_radial("activate")
 			end
 		end, { device = face_device })
-		hl.bind("XF86PowerOff", hl.dsp.exec_cmd("systemctl suspend"), { locked = true })
+		local power_hold_timer
+		hl.bind("XF86PowerOff", function()
+			power_hold_timer = hl.timer(function()
+				power_hold_timer = nil
+				hl.exec_cmd("systemctl suspend")
+			end, { timeout = 700, type = "oneshot" })
+		end, { locked = true })
+		hl.bind("XF86PowerOff", function()
+			if power_hold_timer then
+				power_hold_timer:set_enabled(false)
+				power_hold_timer = nil
+				hl.exec_cmd(SCRIPTS .. "deck-pocket-lock")
+			end
+		end, { locked = true, release = true })
 	end
 
 	if REAL_MODE and DECK_MODE then
