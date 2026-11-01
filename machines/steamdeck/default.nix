@@ -277,6 +277,9 @@ in
     autoUpdate = false;
   };
   services.inputplumber.package = deckInputPlumber;
+  # ath11k can abort late suspend by powering its MHI link back on; the half-resumed GPU then hangs the next suspend.
+  powerManagement.powerDownCommands = "${pkgs.kmod}/bin/modprobe -r ath11k_pci || true";
+  powerManagement.resumeCommands = lib.mkBefore "${pkgs.kmod}/bin/modprobe ath11k_pci || true";
   jovian.steam = {
     enable = true;
     autoStart = true;
