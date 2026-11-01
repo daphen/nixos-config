@@ -269,7 +269,7 @@ return function(ctx)
 			radial_ipc(action, 0)
 		end
 		hl.on("window.close", function(window)
-			if window.title == "quickshell" then reset_radial() end
+			if window.title == "quickshell" or window.title == "deck-radial-palette" then reset_radial() end
 		end)
 		local function toggle_deck_dictation()
 			if not dictation_running() then
