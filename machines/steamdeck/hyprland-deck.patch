@@ -67,18 +67,6 @@ diff -ru a/src/managers/input/InputManager.cpp b/src/managers/input/InputManager
      const bool overview = !g_pSessionLockManager->isSessionLocked() && canvasOverviewActive(monitor, getMouseCoordsInternal());
  
      // an interactive move or resize is an exclusive grab, so don't feed relative motion to the window being
-@@ -1044,6 +1094,11 @@
-             auto delta = e.delta * factor * 2.5;
-             if (*PINVERTHORIZONTALSCROLL && e.axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
-                 delta = -delta;
-+            if (pointer && pointer->m_deviceName == "InputPlumber Mouse" && delta != 0 && !monitor->m_canvasOverview &&
-+                !g_layoutManager->dragController()->target()) {
-+                monitor->canvasOverview();
-+                monitor->canvasCenter(Desktop::focusState()->window());
-+            }
-             monitor->canvasPan(e.axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL ? Vector2D{delta, 0.0} : Vector2D{0.0, delta});
-         }
-         return;
 diff -ru a/src/output/Monitor.cpp b/src/output/Monitor.cpp
 --- a/src/output/Monitor.cpp	2026-10-08 15:45:45.325478208 +0200
 +++ b/src/output/Monitor.cpp	2026-10-08 15:54:59.230453845 +0200
