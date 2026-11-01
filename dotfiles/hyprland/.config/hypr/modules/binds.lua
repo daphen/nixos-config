@@ -499,6 +499,10 @@ return function(ctx)
 				if is_game_window(window) or (window and window.title == keyboard_title) then
 					return { pass_event = true }
 				end
+				-- Steam's on-screen keyboard never takes focus; its Enter key and RT arrive here.
+				if key == "Return" and #hl.get_windows({ title = "^" .. keyboard_title .. "$" }) > 0 then
+					return { pass_event = true }
+				end
 			end, { ignore_mods = true, device = { list = { "extest-fake-device" } } })
 		end
 		bind("Return", function()
