@@ -532,8 +532,9 @@ return function(ctx)
 				return
 			end
 			if rt_face_key(3) then return end
-			hl.dispatch(hl.dsp.exec_cmd("sh -c '[ -x ~/padswipe/padswipe-run ] && exec ~/padswipe/padswipe-run || exec deck-osk-toggle'"))
+			hl.dispatch(hl.dsp.exec_cmd("wtype -k BackSpace"))
 		end)
+		bind("F9", hl.dsp.exec_cmd("sh -c '[ -x ~/padswipe/padswipe-run ] && exec ~/padswipe/padswipe-run || exec deck-osk-toggle'"))
 		bind("Escape", function()
 			if dictation_state() ~= "idle" then
 				dictation("Cancel")

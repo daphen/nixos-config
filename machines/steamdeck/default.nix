@@ -92,6 +92,9 @@ let
       - name: App launcher
         source_event: { gamepad: { button: Select } }
         target_events: [ { keyboard: KeyF24 } ]
+      - name: Pad keyboard
+        source_event: { gamepad: { button: Start } }
+        target_events: [ { keyboard: KeyF9 } ]
       - name: Super modifier
         source_event: { gamepad: { trigger: { name: LeftTrigger, deadzone: 0.3 } } }
         target_events: [ { gamepad: { trigger: { name: LeftTrigger } } }, { keyboard: KeyLeftMeta } ]
