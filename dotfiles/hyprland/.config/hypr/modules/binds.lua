@@ -442,14 +442,8 @@ return function(ctx)
 					end
 					return
 				end
-				for _, layer in ipairs(hl.get_layers({ namespace = "qs-rounded-bar" })) do
-					if layer.keyboard_interactivity ~= 0 then
-						hl.dispatch(hl.dsp.send_key_state({ mods = "", key = deck_arrows[direction], state = "down" }))
-						hl.dispatch(hl.dsp.send_key_state({ mods = "", key = deck_arrows[direction], state = "up" }))
-						return
-					end
-				end
-				hl.dispatch(hl.dsp.layout("focus " .. direction))
+				hl.dispatch(hl.dsp.send_key_state({ mods = "", key = deck_arrows[direction], state = "down" }))
+				hl.dispatch(hl.dsp.send_key_state({ mods = "", key = deck_arrows[direction], state = "up" }))
 			end, { repeating = true })
 			local apps_index = ({ F13 = 1, F14 = 2, F15 = 3, F16 = 4 })[key]
 			bind("SUPER + " .. key, function()
