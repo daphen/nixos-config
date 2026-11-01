@@ -22,6 +22,8 @@ vim.api.nvim_create_autocmd("VimEnter", {
 opt.scrolloff = 5
 opt.sidescrolloff = 15
 opt.mousescroll = "ver:10,hor:6" -- lines per wheel notch; higher = faster, chunkier (1 = smoothest)
+-- The Deck's left pad sends about two notches per haptic tick.
+if vim.env.HYPR_CANVAS_PROFILE == "deck" then opt.mousescroll = "ver:2,hor:2" end
 
 -- tabs & indent
 opt.tabstop = 2
