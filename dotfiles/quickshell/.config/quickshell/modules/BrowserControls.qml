@@ -3,14 +3,17 @@ import Quickshell
 import Quickshell.Wayland
 import "."
 
-// Floating back / forward / reload pill for the focused Helium window; hovering
-// its palette button opens CmdPalette, which cuts this pill out of its input mask.
+// Back / forward / reload (bottom right) and a palette trigger (bottom centre) for
+// the focused Helium window; each fades in only while the pointer is near it.
+// CmdPalette cuts triggerZone out of its input mask so opening it cannot re-trigger.
 PanelWindow {
     id: root
 
-    readonly property int pillWidth: 172
-    readonly property int pillHeight: 44
-    readonly property int pillMargin: 16
+    readonly property int button: 36
+    readonly property int pad: 4
+    readonly property int reach: 16
+    readonly property int pieceHeight: button + 2 * pad
+    readonly property int margin: 16
 
     readonly property string profile: {
         const _ = NiriState.version
@@ -22,11 +25,12 @@ PanelWindow {
 
     // Mapping and unmapping a blurred layer mid-navigation makes the canvas stutter,
     // so the surface stays mapped and only its content fades.
-    mask: Region { item: root.profile !== "" ? pill : null }
-    anchors.bottom: true
-    margins.bottom: pillMargin
-    implicitWidth: pillWidth
-    implicitHeight: pillHeight
+    mask: Region {
+        Region { item: root.profile !== "" ? navZone : null }
+        Region { item: root.profile !== "" ? triggerZone : null }
+    }
+    anchors { bottom: true; left: true; right: true }
+    implicitHeight: pieceHeight + margin + reach
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -38,71 +42,96 @@ PanelWindow {
             "hl.dsp.send_shortcut({ mods = \"" + mods + "\", key = \"" + key + "\" })"])
     }
 
-    Rectangle {
-        id: pill
-        anchors.fill: parent
-        opacity: root.profile !== "" ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 120 } }
-        radius: height / 2
-        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.55)
-        border.width: 1
-        border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.12)
-
-        Row {
-            anchors.centerIn: parent
-            spacing: 4
-
-            Repeater {
-                model: [
-                    { glyph: "←", act: () => root.shortcut("ALT", "Left") },
-                    { glyph: "→", act: () => root.shortcut("ALT", "Right") },
-                    { glyph: "↻", act: () => root.shortcut("", "F5") },
-                    { glyph: "⌕", palette: true },
-                ]
-
-                Item {
-                    required property var modelData
-                    width: 36
-                    height: 36
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: 9
-                        color: hover.hovered ? Theme.itemHover : "transparent"
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.glyph
-                            color: hover.hovered ? Theme.fg : Theme.fg_muted
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 18
-                        }
-                    }
-                    HoverHandler {
-                        id: hover
-                        cursorShape: Qt.PointingHandCursor
-                        onHoveredChanged: {
-                            if (!modelData.palette) return
-                            if (hovered && !PaletteState.open) dwell.restart()
-                            else dwell.stop()
-                        }
-                    }
-                    TapHandler {
-                        onTapped: modelData.palette ? root.openPalette() : modelData.act()
-                    }
-                    Timer {
-                        id: dwell
-                        interval: 175
-                        onTriggered: if (hover.hovered) root.openPalette()
-                    }
-                }
-            }
-        }
-    }
-
     function openPalette() {
         if (PaletteState.open || profile === "") return
         PaletteState.targetOutput = root.screen.name
         PaletteState.focusProfile(profile)
         PaletteState.show()
+    }
+
+    component Piece: Rectangle {
+        property bool near: false
+        opacity: near && root.profile !== "" ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120 } }
+        height: root.pieceHeight
+        radius: height / 2
+        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.55)
+        border.width: 1
+        border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.12)
+    }
+
+    component Glyph: Item {
+        id: glyph
+        property string text
+        signal activated
+        signal dwelled
+        width: root.button
+        height: root.button
+        Rectangle {
+            anchors.fill: parent
+            radius: 9
+            color: hover.hovered ? Theme.itemHover : "transparent"
+            Text {
+                anchors.centerIn: parent
+                text: glyph.text
+                color: hover.hovered ? Theme.fg : Theme.fg_muted
+                font.family: Theme.fontFamily
+                font.pixelSize: 18
+            }
+        }
+        HoverHandler {
+            id: hover
+            cursorShape: Qt.PointingHandCursor
+            onHoveredChanged: hovered && !PaletteState.open ? dwell.restart() : dwell.stop()
+        }
+        TapHandler { onTapped: glyph.activated() }
+        Timer {
+            id: dwell
+            interval: 175
+            onTriggered: if (hover.hovered) glyph.dwelled()
+        }
+    }
+
+    Item {
+        id: navZone
+        anchors { right: parent.right; bottom: parent.bottom; rightMargin: root.margin - root.reach }
+        width: nav.width + 2 * root.reach
+        height: root.pieceHeight + root.margin + root.reach
+        HoverHandler { id: navNear }
+
+        Piece {
+            id: nav
+            near: navNear.hovered
+            anchors { right: parent.right; bottom: parent.bottom; rightMargin: root.reach; bottomMargin: root.margin }
+            width: navRow.width + 2 * root.pad
+            Row {
+                id: navRow
+                anchors.centerIn: parent
+                spacing: 4
+                Glyph { text: "←"; onActivated: root.shortcut("ALT", "Left") }
+                Glyph { text: "→"; onActivated: root.shortcut("ALT", "Right") }
+                Glyph { text: "↻"; onActivated: root.shortcut("", "F5") }
+            }
+        }
+    }
+
+    Item {
+        id: triggerZone
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
+        width: root.pieceHeight + 2 * root.reach
+        height: root.pieceHeight + root.margin + root.reach
+        HoverHandler { id: triggerNear }
+
+        Piece {
+            near: triggerNear.hovered
+            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: root.margin }
+            width: root.pieceHeight
+            Glyph {
+                anchors.centerIn: parent
+                text: "⌕"
+                onActivated: root.openPalette()
+                onDwelled: root.openPalette()
+            }
+        }
     }
 }
