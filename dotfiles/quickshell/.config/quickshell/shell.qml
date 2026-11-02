@@ -73,6 +73,7 @@ ShellRoot {
     NotificationIsland {}
 
     CmdPalette {}
+    BrowserControls {}
     WpmBadge {}
     DictationOverlay {}
 }

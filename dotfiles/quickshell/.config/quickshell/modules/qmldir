@@ -60,6 +60,7 @@ QstnsPicker 1.0 QstnsPicker.qml
 singleton PaletteState 1.0 PaletteState.qml
 HyprlandBackend 1.0 HyprlandBackend.qml
 CmdPalette 1.0 CmdPalette.qml
+BrowserControls 1.0 BrowserControls.qml
 DeckRadialPalette 1.0 DeckRadialPalette.qml
 NotificationIsland 1.0 NotificationIsland.qml
 singleton CockpitState 1.0 CockpitState.qml

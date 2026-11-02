@@ -38,34 +38,22 @@ PanelWindow {
         const app = NiriState.focusedAppId()
         return app === "browser-personal" ? "personal" : app === "browser-work" ? "work" : ""
     }
-    // Keep the edge mapped across dismissal so a stationary pointer cannot re-enter it.
     visible: (active || edgeProfile !== "") && screen === targetScreen
     contentItem.opacity: active ? 1 : 0
     readonly property bool open: PaletteState.open
-    mask: Region { item: root.active ? root.contentItem : paletteEdge }
+    // The BrowserControls pill stays reachable, so the pointer never leaves its trigger
+    // when the palette opens and cannot re-enter it on close.
+    mask: Region {
+        item: root.active ? root.contentItem : null
+        Region { item: pillHole; intersection: Intersection.Subtract }
+    }
 
-    MouseArea {
-        id: paletteEdge
-        z: 400
-        anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
-        height: 2
-        hoverEnabled: true
-        acceptedButtons: Qt.NoButton
-        onEntered: {
-            if (!root.active && !root.open && root.edgeProfile !== "") edgeDwell.restart()
-        }
-        onExited: edgeDwell.stop()
-
-        Timer {
-            id: edgeDwell
-            interval: 175
-            onTriggered: {
-                if (!paletteEdge.containsMouse || root.active || root.open || root.edgeProfile === "") return
-                PaletteState.targetOutput = root.screen.name
-                PaletteState.focusProfile(root.edgeProfile)
-                PaletteState.show()
-            }
-        }
+    Item {
+        id: pillHole
+        anchors { bottom: parent.bottom; bottomMargin: 16; horizontalCenter: parent.horizontalCenter }
+        width: 172
+        height: 44
+        visible: root.edgeProfile !== ""
     }
 
     NumberAnimation {

@@ -109,6 +109,12 @@ return function(ctx)
 			ignore_alpha = 0,
 		})
 		hl.layer_rule({
+			name = "browser-controls-frost",
+			match = { namespace = "^qs-browser-controls$" },
+			blur = true,
+			ignore_alpha = 0.1,
+		})
+		hl.layer_rule({
 			name = "palette-qml-animation",
 			match = { namespace = "^qs-picker$" },
 			no_anim = true,
