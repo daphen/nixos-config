@@ -1575,10 +1575,11 @@ PanelWindow {
                         anchors.leftMargin: Theme.insetCard
                         anchors.rightMargin: Theme.insetCard
                         radius: Theme.radiusInner
-                        color: rowItem.index === root.selectedIndex && !root.filmFocused
-                            ? Theme.itemCursor
+                        readonly property bool isCursor: rowItem.index === root.selectedIndex && !root.filmFocused
+                        color: isCursor ? "transparent"
                             : rowItem.isPreviewedTab ? Theme.itemSelected
                             : rowHover.hovered ? Theme.itemHover : "transparent"
+                        Lib.PillSurface { anchors.fill: parent; radius: parent.radius; visible: parent.isCursor }
 
                         Rectangle {
                             id: iconBox
@@ -1844,10 +1845,17 @@ PanelWindow {
                             width: chinTabLabel.implicitWidth + 16
                             height: 26
                             radius: 10
-                            color: isActive ? Theme.itemSelected
-                                 : chinTabHover.hovered ? Theme.itemHover : "transparent"
-                            border.width: root.filterNavFocused && isActive ? 2 : 0
-                            border.color: Theme.cursor
+                            color: !isActive && chinTabHover.hovered ? Theme.itemHover : "transparent"
+                            Lib.PillSurface { anchors.fill: parent; radius: parent.radius; visible: parent.isActive }
+                            Rectangle {
+                                anchors.fill: parent
+                                z: 1
+                                radius: parent.radius
+                                color: "transparent"
+                                border.width: 2
+                                border.color: Theme.cursor
+                                visible: root.filterNavFocused && parent.isActive
+                            }
                             Text {
                                 id: chinTabLabel
                                 anchors.centerIn: parent
@@ -1903,8 +1911,8 @@ PanelWindow {
                             height: 26
                             width: Math.min(pillRow.implicitWidth + 16, Math.min(220, chinRow.maxPill))
                             radius: 10
-                            color: isActive ? Theme.itemSelected
-                                 : pillHover.hovered ? Theme.itemHover : "transparent"
+                            color: !isActive && pillHover.hovered ? Theme.itemHover : "transparent"
+                            Lib.PillSurface { anchors.fill: parent; radius: parent.radius; visible: pill.isActive }
                             Row {
                                 id: pillRow
                                 anchors.centerIn: parent
