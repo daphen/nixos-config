@@ -916,7 +916,10 @@ PanelWindow {
     }
 
     function closeSelectedTab() {
-        const entry = actionEntry()
+        closeTabEntry(actionEntry())
+    }
+
+    function closeTabEntry(entry) {
         if (!entry || entry.divider || entry.kind !== "tab") return
         const closingIndex = filmTabs.findIndex(tab => tab.id === entry.tabId)
         if (closingIndex >= 0 && filmTabs.length > 1) {
@@ -1462,6 +1465,10 @@ PanelWindow {
                                 root.runEntry(root.filmEntry(filmCard.index), false)
                             }
                         }
+                        TapHandler {
+                            acceptedButtons: Qt.MiddleButton
+                            onTapped: root.closeTabEntry(root.filmEntry(filmCard.index))
+                        }
                     }
                 }
 
@@ -1651,6 +1658,10 @@ PanelWindow {
                                 root.selectedIndex = rowItem.index
                                 root.runEntry(rowItem.modelData, false)
                             }
+                        }
+                        TapHandler {
+                            acceptedButtons: Qt.MiddleButton
+                            onTapped: root.closeTabEntry(rowItem.modelData)
                         }
                     }
                 }
