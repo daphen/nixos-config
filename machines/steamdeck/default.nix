@@ -260,6 +260,9 @@ in
   services.dbus.enable = true;
   services.openssh.enable = true;
   services.openssh.settings.StreamLocalBindUnlink = true;
+  # After sleep, the laptop's pre-suspend relay is dead but its socket listener lingers and swallows Cockpit's first connect.
+  services.openssh.settings.ClientAliveInterval = 10;
+  services.openssh.settings.ClientAliveCountMax = 3;
   services.upower.enable = true;
   services.fwupd.enable = true;
   services.getty.autologinUser = null;
