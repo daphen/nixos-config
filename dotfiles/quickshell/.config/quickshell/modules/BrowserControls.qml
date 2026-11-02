@@ -5,7 +5,7 @@ import "."
 import "../QsLib" as Lib
 
 // Back / forward / reload (bottom right) and a palette trigger (bottom centre) for
-// the focused Helium window; each fades in only while the pointer is near it.
+// the focused Helium window; each slides up only while the pointer is near it.
 // CmdPalette cuts triggerZone out of its input mask so opening it cannot re-trigger.
 PanelWindow {
     id: root
@@ -52,8 +52,15 @@ PanelWindow {
 
     component Piece: Rectangle {
         property bool near: false
-        opacity: near && root.profile !== "" ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 120 } }
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: near && root.profile !== "" ? root.margin : -height
+        Behavior on anchors.bottomMargin {
+            NumberAnimation {
+                duration: Lib.Motion.slow
+                easing.type: Lib.Motion.easeEmphasized
+                easing.bezierCurve: Lib.Motion.curveEmphasized
+            }
+        }
         height: root.pieceHeight
         radius: height / 2
         color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.55)
@@ -103,7 +110,7 @@ PanelWindow {
         Piece {
             id: nav
             near: navNear.hovered
-            anchors { right: parent.right; bottom: parent.bottom; rightMargin: root.reach; bottomMargin: root.margin }
+            anchors { right: parent.right; rightMargin: root.reach }
             width: navRow.width + 2 * root.pad
             Row {
                 id: navRow
@@ -125,7 +132,7 @@ PanelWindow {
 
         Piece {
             near: triggerNear.hovered
-            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: root.margin }
+            anchors.horizontalCenter: parent.horizontalCenter
             width: root.pieceHeight
             Glyph {
                 anchors.centerIn: parent
