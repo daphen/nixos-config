@@ -626,6 +626,7 @@ PanelWindow {
                 ["tab, then h/l", "focus / move filters"],
                 ["\u2303\u21e7h   \u2303\u21e7l", "window scope"],
                 ["\u2303w", "close tab"],
+                ["\u2303r", "reload tab"],
                 ["\u2303m", "quickmark tab"],
                 ["\u2303p", "pin / unpin item"],
                 ["tab", "web-search mode"],
@@ -1074,6 +1075,11 @@ PanelWindow {
             event.accepted = true
         } else if ((event.key === Qt.Key_D || event.key === Qt.Key_W) && ctrl) {
             root.closeSelectedTab()
+            event.accepted = true
+        } else if (event.key === Qt.Key_R && ctrl && !shift) {
+            const e = root.actionEntry()
+            if (e && !e.divider && e.kind === "tab")
+                PaletteState.send({ cmd: "reload-tab", tabId: e.tabId, bypassCache: false })
             event.accepted = true
         } else if (event.key === Qt.Key_Slash && ctrl) {
             const helpIdx = root.filterTabs.length - 1
