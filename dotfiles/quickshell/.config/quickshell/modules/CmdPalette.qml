@@ -1146,13 +1146,21 @@ PanelWindow {
             }
         }
 
-        color: Theme.bg
-        // Radii measured off the reference palette: panel 24, field 15,
-        // cards 13, tiles 10, keycaps 7.
+        color: "transparent"
         radius: Theme.radiusCard
-        border.color: root.panelBorder
-        border.width: 1
         clip: true
+
+        Lib.ContrastCard {
+            anchors.fill: parent
+            elevated: false
+            cardRadius: panel.radius
+        }
+        Lib.LightKey {
+            anchors.fill: parent
+            visible: Theme.mode === "light"
+            radius: panel.radius
+            outline: Qt.alpha(Theme.fg, 0.16)
+        }
 
         Column {
             anchors.fill: parent
@@ -1163,32 +1171,45 @@ PanelWindow {
                 width: parent.width
                 height: 68
 
-                Rectangle {
+                Item {
                     id: searchField
                     anchors.fill: parent
                     anchors.leftMargin: Theme.insetCard
                     anchors.rightMargin: Theme.insetCard
                     anchors.topMargin: Theme.insetCard
                     anchors.bottomMargin: 6
-                    radius: Theme.radiusInner
-                    color: Theme.surface1
-                    border.width: 1
-                    border.color: Theme.hairline
+                    Lib.GradientFrame {
+                        anchors.fill: parent
+                        visible: Theme.mode !== "light"
+                        radius: Theme.radiusInner
+                        fill: Qt.tint(Theme.bg, Qt.alpha(Theme.fg, 0.06))
+                        fillTop: Qt.tint(fill, Qt.alpha(Theme.fg, 0.035))
+                        edge: Theme.fg
+                        strength: 0.85
+                        lowEdge: 0.05
+                    }
+                    Lib.LightKey {
+                        anchors.fill: parent
+                        visible: Theme.mode === "light"
+                        radius: Theme.radiusInner
+                        outline: Qt.alpha(Theme.fg, 0.11)
+                        faceTop: "#F9F9F9"
+                        faceBottom: "#EFEFF0"
+                    }
                 }
 
-                Text {
+                Lib.Icon {
                     id: searchIcon
                     anchors.left: searchField.left
                     anchors.leftMargin: 14
                     anchors.verticalCenter: searchField.verticalCenter
-                    text: ""
+                    width: 18
+                    height: 18
+                    name: "magnifier"
                     color: Theme.fg_muted
-                    opacity: 0.85
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 16
                 }
 
-                Rectangle {
+                Lib.PillSurface {
                     id: modeChip
                     visible: root.searchMode !== null
                     anchors.left: searchIcon.right
@@ -1197,7 +1218,6 @@ PanelWindow {
                     width: visible ? chipText.implicitWidth + 16 : 0
                     height: chipText.implicitHeight + 8
                     radius: 6
-                    color: Theme.selection
                     Text {
                         id: chipText
                         anchors.centerIn: parent
@@ -1236,27 +1256,12 @@ PanelWindow {
                     }
                 }
 
-                Rectangle {
+                Lib.KeyCap {
                     id: escBadge
                     anchors.right: searchField.right
                     anchors.rightMargin: 14
                     anchors.verticalCenter: searchField.verticalCenter
-                    width: escText.implicitWidth + 16
-                    height: 24
-                    radius: 7
-                    color: Theme.mode === "light" ? Theme.bg : Theme.surface2
-                    border.color: Theme.hairline
-                    border.width: 1
-                    Text {
-                        id: escText
-                        anchors.centerIn: parent
-                        text: "ESC"
-                        color: Theme.fg_muted
-                        font.family: root.sans
-                        font.pixelSize: 11
-                        font.weight: 500
-                        font.letterSpacing: 0.5
-                    }
+                    text: "ESC"
                 }
             }
 
@@ -1305,18 +1310,26 @@ PanelWindow {
                         Rectangle {
                             id: roundedCardMask
                             anchors.fill: parent
-                            radius: 16
+                            anchors.margins: 1
+                            radius: 15
                             color: "#ffffff"
                             visible: false
                             layer.enabled: true
                         }
 
-                        Rectangle {
+                        Lib.GradientFrame {
                             anchors.fill: parent
                             radius: 16
+                            fill: Theme.surface1
+                            edge: Theme.fg
+                            strength: Theme.mode === "light" ? 0.5 : 1
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            radius: 15
                             color: Theme.surface1
-                            border.width: 1
-                            border.color: Theme.hairline
                             layer.enabled: true
                             layer.effect: MultiEffect {
                                 maskEnabled: true
@@ -1589,7 +1602,15 @@ PanelWindow {
                             width: rowItem.hasSubtitle ? 34 : 24
                             height: width
                             radius: rowItem.hasSubtitle ? 10 : 7
-                            color: Theme.surface2
+                            color: "transparent"
+                            Lib.GradientFrame {
+                                anchors.fill: parent
+                                radius: parent.radius
+                                fill: Theme.mode === "light" ? Qt.tint("#FAFAFA", Qt.alpha(Theme.fg, 0.03))
+                                    : Qt.tint(Theme.bg, Qt.alpha(Theme.fg, 0.07))
+                                edge: Theme.fg
+                                strength: Theme.mode === "light" ? 0.6 : 1.2
+                            }
                             Image {
                                 id: fav
                                 anchors.centerIn: parent
@@ -1681,9 +1702,23 @@ PanelWindow {
                     width: dockRow.implicitWidth + 14
                     height: 50
                     radius: 16
-                    color: Theme.surface1
-                    border.width: 1
-                    border.color: root.panelBorder
+                    color: "transparent"
+                    Lib.GradientFrame {
+                        anchors.fill: parent
+                        visible: Theme.mode !== "light"
+                        radius: parent.radius
+                        fill: Qt.tint(Theme.bg, Qt.alpha(Theme.fg, 0.06))
+                        fillTop: Qt.tint(fill, Qt.alpha(Theme.fg, 0.035))
+                        edge: Theme.fg
+                        strength: 0.85
+                        lowEdge: 0.05
+                    }
+                    Lib.LightKey {
+                        anchors.fill: parent
+                        visible: Theme.mode === "light"
+                        radius: parent.radius
+                        outline: Qt.alpha(Theme.fg, 0.11)
+                    }
 
                     Row {
                         id: dockRow
@@ -1815,12 +1850,12 @@ PanelWindow {
                 Rectangle {
                     // whisper band, inset inside the panel's 1px border
                     anchors.fill: parent
-                    anchors.leftMargin: 1
-                    anchors.rightMargin: 1
-                    anchors.bottomMargin: 1
-                    color: Theme.surface0
-                    bottomLeftRadius: 23
-                    bottomRightRadius: 23
+                    anchors.leftMargin: 2
+                    anchors.rightMargin: 2
+                    anchors.bottomMargin: 2
+                    color: Qt.alpha(Theme.fg, 0.025)
+                    bottomLeftRadius: panel.radius - 2
+                    bottomRightRadius: panel.radius - 2
                 }
                 Rectangle {
                     anchors.top: parent.top
