@@ -1740,12 +1740,12 @@ PanelWindow {
                                 anchors.fill: parent
                                 radius: 9
                                 color: mediaHover.hovered ? Theme.itemHover : "transparent"
-                                Text {
+                                Lib.Icon {
                                     anchors.centerIn: parent
-                                    text: "⏯"
+                                    width: 18
+                                    height: 18
+                                    name: "half-dotted-circle-play"
                                     color: mediaHover.hovered ? Theme.fg : Theme.fg_muted
-                                    font.family: root.sans
-                                    font.pixelSize: 18
                                 }
                             }
                             HoverHandler { id: mediaHover; cursorShape: Qt.PointingHandCursor }
@@ -1759,12 +1759,12 @@ PanelWindow {
                                 anchors.fill: parent
                                 radius: 9
                                 color: reloadHover.hovered ? Theme.itemHover : "transparent"
-                                Text {
+                                Lib.Icon {
                                     anchors.centerIn: parent
-                                    text: "↻"
-                                    color: Theme.fg_muted
-                                    font.family: root.sans
-                                    font.pixelSize: 18
+                                    width: 18
+                                    height: 18
+                                    name: "refresh-2"
+                                    color: reloadHover.hovered ? Theme.fg : Theme.fg_muted
                                 }
                             }
                             HoverHandler { id: reloadHover; cursorShape: Qt.PointingHandCursor }
@@ -1778,13 +1778,12 @@ PanelWindow {
                                 anchors.fill: parent
                                 radius: 9
                                 color: addTabHover.hovered ? Theme.itemHover : "transparent"
-                                Text {
+                                Lib.Icon {
                                     anchors.centerIn: parent
-                                    text: "+"
-                                    color: Theme.fg_muted
-                                    font.family: root.sans
-                                    font.pixelSize: 21
-                                    font.weight: 400
+                                    width: 18
+                                    height: 18
+                                    name: "plus"
+                                    color: addTabHover.hovered ? Theme.fg : Theme.fg_muted
                                 }
                             }
                             HoverHandler { id: addTabHover; cursorShape: Qt.PointingHandCursor }

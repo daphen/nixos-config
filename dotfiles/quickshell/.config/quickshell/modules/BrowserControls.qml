@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import "."
+import "../QsLib" as Lib
 
 // Back / forward / reload (bottom right) and a palette trigger (bottom centre) for
 // the focused Helium window; each fades in only while the pointer is near it.
@@ -62,7 +63,7 @@ PanelWindow {
 
     component Glyph: Item {
         id: glyph
-        property string text
+        property string icon
         signal activated
         signal dwelled
         width: root.button
@@ -71,12 +72,12 @@ PanelWindow {
             anchors.fill: parent
             radius: 9
             color: hover.hovered ? Theme.itemHover : "transparent"
-            Text {
+            Lib.Icon {
                 anchors.centerIn: parent
-                text: glyph.text
+                width: 18
+                height: 18
+                name: glyph.icon
                 color: hover.hovered ? Theme.fg : Theme.fg_muted
-                font.family: Theme.fontFamily
-                font.pixelSize: 18
             }
         }
         HoverHandler {
@@ -108,9 +109,9 @@ PanelWindow {
                 id: navRow
                 anchors.centerIn: parent
                 spacing: 4
-                Glyph { text: "←"; onActivated: root.shortcut("ALT", "Left") }
-                Glyph { text: "→"; onActivated: root.shortcut("ALT", "Right") }
-                Glyph { text: "↻"; onActivated: root.shortcut("", "F5") }
+                Glyph { icon: "chevron-left"; onActivated: root.shortcut("ALT", "Left") }
+                Glyph { icon: "chevron-right"; onActivated: root.shortcut("ALT", "Right") }
+                Glyph { icon: "refresh-2"; onActivated: root.shortcut("", "F5") }
             }
         }
     }
@@ -128,7 +129,7 @@ PanelWindow {
             width: root.pieceHeight
             Glyph {
                 anchors.centerIn: parent
-                text: "⌕"
+                icon: "layers-3"
                 onActivated: root.openPalette()
                 onDwelled: root.openPalette()
             }
