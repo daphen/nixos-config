@@ -14,7 +14,7 @@ PanelWindow {
     readonly property int pad: 4
     readonly property int reach: 16
     readonly property int pieceHeight: button + 2 * pad
-    readonly property int margin: 16
+    readonly property int margin: 40
 
     readonly property string profile: {
         const _ = NiriState.version

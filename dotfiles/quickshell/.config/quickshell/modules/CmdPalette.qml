@@ -46,7 +46,7 @@ PanelWindow {
         id: pillHole
         anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
         width: 76
-        height: 76
+        height: 100
     }
 
     NumberAnimation {
