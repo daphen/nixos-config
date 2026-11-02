@@ -32,13 +32,7 @@ PanelWindow {
     property bool tabCycleActive: false
     property bool closing: false
     property real slideProgress: 0
-    readonly property string edgeProfile: {
-        const _ = NiriState.version
-        if (root.screen && NiriState.outputIsFullscreen(root.screen.name, root.screen.height)) return ""
-        const app = NiriState.focusedAppId()
-        return app === "browser-personal" ? "personal" : app === "browser-work" ? "work" : ""
-    }
-    visible: (active || edgeProfile !== "") && screen === targetScreen
+    visible: active && screen === targetScreen
     contentItem.opacity: active ? 1 : 0
     readonly property bool open: PaletteState.open
     // The BrowserControls pill stays reachable, so the pointer never leaves its trigger
@@ -53,7 +47,6 @@ PanelWindow {
         anchors { bottom: parent.bottom; bottomMargin: 16; horizontalCenter: parent.horizontalCenter }
         width: 172
         height: 44
-        visible: root.edgeProfile !== ""
     }
 
     NumberAnimation {

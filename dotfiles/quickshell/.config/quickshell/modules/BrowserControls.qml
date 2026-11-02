@@ -12,25 +12,17 @@ PanelWindow {
     readonly property int pillHeight: 44
     readonly property int pillMargin: 16
 
-    readonly property var targetScreen: {
-        const _ = NiriState.version
-        const output = NiriState.focusedOutput()
-        const screens = Quickshell.screens
-        for (let i = 0; i < screens.length; i++)
-            if (screens[i].name === output) return screens[i]
-        return screens.length ? screens[0] : null
-    }
-    // Quickshell 0.3.0 segfaults recreating a visible window on a screen change.
-    Binding on screen { value: root.targetScreen; when: !root.visible; restoreMode: Binding.RestoreNone }
-
     readonly property string profile: {
         const _ = NiriState.version
-        if (root.screen && NiriState.outputIsFullscreen(root.screen.name, root.screen.height)) return ""
+        if (!root.screen || NiriState.focusedOutput() !== root.screen.name) return ""
+        if (NiriState.outputIsFullscreen(root.screen.name, root.screen.height)) return ""
         const app = NiriState.focusedAppId()
         return app === "browser-personal" ? "personal" : app === "browser-work" ? "work" : ""
     }
 
-    visible: profile !== "" && screen === targetScreen
+    // Mapping and unmapping a blurred layer mid-navigation makes the canvas stutter,
+    // so the surface stays mapped and only its content fades.
+    mask: Region { item: root.profile !== "" ? pill : null }
     anchors.bottom: true
     margins.bottom: pillMargin
     implicitWidth: pillWidth
@@ -47,7 +39,10 @@ PanelWindow {
     }
 
     Rectangle {
+        id: pill
         anchors.fill: parent
+        opacity: root.profile !== "" ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120 } }
         radius: height / 2
         color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.55)
         border.width: 1

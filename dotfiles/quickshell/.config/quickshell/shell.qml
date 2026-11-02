@@ -42,6 +42,8 @@ ShellRoot {
         Scope {
             required property var modelData
 
+            BrowserControls { screen: modelData }
+
             RoundedBar {
                 id: bar
                 screen: modelData
@@ -73,7 +75,6 @@ ShellRoot {
     NotificationIsland {}
 
     CmdPalette {}
-    BrowserControls {}
     WpmBadge {}
     DictationOverlay {}
 }
