@@ -106,6 +106,8 @@ export HYPR_SCRIPTS="$HYPR_CONFIG_ROOT/scripts/"
 
 while true; do
   status=0
+  # Restarts pick up the newest activated canvas, not the one this login started with.
+  (( SYSTEM_MODE )) && package="$(dirname -- "$(dirname -- "$(readlink -f -- "/etc/profiles/per-user/$USER/bin/start-hyprland")")")"
   if (( DEV_MODE || SYSTEM_MODE )); then
     "$package/bin/start-hyprland" --path "$package/bin/Hyprland" -- --config "$CONFIG" 2>&1 | tee "$LOG" || status=$?
   else
