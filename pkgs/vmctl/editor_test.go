@@ -99,7 +99,7 @@ printf 'systemd-run|%s\n' "$*" >> "$VMCTL_LOG"; touch "$VMCTL_STATE"
 	text := string(calls)
 	if strings.Count(text, "systemd-run|") != 1 || strings.Count(text, " -N -L ") < 3 ||
 		strings.Contains(text, "StreamLocalBindUnlink") || strings.Contains(text, "systemctl|--user stop") ||
-		!strings.Contains(text, "--setenv=COCKPIT_INSTANCE=demo --setenv=COCKPIT_COCKPIT=1 --setenv=COCKPIT_SCOPE=lovable") {
+		!strings.Contains(text, "--setenv=COCKPIT_INSTANCE=demo --setenv=COCKPIT_COCKPIT=1 --setenv=COCKPIT_SCOPE=lovable --setenv=COCKPIT_EDITOR_IDLE_EXIT=1") {
 		t.Fatalf("editor ownership was not preserved:\n%s", text)
 	}
 	for _, want := range []string{
