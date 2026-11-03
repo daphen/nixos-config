@@ -60,17 +60,40 @@ ShellRoot {
                     fillDuration: 0
                     percent: (root.armed ? 1 : root.progress) * 100
                 }
-                Text {
+                Lib.Crossfade {
+                    id: title
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: root.armed ? "Release to suspend" : "Keep holding for 3s to suspend"
-                    color: root.armed ? meter.ink : "#FAFAFA"
-                    font { family: Lib.Theme.fontFamily; pixelSize: Lib.Theme.fontSize * 2; weight: 600 }
+                    width: Math.max(holdText.implicitWidth, releaseText.implicitWidth); height: holdText.implicitHeight
+                    showSecond: root.armed
+                    enterDuration: 260; exitDuration: 200
+                    shift: 6; blurAmount: 0.5
+                    first: Text {
+                        id: holdText
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "Keep holding for 3s to suspend"
+                        color: "#FAFAFA"
+                        font { family: Lib.Theme.fontFamily; pixelSize: Lib.Theme.fontSize * 2; weight: 600 }
+                    }
+                    second: Text {
+                        id: releaseText
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "Release to suspend"
+                        color: meter.ink
+                        font: holdText.font
+                    }
                 }
-                Text {
+                Lib.Crossfade {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: root.armed ? "" : "Let go to cancel"
-                    color: Qt.alpha("#FAFAFA", 0.55)
-                    font { family: Lib.Theme.fontFamily; pixelSize: Lib.Theme.fontSize + 4 }
+                    width: hintText.implicitWidth; height: hintText.implicitHeight
+                    showSecond: root.armed
+                    enterDuration: 260; exitDuration: 200
+                    shift: 6; blurAmount: 0.5
+                    first: Text {
+                        id: hintText
+                        text: "Let go to cancel"
+                        color: Qt.alpha("#FAFAFA", 0.55)
+                        font { family: Lib.Theme.fontFamily; pixelSize: Lib.Theme.fontSize + 4 }
+                    }
                 }
             }
         }
