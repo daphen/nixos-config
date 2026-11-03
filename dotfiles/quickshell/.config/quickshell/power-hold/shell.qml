@@ -48,39 +48,18 @@ ShellRoot {
                 scale: root.shown ? 1 : 0.92
                 Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
 
-                Item {
-                    width: 168; height: 168
+                Lib.ContextMeter {
+                    id: meter
+                    width: 460; height: 40
                     anchors.horizontalCenter: parent.horizontalCenter
-                    Lib.PillSurface { anchors.fill: parent; radius: width / 2 }
-                    Canvas {
-                        id: ring
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        readonly property real p: root.armed ? 1 : root.progress
-                        readonly property color tint: root.armed ? Lib.Theme.orange : Lib.Theme.fg
-                        onPChanged: requestPaint()
-                        onTintChanged: requestPaint()
-                        onPaint: {
-                            const c = getContext("2d"), r = width / 2 - 4
-                            c.clearRect(0, 0, width, height)
-                            c.lineWidth = 7; c.lineCap = "round"
-                            c.strokeStyle = Qt.alpha(Lib.Theme.fg, 0.14)
-                            c.beginPath(); c.arc(width / 2, height / 2, r, 0, 2 * Math.PI); c.stroke()
-                            c.strokeStyle = tint
-                            c.beginPath(); c.arc(width / 2, height / 2, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * p); c.stroke()
-                        }
-                    }
-                    Lib.Icon {
-                        anchors.centerIn: parent
-                        width: 56; height: 56
-                        name: "pizza-slice-2"
-                        color: ring.tint
-                    }
+                    fieldMargin: 4
+                    fillDuration: 0
+                    percent: (root.armed ? 1 : root.progress) * 100
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: root.armed ? "Release to suspend" : "Keep holding for 3s to suspend"
-                    color: root.armed ? Lib.Theme.orange : "#FAFAFA"
+                    color: root.armed ? meter.ink : "#FAFAFA"
                     font { family: Lib.Theme.fontFamily; pixelSize: Lib.Theme.fontSize * 2; weight: 600 }
                 }
                 Text {
