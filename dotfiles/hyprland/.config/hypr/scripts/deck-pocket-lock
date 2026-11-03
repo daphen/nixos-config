@@ -2,6 +2,8 @@
 # Power button on the Deck: black session lock + screen off without suspending, so audio keeps playing.
 set -u
 config="$HOME/.config/quickshell/pocket-lock"
+# A press during the slow pre-sleep step must not lock over the suspend in progress.
+flock -n "$XDG_RUNTIME_DIR/deck-suspend.lock" true 2>/dev/null || exit 0
 
 if qs -p "$config" ipc call -- pocket unlock >/dev/null 2>&1; then
     hyprctl dispatch 'hl.dsp.dpms({action="on"})' >/dev/null

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Power-button hold on the Deck: blank the screen now, since pre-sleep takes ~10s, and light it again on wake.
 set -u
+# Held until the screen relights; deck-pocket-lock and repeat holds back off while it is.
+exec 9>"$XDG_RUNTIME_DIR/deck-suspend.lock"
+flock -n 9 || exit 0
 hyprctl dispatch 'hl.dsp.dpms({action="off"})' >/dev/null
 coproc mon { exec dbus-monitor --system "type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'" 2>/dev/null; }
 sleep 0.3
