@@ -836,6 +836,42 @@ index c337295aa288fd45485822149036ca1e44dcfc67..811920c4312a1ffd48993de4bfb13a85
  
      const bool  CONFIGURECLIENT = !(flags & TARGET_UPDATE_NO_CLIENT_CONFIGURE);
  
+diff --git a/src/managers/SeatManager.cpp b/src/managers/SeatManager.cpp
+index d66f0e5fb8e23d662d7e383cb9ba68294069c1b8..2edae105a416f6d3f3f291b532e3fa671484d5b6 100644
+--- a/src/managers/SeatManager.cpp
++++ b/src/managers/SeatManager.cpp
+@@ -343,6 +343,10 @@ void CSeatManager::sendKeyboardMods(uint32_t depressed, uint32_t latched, uint32
+     }
+ }
+ 
++// Layer maps and refocuses simulate pointer motion; repeating the same position wakes fullscreen apps' cursor UI.
++static WP<CWLSurfaceResource> lastMotionSurface;
++static Vector2D               lastMotionLocal;
++
+ void CSeatManager::setPointerFocus(SP<CWLSurfaceResource> surf, const Vector2D& local) {
+     const bool dndActive = PROTO::data && PROTO::data->dndActive();
+ 
+@@ -377,6 +381,8 @@ void CSeatManager::setPointerFocus(SP<CWLSurfaceResource> surf, const Vector2D&
+     m_state.dndPointerFocus.reset();
+     m_state.pointerFocusResource.reset();
+     m_state.pointerFocus = surf;
++    lastMotionSurface    = surf;
++    lastMotionLocal      = local;
+ 
+     if (!surf) {
+         sendPointerFrame(lastPointerFocusResource);
+@@ -415,6 +421,11 @@ void CSeatManager::sendPointerMotion(uint32_t timeMs, const Vector2D& local) {
+     if (!m_state.pointerFocusResource)
+         return;
+ 
++    if (lastMotionSurface == m_state.pointerFocus && lastMotionLocal == local)
++        return;
++    lastMotionSurface = m_state.pointerFocus;
++    lastMotionLocal   = local;
++
+     for (auto const& s : m_seatResources) {
+         if (s->resource->client() != m_state.pointerFocusResource->client())
+             continue;
 diff --git a/src/managers/SessionLockManager.cpp b/src/managers/SessionLockManager.cpp
 index 960127be179d287987d9f6865a5af2a9384120c7..bcf693bc9924fe75777ed8936302226b3c1b34be 100644
 --- a/src/managers/SessionLockManager.cpp
