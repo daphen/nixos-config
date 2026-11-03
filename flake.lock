@@ -640,11 +640,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790282624,
-        "narHash": "sha256-X46i+HIh2GKryjFKM9q21leu7ComsNuF876gDsQhysI=",
+        "lastModified": 1793730230,
+        "narHash": "sha256-NqxjGRPSTs+/vgSqb09mKcsHhuaFk1xkhOFmfGjuUII=",
         "ref": "daphen/client-mouse-support",
-        "rev": "d31bf804f0ab76047df06aa39470d9f8ef3cfd96",
-        "revCount": 263,
+        "rev": "8b43ef7751f0be3aa774eac6bd372f72a5b82433",
+        "revCount": 265,
         "type": "git",
         "url": "ssh://git@github.com/daphen/mlqs"
       },
