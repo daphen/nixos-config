@@ -588,7 +588,7 @@ return function(ctx)
 			if not power_hold_timer then return end
 			power_hold_timer:set_enabled(false)
 			power_hold_timer = nil
-			hl.exec_cmd(power_held and "systemctl suspend" or SCRIPTS .. "deck-pocket-lock")
+			hl.exec_cmd(SCRIPTS .. (power_held and "deck-suspend" or "deck-pocket-lock"))
 		end, { locked = true, release = true })
 	end
 

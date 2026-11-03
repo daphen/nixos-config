@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Power-button hold on the Deck: blank the screen now, since pre-sleep takes ~10s, and light it again on wake.
+set -u
+hyprctl dispatch 'hl.dsp.dpms({action="off"})' >/dev/null
+coproc mon { exec dbus-monitor --system "type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'" 2>/dev/null; }
+sleep 0.3
+systemctl suspend || { hyprctl dispatch 'hl.dsp.dpms({action="on"})' >/dev/null; kill "$mon_PID"; exit 1; }
+while read -r line <&"${mon[0]}"; do
+    [[ $line == *'boolean false'* ]] && break
+done
+kill "$mon_PID" 2>/dev/null
+hyprctl dispatch 'hl.dsp.dpms({action="on"})' >/dev/null
