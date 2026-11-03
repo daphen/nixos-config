@@ -577,19 +577,18 @@ return function(ctx)
 				close_radial("activate")
 			end
 		end, { device = face_device })
-		local power_hold_timer
+		-- Decide only on release, so a lost release event leaves the Deck awake instead of suspending it.
+		local power_hold_timer, power_held
 		hl.bind("XF86PowerOff", function()
-			power_hold_timer = hl.timer(function()
-				power_hold_timer = nil
-				hl.exec_cmd("systemctl suspend")
-			end, { timeout = 700, type = "oneshot" })
+			if power_hold_timer then return end
+			power_held = false
+			power_hold_timer = hl.timer(function() power_held = true end, { timeout = 700, type = "oneshot" })
 		end, { locked = true })
 		hl.bind("XF86PowerOff", function()
-			if power_hold_timer then
-				power_hold_timer:set_enabled(false)
-				power_hold_timer = nil
-				hl.exec_cmd(SCRIPTS .. "deck-pocket-lock")
-			end
+			if not power_hold_timer then return end
+			power_hold_timer:set_enabled(false)
+			power_hold_timer = nil
+			hl.exec_cmd(power_held and "systemctl suspend" or SCRIPTS .. "deck-pocket-lock")
 		end, { locked = true, release = true })
 	end
 
