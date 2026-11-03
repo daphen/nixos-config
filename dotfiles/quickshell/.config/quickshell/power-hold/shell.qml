@@ -10,6 +10,7 @@ ShellRoot {
     property bool holding: false
     property bool armed: false
     property real progress: 0
+    readonly property bool shown: holding && !reveal.running
 
     IpcHandler {
         target: "powerhold"
@@ -24,52 +25,69 @@ ShellRoot {
     Timer { id: expire; interval: 8000; onTriggered: { root.holding = false; root.armed = false } }
 
     PanelWindow {
-        visible: root.holding && !reveal.running
+        visible: root.shown || content.opacity > 0
         color: "transparent"
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "power-hold"
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
-        anchors.bottom: true
-        margins.bottom: 64
-        implicitWidth: pill.width
-        implicitHeight: pill.height
+        anchors { top: true; bottom: true; left: true; right: true }
         mask: Region {}
 
-        Lib.PillSurface {
-            id: pill
-            width: row.implicitWidth + 36; height: 48
-            Row {
-                id: row
+        Item {
+            id: content
+            anchors.fill: parent
+            opacity: root.shown ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+            Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.62) }
+
+            Column {
                 anchors.centerIn: parent
-                spacing: 12
-                Canvas {
-                    id: ring
-                    width: 28; height: 28
-                    anchors.verticalCenter: parent.verticalCenter
-                    readonly property real p: root.armed ? 1 : root.progress
-                    onPChanged: requestPaint()
-                    onPaint: {
-                        const c = getContext("2d"), r = width / 2 - 1.5
-                        c.clearRect(0, 0, width, height)
-                        c.lineWidth = 2.5; c.lineCap = "round"
-                        c.strokeStyle = Qt.alpha(Lib.Theme.fg, 0.18)
-                        c.beginPath(); c.arc(width / 2, height / 2, r, 0, 2 * Math.PI); c.stroke()
-                        c.strokeStyle = root.armed ? Lib.Theme.orange : Lib.Theme.fg
-                        c.beginPath(); c.arc(width / 2, height / 2, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * p); c.stroke()
+                spacing: 28
+                scale: root.shown ? 1 : 0.92
+                Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
+
+                Item {
+                    width: 168; height: 168
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    Lib.PillSurface { anchors.fill: parent; radius: width / 2 }
+                    Canvas {
+                        id: ring
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        readonly property real p: root.armed ? 1 : root.progress
+                        readonly property color tint: root.armed ? Lib.Theme.orange : Lib.Theme.fg
+                        onPChanged: requestPaint()
+                        onTintChanged: requestPaint()
+                        onPaint: {
+                            const c = getContext("2d"), r = width / 2 - 4
+                            c.clearRect(0, 0, width, height)
+                            c.lineWidth = 7; c.lineCap = "round"
+                            c.strokeStyle = Qt.alpha(Lib.Theme.fg, 0.14)
+                            c.beginPath(); c.arc(width / 2, height / 2, r, 0, 2 * Math.PI); c.stroke()
+                            c.strokeStyle = tint
+                            c.beginPath(); c.arc(width / 2, height / 2, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * p); c.stroke()
+                        }
                     }
                     Lib.Icon {
                         anchors.centerIn: parent
-                        width: 14; height: 14
+                        width: 56; height: 56
                         name: "pizza-slice-2"
-                        color: root.armed ? Lib.Theme.orange : Lib.Theme.fg
+                        color: ring.tint
                     }
                 }
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.horizontalCenter: parent.horizontalCenter
                     text: root.armed ? "Release to suspend" : "Keep holding for 3s to suspend"
-                    color: Lib.Theme.fg
-                    font { family: Lib.Theme.fontFamily; pixelSize: Lib.Theme.fontSize + 2; weight: 600 }
+                    color: root.armed ? Lib.Theme.orange : "#FAFAFA"
+                    font { family: Lib.Theme.fontFamily; pixelSize: Lib.Theme.fontSize * 2; weight: 600 }
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: root.armed ? "" : "Let go to cancel"
+                    color: Qt.alpha("#FAFAFA", 0.55)
+                    font { family: Lib.Theme.fontFamily; pixelSize: Lib.Theme.fontSize + 4 }
                 }
             }
         }
