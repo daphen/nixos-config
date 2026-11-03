@@ -18,8 +18,8 @@ ShellRoot {
         function cancel() { root.holding = false; root.armed = false; reveal.stop(); fill.stop(); expire.stop() }
     }
     // Taps release well before this, so they never flash the hint.
-    Timer { id: reveal; interval: 150 }
-    NumberAnimation { id: fill; target: root; property: "progress"; from: 0; to: 1; duration: 4000 }
+    Timer { id: reveal; interval: 400 }
+    NumberAnimation { id: fill; target: root; property: "progress"; from: 0; to: 1; duration: 3000 }
     // A cancel lost to a cold start must not strand the hint on screen.
     Timer { id: expire; interval: 8000; onTriggered: { root.holding = false; root.armed = false } }
 
@@ -67,7 +67,7 @@ ShellRoot {
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.armed ? "Release to suspend" : "Keep holding for 4s to suspend"
+                    text: root.armed ? "Release to suspend" : "Keep holding for 3s to suspend"
                     color: Lib.Theme.fg
                     font { family: Lib.Theme.fontFamily; pixelSize: Lib.Theme.fontSize + 2; weight: 600 }
                 }

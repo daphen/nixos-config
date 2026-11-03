@@ -578,22 +578,30 @@ return function(ctx)
 			end
 		end, { device = face_device })
 		-- Decide only on release, so a lost release event leaves the Deck awake instead of suspending it.
-		local power_hold_timer, power_held
+		-- Under 0.4s is a tap (lock); letting go after that cancels; 3s arms suspend.
+		local power_timers, power_state
 		hl.bind("XF86PowerOff", function()
-			if power_hold_timer then return end
-			power_held = false
+			if power_timers then return end
+			power_state = "tap"
 			hl.exec_cmd(SCRIPTS .. "deck-power-hint start")
-			power_hold_timer = hl.timer(function()
-				power_held = true
-				hl.exec_cmd(SCRIPTS .. "deck-power-hint arm")
-			end, { timeout = 4000, type = "oneshot" })
+			power_timers = {
+				hl.timer(function() if power_state == "tap" then power_state = "hold" end end, { timeout = 400, type = "oneshot" }),
+				hl.timer(function()
+					power_state = "armed"
+					hl.exec_cmd(SCRIPTS .. "deck-power-hint arm")
+				end, { timeout = 3000, type = "oneshot" }),
+			}
 		end, { locked = true })
 		hl.bind("XF86PowerOff", function()
-			if not power_hold_timer then return end
-			power_hold_timer:set_enabled(false)
-			power_hold_timer = nil
+			if not power_timers then return end
+			for _, t in ipairs(power_timers) do t:set_enabled(false) end
+			power_timers = nil
 			hl.exec_cmd(SCRIPTS .. "deck-power-hint cancel")
-			hl.exec_cmd(SCRIPTS .. (power_held and "deck-suspend" or "deck-pocket-lock"))
+			if power_state == "armed" then
+				hl.exec_cmd(SCRIPTS .. "deck-suspend")
+			elseif power_state == "tap" then
+				hl.exec_cmd(SCRIPTS .. "deck-pocket-lock")
+			end
 		end, { locked = true, release = true })
 	end
 
