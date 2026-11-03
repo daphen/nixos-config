@@ -11,5 +11,8 @@ pkgs.buildGoModule {
   vendorHash = null;
   # Only the daemon binary; the ui/ dir is a separate quickshell app.
   subPackages = [ "." ];
+  nativeCheckInputs = [ pkgs.git ];
+  # Reads the developer's real ~/.pi role manifest, which the build sandbox lacks.
+  checkFlags = [ "-skip=^TestCrossScopePromptReportsWorkerCompletionOnSocket$" ];
   meta.mainProgram = "agentd";
 }
