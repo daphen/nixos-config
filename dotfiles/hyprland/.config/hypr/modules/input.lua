@@ -30,6 +30,10 @@ return function(ctx)
 		for _, name in ipairs({ "inputplumber-mouse", "extest-fake-device-1" }) do
 			hl.device({ name = name, enabled = true })
 		end
+		-- InputPlumber already reports the power key; a second device's release would shadow the tap-release bind.
+		for _, name in ipairs({ "power-button", "power-button-1" }) do
+			hl.device({ name = name, enabled = false })
+		end
 		for _, name in ipairs({ "steamos-manager", "extest-fake-device", "inputplumber-keyboard" }) do
 			hl.device({ name = name, kb_layout = "se" })
 		end

@@ -578,9 +578,7 @@ return function(ctx)
 			end
 		end, { device = face_device })
 		local power_hold_timer
-		-- Both Deck power-button devices report every tap; a second timer would outlive the release.
 		hl.bind("XF86PowerOff", function()
-			if power_hold_timer then return end
 			power_hold_timer = hl.timer(function()
 				power_hold_timer = nil
 				hl.exec_cmd("systemctl suspend")
