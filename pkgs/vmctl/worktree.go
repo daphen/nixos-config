@@ -296,6 +296,11 @@ func awaitWorktreeHTTP(ports worktreePorts, scriptTag bool, routeHost string) er
 				allReady = false
 				continue
 			}
+			if response.StatusCode == http.StatusBadGateway || response.StatusCode == http.StatusServiceUnavailable || response.StatusCode == http.StatusGatewayTimeout {
+				// The VM router answers for a ticket whose servers are still starting.
+				allReady = false
+				continue
+			}
 			if response.StatusCode != http.StatusOK {
 				return fmt.Errorf("%s returned HTTP %d", url, response.StatusCode)
 			}

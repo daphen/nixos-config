@@ -95,6 +95,12 @@ class VmSliceReaperOwnershipTests(unittest.TestCase):
         argv = ["vm-slice-reaper", "--worktree", f"/vm/src/{worktree}", "--session", "long-alias"]
         self.assertEqual(self.run_reaper(live, [worktree], argv, exit_code=1), [])
 
+    def test_sweep_keeps_app_while_its_session_is_idle_or_asleep(self):
+        worktree = "lovable-pls-683"
+        for owner in ({"status": "asleep"}, {"status": "idle", "idleAt": 1}, {"status": "idle"}):
+            live = {"pls-683": {"name": "pls-683", "cwd": f"/vm/src/{worktree}", **owner}}
+            self.assertEqual(self.run_reaper(live, [worktree], ["vm-slice-reaper"]), [], owner)
+
     def test_sweep_reaps_true_orphan(self):
         worktree = "lovable-every-9999"
         live = {"other": {"name": "other", "cwd": "/vm/src/lovable-every-1", "status": "streaming"}}

@@ -333,6 +333,26 @@ func TestWorktreeRefusesRegisteredWrongCwdBeforeRemoteCommands(t *testing.T) {
 	}
 }
 
+func TestWorktreeWaitsThroughRouterGatewayErrorsWhileStarting(t *testing.T) {
+	web, api, stop := worktreeHTTPAt(t, 0, 0, http.StatusBadGateway, http.StatusOK)
+	defer stop()
+	remote := "/home/tester/src/lovable.tester-every-46-feature"
+	script := matchingTunnelScript(web, api) + fmt.Sprintf(`
+case "${0##*/}|$*" in
+  "ssh|"*"process-compose-wt-"*) printf '/remote/config.yaml\n---VMCTL-CONFIG---\n- WEB_PORT=%d\n- VITE_GO_API_BASE_URL=http://127.0.0.1:%d\n' ;;
+esac
+`, web, api)
+	home, path, _ := worktreeFixture(t, script)
+	roster := fmt.Sprintf(`{"sessions":[{"name":"every-46","profile":"lovable-worker","cwd":%q}]}`, remote)
+	listener, done := worktreeAgentSocket(t, home, roster, `{"type":"text","text":"history"}`, make(chan map[string]any, 3))
+	defer listener.Close()
+	result := runWorktreeBinaryArgs(t, home, path, "--app", "EVERY-46")
+	<-done
+	if result.err != nil || !strings.Contains(result.stdout, "HTTP ready") {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
 func TestWorktreeRejectsScriptAsset500AfterEarlierAnchor(t *testing.T) {
 	web, api, stop := worktreeHTTPAt(t, 0, 0, http.StatusOK, http.StatusInternalServerError)
 	defer stop()
@@ -807,10 +827,18 @@ func worktreeHTTPAt(t *testing.T, webPort, apiPort, webStatus, assetStatus int) 
 		go server.Serve(listener)
 		return listener, server
 	}
+	starting := 0
+	if webStatus == http.StatusBadGateway {
+		starting, webStatus = 2, http.StatusOK
+	}
 	webListener, webServer := listen(webPort, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		status := assetStatus
 		if request.URL.Path == "/" {
 			status = webStatus
+			if starting > 0 {
+				starting--
+				status = http.StatusBadGateway
+			}
 		}
 		w.WriteHeader(status)
 		if request.URL.Path == "/" {

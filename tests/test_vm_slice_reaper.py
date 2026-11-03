@@ -74,3 +74,17 @@ def test_public_cli_stops_only_its_exact_controller_and_reports_failures(tmp_pat
     finally:
         for child in children:
             child.terminate(); child.wait(timeout=2)
+
+
+def test_reap_succeeds_for_a_ticket_that_never_ran_an_app(tmp_path):
+    wt = tmp_path / "src/lovable-every-4244"; wt.mkdir(parents=True)
+    bindir = tmp_path / "bin"; bindir.mkdir(); unit = bindir / "systemctl"
+    unit.write_text("#!/bin/sh\nexit 3\n"); unit.chmod(0o755)
+    agent_port = free_port(); child = start(AGENT, wt, agent_port)
+    env = os.environ | {"HOME": str(tmp_path), "AGENTD_SOCK": str(tmp_path / "none"), "AGENTD_PORT": str(agent_port),
+                        "PATH": f"{bindir}:{os.environ['PATH']}"}
+    try:
+        result = subprocess.run([SCRIPT, "--worktree", wt, "--session", "EVERY-4244", "--now"], env=env, capture_output=True, text=True, timeout=5)
+        assert result.returncode == 0 and "no app was started" in result.stdout, result
+    finally:
+        child.terminate(); child.wait(timeout=2)

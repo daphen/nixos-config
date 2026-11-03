@@ -10,7 +10,7 @@ was David's phone failing to reach the VM from a train, which points nowhere nea
 dev server".
 
 Reaps a slice only when BOTH hold:
-  * its worktree has no agentd session, or that session has been dormant past GRACE
+  * its worktree has no agentd session (idle and asleep sessions keep their app)
   * the slice is not the primary checkout (~/src/lovable is never touched)
 Stops it the way process-compose wants (project/stop on its own port), then clears the
 user unit. Never signals a process tree.
@@ -30,7 +30,6 @@ HOME = os.path.expanduser("~")
 SRC = os.path.join(HOME, "src")
 SOCK = os.environ.get("AGENTD_SOCK") or f"/run/user/{os.getuid()}/agentd-work.sock"
 TCP = ("127.0.0.1", int(os.environ.get("AGENTD_PORT", "17840")))
-GRACE = int(os.environ.get("SLICE_GRACE_SECONDS", "7200"))  # 2h dormant before reaping
 DRY = os.environ.get("DRY_RUN") == "1"
 
 
@@ -106,35 +105,14 @@ def session_name_for(worktree: str) -> str:
     return name
 
 
-def dormant(entry: dict | None) -> tuple[bool, str]:
-    if entry is None:
-        return True, "no agentd session"
-    status = entry.get("status") or ""
-    if status not in ("asleep", "idle", "dormant", ""):
-        return False, f"session {status}"
-    idle_at = entry.get("idleAt") or entry.get("idle_at") or 0
-    if status == "asleep":
-        return True, "session asleep"
-    if idle_at:
-        age = time.time() - float(idle_at)
-        if age > GRACE:
-            return True, f"idle {int(age / 60)}min"
-        return False, f"idle only {int(age / 60)}min"
-    return False, f"status {status or 'unknown'} without an idle stamp"
-
-
 def owner_dormant(worktree: str, live: dict) -> tuple[bool, str]:
     target = os.path.realpath(os.path.normpath(os.path.join(SRC, worktree)))
     owners = [entry for entry in live.values()
               if entry.get("cwd") and os.path.realpath(os.path.normpath(entry["cwd"])) == target]
     if not owners:
-        return dormant(None)
-    states = [(entry, *dormant(entry)) for entry in owners]
-    for entry, is_dormant, why in states:
-        if not is_dormant:
-            return False, f"owner {entry.get('name')}: {why}"
-    return True, "; ".join(f"owner {entry.get('name')}: {why}"
-                           for entry, _, why in states)
+        return True, "no agentd session"
+    return False, "; ".join(f"owner {entry.get('name')}: session {entry.get('status') or 'unknown'}"
+                            for entry in owners)
 
 
 def stop_unit(unit: str) -> bool:
@@ -154,8 +132,10 @@ def stop_unit(unit: str) -> bool:
 def stop_slice(wt: str) -> tuple[bool, str]:
     try:
         base = int(open(os.path.join(wt, ".devenv/state/wt-base-port")).read().strip())
+    except FileNotFoundError:
+        return True, "no app was started"
     except (OSError, ValueError):
-        return False, "missing or invalid .devenv/state/wt-base-port"
+        return False, "invalid .devenv/state/wt-base-port"
     if base < 1 or base + 6 > 65535:
         return False, f"invalid base port {base}"
     ports = (base, base + 1, base + 2, base + 5, base + 6)
