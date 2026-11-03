@@ -291,8 +291,11 @@ export default function noSummaryRollover(pi: ExtensionAPI) {
     const timer = setTimeout(() => controller.abort(), 2_000);
     const pass: Pass = { kind: "pass", permission: allowed.id, task, outcome: "unavailable",
       selections: [], milliseconds: 0, bytes: 0, requests: 0, models: [], usage: [] };
+    const key = await apiKey(pi, signal).catch(() => "");
+    // Default-on Jev stays silent where no key exists (the work VM); an explicit choice still warns.
+    if (!key && allowed.id.startsWith("default:")) { clearTimeout(timer); inFlight = undefined; return; }
     try {
-      const key = await apiKey(pi, signal);
+      if (!key) throw new Error("credential unavailable");
       signal.throwIfAborted();
       const results = await Promise.allSettled(groups.map(async group => {
         pass.requests++;

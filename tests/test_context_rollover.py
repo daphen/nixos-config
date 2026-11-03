@@ -153,6 +153,7 @@ export default function(pi: any) {
 
         self.addCleanup(close)
         self.queue = queue.Queue()
+        self.notes = []
         out = self.queue
         threading.Thread(target=lambda: [out.put(json.loads(line)) for line in proc.stdout], daemon=True).start()
 
@@ -162,6 +163,8 @@ export default function(pi: any) {
         slash = kind == "prompt" and values.get("message", "").startswith("/")
         while True:
             event = self.queue.get(timeout=20)
+            if event.get("type") == "extension_ui_request" and event.get("method") == "notify":
+                self.notes.append(event.get("message", ""))
             if kind == "prompt" and event.get("type") == "agent_settled":
                 return
             if event.get("type") == "response" and event.get("command") == kind:
@@ -361,6 +364,17 @@ export default function(pi: any) {
         self.assertEqual(len(self.jev_requests), classified)
         self.assertEqual(len(self.requests), main_requests + 1)
         self.assertIn("Jev omitted", json.dumps(self.requests[-1]))
+
+    def test_default_jev_without_a_key_is_silent_but_explicit_on_warns(self):
+        self.env.pop("TYPESAFEAI_API_KEY", None)
+        cwd, session, *_ = self.pruning_fixture("no-key-default")
+        self.start([EXTENSIONS / "scoped/no-summary-rollover/index.ts"], cwd, str(session), "pruning")
+        self.command("prompt", message="Continue the original synthetic task.")
+        self.assertFalse(self.jev_requests)
+        self.assertFalse([n for n in self.notes if "Jev unavailable" in n])
+        self.command("prompt", message="/jev-pruning on")
+        self.command("prompt", message="Continue the original synthetic task.")
+        self.assertTrue([n for n in self.notes if "Jev unavailable" in n])
 
     def test_jev_fail_closed_and_cancellation(self):
         for response, key in [("invalid", True), ("partial", True), ("outofrange", True), ("valid", False)]:
