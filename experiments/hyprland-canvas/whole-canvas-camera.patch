@@ -555,10 +555,19 @@ index 299d2199cec36326c23abf902cf5a9c84e0e11cf..706e3dae8fafb13c3da4f4b4f3e07153
      // clang-format on
  }
 diff --git a/src/ipc/s1/Commands.cpp b/src/ipc/s1/Commands.cpp
-index 5089a6595e11350c5851996003a26e73682da2d3..cda886c77e7edb3e98011903cbda98017793f774 100644
+index 5089a6595e11350c5851996003a26e73682da2d3..52fc6009365d17a85cb6626286b4293a7e100183 100644
 --- a/src/ipc/s1/Commands.cpp
 +++ b/src/ipc/s1/Commands.cpp
-@@ -216,6 +216,7 @@ std::string CCommandFormatter::getMonitorData(PHLMONITOR m, eHyprCtlOutputFormat
+@@ -78,6 +78,8 @@ using namespace Hyprutils::String;
+ 
+ using namespace Render::GL;
+ using namespace IPC::Socket1;
++
++std::string canvasCameraState(const Monitor::CMonitor& monitor);
+ using eHyprCtlOutputFormat = eOutputFormat;
+ 
+ class CCommandFormatter {
+@@ -216,6 +218,7 @@ std::string CCommandFormatter::getMonitorData(PHLMONITOR m, eHyprCtlOutputFormat
      static auto yn = [](bool t) -> const char* { return t ? "yes" : "no"; };
  
      if (format == eHyprCtlOutputFormat::FORMAT_JSON) {
@@ -566,20 +575,21 @@ index 5089a6595e11350c5851996003a26e73682da2d3..cda886c77e7edb3e98011903cbda9801
  
          result += std::format(
              R"#({{
-@@ -246,6 +247,7 @@ std::string CCommandFormatter::getMonitorData(PHLMONITOR m, eHyprCtlOutputFormat
+@@ -246,6 +249,8 @@ std::string CCommandFormatter::getMonitorData(PHLMONITOR m, eHyprCtlOutputFormat
      "scale": {},
      "transform": {},
      "focused": {},
 +    "canvasNearest": "{}",
++    "canvasCamera": "{}",
      "dpmsStatus": {},
      "vrr": {},
      "solitary": "{:x}",
-@@ -282,7 +284,7 @@ std::string CCommandFormatter::getMonitorData(PHLMONITOR m, eHyprCtlOutputFormat
+@@ -282,7 +287,7 @@ std::string CCommandFormatter::getMonitorData(PHLMONITOR m, eHyprCtlOutputFormat
              m->m_activeSpecialWorkspace ? Workspace::identityTypeName(*m->m_activeSpecialWorkspace) : "",
              escapeJSONStrings(m->m_activeSpecialWorkspace ? m->m_activeSpecialWorkspace->displayName() : ""), sc<int>(m->m_reservedArea.left()), sc<int>(m->m_reservedArea.top()),
              sc<int>(m->m_reservedArea.right()), sc<int>(m->m_reservedArea.bottom()), m->m_scale, sc<int>(m->m_transform), tf(m == Desktop::focusState()->monitor()),
 -            tf(m->m_dpmsStatus), tf(m->m_output->state->state().adaptiveSync), rc<uint64_t>(m->m_solitaryClient.get()), getSolitaryBlockedReason(m, format),
-+            canvasNearest ? std::format("0x{:x}", rc<uintptr_t>(canvasNearest.get())) : "", tf(m->m_dpmsStatus), tf(m->m_output->state->state().adaptiveSync), rc<uint64_t>(m->m_solitaryClient.get()), getSolitaryBlockedReason(m, format),
++            canvasNearest ? std::format("0x{:x}", rc<uintptr_t>(canvasNearest.get())) : "", canvasCameraState(*m), tf(m->m_dpmsStatus), tf(m->m_output->state->state().adaptiveSync), rc<uint64_t>(m->m_solitaryClient.get()), getSolitaryBlockedReason(m, format),
              tf(m->m_tearingState.activelyTearing), getTearingBlockedReason(m, format), rc<uint64_t>(m->m_lastScanout.get()), getDSBlockedReason(m, format), tf(m->m_enabled),
              formatToString(m->m_output->state->state().drmFormat), m->m_mirrorOf ? std::format("{}", m->m_mirrorOf->m_id) : "none", availableModesForOutput(m, format),
              (NCMType::toString(m->m_cmType)), (m->m_sdrBrightness), (m->m_sdrSaturation), (m->m_sdrMinLuminance), (m->m_sdrMaxLuminance), tf(!m->shouldUseSoftwareCursors()),
@@ -1105,7 +1115,7 @@ index 176a49560d182a25c6bb2e7cf1da92832eb9feeb..2f8a7dc880c9fce01a5635b022814e9b
              local = m_touchData.touchFocusWindow->backend().surfaceLocalToBuffer(local);
  
 diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
-index 090611aba4ccdf9cb0068eba8079aa9324e4c626..209748b011c6da0f51e9dad43abcb3dc76e97dd9 100644
+index 090611aba4ccdf9cb0068eba8079aa9324e4c626..34a948ce8b65b2c752328e91c84f85e7a9346c51 100644
 --- a/src/output/Monitor.cpp
 +++ b/src/output/Monitor.cpp
 @@ -37,6 +37,9 @@
@@ -1118,7 +1128,16 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..209748b011c6da0f51e9dad43abcb3dc
  #include "../i18n/Engine.hpp"
  #include "../helpers/cm/ColorManagement.hpp"
  #include "../state/MonitorState.hpp"
-@@ -97,6 +100,21 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
+@@ -77,6 +80,8 @@ using namespace Desktop::View;
+ using namespace Render::GL;
+ using namespace Monitor;
+ 
++std::string canvasCameraState(const CMonitor& monitor);
++
+ constexpr const char* drmFormatToString(uint32_t drmFormat) {
+     switch (drmFormat) {
+         case DRM_FORMAT_XRGB2101010: return "DRM_FORMAT_XRGB2101010";
+@@ -97,6 +102,35 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
      static auto PZOOMFACTOR = CConfigValue<Config::FLOAT>("cursor:zoom_factor");
      Animation::mgr()->createAnimation(*PZOOMFACTOR, m_cursorZoom, Config::animationTree()->getAnimationPropertyConfig("zoomFactor"), AVARDAMAGE_NONE);
      m_cursorZoom->setUpdateCallback([this](auto) { g_pHyprRenderer->damageMonitor(m_self.lock()); });
@@ -1137,10 +1156,24 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..209748b011c6da0f51e9dad43abcb3dc
 +    m_canvasX->setUpdateCallback(updateCanvas);
 +    Animation::mgr()->createAnimation(0.F, m_canvasY, Config::animationTree()->getAnimationPropertyConfig("canvasCamera"), AVARDAMAGE_NONE);
 +    m_canvasY->setUpdateCallback(updateCanvas);
++    // Posted once per settle so clients can place UI on windows without polling.
++    const auto postCanvasCamera = [this, last = makeShared<std::string>()](auto) {
++        if (m_canvasX->isBeingAnimated() || m_canvasY->isBeingAnimated() || m_canvasZoom->isBeingAnimated() || m_canvasTransition->isBeingAnimated())
++            return;
++        auto state = std::format("{},{}", m_name, canvasCameraState(*this));
++        if (state == *last)
++            return;
++        *last = state;
++        IPC::Socket2::sock()->postEvent({"canvascamera", std::move(state)});
++    };
++    m_canvasX->setCallbackOnEnd(postCanvasCamera, false);
++    m_canvasY->setCallbackOnEnd(postCanvasCamera, false);
++    m_canvasZoom->setCallbackOnEnd(postCanvasCamera, false);
++    m_canvasTransition->setCallbackOnEnd(postCanvasCamera, false);
      Animation::mgr()->createAnimation(0.F, m_zoomAnimProgress, Config::animationTree()->getAnimationPropertyConfig("monitorAdded"), AVARDAMAGE_NONE);
      m_zoomAnimProgress->setUpdateCallback([this](auto) { g_pHyprRenderer->damageMonitor(m_self.lock()); });
      Animation::mgr()->createAnimation(0.F, m_backgroundOpacity, Config::animationTree()->getAnimationPropertyConfig("monitorAdded"), AVARDAMAGE_NONE);
-@@ -107,6 +125,254 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
+@@ -107,6 +141,260 @@ CMonitor::CMonitor(SP<Aquamarine::IOutput> output_) : m_name(output_->name), m_s
      m_commitCoordinator = makeUnique<COutputCommitCoordinator>(this);
  }
  
@@ -1162,6 +1195,12 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..209748b011c6da0f51e9dad43abcb3dc
 +    if (target || zoom != 1.F || m_canvasZoom->isBeingAnimated() || m_canvasX->isBeingAnimated() || m_canvasY->isBeingAnimated())
 +        return offset;
 +    return (offset * m_scale).round() / m_scale;
++}
++
++std::string canvasCameraState(const CMonitor& monitor) {
++    if (!monitor.canvasEnabled())
++        return "0,0,1,0";
++    return std::format("{:.1f},{:.1f},{:.4f},{}", monitor.m_canvasX->goal(), monitor.m_canvasY->goal(), monitor.m_canvasZoom->goal(), monitor.m_canvasOverview ? 1 : 0);
 +}
 +
 +PHLWINDOW CMonitor::canvasNearest(bool target) const {

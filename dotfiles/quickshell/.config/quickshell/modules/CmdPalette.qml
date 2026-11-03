@@ -44,9 +44,14 @@ PanelWindow {
 
     Item {
         id: pillHole
-        anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        readonly property var win: {
+            const _ = NiriState.version
+            return NiriState.focusedScreenRect(root.screen ? root.screen.name : "", root.width, root.height)
+        }
+        x: win.x + win.w / 2 - width / 2
+        y: win.y + win.h - height
         width: 76
-        height: 100
+        height: 76
     }
 
     NumberAnimation {

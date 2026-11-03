@@ -251,6 +251,15 @@ Singleton {
     // centers under the window's real edges. Null when the running niri
     // doesn't report a position (tiled windows need the patched niri;
     // floating report it on any version); the dot stays hidden until non-null.
+    // Falls back to the output minus the bottom gap when the compositor reports no camera.
+    function focusedScreenRect(output, width, height) {
+        const r = hyprland ? hyprland.focusedScreenRect(output) : null
+        if (!r) return { x: 0, y: 0, w: width, h: height - 24, overview: false }
+        const x = Math.max(0, r.x)
+        const y = Math.max(0, r.y)
+        return { x, y, w: Math.min(width, r.x + r.w) - x, h: Math.min(height, r.y + r.h) - y, overview: r.overview }
+    }
+
     function focusedWindowGeom() {
         if (hyprland) return hyprland.focusedWindowGeom()
         const _ = version

@@ -76,7 +76,7 @@ Item {
     Connections {
         target: Hyprland
         function onRawEvent(event) {
-            const relevant = ["openwindow", "closewindow", "movewindow", "workspace", "focusedmon", "createworkspace", "destroyworkspace", "activewindow", "activewindowv2", "fullscreen"]
+            const relevant = ["openwindow", "closewindow", "movewindow", "workspace", "focusedmon", "createworkspace", "destroyworkspace", "activewindow", "activewindowv2", "fullscreen", "canvascamera"]
             if (!event || relevant.indexOf(event.name) < 0) return
             if (canvasQuery.running) state.refreshAgain = true
             else refreshTimer.restart()
@@ -310,6 +310,26 @@ Item {
             w: Number(size[0]),
             h: Number(size[1]),
             floating: object.floating === true,
+        }
+    }
+
+    // The focused window's rectangle on outputName, in output-local logical pixels.
+    function focusedScreenRect(outputName) {
+        const _ = version
+        const snapshot = canvasSnapshot
+        const monitor = snapshot ? (snapshot.monitors || []).find(m => m.name === outputName) : null
+        if (!monitor || typeof monitor.canvasCamera !== "string") return null
+        const client = (snapshot.clients || []).find(c => c.monitor === monitor.id && Number(c.focusHistoryID) === 0)
+        if (!client) return null
+        const [cx, cy, zoom, overview] = monitor.canvasCamera.split(",").map(Number)
+        const sw = monitor.width / monitor.scale
+        const sh = monitor.height / monitor.scale
+        return {
+            x: (client.at[0] - monitor.x) * zoom + sw / 2 - (sw / 2 + cx) * zoom,
+            y: (client.at[1] - monitor.y) * zoom + sh / 2 - (sh / 2 + cy) * zoom,
+            w: client.size[0] * zoom,
+            h: client.size[1] * zoom,
+            overview: overview === 1,
         }
     }
 

@@ -6,6 +6,7 @@ import "../QsLib" as Lib
 
 // Back / forward / reload (bottom right) and a palette trigger (bottom centre) for
 // the focused Helium window; each slides up only while the pointer is near it.
+// Placed on the focused window using the canvas camera.
 // CmdPalette cuts triggerZone out of its input mask so opening it cannot re-trigger.
 PanelWindow {
     id: root
@@ -14,12 +15,17 @@ PanelWindow {
     readonly property int pad: 4
     readonly property int reach: 16
     readonly property int pieceHeight: button + 2 * pad
-    readonly property int margin: 40
+    readonly property int inset: 16
+    readonly property var win: {
+        const _ = NiriState.version
+        return NiriState.focusedScreenRect(root.screen ? root.screen.name : "", root.width, root.screen ? root.screen.height : 0)
+    }
+    readonly property real below: Math.max(0, (root.screen ? root.screen.height : 0) - win.y - win.h)
 
     readonly property string profile: {
         const _ = NiriState.version
         if (!root.screen || NiriState.focusedOutput() !== root.screen.name) return ""
-        if (NiriState.outputIsFullscreen(root.screen.name, root.screen.height)) return ""
+        if (NiriState.outputIsFullscreen(root.screen.name, root.screen.height) || root.win.overview) return ""
         const app = NiriState.focusedAppId()
         return app === "browser-personal" ? "personal" : app === "browser-work" ? "work" : ""
     }
@@ -31,7 +37,7 @@ PanelWindow {
         Region { item: root.profile !== "" ? triggerZone : null }
     }
     anchors { bottom: true; left: true; right: true }
-    implicitHeight: pieceHeight + margin + reach
+    implicitHeight: below + pieceHeight + inset + reach
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -53,7 +59,7 @@ PanelWindow {
     component Piece: Rectangle {
         property bool near: false
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: near && root.profile !== "" ? root.margin : -height
+        anchors.bottomMargin: near && root.profile !== "" ? root.inset : -height
         Behavior on anchors.bottomMargin {
             NumberAnimation {
                 duration: Lib.Motion.slow
@@ -100,45 +106,55 @@ PanelWindow {
         }
     }
 
+    // The window's bottom band; pieces rise out of the window's own bottom edge.
     Item {
-        id: navZone
-        anchors { right: parent.right; bottom: parent.bottom }
-        width: nav.width + root.reach + root.margin
-        height: root.pieceHeight + root.margin + root.reach
-        HoverHandler { id: navNear }
+        id: band
+        x: root.win.x
+        width: root.win.w
+        anchors { bottom: parent.bottom; bottomMargin: root.below }
+        height: root.pieceHeight + root.inset + root.reach
+        clip: true
 
-        Piece {
-            id: nav
-            near: navNear.hovered
-            anchors { right: parent.right; rightMargin: root.margin }
-            width: navRow.width + 2 * root.pad
-            Row {
-                id: navRow
-                anchors.centerIn: parent
-                spacing: 4
-                Glyph { icon: "chevron-left"; onActivated: root.shortcut("ALT", "Left") }
-                Glyph { icon: "chevron-right"; onActivated: root.shortcut("ALT", "Right") }
-                Glyph { icon: "refresh-2"; onActivated: root.shortcut("", "F5") }
+        Item {
+            id: navZone
+            anchors { right: parent.right; bottom: parent.bottom }
+            width: nav.width + root.reach + root.inset
+            height: parent.height
+            HoverHandler { id: navNear }
+
+            Piece {
+                id: nav
+                near: navNear.hovered
+                anchors { right: parent.right; rightMargin: root.inset }
+                width: navRow.width + 2 * root.pad
+                Row {
+                    id: navRow
+                    anchors.centerIn: parent
+                    spacing: 4
+                    Glyph { icon: "chevron-left"; onActivated: root.shortcut("ALT", "Left") }
+                    Glyph { icon: "chevron-right"; onActivated: root.shortcut("ALT", "Right") }
+                    Glyph { icon: "refresh-2"; onActivated: root.shortcut("", "F5") }
+                }
             }
         }
-    }
 
-    Item {
-        id: triggerZone
-        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
-        width: root.pieceHeight + 2 * root.reach
-        height: root.pieceHeight + root.margin + root.reach
-        HoverHandler { id: triggerNear }
+        Item {
+            id: triggerZone
+            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
+            width: root.pieceHeight + 2 * root.reach
+            height: parent.height
+            HoverHandler { id: triggerNear }
 
-        Piece {
-            near: triggerNear.hovered
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: root.pieceHeight
-            Glyph {
-                anchors.centerIn: parent
-                icon: "layers-3"
-                onActivated: root.openPalette()
-                onDwelled: root.openPalette()
+            Piece {
+                near: triggerNear.hovered
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: root.pieceHeight
+                Glyph {
+                    anchors.centerIn: parent
+                    icon: "layers-3"
+                    onActivated: root.openPalette()
+                    onDwelled: root.openPalette()
+                }
             }
         }
     }
