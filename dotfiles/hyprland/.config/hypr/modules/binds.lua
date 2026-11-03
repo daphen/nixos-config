@@ -586,7 +586,7 @@ return function(ctx)
 			power_hold_timer = hl.timer(function()
 				power_held = true
 				hl.exec_cmd(SCRIPTS .. "deck-power-hint arm")
-			end, { timeout = 1000, type = "oneshot" })
+			end, { timeout = 4000, type = "oneshot" })
 		end, { locked = true })
 		hl.bind("XF86PowerOff", function()
 			if not power_hold_timer then return end
