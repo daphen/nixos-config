@@ -1,8 +1,11 @@
-# Automatic checkpoints and optional Jev pruning
+# Automatic checkpoints, background summaries and optional Jev pruning
 
-Automatic threshold/overflow checkpoints remain deterministic and bounded to
-20,000 UTF-8 bytes. Manual `/compact` stays with Pi. No model-window or native
-cut-point change is made by this extension.
+Threshold/overflow compaction is still instant: a deterministic checkpoint,
+bounded to 20,000 UTF-8 bytes, is saved without a model call. Pi's own summary
+of the same replaced messages is then generated in the background and, once it
+arrives, replaces the checkpoint in every later request. The next compaction
+builds on that summary. If it fails, the checkpoint stays and a warning is
+shown. Manual `/compact` stays with Pi.
 
 ## Controls
 

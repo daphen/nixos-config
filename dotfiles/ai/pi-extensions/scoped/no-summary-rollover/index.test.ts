@@ -26,7 +26,20 @@ async function pruning(run: (h: any) => Promise<void>) {
     return Response.json({ model: "test-jev", usage: { input_tokens: 1, output_tokens: 2 },
       answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { noul: 0.01 }])) });
   }) as typeof globalThis.fetch);
-  noSummaryRollover({ on: (name: string, fn: any) => { events[name] = fn; },
+  const chain: any = {};
+  noSummaryRollover({ on: (name: string, fn: any) => {
+      (chain[name] ??= []).push(fn);
+      if (name !== "context") { events[name] = fn; return; }
+      events[name] = async (event: any, c: any) => {
+        let messages = event.messages, out: any;
+        for (const handler of chain[name]) {
+          const result = await handler({ ...event, messages }, c);
+          if (result?.messages) messages = result.messages;
+          out = result ?? out;
+        }
+        return out && messages !== event.messages ? { ...out, messages } : out;
+      };
+    },
     registerCommand: (name: string, fn: any) => { commands[name] = fn; },
     getAllTools: () => [{ name: "read", sourceInfo: { source: "builtin" } }],
     exec: async () => { lookups++; return { code: 0, killed: false, stdout: "synthetic-key" }; },

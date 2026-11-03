@@ -36,6 +36,7 @@ class ContextRolloverTests(unittest.TestCase):
             "PI_OFFLINE": "1", "TYPESAFEAI_API_KEY": "synthetic-test-key",
         }
         self.requests = []
+        self.summary_requests = []
         self.jev_requests = []
         self.jev_mode = "valid"
         self.jev_delay = 0
@@ -73,7 +74,8 @@ class ContextRolloverTests(unittest.TestCase):
                     except BrokenPipeError:
                         pass
                     return
-                owner.requests.append(payload)
+                summary = "context summarization assistant" in json.dumps(payload)
+                (owner.summary_requests if summary else owner.requests).append(payload)
                 if owner.overflow_once and not owner.overflow_sent:
                     owner.overflow_sent = True
                     encoded = json.dumps({"error": {"code": "context_length_exceeded",
@@ -396,6 +398,7 @@ export default function(pi: any) {
         cwd, session, _, _, _, _, _ = self.run_pruning("overflow")
         self.assertTrue(self.overflow_sent)
         self.assertEqual(len(self.requests), 2, "overflow must retry the main provider exactly once")
+        self.assertEqual(len(self.summary_requests), 1, "the checkpoint gets one background summary")
         self.assertTrue(self.jev_requests)
         self.assertLessEqual(len(self.jev_requests), 4)
         for request in self.requests:

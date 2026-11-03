@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
+import { compact, type ExtensionAPI, type ExtensionContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { ToolCall, ToolResultMessage } from "@earendil-works/pi-ai";
 import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
@@ -13,6 +13,7 @@ type Pass = { kind: "pass"; permission: string; task: string; outcome: string;
   selections: Selection[]; milliseconds: number; bytes: number; requests: number;
   models: string[]; usage: { input_tokens?: number; output_tokens?: number }[] };
 const RECORD = "jev-pruning";
+const SUMMARY = "rollover-summary";
 const fingerprint = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const goal = (messages: Message[]) => {
   const user = messages.findLast(m => m.role === "user");
@@ -335,9 +336,29 @@ export default function noSummaryRollover(pi: ExtensionAPI) {
     pi.appendEntry<Pass>(RECORD, pass);
     return { messages: apply(event.messages, ctx, ctx.sessionManager.getBranch(), task) };
   });
+  const upgraded = (entries: SessionEntry[], checkpoint: string) => {
+    const key = fingerprint(checkpoint);
+    const entry = entries.findLast(e => e.type === "custom" && e.customType === SUMMARY && (e.data as { key?: string })?.key === key);
+    return entry?.type === "custom" ? (entry.data as { summary: string }).summary : undefined;
+  };
+  pi.on("context", (event, ctx) => {
+    const entries = ctx.sessionManager.getBranch();
+    let swapped = false;
+    const messages = event.messages.map(m => {
+      if (m.role !== "compactionSummary") return m;
+      const summary = upgraded(entries, m.summary);
+      if (!summary) return m;
+      swapped = true;
+      return { ...m, summary };
+    });
+    if (swapped) return { messages };
+  });
   pi.on("session_before_compact", (event, ctx) => {
     if (event.reason !== "threshold" && event.reason !== "overflow") return;
     const task = goal(branchMessages(event.branchEntries));
+    const previous = event.preparation.previousSummary;
+    // The checkpoint is instant; the model summary replaces it in context once ready.
+    if (previous) event.preparation.previousSummary = upgraded(event.branchEntries, previous) ?? previous;
     const preparation = { ...event.preparation,
       messagesToSummarize: apply(event.preparation.messagesToSummarize, ctx, event.branchEntries, task),
       turnPrefixMessages: apply(event.preparation.turnPrefixMessages, ctx, event.branchEntries, task),
@@ -366,6 +387,17 @@ export default function noSummaryRollover(pi: ExtensionAPI) {
       `## Previous checkpoint (possibly stale)\n${truncateUtf8(event.preparation.previousSummary ?? "- none", PRIOR_BYTES)}`,
     ];
     const summary = truncateUtf8(sections.join("\n\n"), MAX_SUMMARY_BYTES);
+    const model = ctx.model;
+    if (model) void (async () => {
+      try {
+        const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+        if (!auth.ok || closed) return;
+        const result = await compact(preparation, model, auth.apiKey, auth.headers, undefined, AbortSignal.timeout(300_000));
+        if (!closed && result.summary.trim()) pi.appendEntry(SUMMARY, { key: fingerprint(summary), summary: result.summary });
+      } catch (error) {
+        if (!closed) ctx.ui.notify(`Rollover summary failed; the checkpoint stays: ${error instanceof Error ? error.message : String(error)}`, "warning");
+      }
+    })();
 
     return {
       compaction: {

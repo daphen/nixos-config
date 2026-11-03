@@ -9,7 +9,7 @@ test.each(["nixos", "personal/ai-cockpit"])("%s registers rolling checkpoint and
     const events: string[] = [];
     const commands: string[] = [];
     install({ on(name: string) { events.push(name); }, registerCommand(name: string) { commands.push(name); } } as any);
-    expect(events.sort()).toEqual(["context", "model_select", "session_before_compact", "session_shutdown", "session_start"]);
+    expect(events.sort()).toEqual(["context", "context", "model_select", "session_before_compact", "session_shutdown", "session_start"]);
     expect(commands).toEqual(["jev-pruning"]);
   } finally { cwd.mockRestore(); }
 });
