@@ -100,11 +100,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790285454,
-        "narHash": "sha256-pUa0maue7nKJYhstQaG0WYBgWhwOggUGv/tvrP/9apY=",
+        "lastModified": 1793729630,
+        "narHash": "sha256-IE6cEaSqSbSSnCYoqMX2LPOtFbOhxYLUpX2LxSH/s1A=",
         "ref": "daphen/client-mouse-support",
-        "rev": "40c082e34fcd2291074127df4c6980b15153daba",
-        "revCount": 284,
+        "rev": "2c06b7f189a75e809bc106e3930213cfa8d3ebc5",
+        "revCount": 285,
         "type": "git",
         "url": "ssh://git@github.com/daphen/dsqrd"
       },
