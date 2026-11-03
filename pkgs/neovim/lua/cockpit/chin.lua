@@ -21,7 +21,9 @@ local function repo_root(dir)
 	if dir == nil or dir == "" then return "" end
 	local hit = root_memo[dir]
 	if hit ~= nil then return hit end
-	local r = vim.trim((vim.fn.systemlist({ "git", "-C", dir, "rev-parse", "--show-toplevel" })[1]) or "")
+	local ok, signs = pcall(require, "hunk-nvim.signs")
+	local run = ok and signs.git or vim.fn.systemlist
+	local r = vim.trim((run({ "git", "-C", dir, "rev-parse", "--show-toplevel" })[1]) or "")
 	root_memo[dir] = r
 	return r
 end
@@ -36,42 +38,46 @@ local function refresh_diff(done)
 	local cwd = vim.fn.getcwd()
 	local file = vim.fn.expand("%:p")
 	local editable = vim.bo.buftype == ""
-	-- Resolve the root from the FILE, not the session cwd: the cockpit opens vault
-	-- notes and other checkouts, and a cwd-scoped count then described a repo the
-	-- viewer wasn't looking at (a niri file reading ~/nixos's +3013). cwd stays the
-	-- fallback for non-file buffers (dashboard, rail panes).
-	local anchor = (editable and file ~= "") and vim.fn.fnamemodify(file, ":h") or cwd
-	local root = repo_root(anchor)
-	if root == "" and anchor ~= cwd then root = repo_root(cwd) end
-	if root == "" then
-		diff_cache = { add = 0, del = 0 }
-		diff_refreshing = false
-		if done then done() end
-		return
-	end
-	local branch = vim.trim((vim.fn.systemlist({ "git", "-C", root, "rev-parse", "--abbrev-ref", "HEAD" })[1]) or "")
-	local base = "HEAD"
-	if branch ~= "main" and branch ~= "master" then
-		local ok, signs = pcall(require, "hunk-nvim.signs")
-		if ok and signs.base_for then
-			local b = signs.base_for(root)
-			if b and b ~= "" then base = b end
+	local ok_signs, signs = pcall(require, "hunk-nvim.signs")
+	local run = ok_signs and signs.async or function(fn) fn() end
+	run(function()
+		-- Resolve the root from the FILE, not the session cwd: the cockpit opens vault
+		-- notes and other checkouts, and a cwd-scoped count then described a repo the
+		-- viewer wasn't looking at (a niri file reading ~/nixos's +3013). cwd stays the
+		-- fallback for non-file buffers (dashboard, rail panes).
+		local anchor = (editable and file ~= "") and vim.fn.fnamemodify(file, ":h") or cwd
+		local root = repo_root(anchor)
+		if root == "" and anchor ~= cwd then root = repo_root(cwd) end
+		if root == "" then
+			diff_cache = { add = 0, del = 0 }
+			diff_refreshing = false
+			if done then done() end
+			return
 		end
-	end
-	local in_worktree = editable and file ~= "" and file:sub(1, #root + 1) == root .. "/"
-	local args = { "git", "-C", root, "diff", "--numstat", "--no-color", base }
-	if in_worktree then args[#args + 1] = "--"; args[#args + 1] = file end
-	vim.system(args, { text = true }, function(r)
-		local add, del = 0, 0
-		if r.code == 0 then
-			for _, l in ipairs(vim.split(r.stdout or "", "\n", { plain = true })) do
-				local a, d = l:match("^(%d+)%s+(%d+)")
-				if a then add = add + tonumber(a); del = del + tonumber(d) end
+		local git = ok_signs and signs.git or vim.fn.systemlist
+		local branch = vim.trim((git({ "git", "-C", root, "rev-parse", "--abbrev-ref", "HEAD" })[1]) or "")
+		local base = "HEAD"
+		if branch ~= "main" and branch ~= "master" then
+			if ok_signs and signs.base_for then
+				local b = signs.base_for(root)
+				if b and b ~= "" then base = b end
 			end
 		end
-		diff_cache = { add = add, del = del }
-		diff_refreshing = false
-		if done then vim.schedule(done) end
+		local in_worktree = editable and file ~= "" and file:sub(1, #root + 1) == root .. "/"
+		local args = { "git", "-C", root, "diff", "--numstat", "--no-color", base }
+		if in_worktree then args[#args + 1] = "--"; args[#args + 1] = file end
+		vim.system(args, { text = true }, function(r)
+			local add, del = 0, 0
+			if r.code == 0 then
+				for _, l in ipairs(vim.split(r.stdout or "", "\n", { plain = true })) do
+					local a, d = l:match("^(%d+)%s+(%d+)")
+					if a then add = add + tonumber(a); del = del + tonumber(d) end
+				end
+			end
+			diff_cache = { add = add, del = del }
+			diff_refreshing = false
+			if done then vim.schedule(done) end
+		end)
 	end)
 end
 

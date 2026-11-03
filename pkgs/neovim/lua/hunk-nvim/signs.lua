@@ -34,9 +34,32 @@ local state = {
 	debounce_timers = {},
 }
 
+local ours = setmetatable({}, { __mode = "k" })
+
+-- Inside M.async, git runs without blocking the editor (a monorepo diff takes ~50ms);
+-- everywhere else it stays synchronous.
+function M.git(args)
+	local co = coroutine.running()
+	if not (co and ours[co]) then return vim.fn.systemlist(args), vim.v.shell_error end
+	vim.system(args, { text = true }, function(r)
+		vim.schedule(function() coroutine.resume(co, r) end)
+	end)
+	local r = coroutine.yield()
+	local out = vim.split(r.stdout or "", "\n", { plain = true })
+	if out[#out] == "" then out[#out] = nil end
+	return out, r.code
+end
+
+function M.async(fn)
+	local co = coroutine.create(fn)
+	ours[co] = true
+	local ok, err = coroutine.resume(co)
+	if not ok then error(err) end
+end
+
 local function git_exec(args)
-	local out = vim.fn.systemlist(args)
-	if vim.v.shell_error ~= 0 then return nil end
+	local out, code = M.git(args)
+	if code ~= 0 then return nil end
 	return out
 end
 
@@ -54,8 +77,8 @@ function M.resolve_base(repo_root, run)
 	local git_exec = run or git_exec
 	repo_root = repo_root or state.repo_root
 	if not repo_root then
-		local out = vim.fn.systemlist({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })
-		if vim.v.shell_error ~= 0 or #out == 0 then return nil end
+		local out, code = M.git({ "git", "-C", vim.fn.getcwd(), "rev-parse", "--show-toplevel" })
+		if code ~= 0 or #out == 0 then return nil end
 		repo_root = out[1]
 	end
 
@@ -180,20 +203,20 @@ end
 
 local function fetch_diff(root, base, relpath)
 	if not (root and base) then return nil end
-	local lines = vim.fn.systemlist({
+	local lines, code = M.git({
 		"git", "-C", root, "diff", "--no-color",
 		base, "--", relpath,
 	})
-	if vim.v.shell_error ~= 0 then return nil end
+	if code ~= 0 then return nil end
 	if #lines == 0 then
 		-- Untracked files never appear in `git diff <base>`; render them
 		-- fully-added so the gutter matches the changed-files picker, which
 		-- lists them. --no-index exits 1 on difference, which is expected.
-		local tracked = vim.fn.systemlist({
+		local tracked, tcode = M.git({
 			"git", "-C", root, "ls-files", "--", relpath,
 		})
-		if vim.v.shell_error == 0 and #tracked == 0 then
-			lines = vim.fn.systemlist({
+		if tcode == 0 and #tracked == 0 then
+			lines = M.git({
 				"git", "-C", root, "diff", "--no-color",
 				"--no-index", "--", "/dev/null", relpath,
 			})
@@ -345,28 +368,39 @@ local function buf_repo(bufnr)
 	local abs = vim.api.nvim_buf_get_name(bufnr)
 	if abs == "" then return nil end
 	local dir = vim.fn.fnamemodify(abs, ":h")
-	local out = git_exec({ "git", "-C", dir, "rev-parse", "--show-toplevel" })
-	if not out or #out == 0 then return nil end
-	return out[1], abs
+	state.roots = state.roots or {}
+	if not state.roots[dir] then
+		local out = git_exec({ "git", "-C", dir, "rev-parse", "--show-toplevel" })
+		if not out or #out == 0 then return nil end
+		state.roots[dir] = out[1]
+	end
+	return state.roots[dir], abs
 end
+
+local generation = {}
 
 function M.refresh(bufnr)
 	if not state.enabled then return end
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 	if not vim.api.nvim_buf_is_loaded(bufnr) then return end
-	local root, abs = buf_repo(bufnr)
-	if not root then return end
-	local prefix = root .. "/"
-	if abs:sub(1, #prefix) ~= prefix then return end
-	local relpath = abs:sub(#prefix + 1)
-	local base = M.base_for(root)
-	local patch = fetch_diff(root, base, relpath)
-	if not patch then
-		vim.api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
-		return
-	end
-	local marks, ghosts = parse_patch(patch)
-	draw(bufnr, marks, ghosts)
+	local gen = (generation[bufnr] or 0) + 1
+	generation[bufnr] = gen
+	M.async(function()
+		local root, abs = buf_repo(bufnr)
+		if not root then return end
+		local prefix = root .. "/"
+		if abs:sub(1, #prefix) ~= prefix then return end
+		local relpath = abs:sub(#prefix + 1)
+		local base = M.base_for(root)
+		local patch = fetch_diff(root, base, relpath)
+		if generation[bufnr] ~= gen or not vim.api.nvim_buf_is_loaded(bufnr) then return end
+		if not patch then
+			vim.api.nvim_buf_clear_namespace(bufnr, NS, 0, -1)
+			return
+		end
+		local marks, ghosts = parse_patch(patch)
+		draw(bufnr, marks, ghosts)
+	end)
 end
 
 local function debounced_refresh(bufnr)
