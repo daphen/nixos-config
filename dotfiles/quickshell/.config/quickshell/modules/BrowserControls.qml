@@ -102,15 +102,15 @@ PanelWindow {
 
     Item {
         id: navZone
-        anchors { right: parent.right; bottom: parent.bottom; rightMargin: root.margin - root.reach }
-        width: nav.width + 2 * root.reach
+        anchors { right: parent.right; bottom: parent.bottom }
+        width: nav.width + root.reach + root.margin
         height: root.pieceHeight + root.margin + root.reach
         HoverHandler { id: navNear }
 
         Piece {
             id: nav
             near: navNear.hovered
-            anchors { right: parent.right; rightMargin: root.reach }
+            anchors { right: parent.right; rightMargin: root.margin }
             width: navRow.width + 2 * root.pad
             Row {
                 id: navRow
