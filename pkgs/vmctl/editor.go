@@ -173,7 +173,7 @@ else
   printf '%s\n' "$unit" > "$editor_owner"
   systemctl --user reset-failed "$unit" 2>/dev/null || true
   systemd-run --user --unit "$unit" --description="Cockpit remote editor $instance" --property=Restart=no \
-    --setenv=COCKPIT_INSTANCE="$instance" --setenv=COCKPIT_COCKPIT=1 --setenv=COCKPIT_SCOPE=lovable --setenv=COCKPIT_EDITOR_IDLE_EXIT=1 \
+    --setenv=COCKPIT_INSTANCE="$instance" --setenv=COCKPIT_COCKPIT=1 --setenv=COCKPIT_SCOPE=lovable --setenv=COCKPIT_EDITOR_IDLE_EXIT="$qssocket" \
     -- "$nvim" --headless --listen "$socket" >/dev/null
   i=0; until cockpit_ready; do
     i=$((i+1)); [ "$i" -lt 20 ] || exit 1; sleep .05
