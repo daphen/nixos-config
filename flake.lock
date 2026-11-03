@@ -3,11 +3,11 @@
     "agentd": {
       "flake": false,
       "locked": {
-        "lastModified": 1786727729,
-        "narHash": "sha256-TCewJ1dzunjuqyyJRqOYl4ZeRDerwmhSwwsnR5vLpOQ=",
+        "lastModified": 1789135388,
+        "narHash": "sha256-GrWOVipWUZhlnhzHC6i/a8fdTrsyWWUOXCLSq75pRjI=",
         "ref": "refs/heads/main",
-        "rev": "854917072d09af3c8c07509841f989225f20b20d",
-        "revCount": 28,
+        "rev": "9c263b07c77871e9370736d3daed65442c16bd83",
+        "revCount": 76,
         "type": "git",
         "url": "ssh://git@github.com/daphen/agentd"
       },
@@ -64,11 +64,11 @@
         "rio": "rio"
       },
       "locked": {
-        "lastModified": 1793569676,
-        "narHash": "sha256-kqCzVdPvVGIMtjm0xDrurq6Ipr3at0rGy3Lbao2OFsg=",
+        "lastModified": 1793717887,
+        "narHash": "sha256-I79Tj43Ox6IQ+78BdjS/d5Xz6eDvVLGTq7QoOoHx0tI=",
         "ref": "main",
-        "rev": "0ad6cda96dc71ef486a202a27051803643a029f3",
-        "revCount": 530,
+        "rev": "a2ff99ded699167707f145d4cf96ee6794624ba5",
+        "revCount": 542,
         "type": "git",
         "url": "ssh://git@github.com/daphen/ai-cockpit"
       },
@@ -1046,11 +1046,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786026063,
-        "narHash": "sha256-Yn0VBqBTANk/HQnOxiFPlsYavlK68w5Pwka59MQvPnQ=",
+        "lastModified": 1788947557,
+        "narHash": "sha256-nAWQzg36uvfv2aKKbhj4BUC/mTDHTXR3YSsUN2UyMHo=",
         "ref": "refs/heads/main",
-        "rev": "8891dc77aad1caec559d53bd58f746ac02e23c81",
-        "revCount": 277,
+        "rev": "d45e73d2cc546714eaa3e22922396c22c3a29452",
+        "revCount": 279,
         "type": "git",
         "url": "ssh://git@github.com/daphen/slqs"
       },
