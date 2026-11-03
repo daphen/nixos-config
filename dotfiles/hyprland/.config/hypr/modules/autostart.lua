@@ -11,6 +11,7 @@ return function(ctx)
 				"sh -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE && systemctl --user start nixos-fake-graphical-session.target'",
 				SCRIPTS .. "start-quickshell-desktop >> /tmp/hyprland-quickshell-main.log 2>&1",
 				"wl-clip-persist --clipboard regular",
+				SCRIPTS .. "deck-power-hint warm",
 				"wvkbd-mobintl -H 280 -L 280 --hidden",
 				"steam -silent",
 			}

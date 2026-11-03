@@ -582,12 +582,17 @@ return function(ctx)
 		hl.bind("XF86PowerOff", function()
 			if power_hold_timer then return end
 			power_held = false
-			power_hold_timer = hl.timer(function() power_held = true end, { timeout = 700, type = "oneshot" })
+			hl.exec_cmd(SCRIPTS .. "deck-power-hint start")
+			power_hold_timer = hl.timer(function()
+				power_held = true
+				hl.exec_cmd(SCRIPTS .. "deck-power-hint arm")
+			end, { timeout = 1000, type = "oneshot" })
 		end, { locked = true })
 		hl.bind("XF86PowerOff", function()
 			if not power_hold_timer then return end
 			power_hold_timer:set_enabled(false)
 			power_hold_timer = nil
+			hl.exec_cmd(SCRIPTS .. "deck-power-hint cancel")
 			hl.exec_cmd(SCRIPTS .. (power_held and "deck-suspend" or "deck-pocket-lock"))
 		end, { locked = true, release = true })
 	end

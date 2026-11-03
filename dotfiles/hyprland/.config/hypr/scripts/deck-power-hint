@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Deck power-key hold hint: warm | start | arm | cancel. Hyprland warms the overlay at login.
+set -u
+cfg="$HOME/.config/quickshell/power-hold"
+export QML2_IMPORT_PATH="$HOME/.local/share/qml${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
+if [[ $1 == warm ]]; then
+    qs -p "$cfg" ipc show >/dev/null 2>&1 || setsid -f qs -p "$cfg" >/dev/null 2>&1 </dev/null
+    exit 0
+fi
+exec qs -p "$cfg" ipc call powerhold "$1" >/dev/null 2>&1
