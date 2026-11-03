@@ -1144,7 +1144,7 @@ index 176a49560d182a25c6bb2e7cf1da92832eb9feeb..2f8a7dc880c9fce01a5635b022814e9b
              local = m_touchData.touchFocusWindow->backend().surfaceLocalToBuffer(local);
  
 diff --git a/src/output/Monitor.cpp b/src/output/Monitor.cpp
-index 090611aba4ccdf9cb0068eba8079aa9324e4c626..34a948ce8b65b2c752328e91c84f85e7a9346c51 100644
+index 090611aba4ccdf9cb0068eba8079aa9324e4c626..e98cb8fbaada1b95f71590bb283f6b75e52c1701 100644
 --- a/src/output/Monitor.cpp
 +++ b/src/output/Monitor.cpp
 @@ -37,6 +37,9 @@
@@ -1334,9 +1334,9 @@ index 090611aba4ccdf9cb0068eba8079aa9324e4c626..34a948ce8b65b2c752328e91c84f85e7
 +        if (const auto window = canvasNearest(true)) {
 +            const auto offset =
 +                (window->geometricBox(IGeometric::GEOMETRIC_GOAL).middle() - m_position) * m_canvasZoom->goal() + canvasOffset(true) - m_size / 2.0;
-+            const auto radius = std::min(m_size.x, m_size.y) * 0.3;
++            const auto radius = std::min(m_size.x, m_size.y) * 0.18;
 +            const auto weight = std::max(0.0, 1.0 - offset.size() / radius);
-+            const auto pull   = offset * std::min(0.015 * weight, delta.size() * m_canvasZoom->goal() * (m_canvasOverview ? 0.15 : 0.05) / std::max(1.0, offset.size()));
++            const auto pull   = offset * std::min(0.008 * weight, delta.size() * m_canvasZoom->goal() * (m_canvasOverview ? 0.07 : 0.05) / std::max(1.0, offset.size()));
 +            *m_canvasX        = m_canvasX->goal() + pull.x / m_canvasZoom->goal();
 +            *m_canvasY        = m_canvasY->goal() + pull.y / m_canvasZoom->goal();
 +        }
