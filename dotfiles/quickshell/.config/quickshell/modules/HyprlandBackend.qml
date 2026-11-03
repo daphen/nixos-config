@@ -76,7 +76,7 @@ Item {
     Connections {
         target: Hyprland
         function onRawEvent(event) {
-            const relevant = ["openwindow", "closewindow", "movewindow", "workspace", "focusedmon", "createworkspace", "destroyworkspace", "activewindow", "activewindowv2", "fullscreen", "canvascamera"]
+            const relevant = ["openwindow", "closewindow", "movewindow", "workspace", "focusedmon", "createworkspace", "destroyworkspace", "activewindow", "activewindowv2", "fullscreen", "canvascamera", "canvaswindow"]
             if (!event || relevant.indexOf(event.name) < 0) return
             if (canvasQuery.running) state.refreshAgain = true
             else refreshTimer.restart()

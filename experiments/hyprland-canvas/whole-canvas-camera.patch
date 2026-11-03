@@ -276,7 +276,7 @@ index fb054486919da020c8e8ccdd1f9d6a6ec533df12..1359215f892a53a2ae68daa7d6fa0174
  
          return;
 diff --git a/src/desktop/view/window/Window.cpp b/src/desktop/view/window/Window.cpp
-index 3c64c28725e41f96930bbc2c8beb193a1942c51f..6c05ebb22d120b8b4d3d140fe826b6ab0020adb5 100644
+index 3c64c28725e41f96930bbc2c8beb193a1942c51f..1c300027d82539c7edc7a39e6b5bed685934f04b 100644
 --- a/src/desktop/view/window/Window.cpp
 +++ b/src/desktop/view/window/Window.cpp
 @@ -17,6 +17,8 @@
@@ -288,7 +288,20 @@ index 3c64c28725e41f96930bbc2c8beb193a1942c51f..6c05ebb22d120b8b4d3d140fe826b6ab
  #include "WindowFullscreenPolicy.hpp"
  #include "WindowGroupMembership.hpp"
  #include "WindowMetadata.hpp"
-@@ -425,6 +427,9 @@ void CWindow::moveToWorkspace(PHLWORKSPACE pWorkspace) {
+@@ -78,6 +80,12 @@ using enum NContentType::eContentType;
+ using namespace Desktop;
+ using namespace Desktop::View;
+ 
++// Lets clients follow the focused window's geometry without polling: one event per settle.
++static void postCanvasWindowSettled(const PHLWINDOW& window, bool settled) {
++    if (settled && window && Desktop::focusState()->window() == window)
++        IPC::Socket2::sock()->postEvent({.event = "canvaswindow", .data = std::format("{:x}", rc<uintptr_t>(window.get()))});
++}
++
+ static Layout::eRectCorner backendResizeEdgeToCorner(eBackendResizeEdge edge) {
+     switch (edge) {
+         case eBackendResizeEdge::BACKEND_RESIZE_EDGE_TOP: return Layout::CORNER_TOP;
+@@ -425,6 +433,9 @@ void CWindow::moveToWorkspace(PHLWORKSPACE pWorkspace) {
      if (!pWorkspace || m_workspace == pWorkspace)
          return;
  
@@ -298,7 +311,23 @@ index 3c64c28725e41f96930bbc2c8beb193a1942c51f..6c05ebb22d120b8b4d3d140fe826b6ab
      static auto PINITIALWSTRACKING = CConfigValue<Config::INTEGER>("misc:initial_workspace_tracking");
  
      if (!m_initialWorkspaceToken.empty()) {
-@@ -1006,6 +1011,14 @@ void CWindow::warpCursor(bool force) {
+@@ -576,6 +587,7 @@ void CWindow::onMap() {
+         m_presentation->updateDecorations();
+ 
+         m_events.resize.emit();
++        postCanvasWindowSettled(m_self.lock(), m_realSize->value() == m_realSize->goal());
+     });
+ 
+     m_realPosition->setUpdateCallback([this](auto) {
+@@ -588,6 +600,7 @@ void CWindow::onMap() {
+             m_prevMonitor = m_monitor;
+             m_events.monitorChanged.emit();
+         }
++        postCanvasWindowSettled(m_self.lock(), m_realPosition->value() == m_realPosition->goal());
+     });
+ 
+     m_presentation->alpha(WINDOW_ALPHA_MOVE_FROM_WORKSPACE)->setValueAndWarp(1.F);
+@@ -1006,6 +1019,14 @@ void CWindow::warpCursor(bool force) {
      const auto  coords                 = m_relativeCursorCoordsOnLastWarp;
      m_relativeCursorCoordsOnLastWarp.x = -1; // reset m_vRelativeCursorCoordsOnLastWarp
  
@@ -313,7 +342,7 @@ index 3c64c28725e41f96930bbc2c8beb193a1942c51f..6c05ebb22d120b8b4d3d140fe826b6ab
      const auto BOX = layoutBox();
  
      if (*PERSISTENTWARPS && coords.x > 0 && coords.y > 0 && coords < BOX.size()) // don't warp cursor outside the window
-@@ -1057,6 +1070,10 @@ void CWindow::setContentType(NContentType::eContentType contentType) {
+@@ -1057,6 +1078,10 @@ void CWindow::setContentType(NContentType::eContentType contentType) {
      m_wlSurface->resource()->m_contentType->m_value = contentType;
  }
  
@@ -324,7 +353,7 @@ index 3c64c28725e41f96930bbc2c8beb193a1942c51f..6c05ebb22d120b8b4d3d140fe826b6ab
  void CWindow::deactivateGroupMembers() {
      if (!m_grouping->group())
          return;
-@@ -1763,9 +1780,16 @@ void CWindow::commitWindow(bool initialCommit) {
+@@ -1763,9 +1788,16 @@ void CWindow::commitWindow(bool initialCommit) {
          return;
      }
  
@@ -342,7 +371,7 @@ index 3c64c28725e41f96930bbc2c8beb193a1942c51f..6c05ebb22d120b8b4d3d140fe826b6ab
      if (!m_backend->isX11() && !Fullscreen::controller()->isFullscreen(m_self.lock()) && m_target->floating()) {
          const auto HINTS = m_backend->geometryHints(eBackendState::BACKEND_STATE_CURRENT);
          if (clampWindowSize(HINTS.minSize, HINTS.maxSize))
-@@ -1775,10 +1799,10 @@ void CWindow::commitWindow(bool initialCommit) {
+@@ -1775,10 +1807,10 @@ void CWindow::commitWindow(bool initialCommit) {
      if (!m_workspace->visible())
          return;
  
