@@ -167,7 +167,10 @@ return function(ctx)
 			name = "deck-big-picture-no-initial-focus",
 			match = { class = "(?i)^steam$", title = "^Steam Big Picture Mode$" },
 			no_initial_focus = true,
+			-- Steam's in-game overlay is drawn by this off-screen window and stalls without frame callbacks.
+			render_unfocused = true,
 		})
+		hl.config({ misc = { render_unfocused_fps = 60 } })
 		hl.window_rule({
 			name = "deck-steam-keyboard",
 			match = { class = "(?i)^steam$", title = "^Steam Input On-screen Keyboard$" },
