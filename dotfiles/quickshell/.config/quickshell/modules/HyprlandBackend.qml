@@ -358,9 +358,10 @@ Item {
             for (const monitor of (canvasSnapshot.monitors || [])) monitors[monitor.id] = monitor
             for (const client of (canvasSnapshot.clients || [])) {
                 const monitor = monitors[client.monitor]
+                // focusHistoryID 0 survives focus being dropped onto an empty stretch of canvas.
                 if (monitor && monitor.name === outputName && Number(client.focusHistoryID) === 0)
-                    return Number(client.fullscreen || 0) === 2
-                        || Number(client.fullscreenClient || 0) === 2
+                    return !!Hyprland.activeToplevel && (Number(client.fullscreen || 0) === 2
+                        || Number(client.fullscreenClient || 0) === 2)
             }
             return false
         }
