@@ -227,7 +227,7 @@ destination=$(desktop_target)
 steam=$(jq -r "$game [.[] | select(game and .mapped and (.hidden | not) and (.floating | not) and (.class | ascii_downcase) != \"steam\")] | sort_by(.focusHistoryID) | .[0].address // empty" <<< "$clients")
 if ! profile gaming; then profile canvas; rm -f -- "$return_target"; exit 1; fi
 # Steam's lifetime must not hold the transition lock.
-if { [[ -n $steam ]] || { dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")" && wait_big_picture; }; } && prepare_games && park_floats &&
+if { [[ -n $steam ]] || { dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")" && wait_big_picture && prepare_games; }; } && park_floats &&
     focus_window "$destination" && tag_window "$steam" +deck-game-mode && camera_out && camera_to "$steam" && freeze_work; then
     exit
 fi
