@@ -14,6 +14,9 @@ ShellRoot {
     readonly property var off: [0, 0.25, 0.75]
     readonly property var region: ({ L: [0, 5.75], R: [5, 10] })
     readonly property string leftKeys: "qwertasdfgzxcvb"
+    readonly property var symbols: ["1234567890", "@#$%&*-+=/", "!?.,:;'\"()"]
+    property bool sym: false
+    property string shift: "off"
 
     Process {
         running: true
@@ -33,6 +36,8 @@ ShellRoot {
                     if (e.on) root.trail = []
                 } else if (e.type === "text") {
                     root.typed = e.text
+                } else if (e.type === "mode") {
+                    root.sym = e.sym; root.shift = e.shift
                 } else if (e.type === "word") {
                     root.words = e.words
                 }
@@ -85,7 +90,7 @@ ShellRoot {
             anchors.horizontalCenter: parent.horizontalCenter; y: 147
             color: "#ddffffff"; font.pixelSize: 15; font.family: "monospace"
             style: Text.Outline; styleColor: "black"
-            text: "LT = left pen, RT = right pen · tap a trigger = that letter · hold + slide = swipe a word\nA send   X delete   B space   D-pad ◀ ▶ pick word   ☰ close"
+            text: "LT = left pen, RT = right pen · tap a trigger = that letter · hold + slide = swipe a word\nA send   X delete   B space   LB shift (twice = caps lock)   RB symbols   D-pad ◀ ▶ pick word   ☰ close"
             horizontalAlignment: Text.AlignHCenter
         }
 
@@ -107,17 +112,18 @@ ShellRoot {
                         id: rowRep
                         required property int index
                         readonly property int r: index
-                        model: root.rows[r].length
+                        model: root.sym ? 10 : root.rows[r].length
                         delegate: Rectangle {
                             required property int index
-                            readonly property string ch: root.rows[rowRep.r][index]
-                            readonly property bool mine: (root.leftKeys.indexOf(ch) >= 0) === (pad.modelData === "L")
+                            readonly property string ch: root.sym ? root.symbols[rowRep.r][index] : root.rows[rowRep.r][index]
+                            readonly property bool mine: root.sym ? (index < 5) === (pad.modelData === "L")
+                                : (root.leftKeys.indexOf(ch) >= 0) === (pad.modelData === "L")
                             visible: mine
-                            x: (root.off[rowRep.r] + index - root.region[pad.modelData][0]) * pad.unit + 3
+                            x: ((root.sym ? 0 : root.off[rowRep.r]) + index - root.region[pad.modelData][0]) * pad.unit + 3
                             y: rowRep.r * pad.unit + 3
                             width: pad.unit - 6; height: pad.unit - 6; radius: 8
                             color: "#30ffffff"
-                            Text { anchors.centerIn: parent; text: parent.ch.toUpperCase(); color: "#ddffffff"; font.pixelSize: 26 }
+                            Text { anchors.centerIn: parent; text: root.sym || root.shift !== "off" ? parent.ch.toUpperCase() : parent.ch; color: root.shift === "lock" && !root.sym ? "#e8592a" : "#ddffffff"; font.pixelSize: 26 }
                         }
                     }
                 }

@@ -4,6 +4,7 @@ import json, math, os, select, subprocess, sys, threading, time
 
 DECODER, ASSETS, LOG = sys.argv[1], sys.argv[2], sys.argv[3]
 ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]; OFF = [0, .25, .75]
+SYMBOLS = ["1234567890", "@#$%&*-+=/", "!?.,:;'\"()"]   # left pad owns the first five of each row
 REGION = {"L": (0.0, 5.75), "R": (5.0, 10.0)}
 REACH = 0.6            # pad travel that spans the whole half-keyboard; smaller is more sensitive
 WORD_GAP_MS = 300      # both pens up this long ends the word
@@ -11,7 +12,8 @@ TAP_KEYS = 0.35        # a stroke that moves less than this is a tap on one lett
 STEP_KEYS = 0.3        # a held thumb must move this far to add a point, so resting wobble does not zigzag the trace
 BLOCK_PROFILE = os.environ["PADSWIPE_PROFILE"]
 PEN = {"L": 0x02, "R": 0x01}          # report byte 8: L2 / R2 digital bits
-A, B, X, R1, MENU = 0x80, 0x20, 0x40, 0x04, 1 << 14
+A, B, X, R1, L1, MENU = 0x80, 0x20, 0x40, 0x04, 0x08, 1 << 14
+CAPS_TAP_MS = 400      # a second L1 press this soon after the first locks caps
 DPAD_RIGHT, DPAD_LEFT = 1 << 9, 1 << 10
 
 import ctypes, signal
@@ -21,7 +23,7 @@ def ip(*a): return subprocess.run(["inputplumber", "device", "0", *a], capture_o
 typed = ""              # what this keyboard has typed since it opened; the target field itself cannot be read
 def wtype(*a):
     global typed
-    subprocess.run(["wtype", *a])
+    subprocess.run(["wtype", *a] if a[0] == "-k" else ["wtype", "--", a[0]])
     if a[0] != "-k": typed += a[0]
     elif a[1] == "Return": typed = ""
     elif a[1] == "BackSpace": typed = typed[:-1]
@@ -56,9 +58,21 @@ def to_kb(side, x, y):
     x = max(-1, min(1, x / REACH)); y = max(-1, min(1, y / REACH))
     return a + (x + 1) / 2 * (b - a), (1 - y) / 2 * 3
 
-def nearest(p):
+def nearest(p, side=None):
     r = max(0, min(2, int(p[1])))
+    if mode["sym"] and side:
+        keys = SYMBOLS[r][:5] if side == "L" else SYMBOLS[r][5:]
+        return min(keys, key=lambda c: abs(SYMBOLS[r].index(c) + .5 - p[0]))
     return min(ROWS[r], key=lambda c: abs(OFF[r] + ROWS[r].index(c) + .5 - p[0]))
+
+mode = {"sym": False, "shift": "off", "shift_at": -1e9}   # shift: off, once (next word or letter), lock
+def cased(text):
+    if mode["shift"] == "lock": return text.upper()
+    if mode["shift"] == "once":
+        i = len(text) - len(text.lstrip())
+        return text[:i] + text[i:i + 1].upper() + text[i + 1:]
+    return text
+def emit_mode(): emit(type="mode", sym=mode["sym"], shift=mode["shift"])
 
 pos = {"L": None, "R": None}
 pen = {"L": False, "R": False}
@@ -70,28 +84,30 @@ buttons = None
 
 def finish():
     global strokes, t0
-    taps = all(math.dist(s[1][0][:2], p[:2]) < TAP_KEYS for s in strokes for p in s[1])
+    taps = mode["sym"] or all(math.dist(s[1][0][:2], p[:2]) < TAP_KEYS for s in strokes for p in s[1])
     visits = []         # each pen's path as key visits, merged by arrival time, so two moving pens do not zigzag point by point
     for _, pts in strokes:
         for i, p in enumerate(pts):
             if i == 0 or nearest(p) != nearest(pts[i - 1]): visits.append(p)
     trace = sorted(visits, key=lambda p: p[2])
     if taps:
-        text = "".join(nearest(s[1][0]) for s in strokes); alts = [text]
+        text = "".join(nearest(s[1][0], s[0]) for s in strokes); alts = [text]
     else:
         dec.stdin.write(" ".join(f"{x:.3f} {y:.3f} {t:.0f}" for x, y, t in trace) + "\n"); dec.stdin.flush()
         alts = [w.rsplit(":", 1)[0] for w in dec.stdout.readline().split()]
         text = alts[0] + " " if alts else ""
         if text and last["text"] and not last["text"].endswith(" "): text = " " + text
     if text:
+        text = cased(text); alts = [cased(a) for a in alts]
         wtype(text)
         last.update(text=text, alts=alts, alt=0)
+        if mode["shift"] == "once": mode["shift"] = "off"; emit_mode()
     emit(type="word", words=alts)
     log.write(json.dumps({"at": time.strftime("%H:%M:%S"), "taps": taps, "words": alts,
                           "strokes": [[s[0], s[1]] for s in strokes]}) + "\n")
     strokes = []; t0 = None
 
-emit(type="ready")
+emit(type="ready"); emit_mode()
 start = time.monotonic()
 while True:
     ready, _, _ = select.select([hid.stdout], [], [], 0.02)
@@ -105,6 +121,12 @@ while True:
         buttons = b
         if pressed & MENU:
             sys.exit(0)
+        if pressed & L1:
+            if mode["shift"] == "once" and now - mode["shift_at"] < CAPS_TAP_MS: mode["shift"] = "lock"
+            else: mode["shift"] = "once" if mode["shift"] == "off" else "off"
+            mode["shift_at"] = now; emit_mode()
+        if pressed & R1:
+            mode["sym"] = not mode["sym"]; emit_mode()
         if pressed & B:
             wtype(" "); last.update(text=None)
         if pressed & A:
@@ -112,7 +134,7 @@ while True:
         if pressed & X:
             for _ in range(len(last["text"]) if last["text"] else 1): wtype("-k", "BackSpace")
             last.update(text=None); emit(type="word", words=[])
-        step = 1 if pressed & (R1 | DPAD_RIGHT) else -1 if pressed & DPAD_LEFT else 0
+        step = 1 if pressed & DPAD_RIGHT else -1 if pressed & DPAD_LEFT else 0
         if step and last["text"] and len(last["alts"]) > 1:
             lead = " " if last["text"].startswith(" ") else ""
             for _ in range(len(last["text"])): wtype("-k", "BackSpace")
