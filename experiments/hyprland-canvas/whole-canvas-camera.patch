@@ -712,7 +712,7 @@ index 9782a23797c606455194a4e46710216fa7e67a6c..8b4d40284e344c4b2f4dc578e8c2c3bd
          std::unordered_set<WP<CBind>> m_shadowed;
  
 diff --git a/src/layout/LayoutManager.cpp b/src/layout/LayoutManager.cpp
-index d4e53b882ac8779c207475e13510c3176dadf91a..6df0b137ca643d9be695bfdeb5a912e978cbe7dd 100644
+index d4e53b882ac8779c207475e13510c3176dadf91a..d34869146f34b0421ca579c89000037b103aceff 100644
 --- a/src/layout/LayoutManager.cpp
 +++ b/src/layout/LayoutManager.cpp
 @@ -1,4 +1,6 @@
@@ -722,7 +722,7 @@ index d4e53b882ac8779c207475e13510c3176dadf91a..6df0b137ca643d9be695bfdeb5a912e9
  
  #include "../ipc/s2/S2.hpp"
  #include "../managers/fullscreen/FullscreenController.hpp"
-@@ -100,6 +102,74 @@ Config::ErrorResult CLayoutManager::layoutMsg(const std::string_view& sv) {
+@@ -100,6 +102,85 @@ Config::ErrorResult CLayoutManager::layoutMsg(const std::string_view& sv) {
      if (!ws)
          return Config::configError("No workspace, can't target", Config::eConfigErrorLevel::ERROR, Config::eConfigErrorCode::NO_TARGET);
  
@@ -788,6 +788,17 @@ index d4e53b882ac8779c207475e13510c3176dadf91a..6df0b137ca643d9be695bfdeb5a912e9
 +            if (!(input >> x >> y) || input >> extra || !std::isfinite(x) || !std::isfinite(y))
 +                return Config::configError("canvas: pan expects finite X and Y deltas", Config::eConfigErrorLevel::ERROR, Config::eConfigErrorCode::INVALID_ARGUMENT);
 +            MONITOR->canvasPan({x, y});
++        } else if (sv.starts_with("camera-home ")) {
++            // Glide to an empty stretch of desktop and drop focus, since no window there can take it.
++            std::istringstream input{std::string{sv.substr(12)}};
++            double             x = 0, y = 0;
++            std::string        extra;
++            if (!(input >> x >> y) || input >> extra || !std::isfinite(x) || !std::isfinite(y) || MONITOR->m_canvasOverview || MONITOR->m_canvasZoom->goal() != 1.F)
++                return Config::configError("canvas: camera-home expects X Y at zoom 1", Config::eConfigErrorLevel::ERROR, Config::eConfigErrorCode::INVALID_ARGUMENT);
++            Desktop::focusState()->rawWindowFocus(nullptr, Desktop::FOCUS_REASON_KEYBIND);
++            MONITOR->m_canvasCommitting = false;
++            *MONITOR->m_canvasX         = x;
++            *MONITOR->m_canvasY         = y;
 +        } else if (sv.size() == 7 && sv.starts_with("focus ") && std::string_view{"hjkl"}.contains(sv.back()))
 +            MONITOR->canvasDirection(sv.back());
 +        else

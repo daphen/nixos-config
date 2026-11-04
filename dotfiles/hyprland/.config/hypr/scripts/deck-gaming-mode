@@ -201,13 +201,18 @@ case ${1:-enter} in
         ;;
     return)
         if (( ! playing )); then thaw_work; exit; fi
-        destination=$(desktop_target)
+        destination=$(desktop_target) || destination=""
         thaw_work
         if ! profile canvas; then profile gaming; exit 1; fi
-        if ! camera_out || ! camera_to "$destination"; then profile gaming; exit 1; fi
+        if [[ -n $destination ]]; then
+            if ! camera_out || ! camera_to "$destination"; then profile gaming; exit 1; fi
+        else
+            home=$(jq -r '(.camera | select(. != "")) // "0 0"' "$return_target" 2>/dev/null) || home="0 0"
+            if ! dispatch "hl.dsp.layout(\"camera-home $home\")"; then profile gaming; exit 1; fi
+        fi
         clear_mode
         restore_floats
-        focus_window "$destination"
+        [[ -z $destination ]] || focus_window "$destination"
         rm -f -- "$return_target"
         exit
         ;;
@@ -222,7 +227,8 @@ if (( playing )); then
     exit
 fi
 [[ $(jq -r '.tiledLayout' <<< "$workspace") == lua:canvas ]] || { echo 'Game Mode requires a canvas workspace.' >&2; exit 1; }
-jq '{window:.address,workspace:.workspace.address,type:.workspace.type}' <<< "$active" > "$return_target"
+camera=$(hyprctl -j monitors | jq -r '.[] | select(.focused) | .canvasCamera | split(",")[0:2] | join(" ")')
+jq --arg camera "$camera" '{window:.address,workspace:.workspace.address,type:.workspace.type,camera:$camera}' <<< "$active" > "$return_target"
 destination=$(desktop_target) || destination=""
 steam=$(jq -r "$game [.[] | select(game and .mapped and (.hidden | not) and (.floating | not) and (.class | ascii_downcase) != \"steam\")] | sort_by(.focusHistoryID) | .[0].address // empty" <<< "$clients")
 if ! profile gaming; then profile canvas; rm -f -- "$return_target"; exit 1; fi
