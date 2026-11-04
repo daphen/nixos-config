@@ -151,7 +151,7 @@ PanelWindow {
                 width: root.pieceHeight
                 Glyph {
                     anchors.centerIn: parent
-                    icon: "layers-3"
+                    icon: "grid-circle-plus"
                     onActivated: root.openPalette()
                     onDwelled: root.openPalette()
                 }
