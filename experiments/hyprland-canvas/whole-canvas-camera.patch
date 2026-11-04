@@ -809,7 +809,7 @@ index d4e53b882ac8779c207475e13510c3176dadf91a..d34869146f34b0421ca579c89000037b
  }
  
 diff --git a/src/layout/algorithm/Algorithm.cpp b/src/layout/algorithm/Algorithm.cpp
-index 0247f1b85c64391a45c077b28480d83c64566c26..cd61330a26542939f771826cc3a657fe9f8dc9b9 100644
+index 0247f1b85c64391a45c077b28480d83c64566c26..788b269ace7dea1ebc6fef517a7663379c4968f3 100644
 --- a/src/layout/algorithm/Algorithm.cpp
 +++ b/src/layout/algorithm/Algorithm.cpp
 @@ -8,6 +8,7 @@
@@ -842,7 +842,7 @@ index 0247f1b85c64391a45c077b28480d83c64566c26..cd61330a26542939f771826cc3a657fe
          // Unhide windows when switching layouts to prevent them from being permanently lost
          // This is a safeguard for layouts (including third-party plugins) that use setHidden
          const auto WINDOW = TARGET->window();
-@@ -218,6 +229,15 @@ void CAlgorithm::updateTiledAlgo(UP<ITiledAlgorithm>&& algo) {
+@@ -218,6 +229,13 @@ void CAlgorithm::updateTiledAlgo(UP<ITiledAlgorithm>&& algo) {
          Desktop::focusState()->fullWindowFocus(FOCUSED_WINDOW, Desktop::eFocusReason::FOCUS_REASON_DESKTOP_STATE_CHANGE);
  
      m_tiled = std::move(algo);
@@ -851,8 +851,6 @@ index 0247f1b85c64391a45c077b28480d83c64566c26..cd61330a26542939f771826cc3a657fe
 +        for (const auto& [target, modes] : fullscreen) {
 +            NEW_FS->setTargetFullscreenModeInternal(target, modes.internal);
 +            NEW_FS->setTargetFullscreenModeClient(target, modes.client);
-+            NEW_FS->updateTargetRulesAndDecos(target);
-+            NEW_FS->setTargetSizeAndPosition(target);
 +        }
 +    }
  }
