@@ -85,6 +85,15 @@ return function(ctx)
 			match = { class = ".*" },
 			sync_fullscreen = false,
 		})
+		if DECK_MODE then
+			-- Proton answers every fullscreen change with its own request, ping-ponging ~100 times a second.
+			hl.window_rule({
+				name = "deck-game-fullscreen",
+				match = { class = "^steam_app_\\d+$" },
+				fullscreen_state = "0 2",
+				suppress_event = "fullscreen maximize",
+			})
+		end
 		hl.window_rule({
 			name = "canvas-client-fullscreen-decorations",
 			match = { class = ".*", fullscreen_state_client = 2 },
