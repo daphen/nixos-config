@@ -16,7 +16,7 @@
     "ask": [],
     "defaultMode": "auto"
   },
-  "model": "opus",
+  "model": "opus[1m]",
   "enableAllProjectMcpServers": true,
   "hooks": {
     "PostToolUse": [
@@ -88,8 +88,6 @@
   "alwaysThinkingEnabled": true,
   "effortLevel": "high",
   "tui": "default",
-  "theme": "custom:dotfiles",
-  "editorMode": "normal",
   "skipAutoPermissionPrompt": true,
   "autoMode": {
     "environment": [
@@ -118,5 +116,7 @@
       "**Trusted repo**: /home/daphen/.config/hypr (this project's working directory) — no remotes configured, treat as private local config",
       "**Org-specific CLIs**: None configured"
     ]
-  }
+  },
+  "theme": "custom:dotfiles",
+  "editorMode": "normal"
 }
