@@ -228,6 +228,8 @@ in
     package = inputs.nixpkgs-latest.legacyPackages.${pkgs.system}.tailscale;
     extraUpFlags = [ "--accept-routes" ];
   };
+  # GeForce NOW ships only as a Flatpak from NVIDIA's own repository.
+  services.flatpak.enable = true;
   time.timeZone = "Europe/Stockholm";
   i18n.defaultLocale = "en_US.UTF-8";
   console.keyMap = "us";
