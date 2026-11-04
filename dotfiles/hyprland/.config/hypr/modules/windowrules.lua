@@ -109,9 +109,8 @@ return function(ctx)
 			ignore_alpha = 0,
 		})
 		hl.layer_rule({
-			name = "browser-controls-frost",
+			name = "browser-controls",
 			match = { namespace = "^qs-browser-controls$" },
-			blur = true,
 			ignore_alpha = 0.1,
 			no_anim = true,
 		})
