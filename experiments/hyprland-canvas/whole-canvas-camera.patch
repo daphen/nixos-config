@@ -809,7 +809,7 @@ index d4e53b882ac8779c207475e13510c3176dadf91a..d34869146f34b0421ca579c89000037b
  }
  
 diff --git a/src/layout/algorithm/Algorithm.cpp b/src/layout/algorithm/Algorithm.cpp
-index 0247f1b85c64391a45c077b28480d83c64566c26..788b269ace7dea1ebc6fef517a7663379c4968f3 100644
+index 0247f1b85c64391a45c077b28480d83c64566c26..b48d554df1ab4e13790bbb97957213a758b0bca6 100644
 --- a/src/layout/algorithm/Algorithm.cpp
 +++ b/src/layout/algorithm/Algorithm.cpp
 @@ -8,6 +8,7 @@
@@ -826,7 +826,7 @@ index 0247f1b85c64391a45c077b28480d83c64566c26..788b269ace7dea1ebc6fef517a766337
  
 +    // Fullscreen state lives in the algorithm's handler; a config reload rebuilds Lua layouts and would drop it.
 +    std::vector<std::pair<SP<ITarget>, Fullscreen::SFullscreenMode>> fullscreen;
-+    const auto                                                       OLD_FS = m_tiled ? m_tiled->getFSHandler().lock() : nullptr;
++    const auto                                                       OLD_FS = m_tiled ? m_tiled->getFSHandler() : WP<Fullscreen::IFullscreenHandler>{};
 +
      for (const auto& t : m_tiledTargets) {
          const auto TARGET = t.lock();
@@ -847,7 +847,7 @@ index 0247f1b85c64391a45c077b28480d83c64566c26..788b269ace7dea1ebc6fef517a766337
  
      m_tiled = std::move(algo);
 +
-+    if (const auto NEW_FS = m_tiled->getFSHandler().lock()) {
++    if (const auto NEW_FS = m_tiled->getFSHandler()) {
 +        for (const auto& [target, modes] : fullscreen) {
 +            NEW_FS->setTargetFullscreenModeInternal(target, modes.internal);
 +            NEW_FS->setTargetFullscreenModeClient(target, modes.client);
