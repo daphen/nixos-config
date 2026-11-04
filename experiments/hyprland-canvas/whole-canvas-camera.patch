@@ -808,6 +808,56 @@ index d4e53b882ac8779c207475e13510c3176dadf91a..d34869146f34b0421ca579c89000037b
      return ws->space()->layoutMsg(sv);
  }
  
+diff --git a/src/layout/algorithm/Algorithm.cpp b/src/layout/algorithm/Algorithm.cpp
+index 0247f1b85c64391a45c077b28480d83c64566c26..cd61330a26542939f771826cc3a657fe9f8dc9b9 100644
+--- a/src/layout/algorithm/Algorithm.cpp
++++ b/src/layout/algorithm/Algorithm.cpp
+@@ -8,6 +8,7 @@
+ #include "../../desktop/history/WindowHistoryTracker.hpp"
+ #include "../../desktop/state/FocusState.hpp"
+ #include "../../output/Monitor.hpp"
++#include "../../managers/fullscreen/handler/FullscreenHandler.hpp"
+ #include "../../render/Renderer.hpp"
+ 
+ #include "../../debug/log/Logger.hpp"
+@@ -199,11 +200,21 @@ void CAlgorithm::updateTiledAlgo(UP<ITiledAlgorithm>&& algo) {
+     const auto FOCUSED_WINDOW = Desktop::focusState()->window();
+     const auto FOCUSED_TARGET = FOCUSED_WINDOW ? FOCUSED_WINDOW->layoutTarget() : nullptr;
+ 
++    // Fullscreen state lives in the algorithm's handler; a config reload rebuilds Lua layouts and would drop it.
++    std::vector<std::pair<SP<ITarget>, Fullscreen::SFullscreenMode>> fullscreen;
++    const auto                                                       OLD_FS = m_tiled ? m_tiled->getFSHandler().lock() : nullptr;
++
+     for (const auto& t : m_tiledTargets) {
+         const auto TARGET = t.lock();
+         if (!TARGET)
+             continue;
+ 
++        if (OLD_FS) {
++            const auto MODES = OLD_FS->getFullscreenModes(TARGET);
++            if (MODES.internal != Fullscreen::FSMODE_NONE || MODES.client != Fullscreen::FSMODE_NONE)
++                fullscreen.emplace_back(TARGET, MODES);
++        }
++
+         // Unhide windows when switching layouts to prevent them from being permanently lost
+         // This is a safeguard for layouts (including third-party plugins) that use setHidden
+         const auto WINDOW = TARGET->window();
+@@ -218,6 +229,15 @@ void CAlgorithm::updateTiledAlgo(UP<ITiledAlgorithm>&& algo) {
+         Desktop::focusState()->fullWindowFocus(FOCUSED_WINDOW, Desktop::eFocusReason::FOCUS_REASON_DESKTOP_STATE_CHANGE);
+ 
+     m_tiled = std::move(algo);
++
++    if (const auto NEW_FS = m_tiled->getFSHandler().lock()) {
++        for (const auto& [target, modes] : fullscreen) {
++            NEW_FS->setTargetFullscreenModeInternal(target, modes.internal);
++            NEW_FS->setTargetFullscreenModeClient(target, modes.client);
++            NEW_FS->updateTargetRulesAndDecos(target);
++            NEW_FS->setTargetSizeAndPosition(target);
++        }
++    }
+ }
+ 
+ const UP<ITiledAlgorithm>& CAlgorithm::tiledAlgo() const {
 diff --git a/src/layout/target/WindowTarget.cpp b/src/layout/target/WindowTarget.cpp
 index c337295aa288fd45485822149036ca1e44dcfc67..811920c4312a1ffd48993de4bfb13a8534a1ff77 100644
 --- a/src/layout/target/WindowTarget.cpp
