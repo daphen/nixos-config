@@ -83,7 +83,7 @@ PanelWindow {
         height: root.button
         Rectangle {
             anchors.fill: parent
-            radius: 9
+            radius: root.pieceHeight / 2 - root.pad
             color: hover.hovered ? Theme.itemHover : "transparent"
             Lib.Icon {
                 anchors.centerIn: parent
