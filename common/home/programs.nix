@@ -25,6 +25,7 @@ let
   # the repo). Lands `agentd` on PATH; the nvim rail + niri startup use it.
   agentd = import ../../pkgs/agentd { inherit pkgs; src = inputs.agentd; };
   mediactl = import ../../pkgs/mediactl { inherit pkgs; };
+  spritecook = import ../../pkgs/spritecook { inherit pkgs; };
   entropyLauncher = pkgs.writeShellScriptBin "entropy-k04" ''
     export APPIMAGE_EXTRACT_AND_RUN=1
     export LD_LIBRARY_PATH="${pkgs.libglvnd}/lib:/run/opengl-driver/lib:${pkgs.wayland}/lib:${pkgs.libxkbcommon}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -72,7 +73,10 @@ in
   # Editor — neovim installed directly rather than via programs.neovim, since HM's
   # module generates its own init.lua which conflicts with the dotfile-based config
   # symlinked through symlinks.nix.
-  home.packages = [ nvim nvim-next entropyLauncher ] ++ (with pkgs; [
+  xdg.configFile."aseprite/extensions/spritecook".source = spritecook.extension;
+
+  home.packages = [ nvim nvim-next entropyLauncher spritecook ] ++ (with pkgs; [
+    aseprite
     # LSP/formatter tooling expected on PATH by the nvim config
     prettier
     black
