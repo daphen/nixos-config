@@ -1183,23 +1183,11 @@ PanelWindow {
                     anchors.rightMargin: Theme.insetCard
                     anchors.topMargin: Theme.insetCard
                     anchors.bottomMargin: 6
-                    Lib.GradientFrame {
+                    Lib.WellSurface {
                         anchors.fill: parent
-                        visible: Theme.mode !== "light"
                         radius: Theme.radiusInner
-                        fill: Qt.tint(Theme.bg, Qt.alpha(Theme.fg, 0.06))
-                        fillTop: Qt.tint(fill, Qt.alpha(Theme.fg, 0.035))
-                        edge: Theme.fg
-                        strength: 0.85
-                        lowEdge: 0.05
-                    }
-                    Lib.LightKey {
-                        anchors.fill: parent
-                        visible: Theme.mode === "light"
-                        radius: Theme.radiusInner
-                        outline: Qt.alpha(Theme.fg, 0.11)
-                        faceTop: "#F9F9F9"
-                        faceBottom: "#EFEFF0"
+                        base: Theme.mode === "light" ? "#FDFDFD" : "#121212"
+                        field: true; emphasis: search.activeFocus ? 1.25 : 1
                     }
                 }
 

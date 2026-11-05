@@ -327,7 +327,7 @@ Item {
                 width: parent.width
                 height: 68
 
-                Rectangle {
+                Lib.WellSurface {
                     id: searchField
                     anchors.fill: parent
                     anchors.leftMargin: Theme.insetCard
@@ -335,9 +335,8 @@ Item {
                     anchors.topMargin: Theme.insetCard
                     anchors.bottomMargin: 6
                     radius: Theme.radiusInner
-                    color: Theme.surface0
-                    border.width: 1
-                    border.color: Theme.hairline
+                    base: Theme.mode === "light" ? "#FAFBFC" : "#111111"
+                    field: true; emphasis: search.activeFocus ? 1.25 : 1
                 }
 
                 Text {
