@@ -19,13 +19,14 @@ Rectangle {
         radius: Math.max(0, root.radius - 1)
         color: Qt.tint(root.base, Qt.alpha("#000000", root.dark ? 0.30 : 0.035))
         Rectangle {
+            id: shade
             anchors.fill: parent
             radius: parent.radius
-            readonly property real stop: Math.min(0.5, root.depth / Math.max(1, height))
+            readonly property real fade: Math.min(0.5, root.depth / Math.max(1, height))
             gradient: Gradient {
                 GradientStop { position: 0; color: Qt.alpha("#000000", root.dark ? 0.45 : 0.09) }
-                GradientStop { position: parent.stop; color: Qt.alpha("#000000", root.dark ? 0.10 : 0.02) }
-                GradientStop { position: Math.min(1, parent.stop * 2.2); color: "transparent" }
+                GradientStop { position: shade.fade; color: Qt.alpha("#000000", root.dark ? 0.10 : 0.02) }
+                GradientStop { position: Math.min(1, shade.fade * 2.2); color: "transparent" }
             }
         }
     }
