@@ -27,4 +27,5 @@ TabFace TabFace.qml
 GradientFrame GradientFrame.qml
 LightKey LightKey.qml
 PillSurface PillSurface.qml
+WellSurface WellSurface.qml
 ContextMeter ContextMeter.qml
