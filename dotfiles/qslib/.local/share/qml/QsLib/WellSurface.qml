@@ -12,8 +12,8 @@ Rectangle {
     property real emphasis: 1
     Behavior on emphasis { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     readonly property bool dark: Theme.mode !== "light"
-    readonly property real topShade: field ? (dark ? 0.18 : 0.021) : (dark ? 0.22 : 0.05)
-    readonly property real bottomShade: field ? (dark ? 0.16 : 0.021) : 0
+    property real topShade: field ? (dark ? 0.18 : 0.021) : (dark ? 0.22 : 0.05)
+    property real bottomShade: field ? (dark ? 0.16 : 0.021) : 0
     function ink(c, a) { return Qt.alpha(c, Math.min(1, a * emphasis)) }
     function rim(meter, input) { return field ? input : meter }
 
