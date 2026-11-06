@@ -3,11 +3,11 @@
     "agentd": {
       "flake": false,
       "locked": {
-        "lastModified": 1793738911,
-        "narHash": "sha256-OuvUR9TLagcXi9GMWBfWXEochzoM/aEnLSTUWfSmDmk=",
+        "lastModified": 1794006873,
+        "narHash": "sha256-N1HfqSdJ3uv+Po7GdGsmpiQU/6BOkg6TU+iHRrsLN4M=",
         "ref": "refs/heads/main",
-        "rev": "b7795632acc2f4058a124c445f555cd9181802f6",
-        "revCount": 77,
+        "rev": "90c827190b99b21cad08aa95b53b0730fb103e2c",
+        "revCount": 78,
         "type": "git",
         "url": "ssh://git@github.com/daphen/agentd"
       },
@@ -64,11 +64,11 @@
         "rio": "rio"
       },
       "locked": {
-        "lastModified": 1793717887,
-        "narHash": "sha256-I79Tj43Ox6IQ+78BdjS/d5Xz6eDvVLGTq7QoOoHx0tI=",
+        "lastModified": 1794006970,
+        "narHash": "sha256-MOsmPQ3Dkbn4tbCquOb5c6PskDQ2HAs08L/1ytRzw9c=",
         "ref": "main",
-        "rev": "a2ff99ded699167707f145d4cf96ee6794624ba5",
-        "revCount": 542,
+        "rev": "93aad0e02351fe8a10035b38f695e46e9ae9372d",
+        "revCount": 571,
         "type": "git",
         "url": "ssh://git@github.com/daphen/ai-cockpit"
       },
@@ -100,11 +100,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1793885342,
+        "lastModified": 1794007091,
         "narHash": "sha256-hTnGGmAjDdIZI08Tf+1rd/GRlHGg46D/Ip74uaEwH+g=",
         "ref": "daphen/client-mouse-support",
-        "rev": "8b2bf9bae8c121514aca3aae2dcd44ca610e84c3",
-        "revCount": 295,
+        "rev": "73c1dec71cbe0e0ad35aab75865566c342e09031",
+        "revCount": 299,
         "type": "git",
         "url": "ssh://git@github.com/daphen/dsqrd"
       },
@@ -640,11 +640,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1793730230,
-        "narHash": "sha256-NqxjGRPSTs+/vgSqb09mKcsHhuaFk1xkhOFmfGjuUII=",
+        "lastModified": 1794007047,
+        "narHash": "sha256-yqvbiU+qCnT08kRjwGXfcsryWPCuEkjOA8LQbTa8EK4=",
         "ref": "daphen/client-mouse-support",
-        "rev": "8b43ef7751f0be3aa774eac6bd372f72a5b82433",
-        "revCount": 265,
+        "rev": "41513a8d47bd76744ab5c5df203acc9d2b5e4509",
+        "revCount": 276,
         "type": "git",
         "url": "ssh://git@github.com/daphen/mlqs"
       },
