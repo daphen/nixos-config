@@ -16,6 +16,7 @@ PanelWindow {
     readonly property int reach: 16
     readonly property int pieceHeight: button + 2 * pad
     readonly property int inset: 16
+    readonly property int edge: 12
     readonly property var win: {
         const _ = NiriState.version
         return NiriState.focusedScreenRect(root.screen ? root.screen.name : "", root.width, root.screen ? root.screen.height : 0)
@@ -142,7 +143,8 @@ PanelWindow {
             id: triggerZone
             anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
             width: root.pieceHeight + 2 * root.reach
-            height: parent.height
+            // Wakes only at the window's edge, then grows so the risen pill stays hovered.
+            height: triggerNear.hovered ? parent.height : root.edge
             HoverHandler { id: triggerNear }
 
             Piece {
