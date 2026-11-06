@@ -28,6 +28,14 @@ local function reopen(spr, frame)
 end
 
 function init(plugin)
+  -- Keeps the Cockpit sprite bench in step with hand edits.
+  app.events:on("aftercommand", function(ev)
+    local spr = app.sprite
+    if (ev.name == "SaveFile" or ev.name == "SaveFileAs") and spr and spr.filename:match("%.aseprite$") then
+      os.execute(CLI .. " preview " .. quote(spr.filename) .. " >/dev/null 2>&1 &")
+    end
+  end)
+
   plugin:newMenuGroup { id = "spritecook_menu", title = "Spritecook", group = "edit_menu" }
 
   plugin:newCommand {

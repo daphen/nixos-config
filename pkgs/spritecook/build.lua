@@ -1,6 +1,6 @@
 local p = app.params
 local size = tonumber(p.size)
-local spr, layer, first
+local spr, layer, first, ranges
 
 if p.append == "1" then
   spr = app.open(p.out)
@@ -12,6 +12,9 @@ if p.append == "1" then
     if l.name == "sprite" then layer = l end
   end
   first = #spr.frames + 1
+  -- Appending after a tag's last frame stretches that tag; remember every range and restore it.
+  ranges = {}
+  for _, t in ipairs(spr.tags) do ranges[t] = { t.fromFrame.frameNumber, t.toFrame.frameNumber } end
 else
   spr = Sprite(size, size, ColorMode.RGB)
   layer = spr.layers[1]
@@ -27,6 +30,11 @@ for path in io.lines(p.list) do
   if p.tag ~= "" then frame.duration = 0.12 end
   spr:newCel(layer, frame, Image { fromFile = path }, Point(0, 0))
   index = index + 1
+end
+
+for t, range in pairs(ranges or {}) do
+  t.fromFrame = spr.frames[range[1]]
+  t.toFrame = spr.frames[range[2]]
 end
 
 if p.tag ~= "" then

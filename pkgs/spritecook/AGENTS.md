@@ -13,6 +13,8 @@ or paste paths to show results; describe what changed instead.
 - `spritecook draw <name> "<description>"` — new sprite `<name>.aseprite` from a
   description. Describe the character, outfit, props and view; style, outline
   and background are added automatically. About 30 seconds.
+- `spritecook draw <name> "<outfit>" --like <other>.aseprite` — same character
+  as `<other>`, new outfit or props. Use it to keep a set of sprites consistent.
 - `spritecook animate <name>.aseprite <tag> --frames N --prompt "<motion>"` —
   appends an animation (idle, walk, run, jump, attack, hurt) generated from
   frame 1. Use 4 frames for walk/idle, 6 for run/attack.

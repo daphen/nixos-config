@@ -74,12 +74,17 @@ for _, frame in ipairs(spr.frames) do
 end
 
 if not app.isUIAvailable then
-  local counts = {}
+  local counts, marks = {}, {}
   for n, found in pairs(results) do
     for _, f in ipairs(found) do
       counts[f.kind] = (counts[f.kind] or 0) + 1
-      if (counts[f.kind] or 0) <= 5 then print(string.format("frame %d  %3d,%-3d %s", n, f.x, f.y, f.kind)) end
+      marks[#marks + 1] = string.format('{"frame":%d,"x":%d,"y":%d,"kind":"%s"}', n - 1, f.x, f.y, f.kind)
     end
+  end
+  if app.params.out then
+    local file = assert(io.open(app.params.out, "w"))
+    file:write("[" .. table.concat(marks, ",") .. "]\n")
+    file:close()
   end
   return print(string.format("%d issues: %d stray, %d doubled corners, %d off-palette, %d semi-transparent",
     total, counts.stray or 0, counts.double or 0, counts.palette or 0, counts.alpha or 0))

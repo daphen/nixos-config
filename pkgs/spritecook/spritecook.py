@@ -4,6 +4,7 @@ import argparse
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -198,6 +199,14 @@ def place(cells, alpha, size):
     y0, y1, x0, x1 = bbox(alpha)
     cells, alpha = cells[y0:y1, x0:x1], alpha[y0:y1, x0:x1]
     h, w = alpha.shape
+    if w > size:
+        # A prop reaching past the canvas is cropped; shrinking would make the character jump in size between loops.
+        counts = np.concatenate([[0], np.cumsum(alpha.sum(0))])
+        start = int(np.argmax(counts[size:] - counts[:-size]))
+        cells, alpha = cells[:, start:start + size], alpha[:, start:start + size]
+        w = size
+    if h > size:
+        cells, alpha, h = cells[h - size:], alpha[h - size:], size
     canvas = np.zeros((size, size, 4), np.uint8)
     centroid = np.where(alpha)[1].mean()
     left = int(np.clip(round(size / 2 - centroid), 0, size - w))
@@ -210,16 +219,23 @@ def place(cells, alpha, size):
 def fit_grid(img, palette, size, tolerance, height=None):
     """Grid whose cleaned sprite fits the canvas, optionally matching a reference height."""
     grid = detect_grid(img)
+    native = grid
     for _ in range(4):
         cells, alpha = clean(img, palette, grid, tolerance)
         y0, y1, x0, x1 = bbox(alpha)
-        factor = max((y1 - y0) / (size - 2), (x1 - x0) / size, 1.0)
-        if height:
-            factor = max(factor, (y1 - y0) / height) if abs((y1 - y0) / height - 1) > 0.08 else factor
-        if factor <= 1.02:
-            return grid, cells, alpha
+        fit = max((y1 - y0) / (size - 2), (x1 - x0) / size)
+        factor = max(fit, 1.0)
+        if height and abs((y1 - y0) / height - 1) > 0.08:
+            factor = max(fit, (y1 - y0) / height)
+        if 0.98 <= factor <= 1.02 or (factor < 1 and not height):
+            break
         grid = scaled(grid, factor)
-    return grid, *clean(img, palette, grid, tolerance)
+    else:
+        cells, alpha = clean(img, palette, grid, tolerance)
+    if grid[0] > native[0] * 1.3:
+        print(f"warning: the art was drawn about {grid[0] / native[0]:.1f}x finer than {size}x{size}, so detail was lost; "
+              f"a {size * 2}x{size * 2} project would keep it", file=sys.stderr)
+    return grid, cells, alpha
 
 
 # Projects, palettes and Aseprite
@@ -268,7 +284,17 @@ def aseprite(*args):
     return result.stdout
 
 
-def write_frames(project, sprite, frames, tag, append):
+def tag_frames(sprite, tag):
+    with tempfile.TemporaryDirectory() as tmp:
+        sheet = Path(tmp) / "sheet.png"
+        aseprite("--ignore-layer", "spritecook lint", "--frame-tag", tag, str(sprite), "--sheet-type", "horizontal",
+                 "--sheet", str(sheet))
+        strip = np.asarray(Image.open(sheet).convert("RGBA"))
+    size = strip.shape[0]
+    return [strip[:, i:i + size].copy() for i in range(0, strip.shape[1], size)]
+
+
+def write_frames(project, sprite, frames, tag, append, replace=False):
     with tempfile.TemporaryDirectory() as tmp:
         paths = []
         for i, frame in enumerate(frames):
@@ -277,6 +303,10 @@ def write_frames(project, sprite, frames, tag, append):
             paths.append(str(path))
         listing = Path(tmp) / "frames.txt"
         listing.write_text("\n".join(paths) + "\n")
+        if replace:
+            aseprite("--script-param", f"out={sprite}", "--script-param", f"list={listing}",
+                     "--script-param", f"tag={tag}", "--script", str(SHARE / "replace.lua"))
+            return
         aseprite(
             "--script-param", f"out={sprite}",
             "--script-param", f"list={listing}",
@@ -335,8 +365,22 @@ def cmd_new(args):
     project.mkdir(parents=True, exist_ok=True)
     (project / "palette.gpl").write_text(fetch_palette(args.palette))
     (project / "spritecook.json").write_text(json.dumps({"size": args.size, "palette": args.palette}, indent=2) + "\n")
+    shutil.copyfile(SHARE / "AGENTS.md", project / "AGENTS.md")
     colours = len(read_palette(project / "palette.gpl"))
     print(f"project {project}: {args.size}x{args.size} sprites, palette {args.palette} ({colours} colours)")
+
+
+def reference_board(sprite):
+    """Frame 1 of a sprite, scaled onto a white 1024 board, as PNG bytes; also its opaque height."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "base.png"
+        aseprite(str(sprite), "--frame-range", "0,0", "--save-as", str(base))
+        reference = Image.open(base).convert("RGBA")
+        height = int(np.ptp(np.where(np.asarray(reference)[..., 3] > 0)[0])) + 1
+        board = Image.new("RGBA", (1024, 1024), "white")
+        board.alpha_composite(reference.resize((1024, 1024), Image.Resampling.NEAREST))
+        board.convert("RGB").save(base)
+        return base.read_bytes(), height
 
 
 def cmd_draw(args):
@@ -344,11 +388,50 @@ def cmd_draw(args):
     sprite = project / f"{args.name}.aseprite"
     if sprite.exists() and not args.force:
         fail(f"{sprite} exists; pick another name or pass --force")
-    prompt = f"{args.prompt}. Full body, drawn as a {size}x{size} pixel sprite filling most of the frame. {STYLE}"
-    img = raw_image(project, args.name, args.source, prompt, args.quality, "1024x1024")
-    grid, cells, alpha = fit_grid(img, palette, size, args.tolerance)
+    ref = height = None
+    if args.like:
+        ref, height = reference_board(Path(args.like).resolve())
+        prompt = (f"The exact same character as the reference: same species, face, fur colours, proportions, pose, "
+                  f"outline and pixel size. Change only the outfit and props: {args.prompt}. Full body, drawn as a "
+                  f"{size}x{size} pixel sprite filling most of the frame. {STYLE}")
+    else:
+        prompt = f"{args.prompt}. Full body, drawn as a {size}x{size} pixel sprite filling most of the frame. {STYLE}"
+    img = raw_image(project, args.name, args.source, prompt, args.quality, "1024x1024", ref)
+    grid, cells, alpha = fit_grid(img, palette, size, args.tolerance, height)
     write_frames(project, sprite, [place(cells, alpha, size)], "", append=False)
     print(f"{sprite}  (pixel grid {grid[0]:.1f}px in the raw image)")
+    print(refresh_preview(sprite))
+
+
+def cmd_scene(args):
+    project, size, palette = load_project(args.project)
+    out = project / "scenes" / f"{args.name}.png"
+    if out.exists() and not args.force:
+        fail(f"{out} exists; pick another name or pass --force")
+    floor = args.height - round(args.height * 0.19)
+    prompt = (f"Wide pixel art game background scene: {args.prompt}. Drawn as a {args.width}x{args.height} pixel image "
+              f"with crisp square pixels, flat cel shading, limited palette, no anti-aliasing, no text, no characters, "
+              f"no people, no animals. The floor surface runs flat and level across the bottom fifth of the image; "
+              f"keep the centre of the floor clear so a character can stand there. Fill the whole frame edge to edge.")
+    ref = None
+    if args.like:
+        ref = Path(args.like).read_bytes()
+        prompt += (" This is another spot on the very same ship as the reference image: match its art style, wood colours, "
+                   "weather, sky and lighting exactly.")
+    img = raw_image(project, f"scene-{args.name}", args.source, prompt, args.quality, "1536x1024", ref)
+    h, w, _ = img.shape
+    keep = int(w * args.height / args.width)
+    end = int(h * args.bottom)
+    img = img[max(0, end - keep):end] if keep < h else img
+    cells = sample_cells(img, (w / args.width, 0.0, img.shape[0] / args.height, 0.0))[:args.height, :args.width]
+    flat = cells.reshape(-1, 3)
+    cells = snap(flat, palette).reshape(cells.shape)
+    everywhere = np.ones(cells.shape[:2], bool)
+    for _ in range(2):
+        cells = despeckle(cells, everywhere)
+    out.parent.mkdir(exist_ok=True)
+    Image.fromarray(cells.astype(np.uint8), "RGB").save(out)
+    print(f"{out}  ({args.width}x{args.height}, floor at row {floor})")
 
 
 def components(alpha):
@@ -369,6 +452,77 @@ def components(alpha):
                         labels[ny, nx] = count
                         queue.append((ny, nx))
     return labels, count
+
+
+def split_grid(alpha, count):
+    """Frames laid out in one row or in two rows: cut rows at an empty band near the middle, then columns per row."""
+    rows = alpha.sum(1)
+    ys = np.where(rows > 0)[0]
+    top, bottom = ys.min(), ys.max() + 1
+    lo, hi = int(top + (bottom - top) * 0.35), int(top + (bottom - top) * 0.65)
+    cut = lo + int(np.argmin(rows[lo:hi]))
+    if count % 2 or rows[cut] or not alpha[:cut].any() or not alpha[cut:].any():
+        return split_frames(alpha, count)
+    masks = []
+    for band in (slice(0, cut), slice(cut, None)):
+        part = np.zeros_like(alpha)
+        part[band] = alpha[band]
+        masks += split_frames(part, count // 2)
+    return masks
+
+
+def neighbourhood(mask):
+    padded = np.pad(mask, 1)
+    h, w = mask.shape
+    return [padded[1 + dy:1 + dy + h, 1 + dx:1 + dx + w] for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+
+
+def shifted(frame, dy, dx):
+    out = np.zeros_like(frame)
+    h, w = frame.shape[:2]
+    out[max(dy, 0):h + min(dy, 0), max(dx, 0):w + min(dx, 0)] = frame[max(-dy, 0):h + min(-dy, 0), max(-dx, 0):w + min(-dx, 0)]
+    return out
+
+
+def stabilise(frames):
+    """Generated frames are separate drawings, so static parts shimmer. Align them, take the frame closest to the per-pixel majority as the
+    still image, and keep a frame's own pixels only in solid regions of real motion: one-pixel slivers are redraw noise."""
+    first = frames[0]
+    aligned = []
+    for frame in frames:
+        offsets = [(dy, dx) for dy in range(-3, 4) for dx in range(-3, 4)]
+        best = min(offsets, key=lambda o: (shifted(frame, *o) != first).any(2).sum())
+        aligned.append(shifted(frame, *best))
+    stack = np.stack(aligned)
+    keys = stack.astype(np.int64)
+    keys = keys[..., 0] << 24 | keys[..., 1] << 16 | keys[..., 2] << 8 | keys[..., 3]
+    votes = (keys[:, None] == keys[None, :]).sum(1)
+    vote = np.take_along_axis(stack, votes.argmax(0)[None, ..., None], 0)[0]
+    # A per-pixel vote erases features each frame drew in a slightly different spot (eyes); keep a real frame.
+    still = min(aligned, key=lambda frame: (frame != vote).any(2).sum())
+    out = []
+    for frame in aligned:
+        moving = (frame != still).any(2)
+        moving = np.logical_and.reduce(neighbourhood(moving))
+        for _ in range(2):
+            moving = np.logical_or.reduce(neighbourhood(moving))
+        result = still.copy()
+        result[moving] = frame[moving]
+        alpha = result[..., 3] > 0
+        labels, count = components(alpha)
+        sizes = np.bincount(labels.ravel(), minlength=count + 1)
+        result[alpha & (sizes[labels] < 4)] = 0
+        out.append(result)
+    return out
+
+
+def cmd_stabilise(args):
+    sprite = Path(args.sprite).resolve()
+    frames = tag_frames(sprite, args.tag)
+    project = sprite.parent
+    write_frames(project, sprite, stabilise(frames), args.tag, append=True, replace=True)
+    print(f"{sprite}: stabilised '{args.tag}' ({len(frames)} frames)")
+    print(refresh_preview(sprite))
 
 
 def split_frames(alpha, count):
@@ -399,42 +553,57 @@ def split_frames(alpha, count):
 def cmd_animate(args):
     sprite = Path(args.sprite).resolve()
     project, size, palette = load_project(sprite.parent)
-    with tempfile.TemporaryDirectory() as tmp:
-        base = Path(tmp) / "base.png"
-        aseprite(str(sprite), "--frame-range", "0,0", "--save-as", str(base))
-        reference = Image.open(base).convert("RGBA")
-    height = int(np.ptp(np.where(np.asarray(reference)[..., 3] > 0)[0])) + 1
-    board = Image.new("RGBA", (1024, 1024), "white")
-    board.alpha_composite(reference.resize((1024, 1024), Image.Resampling.NEAREST))
-    buffer = Path(tempfile.mkstemp(suffix=".png")[1])
-    board.convert("RGB").save(buffer)
+    ref, height = reference_board(sprite)
     hint = f" ({args.prompt})" if args.prompt else ""
-    prompt = (f"Sprite sheet of a {args.count}-frame {args.tag} animation{hint} for this exact character. "
-              f"Same design, colours, proportions and pixel size as the reference. All {args.count} frames in one "
-              f"horizontal row, evenly spaced with clear empty space between them, never touching, same facing direction, each a full body pose. {STYLE}")
-    img = raw_image(project, f"{sprite.stem}-{args.tag}", args.source, prompt, args.quality, "1536x1024", buffer.read_bytes())
-    buffer.unlink()
+    layout = "a 2x2 grid, read left to right then top to bottom" if args.count == 4 else f"one horizontal row"
+    prompt = (f"Sprite sheet of a {args.count}-frame looping {args.tag} animation{hint} for this exact character; the last "
+              f"frame leads smoothly back into the first. Redraw the character identically in every frame: same design, "
+              f"colours, proportions, pixel size and facing as the reference, and only the moving parts change. All "
+              f"{args.count} frames in {layout}, evenly spaced with clear empty space between them, never touching, "
+              f"each a full body pose. {STYLE}")
+    canvas = "1024x1024" if args.count == 4 else "1536x1024"
+    img = raw_image(project, f"{sprite.stem}-{args.tag}", args.source, prompt, args.quality, canvas, ref)
 
     grid = detect_grid(img)
     attempt = 0
     while True:
         cells, alpha = clean(img, palette, grid, args.tolerance)
-        masks = split_frames(alpha, args.count)
+        masks = split_grid(alpha, args.count)
         boxes = [bbox(mask) for mask in masks]
         tallest = max(y1 - y0 for y0, y1, _, _ in boxes)
-        widest = max(x1 - x0 for _, _, x0, x1 in boxes)
-        factor = max(tallest / height, widest / size)
+        factor = max(tallest / height, tallest / (size - 1))
         attempt += 1
-        if attempt == 5 or (abs(factor - 1) <= 0.08 and widest <= size and tallest <= size - 1):
+        if attempt == 5 or abs(factor - 1) <= 0.08:
             break
         grid = scaled(grid, factor)
-    frames = [place(cells, mask, size) for mask in masks]
+    frames = stabilise([place(cells, mask, size) for mask in masks])
     write_frames(project, sprite, frames, args.tag, append=True)
     print(f"{sprite}: added {len(frames)} '{args.tag}' frames")
+    print(refresh_preview(sprite))
+
+
+def refresh_preview(sprite):
+    """Write preview/<name>.{png,lint,json} for the Cockpit sprite bench; the .json lands last."""
+    sprite = Path(sprite).resolve()
+    preview = sprite.parent / "preview"
+    preview.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=preview) as tmp:
+        sheet, data, lint = Path(tmp) / "sheet.png", Path(tmp) / "sheet.json", Path(tmp) / "lint.json"
+        aseprite("--ignore-layer", "spritecook lint", str(sprite), "--sheet", str(sheet), "--data", str(data),
+                 "--format", "json-array", "--list-tags", "--sheet-type", "horizontal")
+        report = aseprite(str(sprite), "--script-param", f"out={lint}", "--script", str(SHARE / "Lint.lua")).strip()
+        os.replace(sheet, preview / f"{sprite.stem}.png")
+        os.replace(lint, preview / f"{sprite.stem}.lint")
+        os.replace(data, preview / f"{sprite.stem}.json")
+    return report
+
+
+def cmd_preview(args):
+    print(refresh_preview(args.sprite))
 
 
 def cmd_lint(args):
-    print(aseprite(str(Path(args.sprite).resolve()), "--script", str(SHARE / "Lint.lua")).strip())
+    print(refresh_preview(args.sprite))
 
 
 def cmd_export(args):
@@ -461,7 +630,24 @@ def main():
     p.add_argument("prompt")
     p.add_argument("--project", default=".")
     p.add_argument("--force", action="store_true")
+    p.add_argument("--like", help="keep the character from this .aseprite and change only what the prompt says")
     p.set_defaults(run=cmd_draw)
+
+    p = sub.add_parser("scene", help="generate a full-frame background scene for sprites to stand in")
+    p.add_argument("name")
+    p.add_argument("prompt")
+    p.add_argument("--project", default=".")
+    p.add_argument("--force", action="store_true")
+    p.add_argument("--width", type=int, default=144)
+    p.add_argument("--height", type=int, default=80)
+    p.add_argument("--bottom", type=float, default=1.0, help="where the crop band ends, as a fraction of the image height")
+    p.add_argument("--like", help="raw image of another scene on the same set, used as a reference")
+    p.set_defaults(run=cmd_scene)
+
+    p = sub.add_parser("stabilise", help="remove redraw shimmer from a generated animation, in place")
+    p.add_argument("sprite")
+    p.add_argument("tag")
+    p.set_defaults(run=cmd_stabilise)
 
     p = sub.add_parser("animate", help="add animation frames generated from the sprite's first frame")
     p.add_argument("sprite")
@@ -471,12 +657,13 @@ def main():
     p.set_defaults(run=cmd_animate)
 
     for name, run, text in (("lint", cmd_lint, "report stray pixels, doubled corners and off-palette colours"),
+                            ("preview", cmd_preview, "refresh the Cockpit sprite bench preview"),
                             ("export", cmd_export, "write a sprite sheet and JSON to export/")):
         p = sub.add_parser(name, help=text)
         p.add_argument("sprite")
         p.set_defaults(run=run)
 
-    for name in ("draw", "animate"):
+    for name in ("draw", "scene", "animate"):
         p = sub.choices[name]
         p.add_argument("--from", dest="source", help="use this raw image instead of generating one")
         p.add_argument("--quality", default="medium", choices=["low", "medium", "high"])

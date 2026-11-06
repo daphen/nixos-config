@@ -5,6 +5,8 @@ let
     "spritecook.py" = ./spritecook.py;
     "build.lua" = ./build.lua;
     "Lint.lua" = ./Lint.lua;
+    "replace.lua" = ./replace.lua;
+    "AGENTS.md" = ./AGENTS.md;
   };
   cli = pkgs.writeShellScriptBin "spritecook" ''
     # Aseprite launched from the desktop has no fish environment, so read the key the way daemons.nix does.
