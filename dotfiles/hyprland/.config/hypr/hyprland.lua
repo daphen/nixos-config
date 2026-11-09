@@ -240,6 +240,8 @@ local function initial_size(ctx, target)
 		height = 1
 	elseif class == "org.quickshell" and title:match("^cockpit%-qs") then
 		width = 0.85
+	elseif title:match("^game%-preview") then
+		width = math.min(1, 980 / ctx.area.w)
 	end
 
 	return { w = width, h = height }
