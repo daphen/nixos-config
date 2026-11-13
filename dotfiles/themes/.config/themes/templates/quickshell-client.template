@@ -48,6 +48,7 @@ Singleton {
             "syntaxBoolean": "{{light.semantic.boolean}}",
             "syntaxType": "{{light.semantic.type}}",
             "syntaxFunction": "{{light.semantic.function}}",
+            "syntaxOperator": "{{light.semantic.operator}}",
             "diffAddedBg": "{{light.semantic.highlight_succ}}",
             "diffRemovedBg": "{{light.semantic.highlight_err}}",
             "cursor":      "{{light.semantic.cursor}}",
@@ -89,6 +90,7 @@ Singleton {
             "syntaxBoolean": "{{dark.semantic.boolean}}",
             "syntaxType": "{{dark.semantic.type}}",
             "syntaxFunction": "{{dark.semantic.function}}",
+            "syntaxOperator": "{{dark.semantic.operator}}",
             "diffAddedBg": "{{dark.semantic.highlight_succ}}",
             "diffRemovedBg": "{{dark.semantic.highlight_err}}",
             "cursor":      "{{dark.semantic.cursor}}",
@@ -133,6 +135,7 @@ Singleton {
     readonly property color syntaxBoolean:  palettes[mode].syntaxBoolean
     readonly property color syntaxType:     palettes[mode].syntaxType
     readonly property color syntaxFunction: palettes[mode].syntaxFunction
+    readonly property color syntaxOperator: palettes[mode].syntaxOperator
     readonly property color diffAddedBg:    palettes[mode].diffAddedBg
     readonly property color diffRemovedBg:  palettes[mode].diffRemovedBg
     readonly property color cursor:       palettes[mode].cursor

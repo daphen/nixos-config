@@ -48,6 +48,7 @@ Singleton {
             "syntaxBoolean": "#2a618d",
             "syntaxType": "#2a618d",
             "syntaxFunction": "#e16511",
+            "syntaxOperator": "#243560",
             "diffAddedBg": "#DDF4FF",
             "diffRemovedBg": "#FFF1E5",
             "cursor":      "#FF570D",
@@ -89,6 +90,7 @@ Singleton {
             "syntaxBoolean": "#8A92A7",
             "syntaxType": "#8A9AA6",
             "syntaxFunction": "#CCD5E4",
+            "syntaxOperator": "#ff8a31",
             "diffAddedBg": "#2B3D30",
             "diffRemovedBg": "#3A2F25",
             "cursor":      "#FF570D",
@@ -133,6 +135,7 @@ Singleton {
     readonly property color syntaxBoolean:  palettes[mode].syntaxBoolean
     readonly property color syntaxType:     palettes[mode].syntaxType
     readonly property color syntaxFunction: palettes[mode].syntaxFunction
+    readonly property color syntaxOperator: palettes[mode].syntaxOperator
     readonly property color diffAddedBg:    palettes[mode].diffAddedBg
     readonly property color diffRemovedBg:  palettes[mode].diffRemovedBg
     readonly property color cursor:       palettes[mode].cursor
