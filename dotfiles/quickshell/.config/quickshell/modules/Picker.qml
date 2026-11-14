@@ -577,6 +577,7 @@ Item {
 
             ListView {
                 id: list
+                Lib.ScrollFeel { flick: list }
                 anchors.fill: parent
                 clip: true
                 model: root.filtered
@@ -984,6 +985,8 @@ Item {
                         mipmap: true
                     }
                     Flickable {
+                        id: previewFlick
+                        Lib.ScrollFeel { flick: previewFlick }
                         visible: root.previewText.length > 0
                         anchors.fill: parent
                         anchors.margins: 14

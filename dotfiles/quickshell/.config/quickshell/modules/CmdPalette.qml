@@ -1507,6 +1507,7 @@ PanelWindow {
             // ── list ─────────────────────────────────────────────────
             ListView {
                 id: list
+                Lib.ScrollFeel { flick: list }
                 width: parent.width
                 height: parent.height - inputWrap.height - filmWrap.height - chinWrap.height
                     - (root.showQuickmarkDock ? 85 : 0)

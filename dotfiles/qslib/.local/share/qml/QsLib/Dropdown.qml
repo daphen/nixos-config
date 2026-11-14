@@ -109,6 +109,7 @@ Item {
 
         ListView {
             id: list
+            ScrollFeel { flick: list }
             width: parent.width
             // concentric with the panel: highlight sits 8px in on every side
             // (list margin 5 + row inset 3), radius 10 = panel radius 18 − 8

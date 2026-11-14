@@ -148,16 +148,7 @@ Item {
                 model: root.filtered
                 currentIndex: root.selectedIndex
 
-                WheelHandler {
-                    target: null
-                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                    onWheel: event => {
-                        const delta = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y / 2
-                        strip.contentX -= delta
-                        strip.returnToBounds()
-                        event.accepted = true
-                    }
-                }
+                Lib.ScrollFeel { flick: strip; verticalWheelScrollsSideways: true }
 
                 delegate: Item {
                     id: tile
