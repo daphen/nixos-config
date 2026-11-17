@@ -981,7 +981,7 @@ local function set_action_hl()
 	vim.api.nvim_set_hl(0, "PlanActionCreate", { fg = vivid(pal.green or (dark and "#97B5A6" or "#5E7270"), dark) })
 	vim.api.nvim_set_hl(0, "PlanActionModify", { fg = pal.orange or "#FF570D" })
 	vim.api.nvim_set_hl(0, "PlanActionTouch", { fg = pal.yellow or "#ff8a31" })
-	vim.api.nvim_set_hl(0, "PlanActionDrift", { fg = pal.red or "#FF7B72" })
+	vim.api.nvim_set_hl(0, "PlanActionDrift", { fg = pal.red or "#D9534F" })
 end
 
 

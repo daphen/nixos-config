@@ -77,7 +77,7 @@ Singleton {
             "fg_secondary":"#C3C8C6",
             "fg_muted":    "#707B84",
             "fg_subtle":   "#707B84",
-            "red":         "#FF7B72",
+            "red":         "#D9534F",
             "orange":      "#FF570D",
             "yellow":      "#ff8a31",
             "green":       "#97B5A6",

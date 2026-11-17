@@ -34,7 +34,7 @@ local c = {
   fg_subtle = "#707B84",
 
   -- Accent colors
-  red = "#FF7B72",
+  red = "#D9534F",
   orange = "#FF570D",
   yellow = "#ff8a31",
   green = "#97B5A6",
@@ -45,7 +45,7 @@ local c = {
   pink = "#8A92A7",
 
   -- Semantic colors
-  error = "#FF7B72",
+  error = "#D9534F",
   warning = "#FF570D",
   success = "#97B5A6",
   info = "#CCD5E4",
@@ -56,7 +56,7 @@ local c = {
   string = "#CCD5E4",
   ["function"] = "#CCD5E4",
   type = "#8A9AA6",
-  number = "#FF7B72",
+  number = "#D9534F",
   boolean = "#8A92A7",
   variable = "#EDEDED",
   property = "#8A9AA6",

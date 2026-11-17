@@ -25,7 +25,7 @@
 		</dict>
 		<dict>
 			<key>scope</key><string>constant.numeric</string>
-			<key>settings</key><dict><key>foreground</key><string>#FF7B72</string></dict>
+			<key>settings</key><dict><key>foreground</key><string>#D9534F</string></dict>
 		</dict>
 		<dict>
 			<key>scope</key><string>constant.language, constant.character</string>
@@ -65,7 +65,7 @@
 		</dict>
 		<dict>
 			<key>scope</key><string>invalid, message.error</string>
-			<key>settings</key><dict><key>foreground</key><string>#FF7B72</string></dict>
+			<key>settings</key><dict><key>foreground</key><string>#D9534F</string></dict>
 		</dict>
 		<dict>
 			<key>scope</key><string>markup.heading</string>

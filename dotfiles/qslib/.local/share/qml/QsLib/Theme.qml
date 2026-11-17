@@ -77,7 +77,7 @@ Singleton {
             "fg":          "#EDEDED",
             "fg_secondary":"#C3C8C6",
             "fg_muted":    "#707B84",
-            "red":         "#FF7B72",
+            "red":         "#D9534F",
             "orange":      "#FF570D",
             "yellow":      "#ff8a31",
             "green":       "#97B5A6",
@@ -86,7 +86,7 @@ Singleton {
             "syntaxKeyword": "#97B5A6",
             "syntaxString": "#CCD5E4",
             "syntaxComment": "#707B84",
-            "syntaxNumber": "#FF7B72",
+            "syntaxNumber": "#D9534F",
             "syntaxBoolean": "#8A92A7",
             "syntaxType": "#8A9AA6",
             "syntaxFunction": "#CCD5E4",
@@ -185,7 +185,7 @@ Singleton {
 
     readonly property var avatarColors: [
         "#FF570D", "#97B5A6", "#7DD3FC", "#8A92A7",
-        "#ff8a31", "#CCD5E4", "#FF7B72", "#8A9AA6"
+        "#ff8a31", "#CCD5E4", "#D9534F", "#8A9AA6"
     ]
 
     // Follow the system light/dark toggle (same file the bar watches).
