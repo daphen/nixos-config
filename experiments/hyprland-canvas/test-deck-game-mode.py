@@ -54,6 +54,8 @@ if name == 'hyprctl':
                     'title': 'Steam Big Picture Mode', 'workspace': state['workspace'].copy(),
                     'mapped': True, 'hidden': False, 'floating': False, 'pinned': False,
                     'fullscreen': 0, 'fullscreenClient': 0, 'tags': []})
+        elif 'steam://close/bigpicture' in command:
+            state['clients'] = [item for item in state['clients'] if item['title'] != 'Steam Big Picture Mode']
         elif 'hl.dsp.focus({window=' in command:
             if state.get('fail') == 'focus':
                 print('error: focus rejected')
@@ -260,7 +262,7 @@ class ModeCommandTest(unittest.TestCase):
         self.assertEqual(state["workspace"]["name"], "1")
         self.assertEqual(state["active"], "0x1")
         self.assertEqual(state["profile"], self.profile("canvas"))
-        self.assertNotIn("deck-game-mode", game := next(c for c in state["clients"] if c["address"] == "0x99")["tags"])
+        self.assertFalse(any(c["title"] == "Steam Big Picture Mode" for c in state["clients"]))
 
     def test_enter_orders_fullscreen_move_focus_and_camera(self):
         self.run_mode("enter")
@@ -320,7 +322,7 @@ class ModeCommandTest(unittest.TestCase):
         self.assertEqual(self.state()["active"], "0x1")
         self.assertEqual(self.state()["profile"], self.profile("canvas"))
 
-    def test_return_and_reenter_preserve_big_picture_and_running_game(self):
+    def test_return_closes_big_picture_and_reenter_keeps_running_game(self):
         self.add_game(active=False)
         self.add_game(address="0x88", class_name="steam_app_440", title="Game", active=False)
         self.run_mode("enter")
@@ -328,11 +330,21 @@ class ModeCommandTest(unittest.TestCase):
         self.run_mode("return")
         self.assertEqual(self.state()["active"], "0x1")
         self.assertEqual(self.state()["profile"], self.profile("canvas"))
+        self.assertNotIn("0x99", [client["address"] for client in self.state()["clients"]])
         self.run_mode("tap")
         state = self.state()
         self.assertEqual(state["active"], "0x88")
         self.assertEqual(state["profile"], self.profile("gaming"))
+        del before["0x99"]
         self.assertEqual({client["address"]: client["pid"] for client in state["clients"]}, before)
+
+    def test_reenter_after_return_reopens_big_picture(self):
+        self.run_mode("enter")
+        self.run_mode("return")
+        self.assertIsNone(next((c for c in self.state()["clients"] if c["address"] == "0x99"), None))
+        self.run_mode("enter")
+        self.assertEqual(self.state()["active"], "0x99")
+        self.assertEqual(self.state()["profile"], self.profile("gaming"))
         self.assertFalse(any(call[0] == "pkill" and call[-1] == "steam" for call in self.calls()))
 
     def test_gaming_tap_does_not_duplicate_native_guide(self):

@@ -214,6 +214,10 @@ case ${1:-enter} in
         restore_floats
         [[ -z $destination ]] || focus_window "$destination"
         rm -f -- "$return_target"
+        # An open Big Picture reclaims Steam's controller layout (screensaver wake, stray focus); entering reopens it.
+        if jq -e 'any(.[]; .title == "Steam Big Picture Mode")' <<< "$clients" >/dev/null; then
+            dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://close/bigpicture\")"
+        fi
         exit
         ;;
     enter) pkill -USR1 -x wvkbd-mobintl || true ;;
