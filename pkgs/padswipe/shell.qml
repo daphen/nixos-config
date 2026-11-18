@@ -9,6 +9,7 @@ ShellRoot {
     property string typed: ""
     property bool drawing: false
     property var trail: []
+    property real trailOpacity: 1
         property var dots: ({ L: null, R: null })
     readonly property var rows: ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
     readonly property var off: [0, 0.25, 0.75]
@@ -33,7 +34,7 @@ ShellRoot {
                     root.trail.push([e.x, e.y, e.new, e.side]); root.trailChanged()
                 } else if (e.type === "draw") {
                     root.drawing = e.on
-                    if (e.on) root.trail = []
+                    if (e.on) { trailFade.stop(); root.trail = []; root.trailOpacity = 1 } else trailFade.start()
                 } else if (e.type === "text") {
                     root.typed = e.text
                 } else if (e.type === "mode") {
@@ -46,6 +47,8 @@ ShellRoot {
         stderr: SplitParser { onRead: line => console.error(line) }
         onExited: Qt.quit()
     }
+
+    NumberAnimation { id: trailFade; target: root; property: "trailOpacity"; to: 0; duration: 220; easing.type: Easing.OutCubic }
 
     PanelWindow {
         anchors { left: true; right: true; bottom: true }
@@ -132,18 +135,27 @@ ShellRoot {
                     id: trailCanvas
                     anchors.fill: parent
                     z: 5
+                    opacity: root.trailOpacity
                     Connections { target: root; function onTrailChanged() { trailCanvas.requestPaint() } }
                     onPaint: {
                         const g = getContext("2d"); g.reset()
                         if (!root.trail.length) return
-                        g.strokeStyle = root.drawing ? "#e8592a" : "#66e8592a"; g.lineWidth = 6; g.lineCap = "round"; g.lineJoin = "round"
+                        g.strokeStyle = "#e8592a"; g.lineWidth = 6; g.lineCap = "round"; g.lineJoin = "round"
                         const a = root.region[pad.modelData][0]
-                        const prev = {}
+                        const lines = []
                         root.trail.forEach(p => {
-                            const px = (p[0] - a) * pad.unit, py = p[1] * pad.unit, q = prev[p[3]]
-                            if (q && !p[2]) { g.beginPath(); g.moveTo(q[0], q[1]); g.lineTo(px, py); g.stroke() }
-                            prev[p[3]] = [px, py]
+                            if (p[3] !== pad.modelData) return
+                            if (p[2] || !lines.length) lines.push([])
+                            lines[lines.length - 1].push([(p[0] - a) * pad.unit, p[1] * pad.unit])
                         })
+                        g.beginPath()
+                        lines.forEach(l => {
+                            g.moveTo(l[0][0], l[0][1])
+                            for (let i = 1; i < l.length - 1; i++)
+                                g.quadraticCurveTo(l[i][0], l[i][1], (l[i][0] + l[i + 1][0]) / 2, (l[i][1] + l[i + 1][1]) / 2)
+                            const z = l[l.length - 1]; g.lineTo(z[0], z[1])
+                        })
+                        g.stroke()
                     }
                 }
                 Rectangle {
