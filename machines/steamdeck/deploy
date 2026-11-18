@@ -53,7 +53,7 @@ mkdir -p "\$backup"
 git diff --binary HEAD > "\$backup/tracked.patch"
 git status --porcelain > "\$backup/status.txt"
 git ls-files --others --exclude-standard -z | tar --null -T - -czf "\$backup/untracked.tar.gz"
-git checkout --force --detach $rev
+git checkout --force -B main $rev
 printf 'deploy: Deck checkout at %s, previous changes saved in %s\\n' "\$(git rev-parse --short HEAD)" "\$backup"
 EOF
 
