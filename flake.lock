@@ -64,11 +64,11 @@
         "rio": "rio"
       },
       "locked": {
-        "lastModified": 1795040581,
-        "narHash": "sha256-aTHQxe1zVAKgtZEYOfAQkSg0Om8yW2CLwOgN4htfCx8=",
+        "lastModified": 1795043738,
+        "narHash": "sha256-vuSbRwBfDgAh83TF6wzriW5NC1/dyr6QGteEtm4A2+o=",
         "ref": "main",
-        "rev": "b77e564cf0ea8e92ac7eb252d78a1b2a70988256",
-        "revCount": 694,
+        "rev": "e860fb59ae9272e898960e491abffc97657d3b73",
+        "revCount": 696,
         "type": "git",
         "url": "ssh://git@github.com/daphen/ai-cockpit"
       },
