@@ -31,7 +31,7 @@ Item {
         property bool monitorsOnly: false
         running: true
         command: monitorsOnly ? ["hyprctl", "-j", "monitors"]
-            : ["sh", "-c", "printf '{\"clients\":'; hyprctl -j clients; printf ',\"monitors\":'; hyprctl -j monitors; printf ',\"workspaces\":'; hyprctl -j workspaces; printf '}'"]
+            : ["sh", "-c", "printf '{\"clients\":'; hyprctl -j clients; printf ',\"monitors\":'; hyprctl -j monitors; printf ',\"workspaces\":'; hyprctl -j workspaces; printf ',\"active\":'; hyprctl -j activewindow; printf '}'"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -358,9 +358,10 @@ Item {
             for (const monitor of (canvasSnapshot.monitors || [])) monitors[monitor.id] = monitor
             for (const client of (canvasSnapshot.clients || [])) {
                 const monitor = monitors[client.monitor]
-                // focusHistoryID 0 survives focus being dropped onto an empty stretch of canvas.
+                // focusHistoryID 0 survives focus being dropped onto an empty stretch of canvas;
+                // Quickshell's activeToplevel keeps the last window then, so trust hyprctl.
                 if (monitor && monitor.name === outputName && Number(client.focusHistoryID) === 0)
-                    return !!Hyprland.activeToplevel && (Number(client.fullscreen || 0) === 2
+                    return (canvasSnapshot.active || {}).address === client.address && (Number(client.fullscreen || 0) === 2
                         || Number(client.fullscreenClient || 0) === 2)
             }
             return false
