@@ -129,11 +129,10 @@ ShellRoot {
                 }
                 clip: true
                 Canvas {
+                    id: trailCanvas
                     anchors.fill: parent
                     z: 5
-                    property var pts: root.trail
-                    onPtsChanged: requestPaint()
-                    Connections { target: root; function onTrailChanged() { requestPaint() } }
+                    Connections { target: root; function onTrailChanged() { trailCanvas.requestPaint() } }
                     onPaint: {
                         const g = getContext("2d"); g.reset()
                         if (!root.trail.length) return

@@ -79,12 +79,23 @@ pen = {"L": False, "R": False}
 tip = {"L": None, "R": None}       # latest position of each held pen, added on lift only if it reached a new key
 strokes = []            # [side, [(x, y, t), ...]] in the order the pens went down
 t0 = None; idle_since = None
+shown = ""              # letters of this word already typed by instant taps; a following swipe takes them back
 last = {"text": None, "alts": [], "alt": 0}
 buttons = None
 
+def is_tap(stroke): return mode["sym"] or all(math.dist(stroke[1][0][:2], p[:2]) < TAP_KEYS for p in stroke[1])
+
+def show_taps():
+    # Type taps on release instead of after the word gap; only once every pen is up, so letters keep pen-down order.
+    global shown
+    if pen["L"] or pen["R"] or not all(map(is_tap, strokes)): return
+    letters = "".join(nearest(s[1][0], s[0]) for s in strokes)
+    if len(letters) > len(shown):
+        wtype(cased(letters)[len(shown):]); shown = letters
+
 def finish():
-    global strokes, t0
-    taps = mode["sym"] or all(math.dist(s[1][0][:2], p[:2]) < TAP_KEYS for s in strokes for p in s[1])
+    global strokes, t0, shown
+    taps = all(map(is_tap, strokes))
     visits = []         # each pen's path as key visits, merged by arrival time, so two moving pens do not zigzag point by point
     for _, pts in strokes:
         for i, p in enumerate(pts):
@@ -93,19 +104,20 @@ def finish():
     if taps:
         text = "".join(nearest(s[1][0], s[0]) for s in strokes); alts = [text]
     else:
+        for _ in shown: wtype("-k", "BackSpace")
         dec.stdin.write(" ".join(f"{x:.3f} {y:.3f} {t:.0f}" for x, y, t in trace) + "\n"); dec.stdin.flush()
         alts = [w.rsplit(":", 1)[0] for w in dec.stdout.readline().split()]
         text = alts[0] + " " if alts else ""
         if text and last["text"] and not last["text"].endswith(" "): text = " " + text
     if text:
         text = cased(text); alts = [cased(a) for a in alts]
-        wtype(text)
+        if not taps: wtype(text)
         last.update(text=text, alts=alts, alt=0)
         if mode["shift"] == "once": mode["shift"] = "off"; emit_mode()
     emit(type="word", words=alts)
     log.write(json.dumps({"at": time.strftime("%H:%M:%S"), "taps": taps, "words": alts,
                           "strokes": [[s[0], s[1]] for s in strokes]}) + "\n")
-    strokes = []; t0 = None
+    strokes = []; t0 = None; shown = ""
 
 emit(type="ready"); emit_mode()
 start = time.monotonic()
@@ -165,6 +177,7 @@ while True:
             elif was and tip[side]:
                 if nearest(tip[side]) != nearest(stroke[1][-1]): stroke[1].append(tip[side])
                 tip[side] = None
+                show_taps()
     if strokes:
         if pen["L"] or pen["R"]:
             idle_since = None
