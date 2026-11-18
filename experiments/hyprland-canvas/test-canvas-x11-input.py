@@ -469,6 +469,36 @@ def main(binary, label):
         )
         time.sleep(0.6)
         check("floating", 400, 300)
+        if appenv["GDK_BACKEND"] == "x11":
+            c.CDLL(GTK)  # brings libX11 into the process so the soname resolves
+            x11 = c.CDLL("libX11.so.6")
+            x11.XOpenDisplay.restype = c.c_void_p
+            x11.XOpenDisplay.argtypes = [c.c_char_p]
+            x11.XGetInputFocus.argtypes = [c.c_void_p, c.POINTER(c.c_ulong), c.POINTER(c.c_int)]
+            x11.XCloseDisplay.argtypes = [c.c_void_p]
+            connection = x11.XOpenDisplay(b":0")
+            assert connection, "isolated X11 connection"
+
+            def x_focus():
+                focus, revert = c.c_ulong(), c.c_int()
+                x11.XGetInputFocus(connection, c.byref(focus), c.byref(revert))
+                return focus.value
+
+            try:
+                evaluate('hl.dispatch(hl.dsp.focus({window="address:' + window["address"] + '"}))')
+                time.sleep(0.3)
+                xid = x_focus()
+                assert xid > 1, xid
+                # Game Mode's return path: the camera goes home and focus drops to nothing.
+                evaluate('hl.dispatch(hl.dsp.layout("camera-home 20000 20000"))')
+                time.sleep(0.3)
+                assert x_focus() == 0, ("X11 focus kept after dropping focus", x_focus())
+                evaluate('hl.dispatch(hl.dsp.focus({window="address:' + window["address"] + '"}))')
+                time.sleep(0.3)
+                assert x_focus() == xid, ("X11 refocus after empty desktop", x_focus())
+                results.append({"case": "release-x11-focus-on-empty-desktop", "pass": True})
+            finally:
+                x11.XCloseDisplay(connection)
         result = {
             "binary_sha256": hashlib.sha256(
                 pathlib.Path(binary).read_bytes()

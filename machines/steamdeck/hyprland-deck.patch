@@ -142,3 +142,15 @@ index 463426a..f87f72d 100644
              g_pHyprRenderer->draw(CRectPassElement::SRectData{.box   = {labelPosition - Vector2D{14.0, 10.0} * unit, labelTexture->m_size + Vector2D{28.0, 20.0} * unit},
                                                                .color = CHyprColor{0.025F, 0.03F, 0.045F, *panelOpacity * reveal},
                                                                .round = sc<int>(8 * unit)},
+--- a/src/xwayland/XWM.cpp
++++ b/src/xwayland/XWM.cpp
+@@ -1089,7 +1089,8 @@
+     if ((surf == m_focusedSurface && activate) || (surf && surf->m_overrideRedirect))
+         return;
+ 
+-    if (!surf || (!activate && Desktop::focusState()->window() && !Desktop::focusState()->window()->backend().isX11())) {
++    // Dropping focus to nothing must release X11 focus too, or the last X window keeps it.
++    if (!surf || (!activate && (!Desktop::focusState()->window() || !Desktop::focusState()->window()->backend().isX11()))) {
+         setActiveWindow(XCB_WINDOW_NONE);
+         focusWindow(nullptr);
+     } else {
