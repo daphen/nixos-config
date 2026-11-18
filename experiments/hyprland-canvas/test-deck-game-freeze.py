@@ -82,6 +82,8 @@ elif args == ['-j', 'clients']:
     print(json.dumps(state['clients']))
 elif args == ['-j', 'activewindow']:
     print(json.dumps(client(state['active'])))
+elif args == ['-j', 'monitors']:
+    print(json.dumps([{'focused': True, 'canvasCamera': '0.0,0.0,1.0000,0'}]))
 elif args[:2] == ['-j', 'getoption']:
     print(json.dumps({'int': 1}))
 elif args[:1] == ['eval']:

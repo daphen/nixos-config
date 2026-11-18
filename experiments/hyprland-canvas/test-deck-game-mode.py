@@ -35,6 +35,8 @@ if name == 'hyprctl':
         print(json.dumps(state['clients']))
     elif args == ['-j', 'activewindow']:
         print(json.dumps(active()))
+    elif args == ['-j', 'monitors']:
+        print(json.dumps([{'focused': True, 'canvasCamera': '0.0,0.0,1.0000,0'}]))
     elif args[:2] == ['-j', 'getoption']:
         print(json.dumps({'int': 1}))
     elif args[:1] == ['eval']:
@@ -328,7 +330,7 @@ class ModeCommandTest(unittest.TestCase):
         self.assertEqual(self.state()["profile"], self.profile("canvas"))
         self.run_mode("tap")
         state = self.state()
-        self.assertEqual(state["active"], "0x99")
+        self.assertEqual(state["active"], "0x88")
         self.assertEqual(state["profile"], self.profile("gaming"))
         self.assertEqual({client["address"]: client["pid"] for client in state["clients"]}, before)
         self.assertFalse(any(call[0] == "pkill" and call[-1] == "steam" for call in self.calls()))

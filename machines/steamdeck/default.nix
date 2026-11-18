@@ -290,6 +290,10 @@ in
     desktopSession = "hyprland-canvas";
   };
   programs.steam.extest.enable = true;
+  # The current Steam client is 64-bit; the module still selects the i686 input bridge.
+  programs.steam.package = pkgs.steam.override {
+    extraEnv.LD_PRELOAD = "${pkgs.extest}/lib/libextest.so";
+  };
   services.displayManager = {
     defaultSession = lib.mkForce "hyprland-canvas";
     sessionPackages = [ canvasSession ];
