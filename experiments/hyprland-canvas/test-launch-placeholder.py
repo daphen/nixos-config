@@ -71,12 +71,25 @@ def main():
 
         launch(['kitty', '-T', 'Editor', '--config', 'NONE', '-o', 'background=#334455'], app, 'editor.log')
         r.wait(lambda: 'Editor' in clients(), [compositor])
-        shell = d / 'shell'; shell.mkdir(exist_ok=True)
+        shell = d / 'config' / 'quickshell'; shell.mkdir(parents=True, exist_ok=True)
         (shell / 'LaunchPlaceholder.qml').write_bytes((REPO / 'dotfiles/quickshell/.config/quickshell/modules/LaunchPlaceholder.qml').read_bytes())
         (shell / 'shell.qml').write_text('import Quickshell\nShellRoot { LaunchPlaceholder {} }\n')
-        launch(['qs', '-p', str(shell)], app, 'qs.log')
+        launch(['qs'], app, 'qs.log')
         r.wait(lambda: 'Configuration Loaded' in (d / 'qs.log').read_text(), [compositor])
-        subprocess.run(['qs', 'ipc', '-p', str(shell), 'call', '--', 'launch', 'show', 'desktop-launch slack'], env=app, check=True, timeout=10)
+        bin_dir = d / 'bin'; bin_dir.mkdir(exist_ok=True)
+        app['PATH'] = f"{bin_dir}:{app['PATH']}"
+        desktop_launch = str(REPO / 'dotfiles/hyprland/.config/hypr/scripts/desktop-launch')
+        fake = bin_dir / 'slack'
+        fake.write_text('#!/bin/sh\nsleep 0.3\n'); fake.chmod(0o755)
+        subprocess.run([desktop_launch, 'slack'], env=app, check=True, timeout=10)
+        seen = False
+        for _ in range(20):
+            seen = seen or 'qs-launch · Slack' in clients(); time.sleep(.05)
+        assert 'qs-launch · Slack' not in clients(), 'a launch that exits without a window left its placeholder'
+        print('PASS focus-only launch dropped its placeholder (briefly shown: %s)' % seen)
+        fake.write_text('#!/bin/sh\nread _ < /proc/self/fd/0 2>/dev/null; sleep 30\n'); fake.chmod(0o755)
+        slow = subprocess.Popen([desktop_launch, 'slack'], env=app, stdin=subprocess.PIPE)
+        processes.append(slow)
         placeholder = r.wait(lambda: clients().get('qs-launch · Slack'), [compositor])
         assert not placeholder['floating'], placeholder
         assert ctl('dispatch hl.dsp.focus({window=' + json.dumps('address:' + placeholder['address']) + '})').strip() == 'ok'

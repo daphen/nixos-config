@@ -13,13 +13,12 @@ Scope {
         "launch-discord-client": "Discord", "dsqrd-client": "Discord",
         "launch-mail-client": "Mail", "mlqs-client": "Mail",
         "opqs-client": "Passwords",
-        "browser-work-new": "Helium",
+        "browser-personal": "Helium", "browser-work": "Helium", "browser-work-new": "Helium",
         "chromium-launch": "Chromium", "helium": "Helium",
         "deck-cockpit": "Cockpit", "cockpit-qs": "Cockpit", "cockpit-new": "Cockpit",
         "spotify": "Spotify", "obsidian": "Obsidian", "libreoffice": "LibreOffice"
     })
     property var launches: []
-    property int serial: 0
 
     function nameFor(command) {
         const words = command.split(/\s+/).filter(w => w !== "")
@@ -27,14 +26,16 @@ Scope {
         return words.length ? names[words[0].split("/").pop()] || "" : ""
     }
     function drop(key) { launches = launches.filter(l => l.key !== key) }
+    signal finished(string key)
 
     IpcHandler {
         target: "launch"
-        function show(command: string) {
+        function show(key: string, command: string) {
             const name = root.nameFor(command)
             if (!name || root.launches.some(l => l.title === name)) return
-            root.launches = root.launches.concat([{ key: ++root.serial, title: name }])
+            root.launches = root.launches.concat([{ key: key, title: name }])
         }
+        function done(key: string) { root.finished(key) }
     }
 
     Instantiator {
@@ -56,11 +57,18 @@ Scope {
                     if (!event || event.name !== "openwindow" || win.done) return
                     if (String(event.data).split(",").slice(3).join(",").startsWith("qs-launch")) return
                     if (root.launches[0] && root.launches[0].key !== win.modelData.key) return
-                    win.done = true
-                    if (win.shown) fade.start(); else root.drop(win.modelData.key)
+                    win.finish()
                 }
             }
             // Apps that open within a blink never show a placeholder.
+            function finish() {
+                win.done = true
+                if (win.shown) fade.start(); else root.drop(win.modelData.key)
+            }
+            Connections {
+                target: root
+                function onFinished(key) { if (key === win.modelData.key && !win.done) win.finish() }
+            }
             Timer { interval: 120; running: true; onTriggered: if (!win.done) win.shown = true }
             Timer { interval: 15000; running: true; onTriggered: root.drop(win.modelData.key) }
             NumberAnimation { id: fade; target: surface; property: "opacity"; to: 0; duration: 220; easing.type: Easing.OutCubic

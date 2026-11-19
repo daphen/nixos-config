@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 (( $# )) || { echo 'Usage: desktop-launch <command> [args...]' >&2; exit 2; }
-qs ipc call -- launch show "$*" >/dev/null 2>&1 &
+# The bar's launch placeholder lives only while the command runs: launch-or-focus commands exit without a new window.
+if [[ -z ${DESKTOP_LAUNCH_TRACKED:-} ]]; then
+    qs ipc call -- launch show "$$" "$*" >/dev/null 2>&1 & shown=$!
+    rc=0; DESKTOP_LAUNCH_TRACKED=1 "$0" "$@" || rc=$?
+    wait "$shown" || true
+    qs ipc call -- launch done "$$" >/dev/null 2>&1 || true
+    exit "$rc"
+fi
+unset DESKTOP_LAUNCH_TRACKED
 if [[ ${HYPR_CANVAS_PROFILE:-} != deck ]]; then
     exec "$@"
 fi
@@ -28,7 +36,7 @@ state=$(systemctl --user show "$slice" -p FreezerState --value 2>/dev/null) || s
 if [[ $slice == deck-work.slice && ( $state == frozen || $state == frozen-by-parent ) ]]; then
     flock -u 8
     sleep 0.1
-    exec "$0" "$@"
+    DESKTOP_LAUNCH_TRACKED=1 exec "$0" "$@"
 fi
 unit="desktop-launch-$BASHPID-$RANDOM.scope"
 (exec 8>&-; exec systemd-run --user --scope --collect --quiet --unit="$unit" --slice="$slice" -- "$@") &

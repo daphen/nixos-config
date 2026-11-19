@@ -12,7 +12,6 @@ source "$(dirname "$0")/browser-config.sh"
     if [[ -n "$target" ]]; then
         exec "$(dirname -- "$0")/hypr-dispatch" focuswindow "address:$target"
     fi
-    qs ipc call -- launch show helium >/dev/null 2>&1 &
     exec "$BROWSER_BIN" \
         "${BROWSER_FLAGS[@]}" \
         --user-data-dir="$BROWSER_USER_DATA_PERSONAL" \
