@@ -78,5 +78,6 @@ ShellRoot {
 
     CmdPalette {}
     WpmBadge {}
+    LaunchPlaceholder {}
     DictationOverlay {}
 }

@@ -33,6 +33,7 @@ local function select_workspace(workspace)
 	state = states[key]
 	state.windows = state.windows or {}
 	state.groups = state.groups or {}
+	state.replaced = state.replaced or {}
 	return true
 end
 
@@ -50,6 +51,9 @@ local function forget(saved, id)
 	end
 	if saved.windows then
 		saved.windows[id] = nil
+	end
+	if saved.replaced then
+		saved.replaced[id] = nil
 	end
 end
 
@@ -90,6 +94,11 @@ local function is_game_window(window)
 	end
 	local class = (window.class or ""):lower()
 	return class == "steam" or class:match("^steam_app_%d+$") ~= nil or window_has_tag(window, "deck-game")
+end
+
+-- desktop-launch's placeholder; the app's first tiled window takes over its slot and size.
+local function is_launch_placeholder(window)
+	return window ~= nil and (window.title or ""):match("^qs%-launch") ~= nil
 end
 
 local function target_id(target)
@@ -318,7 +327,23 @@ local function sync(ctx)
 	local fallback_row = shortest_row()
 	for _, target in ipairs(ctx.targets) do
 		local id = target_id(target)
-		if present[id] then
+		local slot_row, slot_column, slot_id
+		if present[id] and not state.replaced[id] and not is_launch_placeholder(target.window) and not is_game_window(target.window) then
+			for row, items in ipairs(state.rows) do
+				for column, item in ipairs(items) do
+					local candidate = targets[item]
+					if not slot_id and candidate and is_launch_placeholder(candidate.window) then
+						slot_row, slot_column, slot_id = row, column, item
+					end
+				end
+			end
+		end
+		if slot_id then
+			state.rows[slot_row][slot_column] = id
+			state.sizes[id] = state.sizes[slot_id]
+			state.replaced[slot_id] = true
+			present[id] = nil
+		elseif present[id] and not state.replaced[id] then
 			local game = is_game_window(target.window)
 			local normal_focused_row = focused_row and (not DECK_MODE or focused_row <= ROW_COUNT) and focused_row
 				or nil

@@ -29,3 +29,4 @@ LightKey LightKey.qml
 PillSurface PillSurface.qml
 WellSurface WellSurface.qml
 ContextMeter ContextMeter.qml
+LaunchCard LaunchCard.qml

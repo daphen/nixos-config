@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 (( $# )) || { echo 'Usage: desktop-launch <command> [args...]' >&2; exit 2; }
+qs ipc call -- launch show "$*" >/dev/null 2>&1 &
 if [[ ${HYPR_CANVAS_PROFILE:-} != deck ]]; then
     exec "$@"
 fi

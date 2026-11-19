@@ -66,4 +66,5 @@ NotificationIsland 1.0 NotificationIsland.qml
 singleton CockpitState 1.0 CockpitState.qml
 CockpitPicker 1.0 CockpitPicker.qml
 WpmBadge 1.0 WpmBadge.qml
+LaunchPlaceholder 1.0 LaunchPlaceholder.qml
 Todos 1.0 Todos.qml
