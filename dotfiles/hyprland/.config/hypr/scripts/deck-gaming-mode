@@ -216,7 +216,7 @@ case ${1:-enter} in
         rm -f -- "$return_target"
         # An open Big Picture reclaims Steam's controller layout (screensaver wake, stray focus); entering reopens it.
         if jq -e 'any(.[]; .title == "Steam Big Picture Mode")' <<< "$clients" >/dev/null; then
-            dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://close/bigpicture\")"
+            dispatch "hl.dsp.exec_cmd(\"env DESKTOP_LAUNCH_NO_PLACEHOLDER=1 $HOME/.config/hypr/scripts/desktop-launch steam steam://close/bigpicture\")"
         fi
         exit
         ;;
@@ -237,7 +237,7 @@ destination=$(desktop_target) || destination=""
 steam=$(jq -r "$game [.[] | select(game and .mapped and (.hidden | not) and (.floating | not) and (.class | ascii_downcase) != \"steam\")] | sort_by(.focusHistoryID) | .[0].address // empty" <<< "$clients")
 if ! profile gaming; then profile canvas; rm -f -- "$return_target"; exit 1; fi
 # Steam's lifetime must not hold the transition lock.
-if { [[ -n $steam ]] || { dispatch "hl.dsp.exec_cmd(\"$HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")" && wait_big_picture && prepare_games; }; } && park_floats &&
+if { [[ -n $steam ]] || { dispatch "hl.dsp.exec_cmd(\"env DESKTOP_LAUNCH_NO_PLACEHOLDER=1 $HOME/.config/hypr/scripts/desktop-launch steam steam://open/bigpicture\")" && wait_big_picture && prepare_games; }; } && park_floats &&
     { [[ -z $destination ]] || focus_window "$destination"; } && tag_window "$steam" +deck-game-mode && camera_out && camera_to "$steam" && freeze_work; then
     exit
 fi

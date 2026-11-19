@@ -8,23 +8,32 @@ import QsLib as Q
 Scope {
     id: root
 
+    // Display names where the command name reads badly; everything else uses its desktop entry or command name.
     readonly property var names: ({
-        "slack": "Slack", "slqs-client": "Slack",
-        "launch-discord-client": "Discord", "dsqrd-client": "Discord",
-        "launch-mail-client": "Mail", "mlqs-client": "Mail",
-        "opqs-client": "Passwords",
-        "browser-personal": "Helium", "browser-work": "Helium", "browser-work-new": "Helium",
-        "chromium-launch": "Chromium", "helium": "Helium",
-        "deck-cockpit": "Cockpit", "cockpit-qs": "Cockpit", "cockpit-new": "Cockpit",
-        "spotify": "Spotify", "obsidian": "Obsidian", "libreoffice": "LibreOffice"
+        "slqs-client": "Slack", "launch-discord-client": "Discord", "dsqrd-client": "Discord",
+        "launch-mail-client": "Mail", "mlqs-client": "Mail", "opqs-client": "Passwords",
+        "browser-personal": "Helium", "browser-work": "Helium", "browser-work-new": "Helium", "chromium-launch": "Helium",
+        "deck-cockpit": "Cockpit", "cockpit-qs": "Cockpit", "cockpit-new": "Cockpit", "cockpit-boot": "Cockpit",
+        "spawn-terminal-with-yazi": "Files", "spawn-claude-session-picker": "Sessions",
+        "kitty": "Terminal", "spotify_player": "Spotify", "spotify-player": "Spotify"
     })
-    property var launches: []
 
     function nameFor(command) {
-        const words = command.split(/\s+/).filter(w => w !== "")
+        const words = command.split(/\s+/).filter(w => w !== "" && !/^[A-Z_][A-Z0-9_]*=/.test(w))
         while (words.length && words[0].split("/").pop() === "desktop-launch") words.shift()
-        return words.length ? names[words[0].split("/").pop()] || "" : ""
+        if (!words.length) return ""
+        let bin = words[0].split("/").pop()
+        const cls = words.indexOf("--class")
+        if (bin === "kitty" && cls > 0 && words[cls + 1]) bin = words[cls + 1]
+        if (names[bin]) return names[bin]
+        const entry = DesktopEntries.applications.values.find(e => e.command && e.command.length
+            && e.command[0].split("/").pop() === bin)
+        if (entry && entry.name) return entry.name
+        const plain = bin.replace(/\.[a-z]+$/, "").replace(/[-_]+/g, " ").trim()
+        return plain.charAt(0).toUpperCase() + plain.slice(1)
     }
+    property var launches: []
+
     function drop(key) { launches = launches.filter(l => l.key !== key) }
     signal finished(string key)
 
