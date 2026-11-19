@@ -13,7 +13,7 @@ Scope {
         "launch-discord-client": "Discord", "dsqrd-client": "Discord",
         "launch-mail-client": "Mail", "mlqs-client": "Mail",
         "opqs-client": "Passwords",
-        "browser-personal": "Helium", "browser-work": "Helium", "browser-work-new": "Helium",
+        "browser-work-new": "Helium",
         "chromium-launch": "Chromium", "helium": "Helium",
         "deck-cockpit": "Cockpit", "cockpit-qs": "Cockpit", "cockpit-new": "Cockpit",
         "spotify": "Spotify", "obsidian": "Obsidian", "libreoffice": "LibreOffice"
