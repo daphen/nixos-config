@@ -18,10 +18,10 @@ function harness(auth: any = { ok: true, apiKey: "key" }) {
   const ctx = { cwd: "/", model: { id: "m", contextWindow: 200_000 }, ui: { notify: (text: string) => notes.push(text) },
     modelRegistry: { getApiKeyAndHeaders: async () => auth },
     sessionManager: { getEntries: () => entries, getBranch: () => entries, getSessionId: () => "s", getSessionFile: () => undefined } };
-  const compactNow = (previousSummary?: string) => handlers.session_before_compact({
+  const compactNow = (previousSummary?: string, extra: any[] = []) => handlers.session_before_compact({
     reason: "threshold", branchEntries: entries,
     preparation: { firstKeptEntryId: "kept", tokensBefore: 180_000, isSplitTurn: false, previousSummary, turnPrefixMessages: [],
-      messagesToSummarize: [{ role: "user", content: "build the thing", timestamp: 1 }],
+      messagesToSummarize: [{ role: "user", content: "build the thing", timestamp: 1 }, ...extra],
       fileOps: { read: new Set(), written: new Set(), edited: new Set() }, settings: { keepRecentTokens: 20_000 } },
   }, ctx).compaction.summary as string;
   const context = async (summary: string) => {
@@ -70,4 +70,13 @@ test("a failed summary keeps the checkpoint and says so", async () => {
   const unauthorised = harness({ ok: false, error: "no key" });
   unauthorised.compactNow(); await settle();
   expect(unauthorised.entries).toHaveLength(0);
+});
+
+test("stall-guard notices are left out of the summary request", async () => {
+  calls.length = 0; reply = async () => ({ summary: "MODEL SUMMARY" });
+  const h = harness();
+  h.compactNow(undefined, [{ role: "custom", customType: "stall-guard", content: "Continue exactly where you left off.", display: true, timestamp: 2 },
+    { role: "assistant", content: [{ type: "text", text: "done" }], timestamp: 3 }]);
+  await settle();
+  expect(calls[0].preparation.messagesToSummarize.map((m: any) => m.role)).toEqual(["user", "assistant"]);
 });

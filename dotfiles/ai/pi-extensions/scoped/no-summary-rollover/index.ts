@@ -362,9 +362,12 @@ export default function noSummaryRollover(pi: ExtensionAPI) {
     const previous = event.preparation.previousSummary;
     // The checkpoint is instant; the model summary replaces it in context once ready.
     if (previous) event.preparation.previousSummary = upgraded(event.branchEntries, previous) ?? previous;
+    // Stall-guard's "continue exactly where you left off" notice gets the summary request refused as output duplication.
+    const conversation = (messages: typeof event.preparation.messagesToSummarize) =>
+      apply(messages, ctx, event.branchEntries, task).filter(m => !(m.role === "custom" && m.customType === "stall-guard"));
     const preparation = { ...event.preparation,
-      messagesToSummarize: apply(event.preparation.messagesToSummarize, ctx, event.branchEntries, task),
-      turnPrefixMessages: apply(event.preparation.turnPrefixMessages, ctx, event.branchEntries, task),
+      messagesToSummarize: conversation(event.preparation.messagesToSummarize),
+      turnPrefixMessages: conversation(event.preparation.turnPrefixMessages),
     };
     if (preparation.messagesToSummarize.length === 0 && preparation.turnPrefixMessages.length === 0 && !preparation.previousSummary) return;
 
