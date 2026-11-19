@@ -87,6 +87,19 @@ def main():
             seen = seen or 'qs-launch · Slack' in clients(); time.sleep(.05)
         assert 'qs-launch · Slack' not in clients(), 'a launch that exits without a window left its placeholder'
         print('PASS focus-only launch dropped its placeholder (briefly shown: %s)' % seen)
+        launch(['kitty', '-T', 'Other', '--config', 'NONE'], app, 'other.log')
+        r.wait(lambda: clients().get('Other', {}).get('focusHistoryID') == 0, [compositor])
+        focus = REPO / 'dotfiles/hyprland/.config/hypr/scripts/hypr-dispatch'
+        fake.write_text(f'#!/bin/sh\nsleep 0.1\n{focus} focuswindow title:Editor\nsleep 5\n'); fake.chmod(0o755)
+        started = time.monotonic()
+        focusing = subprocess.Popen([desktop_launch, 'slack'], env=app)
+        processes.append(focusing)
+        seen = False
+        while time.monotonic() - started < 1.5:
+            seen = seen or 'qs-launch · Slack' in clients(); time.sleep(.03)
+        assert focusing.poll() is None and not seen, 'a launch that focused an open window showed a placeholder'
+        print('PASS launch that focused an open window never showed a placeholder')
+        focusing.kill()
         fake.write_text('#!/bin/sh\nread _ < /proc/self/fd/0 2>/dev/null; sleep 30\n'); fake.chmod(0o755)
         slow = subprocess.Popen([desktop_launch, 'slack'], env=app, stdin=subprocess.PIPE)
         processes.append(slow)

@@ -63,7 +63,14 @@ Scope {
             Connections {
                 target: Hyprland
                 function onRawEvent(event) {
-                    if (!event || event.name !== "openwindow" || win.done) return
+                    if (!event || win.done) return
+                    // Focus landing on an already-open window means the command focused rather than launched.
+                    if (event.name === "activewindow") {
+                        const title = String(event.data).split(",").slice(1).join(",")
+                        if (title && !title.startsWith("qs-launch")) win.finish()
+                        return
+                    }
+                    if (event.name !== "openwindow") return
                     if (String(event.data).split(",").slice(3).join(",").startsWith("qs-launch")) return
                     if (root.launches[0] && root.launches[0].key !== win.modelData.key) return
                     win.finish()
@@ -78,7 +85,7 @@ Scope {
                 target: root
                 function onFinished(key) { if (key === win.modelData.key && !win.done) win.finish() }
             }
-            Timer { interval: 120; running: true; onTriggered: if (!win.done) win.shown = true }
+            Timer { interval: 300; running: true; onTriggered: if (!win.done) win.shown = true }
             Timer { interval: 15000; running: true; onTriggered: root.drop(win.modelData.key) }
             NumberAnimation { id: fade; target: surface; property: "opacity"; to: 0; duration: 220; easing.type: Easing.OutCubic
                 onFinished: root.drop(win.modelData.key) }
